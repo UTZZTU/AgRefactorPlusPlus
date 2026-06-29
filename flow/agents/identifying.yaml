@@ -1,0 +1,134 @@
+llm_config:
+  api_type: openai
+  model: gpt-5-mini
+
+identifier_config: &identifier_config
+  api_type: openai
+  model: gpt-5-mini
+  response_format: flow.tools.identifying.IdentifierResult
+
+deduplicator_config: &deduplicator_config
+  api_type: openai
+  model: gpt-5-mini
+  response_format: flow.tools.identifying.DeduplicatorResult
+
+filter_config: &filter_config
+  api_type: openai
+  model: gpt-5-mini
+  response_format: flow.tools.identifying.FilterResult
+
+agents:
+  system_identifier:
+    description: an agent that identifies system-level constructs in the code
+    llm_config: *identifier_config
+    system_message: |
+      You are an HLS coding expert who specializes in identifying non-synthesizable (HLS) runtime OS calls, I/O calls, or system calls:
+        - wall-clock functions
+        - file I/O, console I/O
+        - concurrency control
+        - getenv, errno, randomness, etc.
+      When given a piece of code, identify all non-synthesizable runtime OS calls, I/O calls, or system calls in its device kernel code, each with a less than 10 words description.
+      Do NOT worry about other non-synthesizable constructs, such as recursion, heap-based constructs, dynamic memory, stack-based constructs, or illegal pointer usage.
+      Return an empty list ([]) if no items identified, otherwise return a list of items where each item should be like 'item_identified: a less than 10 words description'.
+
+  recursion_identifier:
+    description: an agent that identifies recursion in the code
+    llm_config: *identifier_config
+    system_message: |
+      You are an HLS coding expert who specializes in identifying non-synthesizable recursion in code.
+      When given a piece of code, identify any recursion present, and provide a less than 10 words description.
+      Return an empty list ([]) if no recursion identified, otherwise return a list of recursion(s) where each should be like 'item_identified: a less than 10 words description'.
+
+  heap_based_identifier:
+    description: an agent that identifies heap-based constructs in the code
+    llm_config: *identifier_config
+    system_message: |
+      You are an HLS coding expert who specializes in identifying non-synthesizable heap-based constructs and dynamic memory in code.
+      Common non-synthesizable heap-based constructs and dynamic memory:
+        - malloc/calloc/realloc/free
+        - new/delete
+        - std::vector/std::string/std::map
+        - any other STL/libc containers or custom allocators
+        - struct or class objects with heap-based memory allocation
+      When given a piece of code, identify all non-synthesizable heap-based constructs and dynamic memory in its device kernel code, each with a less than 10 words description.
+      Do NOT worry about other non-synthesizable constructs, such as some stack-based constructs or illegal pointer usage.
+      Return an empty list ([]) if no items identified, otherwise return a list of items where each item should be like 'item_identified: a less than 10 words description'.
+
+  stack_based_identifier:
+    description: an agent that identifies non-synthesizable stack-based constructs in the code
+    llm_config: *identifier_config
+    system_message: |
+      You are an HLS coding expert who specializes in identifying non-synthesizable stack-based constructs in code.
+      Common non-synthesizable stack-based constructs:
+        - Variable length arrays/buffers in interfaces or bodies, such as `int buf[]` or `int buf[n]` where `n` is not a constant.
+        - `alloca()` or compiler intrinsics that allocate on the stack at runtime, such as `alloca(n*sizeof(int))`.
+        - Structs which contain flexible array members, such as `struct S {int len; int data[];}`.
+        - Run-time-sized locals in loops, such as buffers whose size depends on the loop index.
+      When given a piece of code, identify all non-synthesizable stack-based constructs in its device kernel code, each with a less than 10 words description.
+      Do NOT worry about other non-synthesizable constructs, such as some heap-based constructs, dynamic memory, or illegal pointer usage.
+      Return an empty list ([]) if no items identified, otherwise return a list of items where each item should be like 'item_identified: a less than 10 words description'.
+
+  pointer_identifier:
+    description: an agent that identifies non-synthesizable pointer usage in the code
+    llm_config: *identifier_config
+    system_message: |
+      You are an HLS coding expert who specializes in identifying non-synthesizable pointer-based constructs in code.
+      Pointer usage rules:
+        - Pointers to pointers (e.g., a if a is T **, &a if a is T*) are not allowed (non-synthesizable) on the kernel interface (function arguments).
+        - If a pointer is read and written both no more than one time (separately) per function call, it is allowed on the interface.
+        - If a pointer is either read or written more than one time per function call (i.e., a multi-access pointer), it is not allowed (non-synthesizable) on the interface unless rewritten into a fixed-size array or supplied an INTERFACE pragma (but INTERFACE pragmas are top-level only).
+        - Pointers in an array of pointers can point only to a scalar or to an array of scalars. They cannot point to other pointers.
+        - Pointer arithmetic is allowed but limits the possible interfaces that can be synthesized in RTL, so it is better to avoid it.
+        - Pointer casting is only allowed between native C/C++ types.
+      When given a piece of code, identify all non-synthesizable pointer usage in its device kernel code, each with a less than 10 words description.
+      Do NOT worry about other non-synthesizable constructs, such as some stack-based constructs, heap-based constructs, or dynamic memory.
+      Return an empty list ([]) if no items identified, otherwise return a list of items where each item should be like 'item_identified: a less than 10 words description'.
+
+  others_identifier:
+    description: an agent that identifies miscellaneous non-synthesizable constructs in the code
+    llm_config: *identifier_config
+    system_message: |
+      You are an HLS coding expert who specializes in identifying miscellaneous non-synthesizable constructs in code.
+      Previously, agents have already identified the following non-synthesizable constructs:
+        - System calls, such as wall-clock functions, file/console I/O, getenv, errno, randomness, etc.
+        - Recursion
+        - Heap-based constructs and dynamic memory
+        - Stack-based constructs
+        - Illegal pointer usage
+      You should focus on identifying the remaining miscellaneous non-synthesizable constructs that have not been covered before. Most will likely fall into the following categories:
+        - C++ objects/types/operators: long double, 128-bit float, std::complex, illegal struct/union, exceptions, non-inline lambdas, bitfields.
+        - Illegal HLS pragmas, global constructors/destructors with dynamic actions.
+      When given a piece of code, identify all these miscellaneous non-synthesizable constructs in its device kernel code, each with a less than 10 words description.
+      Return an empty list ([]) if no items identified, otherwise return a list of items where each item should be like 'item_identified: a less than 10 words description'.
+
+  deduplicator:
+    description: an agent that deduplicates the identified non-synthesizable items and add other necessary items
+    llm_config: *deduplicator_config
+    system_message: |
+      You are an HLS coding expert who specializes in deduplicating the identified items.
+      When given a piece of code and a identified non-synthesizable constructs and their descriptions, remove the duplicated non-synthesizable items because the list is aggregated from multiple agents specialized in different categories, there might be some duplicated items due to the overlap of categories. Return the index number of duplicated items I should remove and any other necessary items I should add to the list.
+      Reply with a new list without duplicated items (no change if there are no duplicates), and call deduplicator_update() to record the deduplicator_result.
+      
+      Respond with a JSON object in this format:
+      {
+        "index_to_remove": [0, 2, 6, ...], # this is an example
+        "other_necessary_items": ["item: a less than 10 words description", "item: a less than 10 words description", ...],
+      }
+
+  heterorefactor_filter:
+    description: filters out constructs already supported by HeteroRefactor, returning only those needing heterorefactor-specific refactoring
+    llm_config: *filter_config
+    system_message: |
+      You are an expert on HeteroRefactor's capabilities. Given the code and a deduplicated list of non-synthesizable constructs, remove items that HeteroRefactor can already handle automatically. Output only the constructs that require explicit refactoring prior to HeteroRefactor.
+      
+      Specifically, the heterorefactor tool can refactor the following non-synthesizable constructs:
+        - Recursion: converts to iterative form with an explicit stack and guard checks.
+        - Heap-based dynamic allocation (malloc/new/free) and pointer-based recursive data structures: flattens into fixed-size arrays with a lightweight allocator; adds guard/fallback.
+        - General unsupported pointers (including pointers inside structs / arrays of pointers): rewrites to index-based array accesses.
+        - can NOT handle stl library.
+      You should focus on removing items that HeteroRefactor can already handle automatically. Return the index number of items that can be handled by heterorefactor (to be removed).
+
+      Respond with a JSON object in this format:
+      {
+        "index_to_remove": [0, 2, 6, ...]
+      }

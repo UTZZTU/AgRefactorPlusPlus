@@ -1,0 +1,22 @@
+\begin{table*}[h]
+\centering
+\small
+\caption{Held-out testbench re-evaluation. For each paper attempt on the four lowest-coverage test kernels, we coverage-optimize the paper's testbench (preserving its signature) and re-run the paper's refactored code against the resulting stronger TB. ``Inflated\textsubscript{mismatch}'' counts cases where the paper marked the attempt as passing but the stronger TB exposed an output mismatch in the same refactor. Conditions pool $N=20$ paper attempts per kernel across \texttt{\_new} and \texttt{\_new\_2}.}
+\vspace{-5pt}
+\begin{tabular}{l rrr rrr}
+\toprule
+ & \multicolumn{3}{c}{\textbf{no-mem}} & \multicolumn{3}{c}{\textbf{with-mem}} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-7}
+\textbf{Task} & \# pass\textsubscript{public} & \# pass\textsubscript{hidden} & \# inflated\textsubscript{mismatch} & \# pass\textsubscript{public} & \# pass\textsubscript{hidden} & \# inflated\textsubscript{mismatch} \\
+\midrule
+av1\_compound\_type\_rd      &   0 &   0 &   0 &   1 &   0 &   1  \\ % n=[17, 19]
+encode\_one\_block           &   3 &   0 &   2 &   5 &   2 &   4  \\ % n=[18, 20]
+idct\_generic                &   3 &   0 &   3 &   5 &   4 &   3  \\ % n=[17, 19]
+mm\_chain\_dp\_orig          &   9 &   6 &   3 &   6 &   1 &   4  \\ % n=[20, 19]
+\midrule
+Total                        & \textbf{15} & \textbf{6} & \textbf{8} & \textbf{17} & \textbf{7} & \textbf{12} \\
+Inflation gap                & \multicolumn{2}{r}{9 (60\%)} &  & \multicolumn{2}{r}{10 (59\%)} &  \\
+\bottomrule
+\end{tabular}
+\label{tab:inflation_gap}
+\end{table*}

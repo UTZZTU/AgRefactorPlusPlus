@@ -1,0 +1,68 @@
+{
+  "useful": {
+    "ahocorasick": ["src/heterorefactor/ahocorasick/kernel.cpp", "process_top"],
+    "linkedlist": ["src/heterorefactor/linkedlist/kernel.cpp", "process_top"],
+    "dfs": ["src/heterorefactor/dfs/kernel.cpp", "process_top"],
+    "mergesort": ["src/heterorefactor/mergesort/kernel.cpp", "process_top"],
+    "strassen": ["src/heterorefactor/strassen/kernel.cpp", "process_top"],
+
+    "aes": ["src/c2hlsc/aes/kernel.cpp", "Cipher"],
+    "runs": ["src/c2hlsc/runs/kernel.cpp", "Runs"],
+    "block": ["src/c2hlsc/block/kernel.cpp", "BlockFrequency"],
+    "cusums": ["src/c2hlsc/cusums/kernel.cpp", "CumulativeSums"],
+    "sha256": ["src/c2hlsc/sha256/kernel.cpp", "sha256_update"],
+    "monobit": ["src/c2hlsc/monobit/kernel.cpp", "Frequency"],
+    "present": ["src/c2hlsc/present/kernel.cpp", "present80_encryptBlock"],
+    "quicksort": ["src/c2hlsc/quicksort/kernel.cpp", "quickSort"],
+    "overlapping": ["src/c2hlsc/overlapping/kernel.cpp", "Overlapping"],
+    "des": ["src/c2hlsc/des/kernel.cpp", "des_crypt"],
+
+    "Exception_E1_Matrix_QR_Decomposition": ["src/hlsrewritter/Exception_E1_Matrix_QR_Decomposition/kernel.cpp", "qrd_compute"],
+    "Exception_E3_Turbo_Encoder": ["src/hlsrewritter/Exception_E3_Turbo_Encoder/kernel.cpp", "regUpdate"],
+    "DA_E3_KNN": ["src/hlsrewritter/DA_E3_KNN/kernel.cpp", "knn"],
+    "Incomplete_E1_Fibonacci": ["src/hlsrewritter/Incomplete_E1_Fibonacci/kernel.cpp", "FibSubseq"],
+    "Incomplete_E2_Cyclic_Rotation": ["src/hlsrewritter/Incomplete_E2_Cyclic_Rotation/kernel.cpp", "rotateGrid"],
+    "Incomplete_E3_AES": ["src/hlsrewritter/Incomplete_E3_AES/kernel.cpp", "aes_encrypt"],
+    "Pointer_E1_DNN": ["src/hlsrewritter/Pointer_E1_DNN/kernel.cpp", "forward"],
+    "Pointer_E3_double_pointer": ["src/hlsrewritter/Pointer_E3_double_pointer/kernel.cpp", "trap"],
+    "Recursive_E1_linked_list": ["src/hlsrewritter/Recursive_E1_linked_list/kernel.cpp", "reverseKGroup"],
+    "Recursive_E2_DFS": ["src/hlsrewritter/Recursive_E2_DFS/kernel.cpp", "process_top"],
+    "Struct_E3_long": ["src/hlsrewritter/Struct_E3_long/kernel.cpp", "process_top"],
+    "Struct_E3_max": ["src/hlsrewritter/Struct_E3_max/kernel.cpp", "maxPoints"],
+
+    "delete_nodes_and_return_forest": ["src/leetcode/delete_nodes_and_return_forest.cpp", "delNodes"],
+    "sudoku_solver": ["src/leetcode/sudoku_solver.cpp", "solveSudoku"],
+    "remove_invalid_parentheses": ["src/leetcode/remove_invalid_parentheses.cpp", "removeInvalidParentheses"],
+    "the_skyline_problem": ["src/leetcode/the_skyline_problem.cpp", "getSkyline"],
+    "smallest_range_covering_elements_from_k_lists": ["src/leetcode/smallest_range_covering_elements_from_k_lists.cpp", "smallestRange"],
+    "work_break_ii": ["src/leetcode/work_break_ii.cpp", "wordBreak"],
+    "critical_connections_in_a_network": ["src/leetcode/critical_connections_in_a_network.cpp", "criticalConnections"],
+    "sliding_window_maximum": ["src/leetcode/sliding_window_maximum.cpp", "maxSlidingWindow"],
+    "swin_in_rising_water": ["src/leetcode/swim_in_rising_water.cpp", "swimInWater"],
+    "distribute_repeating_integers": ["src/leetcode/distribute_repeating_integers.cpp", "canDistribute"],
+
+    "av1_compound_type_rd": ["src/app/aom/av1_compound_type_rd.cpp", "av1_compound_type_rd"],
+    "av1_apply_temporal_filter": ["src/app/aom/av1_apply_temporal_filter.cpp", "av1_apply_temporal_filter"],
+    "recalib_table_orig": ["src/app/bqsr/recalib_table_orig.cpp", "Java_com_falconcomputing_genomics_bqsr_FalconRecalibrationEngine_recalibrateNative"],
+    "encode_one_block": ["src/app/libjpeg/encode_one_block.cpp", "encode_one_block"],
+    "fill_inverse_cmap": ["src/app/libjpeg/fill_inverse_cmap.cpp", "fill_inverse_cmap"],
+    "idct_generic": ["src/app/libjpeg/idct_generic.cpp", "idct_generic"],
+    "median_cut": ["src/app/libjpeg/median_cut.cpp", "median_cut"],
+    "select_colors": ["src/app/libjpeg/select_colors.cpp", "select_colors"],
+    "argon2_fill_segment": ["src/app/libsodium/argon2_fill_segment.cpp", "argon2_fill_segment"],
+    "blake2b_compress": ["src/app/libsodium/blake2b_compress.cpp", "blake2b_compress"],
+    "chacha20_stream": ["src/app/libsodium/chacha20_stream.cpp", "chacha20_encrypt_bytes"],
+    "mm_chain_dp_orig": ["src/app/minimap2/mm_chain_dp_orig.cpp", "mm_chain_dp_orig"]
+  },
+  
+  "not_useful": {
+    "Pointer_E2_hash_table": ["src/hlsrewritter/Pointer_E2_hash_table/kernel.cpp", "length"],
+    "Boolean_E1_SVM": ["src/hlsrewritter/Boolean_E1_SVM/kernel.cpp", "svm_classify"],
+    "Boolean_E2_FFT": ["src/hlsrewritter/Boolean_E2_FFT/kernel.cpp", "fft_processing"],
+    "Boolean_E4_CTC": ["src/hlsrewritter/Boolean_E4_CTC/kernel.cpp", "process_image"],
+    "DA_E1_linear_program": ["src/hlsrewritter/DA_E1_linear_program/kernel.cpp", "solve"],
+    "DA_E2_binary_tree": ["src/hlsrewritter/DA_E2_binary_tree/kernel.h", "DFS"],
+    "Struct_E1_stream": ["src/hlsrewritter/Struct_E1_stream/kernel.cpp", "top"],
+    "Exception_E2_Filter": ["src/hlsrewritter/Exception_E2_Filter/kernel.cpp", "run"]
+  }
+}

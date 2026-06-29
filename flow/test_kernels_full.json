@@ -1,0 +1,23 @@
+[
+    ["heterorefactor/ahocorasick/kernel.cpp", "process_top", "hetero_ahocorasick"],
+    ["heterorefactor/dfs/kernel.cpp", "process_top", "hetero_dfs"],
+    ["heterorefactor/strassen/kernel.cpp", "process_top", "hetero_strassen"],
+    ["c2hlsc/sha256/kernel.cpp", "sha256_update", "c2hlsc_sha256"],
+    ["c2hlsc/present/kernel.cpp", "present80_encryptBlock", "c2hlsc_present"],
+    ["c2hlsc/quicksort/kernel.cpp", "quicksort", "c2hlsc_quicksort"],
+    ["c2hlsc/des/kernel.cpp", "des_crypt", "c2hlsc_des"],
+    ["hlsrewritter/Pointer_E3_double_pointer/kernel.cpp", "trap", "hlsrewritter_double_pointer"],
+    ["hlsrewritter/Recursive_E1_linked_list/kernel.cpp", "reverseKGroup", "hlsrewritter_linked_list"],
+    ["hlsrewritter/Struct_E3_max/kernel.cpp", "maxPoints", "hlsrewritter_max_points"],
+    ["leetcode/the_skyline_problem.cpp", "getSkyline", "leetcode_skyline"],
+    ["leetcode/work_break_ii.cpp", "wordBreak", "leetcode_wordBreak"],
+    ["leetcode/sudoku_solver.cpp", "solveSudoku", "leetcode_sudoku_solver"],
+    ["leetcode/sliding_window_maximum.cpp", "maxSlidingWindow", "leetcode_sliding_window"],
+    ["leetcode/distribute_repeating_integers.cpp", "canDistribute", "leetcode_distribute_repeating_integers"],
+    ["app/aom/av1_compound_type_rd.cpp", "av1_compound_type_rd", "av1_compound_type_rd"],
+    ["app/libjpeg/encode_one_block.cpp", "encode_one_block", "libjpeg_encode_one_block"],
+    ["app/libjpeg/idct_generic.cpp", "idct_generic", "libjpeg_idct_generic"],
+    ["app/libjpeg/median_cut.cpp", "median_cut", "libjpeg_median_cut"],
+    ["app/libsodium/argon2_fill_segment.cpp", "argon2_fill_segment", "libsodium_argon2_fill_segment"],
+    ["app/minimap2/mm_chain_dp_orig.cpp", "mm_chain_dp_orig", "minimap2_mm_chain_dp_orig"]
+]

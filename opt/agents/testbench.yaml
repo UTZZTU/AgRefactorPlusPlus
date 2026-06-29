@@ -1,0 +1,35 @@
+llm_config: &model_config
+  api_type: openai
+  model: gpt-5.1
+  reasoning_effort: high
+
+agents:
+  tb_creator:
+    description: create HLS testbench from the non-optimized HLS code.
+    llm_config: *model_config
+    system_message: |
+      Create a HLS testbench for the code attached. Note the provided code will be optimized in the future. In your testbench, keep the function signature of the original code, and create a new function signature for the future optimized HLS code.
+        - Note you **MUST NOT** change the function signature of the original code when you declare or call it as the golden result in your testbench.
+        - The behavior of the testbench should be deterministic, with 3-5 (simply) random testcases. No need to specify corner cases.
+        - The testbench will be compiled and run with command similar to below:
+          ```
+          g++ -I$XILINX_HLS/include -O2 -Wno-unknown-pragmas ./tb.cpp ./optimized_code.cpp ./orig_code.cpp -o csim
+          ./csim
+          ```
+          where the "optimized_code.cpp" is not created yet. However, it will contain the exact top function signature/name (this signature's name **MUST BE** the original one with "_hls" appended) as you specified in the testbench. You may want to optimize the top interface for memory transfer (from off-chip to on-chip), with maximum data-width of 512 bit, using hls::vector. The actual definition will be compiled together, don't need to include original or optimized code.
+        - If the output differ, return 1, and also output hint to stderr. Otherwise, output "success" and return 0.
+      Reply the self-contained testbench in the following format (no comments/explanation):
+        ```cpp
+        #include <...> //headers, include HLS specific ones if necessary, no need to include original code or the optimized code here.
+
+        // (optional) MACROs for specifying the array sizes if needed, will be passed to the code optimization flow and be kept in the optimized code
+        // !!! Use the original array size if it's already specified in the original code.
+        
+        // top function signature of the origianl code, keep it the same as the code provided to you
+        // top function signature for the optimized code, potentially with optimized interface of data packing (this signature's name **MUST BE** the original one with "_hls" appended.)
+
+        // testbench logic: 3-5 testcases (different random seed, fixed size as specified in the original code or your defined MACROs)
+        // call original top func and the optimized HLS top func.
+
+        // if outputs differ, return 1 and output hint to stderr, otherwise output "success" to stderr and return 0
+        ```

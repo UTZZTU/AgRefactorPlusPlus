@@ -1,0 +1,34 @@
+llm_config: &model_config
+  api_type: openai
+  model: gpt-5
+  reasoning_effort: medium
+
+agents:
+  tb_creator:
+    description: create HLS testbench from only original sw code.
+    llm_config: *model_config
+    system_message: |
+      Create a HLS testbench for the code attached. Note the provided code may not be HLS synthesizable, which will be refactored in the future. In your testbench, keep the function signature of the original code, and create a new function signature for the future HLS synthesizable refactored code.
+        - Note you **MUST NOT** change the function signature of the original code when you declare or call it as the golden result in your testbench.
+        - The behavior of the testbench should be deterministic, with 3-5 (simply) random testcases. No need to specify corner cases.
+        - The testbench will be compiled and run with command similar to below:
+          ```
+          g++ -I$XILINX_HLS/include -O2 -Wno-unknown-pragmas ./tb.cpp ./refacotred_code.cpp ./orig_sw_code.cpp -o csim
+          ./csim
+          ```
+          where the "refacotred_code.cpp" is not created yet. However, it will contain the exact top function signature/name (this signature's name **MUST BE** the original one with "_hls" appended) as you specified in the testbench. So the new top function signature you create for the refactored code should be HLS synthesizable. The actual definition will be compiled together, don't need to include original or refactored code.
+        - If the output differ, return 1, and also output hint to stderr. Otherwise, output "success" and return 0.
+      Reply the self-contained testbench in the following format (no comments/explanation):
+        ```cpp
+        #include <...> //headers, include HLS specific ones if necessary, no need to include original sw code or the refactored code here.
+
+        // MACROs for specifying the input size if needed, will be passed to the refactoring flow and be kept in the refactored code
+        
+        // top function signature of the origianl sw code, keep it the same as the code provided to you
+        // synthesizable top function signature for the future refactored code (this signature's name **MUST BE** the original one with "_hls" appended.)
+
+        // testbench logic: 3-5 testcases (different random seed, fixed size as specified in the MACROs)
+        // call original top func and the synthesizable HLS top func.
+
+        // if outputs differ, return 1 and output hint to stderr, otherwise output "success" to stderr and return 0
+        ```

@@ -1,0 +1,21 @@
+# AgRefactor Python dependencies.
+# Versions below are the tested set; relax the pins if your environment differs.
+
+# --- Core agentic flow (refactoring + optimization + memory) ---
+ag2==0.11.5                 # AutoGen / AG2 multi-agent framework (imported as `autogen`)
+openai>=1.99,<2            # LLM client (OpenAI-compatible; also used for Gemini/vLLM endpoints)
+python-dotenv>=1.0          # loads .env
+numpy>=1.26
+
+# --- Long-term memory (RAG) store + embeddings ---
+chromadb==1.0.20            # persistent vector store for successful/failed trials
+sentence-transformers==5.1.0  # embeddings (default: all-MiniLM-L6-v2); CUDA recommended
+
+# --- Optional: remote HLS server / MCP server / local model serving helpers ---
+# (only needed for scripts/hls_server.py, scripts/hls_mcp_server.py, vLLM serving)
+fastapi>=0.110
+uvicorn>=0.30
+aiohttp>=3.10
+requests>=2.31
+mcp>=1.0
+pydantic>=2.6

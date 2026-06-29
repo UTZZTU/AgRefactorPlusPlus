@@ -1,0 +1,13 @@
+[
+    ["heterorefactor/ahocorasick/kernel.cpp", "process_top", "hetero_ahocorasick"],
+    ["heterorefactor/dfs/kernel.cpp", "process_top", "hetero_dfs"],
+    ["heterorefactor/strassen/kernel.cpp", "process_top", "hetero_strassen"],
+    ["leetcode/the_skyline_problem.cpp", "getSkyline", "leetcode_skyline"],
+    ["leetcode/work_break_ii.cpp", "wordBreak", "leetcode_wordBreak"],
+    ["app/aom/av1_compound_type_rd.cpp", "av1_compound_type_rd", "av1_compound_type_rd"],
+    ["app/libjpeg/encode_one_block.cpp", "encode_one_block", "libjpeg_encode_one_block"],
+    ["app/libjpeg/idct_generic.cpp", "idct_generic", "libjpeg_idct_generic"],
+    ["app/libjpeg/median_cut.cpp", "median_cut", "libjpeg_median_cut"],
+    ["app/libsodium/argon2_fill_segment.cpp", "argon2_fill_segment", "libsodium_argon2_fill_segment"],
+    ["app/minimap2/mm_chain_dp_orig.cpp", "mm_chain_dp_orig", "minimap2_mm_chain_dp_orig"]
+]

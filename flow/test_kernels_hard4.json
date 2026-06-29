@@ -1,0 +1,6 @@
+[
+  ["app/aom/av1_compound_type_rd.cpp", "av1_compound_type_rd", "av1_compound_type_rd"],
+  ["app/libjpeg/encode_one_block.cpp", "encode_one_block", "libjpeg_encode_one_block"],
+  ["app/libjpeg/idct_generic.cpp", "idct_generic", "libjpeg_idct_generic"],
+  ["app/minimap2/mm_chain_dp_orig.cpp", "mm_chain_dp_orig", "minimap2_mm_chain_dp_orig"]
+]

@@ -1,0 +1,45 @@
+# --- Secrets / local config ---
+.env
+
+# --- Internal merge/handoff notes (kept locally, not for the public repo) ---
+/MERGE_NOTES.md
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# --- Run outputs, logs, scratch (results available on request; do not commit) ---
+runs/
+**/runs/
+**/tmp/
+*.log
+**/llm_results/
+coverage_results/
+reeval_results/
+
+# --- Long-term memory stores (large; build via accumulation or request) ---
+knowledge_db/*
+!knowledge_db/README.md
+
+# --- Containers (build locally; too large to commit) ---
+*.sif
+*.simg
+
+# --- HeteroRefactor in-flight TB rater scratch ---
+.tb_workspaces/
+golden_tb_rater_flow/_staging/
+
+# --- Large benchmark inputs (genomics etc.) ---
+*.fa
+*.fq
+*.fai
+*.gtf
+
+# --- Editor ---
+.cursor
+.vscode/
+.idea/
+.DS_Store

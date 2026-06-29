@@ -1,0 +1,36 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%labels
+    Author WillZ
+    Description HeteroRefactor dependencies in Ubuntu 22.04
+
+%setup
+    # Create bind points for site auto-mounts (fixes /scratch error)
+    mkdir -p "$APPTAINER_ROOTFS/scratch"
+    mkdir -p "$APPTAINER_ROOTFS/opt/spack"
+    mkdir -p "$APPTAINER_ROOTFS/mnt/software"
+
+%environment
+    export CC=gcc-9
+    export CXX=g++-9
+    export PATH="/usr/bin:$PATH"
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    export DEBIAN_FRONTEND=noninteractive
+
+%post
+    set -e
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        gawk git wget tar bzip2 gcc gcc-9 automake autoconf \
+        libhpdf-dev libc6-dev autotools-dev bison flex libtool libbz2-dev \
+        libpython2.7-dev ghostscript libmpfrc++-dev cmake \
+        build-essential g++-9 time perl-doc man-db
+    update-ca-certificates
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+
+%runscript
+    exec bash

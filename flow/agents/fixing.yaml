@@ -1,0 +1,58 @@
+llm_config: &csynth_fixer_config
+  api_type: openai
+  model: gpt-5-mini
+
+fixer_config: &fixer_config
+  api_type: openai
+  model: gpt-5-mini
+  response_format: flow.tools.csim.FilterResult
+
+analyzer_config: &analyzer_config
+  api_type: openai
+  model: gpt-5-mini
+  response_format: flow.rag.rag_integration.AnalyzerResult
+
+agents:
+  csynth_fixer:
+    description: an agent that fixes synthesis failures in HLS code
+    llm_config: *csynth_fixer_config
+    system_message: |
+      You are an HLS coding expert who specializes in fixing synthesis failures in High-Level Synthesis code.
+      You will be given a C++ application, the top level kernel name, and the synthesis issue with logs. Your task is to analyze the synthesis error and fix the code to resolve the issue.
+      Reply only the full piece of new code in the following format (no comments/explanation):
+      ```cpp
+      ...
+      ```
+
+  csim_fixer:
+    description: an agent that fixes simulation failures in HLS code
+    llm_config: *fixer_config
+    system_message: |
+      You are an HLS coding expert who specializes in fixing simulation failures.
+      You will be given a C++ testbench code with refactored HLS code (they are compiled together with the original sw code to check the correctness of refactoring).
+      You will also be given the simulation issue with logs.
+      Your task is to analyze the simulations issue and fix either the testbench code or the refactored HLS code or both.
+      Reply the two pieces of new code (no comments/explanation), of course you should leave the corresponding block empty if no changes needed for that piece of code (meaning no fixes needed for that part).
+
+      Modify the testbench, **ONLY when it's a testbench compilation error** and the error is on testbench. For other cases, debug the refactered HLS code.
+
+      When you think you need to fix the testbench, never simplify the existing testbench, only fix (simple) compilation errors.
+
+      Respond with a JSON object in this format:
+      {
+        "tb_updated": "```cpp\n <new testbench code, or empty string if unchanged> \n```",
+        "code_updated": "```cpp\n <new refactored HLS code, or empty string if unchanged> \n```"
+      }
+
+  csynth_error_analyzer:
+    description: an agent that analyzes the synthesis error
+    llm_config: *analyzer_config
+    system_message: |
+      You are an HLS coding expert who specializes in analyzing the synthesis error message and the code to tell which mistakes in refactoring it is complaining about. You should:
+      - Analyze the error message and the code to tell which mistakes it is complaining about.
+      - Sometimes the error message is not clear, you may need to infer the problem from the code.
+      - If you see no errors, maybe it's because the synthesis timeout, provide insight for less agressive pragma insertion.
+      - Use more general description to guide future refactoring.
+      Reply ONLY a list of mistakes with no other text or comments, each item as a string less than 12 words:
+        ["...", "...", ...]
+    

@@ -1,0 +1,263 @@
+import logging, copy, yaml, importlib
+from pathlib import Path
+from typing import Dict, Any, Union, List
+from autogen import LLMConfig, UserProxyAgent, ConversableAgent, UpdateSystemMessage # type: ignore
+from autogen.agentchat import initiate_group_chat # type: ignore
+from autogen.agentchat.group import ContextVariables # type: ignore
+from autogen.agentchat.group.patterns import AutoPattern # type: ignore
+
+def yaml_load_file(file_path: Union[str, Path]) -> Dict[str, Any]:
+    with open(file_path, 'r', encoding='utf-8') as f:
+        return yaml.safe_load(f)
+
+def import_from_string(import_string: str) -> Any:
+    module_path, name = import_string.rsplit('.', 1)
+    module = importlib.import_module(module_path)
+    return getattr(module, name)
+
+def is_termination_msg(x: dict[str, Any]) -> bool:
+    content = x.get("content", "")
+    mark_identified = (
+        "==== EXIT ====" in content
+    )
+    return (content is not None) and mark_identified
+
+class HLSUserProxyAgent(UserProxyAgent):
+    """A custom proxy agent for the user with redefined default descriptions for HLS context."""
+    DEFAULT_USER_PROXY_AGENT_DESCRIPTIONS = {
+        "ALWAYS": "An attentive HUMAN user who can answer questions about the task and provide feedback.",
+        "TERMINATE": "A user that can run Python code and report back the execution results.",
+        "NEVER": "A computer terminal that performs no other action than running Python scripts (provided to it quoted in ```python code blocks).",
+    }
+
+class HLSAgentLoader:
+    def __init__(
+        self,
+        config_path: Union[str, Path],
+        llm_config_override: Union[Dict[str, Any], LLMConfig, None] = None,
+    ):
+        self.config_path = Path(config_path)
+        self.config_data = yaml_load_file(self.config_path)
+        self.agents: Dict[str, ConversableAgent] = {}
+        self.agent_configs: Dict[str, Dict[str, Any]] = {}
+        self._runtime_llm_config = llm_config_override
+        self._global_llm_config = None
+        self._context_variables = None
+        self._process_global_config()
+        
+    def _process_global_config(self):
+        llm_config_data: Dict[str, Any] = None
+        if self.config_data.get('llm_config'):
+            llm_config_data = self.config_data.get('llm_config')
+        if self._runtime_llm_config:
+            if llm_config_data == None: llm_config_data = self._runtime_llm_config
+            else:
+                llm_config_data.update(self._runtime_llm_config)
+        if llm_config_data is not None:
+            self._global_llm_config = llm_config_data
+        if 'context_variables' in self.config_data:
+            cv_data = self.config_data['context_variables']
+            self._context_variables = ContextVariables(**cv_data) if isinstance(cv_data, dict) else cv_data
+                
+    def _resolve_imports(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        resolved_config = copy.deepcopy(config)
+
+        if 'llm_config' in resolved_config:
+            llm_config = resolved_config['llm_config']
+            if 'response_format' in llm_config and llm_config['response_format'] is not None:
+                resolved_config['llm_config']['response_format'] = import_from_string(llm_config['response_format'])
+        
+        if 'functions' in resolved_config:
+            functions = resolved_config['functions']
+            if isinstance(functions, list):
+                resolved_functions = []
+                for func in functions:
+                    if isinstance(func, str):
+                        resolved_functions.append(import_from_string(func))
+                    else:
+                        resolved_functions.append(func)
+                resolved_config['functions'] = resolved_functions
+            elif isinstance(functions, str):
+                resolved_config['functions'] = [import_from_string(functions)]
+                
+        if 'is_termination_msg' in resolved_config:
+            term_msg = resolved_config['is_termination_msg']
+            if isinstance(term_msg, str):
+                resolved_config['is_termination_msg'] = import_from_string(term_msg)
+            
+        if 'update_agent_state_before_reply' in resolved_config:
+            update_funcs = resolved_config['update_agent_state_before_reply']
+            if isinstance(update_funcs, list):
+                resolved_funcs = []
+                for func in update_funcs:
+                    if isinstance(func, str):
+                        if func == 'UpdateSystemMessage':
+                            template = resolved_config.get('system_message', '')
+                            resolved_funcs.append(UpdateSystemMessage(template))
+                        else:
+                            resolved_funcs.append(import_from_string(func))
+                    else:
+                        resolved_funcs.append(func)
+                resolved_config['update_agent_state_before_reply'] = resolved_funcs
+            elif isinstance(update_funcs, str):
+                if update_funcs == 'UpdateSystemMessage':
+                    template = resolved_config.get('system_message', '')
+                    resolved_config['update_agent_state_before_reply'] = [UpdateSystemMessage(template)]
+                else:
+                    resolved_config['update_agent_state_before_reply'] = [import_from_string(update_funcs)]
+                
+        if 'handoffs' in resolved_config:
+            handoffs_data = resolved_config['handoffs']
+            if isinstance(handoffs_data, str):
+                resolved_config['handoffs'] = import_from_string(handoffs_data)
+            elif isinstance(handoffs_data, dict):
+                pass
+                
+        return resolved_config
+        
+    def _prepare_agent_config(
+        self,
+        agent_name: str,
+        agent_config: Dict[str, Any],
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        config = copy.deepcopy(agent_config)
+        
+        if 'name' not in config:
+            config['name'] = agent_name
+
+        if self._runtime_llm_config is not None:
+            config['llm_config'].update(self._global_llm_config)
+        elif 'llm_config' not in config and self._global_llm_config:
+            config['llm_config'] = self._global_llm_config
+        
+        if 'llm_config' in config and not isinstance(config['llm_config'], LLMConfig):
+            config['llm_config'] = LLMConfig(**copy.deepcopy(config['llm_config']))
+            
+        if 'context_variables' not in config and self._context_variables:
+            config['context_variables'] = self._context_variables
+        elif 'context_variables' in config and isinstance(config['context_variables'], dict):
+            config['context_variables'] = ContextVariables(**config['context_variables'])
+        
+        if 'system_message' not in config and config['name'] != 'human':
+            raise ValueError("system_message is required")
+
+        if 'system_message' in config:
+            if isinstance(config['system_message'], dict):
+                config['system_message'] = config['system_message']['sys_start'] + config['system_message']['sys_middle'] + config['system_message']['sys_end']
+
+        config.setdefault('human_input_mode', 'TERMINATE')
+        config.setdefault('code_execution_config', False)
+        config.setdefault('default_auto_reply', "")
+            
+        agent_params = {
+            'name', 'system_message', 'is_termination_msg', 'max_consecutive_auto_reply',
+            'human_input_mode', 'function_map', 'code_execution_config', 'llm_config',
+            'default_auto_reply', 'description', 'chat_messages', 'silent',
+            'context_variables', 'functions', 'update_agent_state_before_reply', 'handoffs'
+        }
+        filtered_config = {k: v for k, v in config.items() if k in agent_params}
+        extra_config = {k: v for k, v in config.items() if k not in agent_params}
+        filtered_config = self._resolve_imports(filtered_config)
+        
+        return filtered_config, extra_config
+        
+    def load_agent(self, agent_name: str, **overrides) -> ConversableAgent:
+        if 'agents' not in self.config_data:
+            raise ValueError("No 'agents' section found in configuration")
+            
+        if agent_name not in self.config_data['agents']:
+            available_agents = list(self.config_data['agents'].keys())
+            raise ValueError(f"Agent '{agent_name}' not found. Available agents: {available_agents}")
+            
+        agent_config = self.config_data['agents'][agent_name]
+        
+        config, extra_config = self._prepare_agent_config(agent_name, agent_config)
+        
+        config.update(overrides)
+        
+        agent = ConversableAgent(**config)
+        
+        self.agents[agent_name] = agent
+        self.agent_configs[agent_name] = {
+            'config': config,
+            'extra_config': extra_config
+        }
+        
+        logger = logging.getLogger(agent_name)
+        logger.info(f"Created agent '{agent_name}' with configuration:")
+        for key, value in config.items():
+            if key not in ['llm_config', 'functions', 'function_map']:
+                logger.info(f"  {key}: {value}")
+                
+        return agent
+        
+    def load_all_agents(self, **global_overrides) -> Dict[str, ConversableAgent]:
+        if 'agents' not in self.config_data:
+            raise ValueError("No 'agents' section found in configuration")
+            
+        agents = {}
+        for agent_name in self.config_data['agents'].keys():
+            agents[agent_name] = self.load_agent(agent_name, **global_overrides)
+            
+        return agents
+        
+    def get_agent(self, agent_name: str) -> ConversableAgent:
+        if agent_name not in self.agents:
+            raise ValueError(f"Agent '{agent_name}' not loaded. Call load_agent() first.")
+        return self.agents[agent_name]
+        
+    def list_available_agents(self) -> List[str]:
+        if 'agents' not in self.config_data:
+            return []
+        return list(self.config_data['agents'].keys())
+        
+    def get_agent_config(self, agent_name: str) -> Dict[str, Any]:
+        if agent_name not in self.agent_configs:
+            raise ValueError(f"Agent '{agent_name}' not loaded.")
+        return self.agent_configs[agent_name]
+        
+    def print_all_agents_model_selections(self):
+        if 'agents' not in self.config_data:
+            print("No agents found in configuration.")
+            return
+        agents = self.config_data['agents']
+        print("Agent model selections:")
+        for agent_name, agent_cfg in agents.items():
+            model = None
+            if isinstance(agent_cfg, dict):
+                if 'llm_config' in agent_cfg and isinstance(agent_cfg['llm_config'], dict):
+                    model = agent_cfg['llm_config'].get('model', None)
+                elif 'model' in agent_cfg:
+                    model = agent_cfg.get('model', None)
+            print(f"  - {agent_name}: {model if model else '[model not specified]'}")
+
+    def initiate_chat_pattern(
+        self,
+        agents: list[ConversableAgent],
+        context_variables: ContextVariables,
+        group_manager_args: dict[str, Any],
+    ) -> AutoPattern:
+        return AutoPattern(
+            initial_agent=agents[0],
+            agents=agents,
+            context_variables=context_variables,
+            group_manager_args=group_manager_args
+        )
+    
+    def initiate_group_chat(
+        self,
+        agents: list[ConversableAgent],
+        context_variables: ContextVariables,
+        group_manager_args: dict[str, Any] = None,
+        messages: str = "Your turn!",
+        max_rounds: int = 20,
+    ) -> tuple[list[dict[str, Any]], ContextVariables, list[dict[str, Any]]]:
+        default_group_manager_args = {
+            "llm_config": self._global_llm_config,
+            "is_termination_msg": is_termination_msg
+        }
+        if group_manager_args is not None:
+            default_group_manager_args.update(group_manager_args)
+
+        pattern = self.initiate_chat_pattern(agents, context_variables, default_group_manager_args)
+        return initiate_group_chat(pattern, messages, max_rounds)
