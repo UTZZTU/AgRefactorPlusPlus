@@ -24,6 +24,34 @@ class DeduplicatorResult(BaseModel):
 class FilterResult(BaseModel):
     index_to_remove: Annotated[list[int], "empty list ([]) if there are no items can be handled by heterorefactor; otherwise indices of items auto-handled by HeteroRefactor; remove them"]
 
+def _parse_identified_items(content):
+    """Parse identifier-agent output.
+
+    AgRefactor usually asks for {"identified_items": [...]}, but some
+    OpenAI-compatible models may return a bare JSON list. Accept both.
+    """
+    raw_identifier_json = tools.general.strip_thinking(content)
+    parsed_identifier_json = json.loads(raw_identifier_json)
+
+    if isinstance(parsed_identifier_json, dict):
+        identified_items = parsed_identifier_json.get("identified_items", [])
+    elif isinstance(parsed_identifier_json, list):
+        identified_items = parsed_identifier_json
+    else:
+        raise TypeError(
+            f"Unexpected identifier JSON type: {type(parsed_identifier_json).__name__}; "
+            f"content={raw_identifier_json[:500]}"
+        )
+
+    if not isinstance(identified_items, list):
+        raise TypeError(
+            f"identified_items must be a list, got {type(identified_items).__name__}; "
+            f"content={raw_identifier_json[:500]}"
+        )
+
+    return identified_items
+
+
 def identify_non_synthesizable_items(
     cv: ContextVariables,
     knowledge_db_path: str,
@@ -61,12 +89,12 @@ def identify_non_synthesizable_items(
                 future_to_agent = {local_executor.submit(run_agent, agent): agent for agent in identifying_agents}
                 for future in concurrent.futures.as_completed(future_to_agent):
                     response = future.result()
-                    items.extend(json.loads(tools.general.strip_thinking(response.messages[1]["content"]))["identified_items"])
+                    items.extend(_parse_identified_items(response.messages[1]["content"]))
         else:
             future_to_agent = {executor.submit(run_agent, agent): agent for agent in identifying_agents}
             for future in concurrent.futures.as_completed(future_to_agent):
                 response = future.result()
-                items.extend(json.loads(tools.general.strip_thinking(response.messages[1]["content"]))["identified_items"])
+                items.extend(_parse_identified_items(response.messages[1]["content"]))
         
         deduplicator = identifying_loader.load_agent("deduplicator")
         item_list = "\n".join([f"\t{idx}. {item}" for idx, item in enumerate(items)])

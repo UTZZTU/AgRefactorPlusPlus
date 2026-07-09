@@ -131,7 +131,65 @@ class HLSAgentLoader:
             config['llm_config'] = self._global_llm_config
         
         if 'llm_config' in config and not isinstance(config['llm_config'], LLMConfig):
-            config['llm_config'] = LLMConfig(**copy.deepcopy(config['llm_config']))
+            # AgRefactor++ compatibility:
+            # - AG2/AutoGen 0.11.x expects LLMConfig(config_dict), not LLMConfig(**config_dict).
+            # - Preserve normal OpenAI-compatible and Gemini configs.
+            # - For DeepSeek V4/OpenAI-compatible endpoints, adapt Pydantic response_format
+            #   to JSON mode, reserve enough tokens for thinking-mode responses, and add
+            #   price metadata to avoid AG2 unknown-model cost warnings.
+            _llm_config_obj = copy.deepcopy(config['llm_config'])
+
+            def _append_system_message_suffix(suffix: str) -> None:
+                system_message = config.get('system_message', '')
+                if isinstance(system_message, dict):
+                    # Many AgRefactor agents store system_message as sys_start/sys_middle/sys_end.
+                    # Append to sys_end so later normalization still works correctly.
+                    system_message['sys_end'] = str(system_message.get('sys_end', '')) + suffix
+                else:
+                    config['system_message'] = str(system_message) + suffix
+
+            def _patch_one_llm_entry(entry):
+                if not isinstance(entry, dict):
+                    return entry
+
+                model = str(entry.get('model', ''))
+                base_url = str(entry.get('base_url', ''))
+                model_l = model.lower()
+                base_l = base_url.lower()
+                is_deepseek = ('deepseek' in model_l) or ('deepseek' in base_l)
+
+                if not is_deepseek:
+                    return entry
+
+                # DeepSeek is OpenAI-compatible.
+                entry.setdefault('api_type', 'openai')
+
+                # Prices are USD per 1K tokens. These defaults avoid AG2's unknown-model
+                # warning and can be overridden by explicitly setting price in config.
+                if 'price' not in entry:
+                    if 'v4-pro' in model_l:
+                        entry['price'] = [0.000435, 0.00087]
+                    elif 'v4-flash' in model_l or model_l in {'deepseek-chat', 'deepseek-reasoner'}:
+                        entry['price'] = [0.00014, 0.00028]
+
+                # DeepSeek JSON mode accepts {'type': 'json_object'}, not Python/Pydantic classes.
+                response_format = entry.get('response_format')
+                if response_format is not None and not isinstance(response_format, dict):
+                    entry['response_format'] = {'type': 'json_object'}
+                    _append_system_message_suffix('\n\nIMPORTANT OUTPUT FORMAT:\nRespond ONLY with valid JSON. Do not use markdown fences, comments, or prose outside JSON. Use the field names requested by the task.')
+
+                # Thinking mode may spend tokens before producing final content.
+                entry.setdefault('max_tokens', 8192)
+                return entry
+
+            if isinstance(_llm_config_obj, dict):
+                _llm_config_obj = _patch_one_llm_entry(_llm_config_obj)
+                config['llm_config'] = LLMConfig(_llm_config_obj)
+            elif isinstance(_llm_config_obj, list):
+                _llm_config_obj = [_patch_one_llm_entry(entry) for entry in _llm_config_obj]
+                config['llm_config'] = LLMConfig(*_llm_config_obj)
+            else:
+                config['llm_config'] = LLMConfig(_llm_config_obj)
             
         if 'context_variables' not in config and self._context_variables:
             config['context_variables'] = self._context_variables

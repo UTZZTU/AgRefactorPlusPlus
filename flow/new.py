@@ -15,10 +15,14 @@ def make_llm_config(
     reasoning_effort: Optional[str] = None,
     base_url: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
+    # AgRefactor++ keeps OpenAI compatibility and also supports
+    # OpenAI-compatible endpoints such as DeepSeek through base_url.
     if not model:
         return None
-    api_type = "google" if "gemini" in model else "openai"
+
+    api_type = "google" if "gemini" in model.lower() else "openai"
     config: Dict[str, Any] = {"model": model, "api_type": api_type}
+
     if reasoning_effort:
         config["reasoning_effort"] = reasoning_effort
     if base_url:
