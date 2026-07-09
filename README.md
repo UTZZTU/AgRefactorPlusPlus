@@ -1,5 +1,120 @@
 # AgRefactor
 
+<!-- AGREFACTORPP_OVERVIEW_START -->
+
+## AgRefactor++ v0.1
+
+**AgRefactor++** is a provider-compatibility upgrade of the original AgRefactor project.  
+It keeps the original AgRefactor workflow while adding practical compatibility fixes for newer AG2/AutoGen versions and OpenAI-compatible LLM providers such as DeepSeek V4.
+
+This repository currently focuses on making the basic AgRefactor single-kernel refactoring flow reproducible with Vitis HLS and DeepSeek V4 Flash.
+
+### What is new in AgRefactor++
+
+AgRefactor++ v0.1 adds:
+
+- Compatibility with AG2/AutoGen 0.11.x `LLMConfig(config_dict)` initialization.
+- Provider-neutral LLM configuration construction.
+- Preserved OpenAI-compatible and Gemini configuration paths.
+- DeepSeek/OpenAI-compatible endpoint support through `OPENAI_BASE_URL`.
+- DeepSeek structured-output compatibility by converting Python/Pydantic `response_format` objects to JSON mode.
+- Larger default `max_tokens` for DeepSeek V4 thinking-mode responses.
+- DeepSeek price metadata to avoid AG2 unknown-model cost warnings.
+- More robust identifier parsing that accepts both:
+  - `{"identified_items": [...]}`
+  - `[...]`
+
+### Tested environment
+
+The current v0.1 validation was performed with:
+
+| Component | Version / Setting |
+|---|---|
+| OS | Ubuntu 22.04 LTS |
+| Python | 3.10 |
+| Conda env | `agrefactor` |
+| Vitis HLS | 2023.2 |
+| LLM provider tested end-to-end | DeepSeek V4 Flash |
+| DeepSeek base URL | `https://api.deepseek.com` |
+| Minimal benchmark tested | `src/heterorefactor/dfs/kernel.cpp` |
+| Kernel tested | `process_top` -> `process_top_hls` |
+
+Expected success message for the validated minimal demo:
+
+```text
+HLS refactoring with RAG completed successfully.
+```
+
+> Note: In this minimal validation, RAG, HeteroRefactor, batch mode, and optimization were not enabled. The success message is the original AgRefactor runtime message.
+
+### Quick start with DeepSeek V4 Flash
+
+Create or edit `.env`:
+
+```bash
+OPENAI_API_KEY=sk-your-key-here
+OPENAI_BASE_URL=https://api.deepseek.com
+RUN_DIR=/data/agrefactor_runs
+WORK_DIR=/data/agrefactor_work
+```
+
+Load Vitis HLS and activate the Python environment:
+
+```bash
+source /data/agrefactor_vitis_env.sh
+
+eval "$(conda shell.bash hook)"
+conda activate agrefactor
+
+cd /data/AgRefactor
+```
+
+Run the minimal demo:
+
+```bash
+python -m flow.new \
+  --kernel_path src/heterorefactor/dfs/kernel.cpp \
+  --kernel_name process_top \
+  --model deepseek-v4-flash \
+  --reasoning_effort low \
+  --base_url https://api.deepseek.com \
+  --debug
+```
+
+Check the latest output:
+
+```bash
+latest=$(ls -td /data/agrefactor_runs/$(date +%Y%m%d)/* | head -n 1)
+echo "$latest"
+tail -n 120 "$latest/output.txt"
+```
+
+### Provider compatibility status
+
+| Provider / Model family | Status | Notes |
+|---|---|---|
+| DeepSeek V4 Flash | Tested end-to-end | Minimal single-kernel demo passed with Vitis HLS 2023.2. |
+| DeepSeek V4 Pro | Config-compatible | LLM config path is supported; full HLS run should be tested separately. |
+| OpenAI-compatible APIs | Config-compatible | Uses `api_type="openai"` and optional `base_url`. |
+| OpenAI official API | Config-compatible | Requires a valid OpenAI API key and model selection. |
+| Gemini | Config-compatible | Existing `api_type="google"` path is preserved. |
+
+### Known limitations in v0.1
+
+- The validated result is a minimal single-kernel run, not a full reproduction of every paper experiment.
+- RAG, HeteroRefactor, batch experiments, and optimization flows still need separate validation.
+- Price metadata removes AG2's unknown-model cost warning, but AgRefactor++ does not yet print a full total-cost summary at the end of each run.
+- Provider prices may change; override the `price` field in config when exact cost tracking matters.
+- DeepSeek V4 Flash has been tested end-to-end; OpenAI/Gemini compatibility is currently verified at the configuration level unless separately tested.
+
+### Attribution
+
+AgRefactor++ is derived from the original AgRefactor project.  
+Please keep the original project attribution, paper citation, and license information when using or redistributing this repository.
+
+<!-- AGREFACTORPP_OVERVIEW_END -->
+
+
 **A self-evolving agentic workflow for HLS compatibility and performance.**
 
 AgRefactor takes a C/C++ program and a user-specified top-level function and
