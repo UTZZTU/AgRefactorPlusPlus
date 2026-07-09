@@ -15,6 +15,175 @@ def import_from_string(import_string: str) -> Any:
     module = importlib.import_module(module_path)
     return getattr(module, name)
 
+
+AGREFPP_USAGE_AGENTS: List[Any] = []
+
+
+def reset_agrefactorpp_usage_registry() -> None:
+    # Reset the per-run agent registry used for token/cost accounting.
+    AGREFPP_USAGE_AGENTS.clear()
+
+
+def register_agrefactorpp_usage_agent(agent: Any) -> None:
+    # Register a newly created agent for usage accounting.
+    if not any(id(agent) == id(existing) for existing in AGREFPP_USAGE_AGENTS):
+        AGREFPP_USAGE_AGENTS.append(agent)
+
+
+def _agrefactorpp_price_per_1k(model_name: str) -> tuple[float, float] | None:
+    # Return default USD price per 1K tokens for known OpenAI-compatible models.
+    model_l = str(model_name or "").lower()
+    if "deepseek-v4-pro" in model_l:
+        return (0.000435, 0.00087)
+    if "deepseek-v4-flash" in model_l or model_l in {"deepseek-chat", "deepseek-reasoner"}:
+        return (0.00014, 0.00028)
+    return None
+
+
+def _agrefactorpp_number(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def get_agrefactorpp_usage_summary() -> Dict[str, Any]:
+    # Collect token/cost usage for all agents created in the current run.
+    agents = [agent for agent in AGREFPP_USAGE_AGENTS if agent is not None]
+    summary: Dict[str, Any] = {
+        "agents": len(agents),
+        "models": {},
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "total_cost": 0.0,
+        "source": "none",
+    }
+
+    if not agents:
+        return summary
+
+    try:
+        from autogen import gather_usage_summary  # type: ignore
+
+        usage = gather_usage_summary(agents)
+        usage_data = (
+            usage.get("usage_including_cached_inference")
+            or usage.get("usage_excluding_cached_inference")
+            or {}
+        )
+        summary["source"] = "autogen.gather_usage_summary"
+
+        total_cost_from_ag2 = usage_data.get("total_cost")
+        if total_cost_from_ag2 is not None:
+            summary["total_cost"] = _agrefactorpp_number(total_cost_from_ag2)
+
+        for model_name, data in usage_data.items():
+            if model_name == "total_cost" or not isinstance(data, dict):
+                continue
+
+            prompt_tokens = int(_agrefactorpp_number(data.get("prompt_tokens"), 0))
+            completion_tokens = int(_agrefactorpp_number(data.get("completion_tokens"), 0))
+            total_tokens = int(_agrefactorpp_number(data.get("total_tokens"), prompt_tokens + completion_tokens))
+
+            cost = data.get("cost", data.get("total_cost"))
+            if cost is None:
+                price = _agrefactorpp_price_per_1k(str(model_name))
+                if price is not None:
+                    cost = (prompt_tokens / 1000.0) * price[0] + (completion_tokens / 1000.0) * price[1]
+            cost_f = _agrefactorpp_number(cost, 0.0)
+
+            summary["models"][str(model_name)] = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "cost": cost_f,
+            }
+            summary["prompt_tokens"] += prompt_tokens
+            summary["completion_tokens"] += completion_tokens
+            summary["total_tokens"] += total_tokens
+
+            if total_cost_from_ag2 is None:
+                summary["total_cost"] += cost_f
+
+        return summary
+    except Exception as exc:
+        summary["source"] = f"fallback_per_agent: {type(exc).__name__}: {exc}"
+
+    for agent in agents:
+        for method_name in ("get_actual_usage", "get_total_usage"):
+            method = getattr(agent, method_name, None)
+            if not callable(method):
+                continue
+            try:
+                usage = method()
+            except Exception:
+                usage = None
+            if not isinstance(usage, dict):
+                continue
+
+            for model_name, data in usage.items():
+                if model_name == "total_cost" or not isinstance(data, dict):
+                    continue
+                prompt_tokens = int(_agrefactorpp_number(data.get("prompt_tokens"), 0))
+                completion_tokens = int(_agrefactorpp_number(data.get("completion_tokens"), 0))
+                total_tokens = int(_agrefactorpp_number(data.get("total_tokens"), prompt_tokens + completion_tokens))
+                cost = data.get("cost", data.get("total_cost"))
+                if cost is None:
+                    price = _agrefactorpp_price_per_1k(str(model_name))
+                    if price is not None:
+                        cost = (prompt_tokens / 1000.0) * price[0] + (completion_tokens / 1000.0) * price[1]
+                cost_f = _agrefactorpp_number(cost, 0.0)
+
+                model_key = str(model_name)
+                bucket = summary["models"].setdefault(
+                    model_key,
+                    {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0},
+                )
+                bucket["prompt_tokens"] += prompt_tokens
+                bucket["completion_tokens"] += completion_tokens
+                bucket["total_tokens"] += total_tokens
+                bucket["cost"] += cost_f
+                summary["prompt_tokens"] += prompt_tokens
+                summary["completion_tokens"] += completion_tokens
+                summary["total_tokens"] += total_tokens
+                summary["total_cost"] += cost_f
+            break
+
+    return summary
+
+
+def print_agrefactorpp_usage_summary() -> None:
+    # Print a human-readable usage summary to the current run log.
+    summary = get_agrefactorpp_usage_summary()
+
+    print("=============== Token / Cost Summary ===============")
+    print(f"Usage source: {summary.get('source')}")
+    print(f"Registered agents: {summary.get('agents', 0)}")
+
+    models = summary.get("models", {})
+    if not models:
+        print("No token usage was reported by the current AG2 client.")
+        print("====================================================")
+        return
+
+    print(f"Prompt tokens: {int(summary.get('prompt_tokens', 0)):,}")
+    print(f"Completion tokens: {int(summary.get('completion_tokens', 0)):,}")
+    print(f"Total tokens: {int(summary.get('total_tokens', 0)):,}")
+    print(f"Estimated cost: ${float(summary.get('total_cost', 0.0)):.6f}")
+
+    for model_name, info in models.items():
+        print(f"--- {model_name} ---")
+        print(f"  Prompt tokens: {int(info.get('prompt_tokens', 0)):,}")
+        print(f"  Completion tokens: {int(info.get('completion_tokens', 0)):,}")
+        print(f"  Total tokens: {int(info.get('total_tokens', 0)):,}")
+        print(f"  Estimated cost: ${float(info.get('cost', 0.0)):.6f}")
+
+    print("====================================================")
+
+
 def is_termination_msg(x: dict[str, Any]) -> bool:
     content = x.get("content", "")
     mark_identified = (
@@ -234,6 +403,7 @@ class HLSAgentLoader:
         config.update(overrides)
         
         agent = ConversableAgent(**config)
+        register_agrefactorpp_usage_agent(agent)
         
         self.agents[agent_name] = agent
         self.agent_configs[agent_name] = {

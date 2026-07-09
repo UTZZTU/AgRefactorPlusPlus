@@ -90,3 +90,15 @@ README 只保留上手所需内容，具体变更放在这里维护。
 - README 增加仓库结构说明，方便快速理解各目录用途。
 - README 中将项目定位从“相比传统 HLS 重构流程”修正为“相比原始 AgRefactor”。
 - README 主体保持快速上手导向，详细变更和环境说明分别放入 `docs/CHANGELOG.md` 与 `docs/ENVIRONMENT.md`。
+
+---
+
+## 运行结束 Token / Cost 统计
+
+- 在基础 `flow.new` 流程中增加 token / cost 统计。
+- 每次运行开始时清空本次 agent usage registry。
+- 每个 `ConversableAgent` 创建后自动注册到 usage registry。
+- 运行成功或失败结束时自动打印 `Token / Cost Summary`。
+- 优先使用 `autogen.gather_usage_summary()` 汇总 usage。
+- 如果 AG2 聚合失败，则回退到每个 agent 的 `get_actual_usage()` / `get_total_usage()`。
+- 已使用 DeepSeek V4 Flash 最小 demo 验证统计输出正常。

@@ -3,6 +3,7 @@ from autogen.agentchat.group import ContextVariables  # type: ignore
 from typing import Optional, Dict, Any
 import flow.tools as tools
 from flow.rag.rag_integration import KnowledgeManager
+from flow.base_agent import reset_agrefactorpp_usage_registry, print_agrefactorpp_usage_summary
 
 dotenv.load_dotenv('.env', override=True)
 RUN_DIR = os.getenv('RUN_DIR')   # base dir for run outputs/logs, e.g. "$AGREFACTOR_ROOT/runs"
@@ -65,6 +66,7 @@ def hls_refactor_with_rag(
     golden_tb_cache_key: Optional[str] = None,  # if None, defaults to kernel_name in make_golden_hidden_tb
     use_cached_tb_as_public: bool = False,  # Skip TB gen entirely; use cached hidden TB as the agent's testbench.
 ):
+    reset_agrefactorpp_usage_registry()
     llm_config = make_llm_config(model, reasoning_effort, base_url)
     output_dir = tools.general.create_output_dir(output_dir)
     tools.general.create_log_and_redirect(output_dir)
@@ -373,9 +375,11 @@ def main():
     )
     if success:
         print("HLS refactoring with RAG completed successfully.")
+        print_agrefactorpp_usage_summary()
         return 0
     else:
         print("HLS refactoring with RAG failed after maximum retry attempts.")
+        print_agrefactorpp_usage_summary()
         return 1
 
 if __name__ == "__main__":
