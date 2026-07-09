@@ -129,5 +129,12 @@ HLS 性能优化 / 复杂策略推理：DeepSeek V4 Pro
 DeepSeek V4 Pro 也可以用于重构实验，例如：
 
 ```bash
-python -m flow.new   --kernel_path src/heterorefactor/dfs/kernel.cpp   --kernel_name process_top   --model deepseek-v4-pro   --reasoning_effort low   --base_url https://api.deepseek.com   --max_retry_attempts 8   --debug
+python -m flow.new \
+  --kernel_path src/heterorefactor/dfs/kernel.cpp \
+  --kernel_name process_top \
+  --model deepseek-v4-pro \
+  --reasoning_effort low \
+  --base_url https://api.deepseek.com \
+  --max_retry_attempts 8 \
+  --debug
 ```

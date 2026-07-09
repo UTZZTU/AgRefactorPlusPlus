@@ -173,7 +173,14 @@ HLS refactoring with RAG completed successfully.
 如果希望使用 Pro 作为重构模型，可以直接替换 `--model`：
 
 ```bash
-python -m flow.new   --kernel_path src/heterorefactor/dfs/kernel.cpp   --kernel_name process_top   --model deepseek-v4-pro   --reasoning_effort low   --base_url https://api.deepseek.com   --max_retry_attempts 8   --debug
+python -m flow.new \
+  --kernel_path src/heterorefactor/dfs/kernel.cpp \
+  --kernel_name process_top \
+  --model deepseek-v4-pro \
+  --reasoning_effort low \
+  --base_url https://api.deepseek.com \
+  --max_retry_attempts 8 \
+  --debug
 ```
 
 说明：Pro 已通过最小 demo 端到端测试，但成本高于 Flash。当前建议 Flash 作为默认重构模型，Pro 主要用于优化阶段或疑难重构实验。
