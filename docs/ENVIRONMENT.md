@@ -12,8 +12,9 @@
 | 操作系统 | Ubuntu 22.04 LTS |
 | Python | 3.10 |
 | HLS 工具 | Vitis HLS 2023.2 |
-| 已测试模型后端 | DeepSeek V4 Flash |
+| 已测试模型后端 | DeepSeek V4 Flash / Pro |
 | DeepSeek Base URL | `https://api.deepseek.com` |
+| 已验证 DeepSeek 模型 | `deepseek-v4-flash`、`deepseek-v4-pro` |
 | 最小测试样例 | `src/heterorefactor/dfs/kernel.cpp` |
 | 测试 kernel | `process_top` -> `process_top_hls` |
 
@@ -113,11 +114,20 @@ HLS refactoring with RAG completed successfully.
 ```
 
 
+
 ---
 
-## DeepSeek V4 Pro 状态
+## 推荐模型分工
 
-DeepSeek V4 Pro 已验证可以通过当前 OpenAI-compatible 配置路径被调用。  
-不过当前最小 demo 的完整 HLS 闭环尚未稳定通过，因此本文档仍将“已端到端测试模型后端”记录为 DeepSeek V4 Flash。
+当前暂定分工如下：
 
-后续如果 Pro 在完整流程中稳定通过，可再将其加入已验证模型列表。
+```text
+HLS 重构 / 基础构建：DeepSeek V4 Flash
+HLS 性能优化 / 复杂策略推理：DeepSeek V4 Pro
+```
+
+DeepSeek V4 Pro 也可以用于重构实验，例如：
+
+```bash
+python -m flow.new   --kernel_path src/heterorefactor/dfs/kernel.cpp   --kernel_name process_top   --model deepseek-v4-pro   --reasoning_effort low   --base_url https://api.deepseek.com   --max_retry_attempts 8   --debug
+```

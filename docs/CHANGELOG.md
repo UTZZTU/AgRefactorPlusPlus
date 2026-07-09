@@ -75,16 +75,6 @@ README 只保留上手所需内容，具体变更放在这里维护。
 
 ---
 
-## DeepSeek V4 Pro 当前状态
-
-- DeepSeek V4 Pro 的 API 调用与 LLM 配置路径已经打通。
-- 在当前 DFS 最小 demo 中，Pro 能进入 agent 生成、修复与 HLS 调用流程。
-- 当前端到端 HLS 闭环未稳定通过，日志显示自动修复达到最大重试次数后失败。
-- 因此 README 中暂不宣称 Pro 已完成端到端验证，而是标记为“API 调用与配置层已打通，完整 HLS 闭环仍需继续优化与验证”。
-
-
----
-
 ## 文档结构调整
 
 - README 增加仓库结构说明，方便快速理解各目录用途。
@@ -102,3 +92,24 @@ README 只保留上手所需内容，具体变更放在这里维护。
 - 优先使用 `autogen.gather_usage_summary()` 汇总 usage。
 - 如果 AG2 聚合失败，则回退到每个 agent 的 `get_actual_usage()` / `get_total_usage()`。
 - 已使用 DeepSeek V4 Flash 最小 demo 验证统计输出正常。
+
+
+---
+
+## DeepSeek V4 Pro 端到端验证
+
+- DeepSeek V4 Pro 已完成 DFS 最小 demo 端到端重构验证。
+- 测试样例：
+  - `src/heterorefactor/dfs/kernel.cpp`
+  - `process_top` -> `process_top_hls`
+- 成功日志：
+  - `RETRY_COUNT:0`
+  - `HLS refactoring with RAG completed successfully.`
+- 本次 Pro 运行的 token / cost 统计：
+  - Prompt tokens: 9,877
+  - Completion tokens: 13,604
+  - Total tokens: 23,481
+  - Estimated cost: $0.016132
+- 当前暂定模型分工：
+  - DeepSeek V4 Flash 用于 HLS 重构 / 基础构建。
+  - DeepSeek V4 Pro 用于 HLS 性能优化 / 复杂策略推理。

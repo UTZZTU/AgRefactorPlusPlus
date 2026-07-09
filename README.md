@@ -13,7 +13,7 @@ AgRefactor++ 是一个面向 **Vitis HLS** 的版本感知型 **LLM4HLS 智能�
 - **HLS 兼容性重构**：识别递归、动态内存、全局状态、不可综合控制流等问题，并重构为更适合 HLS 的代码。
 - **LLM 智能体流程**：通过测试生成、不可综合结构识别、重构规划、代码生成、综合反馈修复等阶段完成自动化重构。
 - **Vitis HLS 工具链闭环**：调用 Vitis HLS 进行编译、仿真与综合，并利用工具反馈继续修复代码。
-- **多模型后端接入**：支持 OpenAI-compatible API，并已适配 DeepSeek V4 Flash 作为已验证的大模型后端，并保留 DeepSeek V4 Pro 的兼容接入。
+- **多模型后端接入**：支持 OpenAI-compatible API，并已适配 DeepSeek V4 Flash / Pro 作为已验证的大模型后端。
 - **版本感知迁移方向**：后续将引入目标 Vitis HLS 版本知识，使重构结果更贴合指定版本的工具链行为。
 
 ---
@@ -24,7 +24,7 @@ AgRefactor++ 是一个面向 **Vitis HLS** 的版本感知型 **LLM4HLS 智能�
 
 - 基础 `flow.new` 单 kernel 重构流程复现。
 - Vitis HLS 2023.2 环境下的最小样例验证。
-- DeepSeek V4 Flash 后端的端到端运行验证；DeepSeek V4 Pro 已完成 API 调用与配置层验证，端到端流程仍需继续稳定。
+- DeepSeek V4 Flash / Pro 后端的端到端运行验证。
 - AG2/AutoGen 新版本下的 LLM 配置兼容修复。
 - DeepSeek 结构化输出、thinking mode token 预算、模型价格元数据等兼容修复。
 - identifier 阶段 JSON 输出格式的鲁棒解析。
@@ -168,17 +168,35 @@ HLS refactoring with RAG completed successfully.
 
 说明：这里的 `with RAG` 是原 AgRefactor 流程中的固定输出文本，不代表你一定启用了 RAG。
 
+### 使用 DeepSeek V4 Pro 进行重构实验
+
+如果希望使用 Pro 作为重构模型，可以直接替换 `--model`：
+
+```bash
+python -m flow.new   --kernel_path src/heterorefactor/dfs/kernel.cpp   --kernel_name process_top   --model deepseek-v4-pro   --reasoning_effort low   --base_url https://api.deepseek.com   --max_retry_attempts 8   --debug
+```
+
+说明：Pro 已通过最小 demo 端到端测试，但成本高于 Flash。当前建议 Flash 作为默认重构模型，Pro 主要用于优化阶段或疑难重构实验。
+
 ---
 
 ## 支持的大模型后端
 
 当前代码层面支持以下类型的大模型后端：
 
-- **DeepSeek V4 Flash**：已完成最小 demo 端到端测试。
-- **DeepSeek V4 Pro**：API 调用与配置层已打通，完整 HLS 闭环仍需继续优化与验证。
+- **DeepSeek V4 Flash**：已完成最小 demo 端到端测试，暂定作为默认重构模型。
+- **DeepSeek V4 Pro**：已完成最小 demo 端到端测试，可用于重构实验；后续暂定优先用于优化阶段。
 - **OpenAI-compatible API**：可通过 `OPENAI_BASE_URL` 接入。
 - **OpenAI 官方 API**：保留 OpenAI-compatible 配置路径。
 - **Gemini**：保留原有 Gemini 配置路径。
+
+推荐的模型分工：
+
+```text
+HLS 重构 / 基础构建：DeepSeek V4 Flash
+HLS 性能优化 / 复杂策略推理：DeepSeek V4 Pro
+```
+
 
 ---
 
