@@ -252,7 +252,26 @@ class RAGIntegration:
         msg = context_variables["csynth_csim_history"][-1].get("error_msg", "Unknown error") + "\n\n" + context_variables["curr_code"] + f"\n\nThe device top-level kernel names are: {context_variables['new_kernel_name']}."
         response = analyzer.run(message=msg, max_turns=1)
         response.process()
-        return json.loads(response.messages[1]["content"])["non_synthesizable_items"]
+        raw_content = response.messages[1]["content"]
+        try:
+            from flow.tools import general as _agrefpp_general
+            raw_content = _agrefpp_general.strip_thinking(raw_content)
+        except Exception:
+            pass
+
+        parsed = json.loads(raw_content)
+        if isinstance(parsed, dict):
+            items = parsed.get("non_synthesizable_items",
+                               parsed.get("identified_items",
+                                          parsed.get("items", [])))
+            if isinstance(items, list):
+                return items
+            if isinstance(items, str):
+                return [items]
+            return []
+        if isinstance(parsed, list):
+            return parsed
+        return []
 
 class KnowledgeManager:
     def __init__(

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from chromadb.config import Settings  # type: ignore
 from sentence_transformers import SentenceTransformer  # type: ignore
+import json
 
 @dataclass
 class SuccessfulTrial:
@@ -105,6 +106,7 @@ class KnowledgeDB:
         return embedding.tolist()
     
     def _generate_items_embedding(self, items: List[str]) -> List[float]:
+        items = self._agrefpp_normalize_items(items)
         if not items:
             return [0.0] * self.encoder.get_sentence_embedding_dimension()
         
@@ -112,6 +114,44 @@ class KnowledgeDB:
         embedding = self.encoder.encode(items_text)
         return embedding.tolist()
     
+    def _agrefpp_normalize_item(self, item: Any) -> str:
+        if item is None:
+            return ""
+        if isinstance(item, str):
+            return item
+        if isinstance(item, dict):
+            for key in (
+                "item", "name", "description", "construct", "reason",
+                "message", "text", "non_synthesizable_item",
+                "non_synthesizable_construct",
+            ):
+                value = item.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            return json.dumps(item, ensure_ascii=False, sort_keys=True)
+        return str(item)
+
+    def _agrefpp_normalize_items(self, items: Any) -> List[str]:
+        if items is None:
+            return []
+        if isinstance(items, str):
+            return [items]
+        if isinstance(items, dict):
+            for key in ("non_synthesizable_items", "identified_items", "missing_items", "items"):
+                value = items.get(key)
+                if isinstance(value, list):
+                    return [s for s in (self._agrefpp_normalize_item(x) for x in value) if s]
+                if isinstance(value, str):
+                    return [value]
+            one = self._agrefpp_normalize_item(items)
+            return [one] if one else []
+        try:
+            return [s for s in (self._agrefpp_normalize_item(x) for x in list(items)) if s]
+        except TypeError:
+            one = self._agrefpp_normalize_item(items)
+            return [one] if one else []
+
+
     def add_successful_trial(
         self,
         original_code: str,
@@ -121,6 +161,7 @@ class KnowledgeDB:
         plan_hetero: Optional[Dict[str, Any]] = None,
         plan_type: str = "main"
     ) -> str:
+        identified_items = self._agrefpp_normalize_items(identified_items)
         if trial_id is None:
             trial_id = f"success_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
         
@@ -167,6 +208,8 @@ class KnowledgeDB:
         synthesis_error: str,
         trial_id: Optional[str] = None
     ) -> str:
+        identified_items = self._agrefpp_normalize_items(identified_items)
+        missing_items = self._agrefpp_normalize_items(missing_items)
         if trial_id is None:
             trial_id = f"failed_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
         
