@@ -71,3 +71,22 @@ README 只保留上手所需内容，具体变更放在这里维护。
 - 固定版本之间的 HLS 工程迁移与适配。
 - 更完整的 RAG、HeteroRefactor、batch mode、optimization 流程验证。
 - 运行结束后的 token 与费用统计。
+
+
+---
+
+## DeepSeek V4 Pro 当前状态
+
+- DeepSeek V4 Pro 的 API 调用与 LLM 配置路径已经打通。
+- 在当前 DFS 最小 demo 中，Pro 能进入 agent 生成、修复与 HLS 调用流程。
+- 当前端到端 HLS 闭环未稳定通过，日志显示自动修复达到最大重试次数后失败。
+- 因此 README 中暂不宣称 Pro 已完成端到端验证，而是标记为“API 调用与配置层已打通，完整 HLS 闭环仍需继续优化与验证”。
+
+
+---
+
+## 文档结构调整
+
+- README 增加仓库结构说明，方便快速理解各目录用途。
+- README 中将项目定位从“相比传统 HLS 重构流程”修正为“相比原始 AgRefactor”。
+- README 主体保持快速上手导向，详细变更和环境说明分别放入 `docs/CHANGELOG.md` 与 `docs/ENVIRONMENT.md`。

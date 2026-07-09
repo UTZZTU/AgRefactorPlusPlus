@@ -111,3 +111,13 @@ python -m flow.new \
 ```text
 HLS refactoring with RAG completed successfully.
 ```
+
+
+---
+
+## DeepSeek V4 Pro 状态
+
+DeepSeek V4 Pro 已验证可以通过当前 OpenAI-compatible 配置路径被调用。  
+不过当前最小 demo 的完整 HLS 闭环尚未稳定通过，因此本文档仍将“已端到端测试模型后端”记录为 DeepSeek V4 Flash。
+
+后续如果 Pro 在完整流程中稳定通过，可再将其加入已验证模型列表。

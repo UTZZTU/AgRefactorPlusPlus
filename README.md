@@ -2,7 +2,7 @@
 
 AgRefactor++ 是一个面向 **Vitis HLS** 的版本感知型 **LLM4HLS 智能体**，目标是自动完成 HLS 代码重构、修复与跨版本迁移。
 
-相比传统 HLS 重构流程，AgRefactor++ 不只关注把普通 C/C++ 程序转换为可综合 HLS 代码，还进一步引入目标 Vitis HLS 版本约束，使系统能够根据用户指定的工具链版本生成更合适的 HLS 工程。项目当前已完成基础流程复现，并适配 DeepSeek API 作为大模型后端。后续将围绕 Vitis HLS 多版本知识库、编译/综合反馈驱动修复、可复用 AST/Clang 迁移规则以及跨版本 HLS 迁移测试集继续建设。
+相比原始 AgRefactor，AgRefactor++ 不只关注把普通 C/C++ 程序转换为可综合 HLS 代码，还进一步引入目标 Vitis HLS 版本约束，使系统能够根据用户指定的工具链版本生成更合适的 HLS 工程。项目当前已完成基础流程复现，并适配 DeepSeek API 作为大模型后端。后续将围绕 Vitis HLS 多版本知识库、编译/综合反馈驱动修复、可复用 AST/Clang 迁移规则以及跨版本 HLS 迁移测试集继续建设。
 
 在竞赛和实验阶段，AgRefactor++ 将优先支持若干固定 Vitis HLS 版本之间的迁移与适配，并逐步扩展到更复杂的版本迁移和平台迁移场景。
 
@@ -13,7 +13,7 @@ AgRefactor++ 是一个面向 **Vitis HLS** 的版本感知型 **LLM4HLS 智能�
 - **HLS 兼容性重构**：识别递归、动态内存、全局状态、不可综合控制流等问题，并重构为更适合 HLS 的代码。
 - **LLM 智能体流程**：通过测试生成、不可综合结构识别、重构规划、代码生成、综合反馈修复等阶段完成自动化重构。
 - **Vitis HLS 工具链闭环**：调用 Vitis HLS 进行编译、仿真与综合，并利用工具反馈继续修复代码。
-- **多模型后端接入**：支持 OpenAI-compatible API，并已适配 DeepSeek V4 Flash 作为可用的大模型后端。
+- **多模型后端接入**：支持 OpenAI-compatible API，并已适配 DeepSeek V4 Flash 作为已验证的大模型后端，并保留 DeepSeek V4 Pro 的兼容接入。
 - **版本感知迁移方向**：后续将引入目标 Vitis HLS 版本知识，使重构结果更贴合指定版本的工具链行为。
 
 ---
@@ -24,7 +24,7 @@ AgRefactor++ 是一个面向 **Vitis HLS** 的版本感知型 **LLM4HLS 智能�
 
 - 基础 `flow.new` 单 kernel 重构流程复现。
 - Vitis HLS 2023.2 环境下的最小样例验证。
-- DeepSeek V4 Flash 后端的端到端运行验证。
+- DeepSeek V4 Flash 后端的端到端运行验证；DeepSeek V4 Pro 已完成 API 调用与配置层验证，端到端流程仍需继续稳定。
 - AG2/AutoGen 新版本下的 LLM 配置兼容修复。
 - DeepSeek 结构化输出、thinking mode token 预算、模型价格元数据等兼容修复。
 - identifier 阶段 JSON 输出格式的鲁棒解析。
@@ -175,10 +175,28 @@ HLS refactoring with RAG completed successfully.
 当前代码层面支持以下类型的大模型后端：
 
 - **DeepSeek V4 Flash**：已完成最小 demo 端到端测试。
-- **DeepSeek V4 Pro**：已完成配置层适配，完整流程需要进一步测试。
+- **DeepSeek V4 Pro**：API 调用与配置层已打通，完整 HLS 闭环仍需继续优化与验证。
 - **OpenAI-compatible API**：可通过 `OPENAI_BASE_URL` 接入。
 - **OpenAI 官方 API**：保留 OpenAI-compatible 配置路径。
 - **Gemini**：保留原有 Gemini 配置路径。
+
+---
+
+## 仓库结构
+
+```text
+flow/                  主流程、智能体加载与运行入口
+flow/agents/           各阶段 agent 的提示词与配置
+flow/tools/            测试生成、不可综合结构识别、综合/仿真等工具封装
+flow/rag/              长期记忆与知识检索相关模块
+flow/inflight_tb/      测试生成与测试强度评估相关模块
+opt/                   性能优化智能体与相关实验流程
+src/                   示例 kernel、benchmark 与 baseline 代码
+scripts/               实验复现、基础设施和辅助脚本
+containers/            外部工具链容器说明
+knowledge_db/          长期记忆/知识库保存位置
+docs/                  论文、结果摘要、环境说明和变更记录
+```
 
 ---
 
