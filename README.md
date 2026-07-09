@@ -1,75 +1,146 @@
-# AgRefactor
+# AgRefactor++
 
-<!-- AGREFACTORPP_OVERVIEW_START -->
+AgRefactor++ 是一个面向 **Vitis HLS** 的版本感知型 **LLM4HLS 智能体**，目标是自动完成 HLS 代码重构、修复与跨版本迁移。
 
-## AgRefactor++ v0.1
+相比传统 HLS 重构流程，AgRefactor++ 不只关注把普通 C/C++ 程序转换为可综合 HLS 代码，还进一步引入目标 Vitis HLS 版本约束，使系统能够根据用户指定的工具链版本生成更合适的 HLS 工程。项目当前已完成基础流程复现，并适配 DeepSeek API 作为大模型后端。后续将围绕 Vitis HLS 多版本知识库、编译/综合反馈驱动修复、可复用 AST/Clang 迁移规则以及跨版本 HLS 迁移测试集继续建设。
 
-**AgRefactor++** 是基于原始 AgRefactor 项目的兼容性增强版本。  
-本项目保留 AgRefactor 原有的自动化 HLS 重构流程，同时针对新版 AG2/AutoGen 以及 DeepSeek V4 等 OpenAI-compatible 大模型接口做了实际适配。
+在竞赛和实验阶段，AgRefactor++ 将优先支持若干固定 Vitis HLS 版本之间的迁移与适配，并逐步扩展到更复杂的版本迁移和平台迁移场景。
 
-当前 v0.1 版本的重点是：让 AgRefactor 的基础单 kernel 重构流程可以在 Vitis HLS 2023.2 + DeepSeek V4 Flash 环境下稳定复现。
+---
 
-### AgRefactor++ 新增内容
+## 项目能做什么
 
-AgRefactor++ v0.1 主要加入了以下改动：
+- **HLS 兼容性重构**：识别递归、动态内存、全局状态、不可综合控制流等问题，并重构为更适合 HLS 的代码。
+- **LLM 智能体流程**：通过测试生成、不可综合结构识别、重构规划、代码生成、综合反馈修复等阶段完成自动化重构。
+- **Vitis HLS 工具链闭环**：调用 Vitis HLS 进行编译、仿真与综合，并利用工具反馈继续修复代码。
+- **多模型后端接入**：支持 OpenAI-compatible API，并已适配 DeepSeek V4 Flash 作为可用的大模型后端。
+- **版本感知迁移方向**：后续将引入目标 Vitis HLS 版本知识，使重构结果更贴合指定版本的工具链行为。
 
-- 兼容 AG2/AutoGen 0.11.x 中 `LLMConfig(config_dict)` 的初始化方式。
-- 保留 OpenAI-compatible provider 的配置路径。
-- 保留 Gemini 的 `api_type="google"` 配置路径。
-- 支持通过 `OPENAI_BASE_URL` 接入 DeepSeek 等 OpenAI-compatible API。
-- 针对 DeepSeek 修复 Python/Pydantic `response_format` 不兼容问题，将结构化输出转换为 JSON mode。
-- 针对 DeepSeek V4 thinking mode 增大默认 `max_tokens`，避免模型只输出 reasoning 内容而没有最终 `content`。
-- 为 DeepSeek V4 Flash / Pro 添加默认价格元数据，避免 AG2 输出 unknown-model cost warning。
-- 增强 identifier 阶段的 JSON 解析鲁棒性，同时兼容：
-  - `{"identified_items": [...]}`
-  - `[...]`
+---
 
-### 已验证环境
+## 当前状态
 
-当前 v0.1 版本已经在以下环境中完成最小 demo 验证：
+当前仓库已经完成：
 
-| 组件 | 版本 / 设置 |
-|---|---|
-| 操作系统 | Ubuntu 22.04 LTS |
-| Python | 3.10 |
-| Conda 环境 | `agrefactor` |
-| HLS 工具 | Vitis HLS 2023.2 |
-| 已端到端测试的大模型 | DeepSeek V4 Flash |
-| DeepSeek Base URL | `https://api.deepseek.com` |
-| 最小测试样例 | `src/heterorefactor/dfs/kernel.cpp` |
-| 测试 kernel | `process_top` -> `process_top_hls` |
+- 基础 `flow.new` 单 kernel 重构流程复现。
+- Vitis HLS 2023.2 环境下的最小样例验证。
+- DeepSeek V4 Flash 后端的端到端运行验证。
+- AG2/AutoGen 新版本下的 LLM 配置兼容修复。
+- DeepSeek 结构化输出、thinking mode token 预算、模型价格元数据等兼容修复。
+- identifier 阶段 JSON 输出格式的鲁棒解析。
 
-最小 demo 成功时，`output.txt` 末尾应出现：
+详细变更记录见：
 
 ```text
-HLS refactoring with RAG completed successfully.
+docs/CHANGELOG.md
 ```
 
-> 说明：本次最小验证未开启 RAG、HeteroRefactor、batch mode 和 optimization。日志中的 `with RAG` 是原 AgRefactor 运行流程中的固定输出信息。
+环境与依赖说明见：
 
-### 使用 DeepSeek V4 Flash 快速运行
+```text
+docs/ENVIRONMENT.md
+```
 
-创建或修改 `.env`：
+---
+
+## 快速开始
+
+下面的命令使用占位路径，请根据自己的机器修改。
+
+### 1. 克隆项目
+
+```bash
+git clone git@github.com:UTZZTU/AgRefactorPlusPlus.git
+cd AgRefactorPlusPlus
+```
+
+如果你使用 HTTPS：
+
+```bash
+git clone https://github.com/UTZZTU/AgRefactorPlusPlus.git
+cd AgRefactorPlusPlus
+```
+
+### 2. 准备 Python 环境
+
+推荐使用 Python 3.10。
+
+```bash
+conda create -n agrefactor python=3.10
+conda activate agrefactor
+```
+
+根据仓库中的实际依赖文件安装依赖：
+
+```bash
+if [ -f requirements.txt ]; then
+  pip install -r requirements.txt
+fi
+
+pip install -e .
+```
+
+如果你想复现当前已验证环境，可以参考：
+
+```text
+docs/ENVIRONMENT.md
+docs/environment/conda-env.yml
+docs/environment/pip-freeze.txt
+```
+
+### 3. 配置 Vitis HLS
+
+请先安装 Vitis HLS。当前已验证版本是 Vitis HLS 2023.2。
+
+不要直接照抄 `/data/...` 这类本机路径，请改成你自己的安装路径。例如：
+
+```bash
+export VITIS_HLS_SETTINGS=/your/path/to/Xilinx/Vitis_HLS/2023.2/settings64.sh
+source "$VITIS_HLS_SETTINGS"
+```
+
+确认 `vitis_hls` 可用：
+
+```bash
+which vitis_hls
+vitis_hls -version
+```
+
+### 4. 配置大模型 API
+
+创建 `.env`：
+
+```bash
+cp .env.example .env
+```
+
+使用 DeepSeek V4 Flash 时，可写成：
 
 ```bash
 OPENAI_API_KEY=sk-your-key-here
 OPENAI_BASE_URL=https://api.deepseek.com
-RUN_DIR=/data/agrefactor_runs
-WORK_DIR=/data/agrefactor_work
+RUN_DIR=/your/path/to/agrefactor_runs
+WORK_DIR=/your/path/to/agrefactor_work
 ```
 
-加载 Vitis HLS 环境并激活 Python 环境：
+说明：
+
+- `OPENAI_API_KEY` 填你的模型服务 API key。
+- `OPENAI_BASE_URL` 用于接入 OpenAI-compatible API，例如 DeepSeek。
+- 如果使用 OpenAI 官方 API，可以按实际情况移除或修改 `OPENAI_BASE_URL`。
+- `RUN_DIR` 和 `WORK_DIR` 请设置为你有读写权限的目录。
+
+### 5. 运行最小 demo
+
+进入项目目录并激活环境：
 
 ```bash
-source /data/agrefactor_vitis_env.sh
-
-eval "$(conda shell.bash hook)"
+cd /your/path/to/AgRefactorPlusPlus
 conda activate agrefactor
-
-cd /data/AgRefactor
+source "$VITIS_HLS_SETTINGS"
 ```
 
-运行最小 demo：
+运行 DFS 示例：
 
 ```bash
 python -m flow.new \
@@ -81,181 +152,88 @@ python -m flow.new \
   --debug
 ```
 
-查看最新运行日志：
+查看最新输出：
 
 ```bash
-latest=$(ls -td /data/agrefactor_runs/$(date +%Y%m%d)/* | head -n 1)
+latest=$(ls -td "$RUN_DIR"/$(date +%Y%m%d)/* | head -n 1)
 echo "$latest"
 tail -n 120 "$latest/output.txt"
 ```
 
-### Provider 兼容状态
+如果成功，日志末尾会出现类似信息：
 
-| Provider / 模型族 | 当前状态 | 说明 |
-|---|---|---|
-| DeepSeek V4 Flash | 已端到端测试 | 最小单 kernel demo 已在 Vitis HLS 2023.2 下通过。 |
-| DeepSeek V4 Pro | 配置层兼容 | LLM config 路径已支持，完整 HLS 流程需要后续单独测试。 |
-| OpenAI-compatible API | 配置层兼容 | 使用 `api_type="openai"`，可通过 `base_url` 接入兼容接口。 |
-| OpenAI 官方 API | 配置层兼容 | 需要有效 OpenAI API key 和对应模型名后再做完整测试。 |
-| Gemini | 配置层兼容 | 保留原有 `api_type="google"` 路径。 |
-
-### v0.1 已知限制
-
-- 当前验证结果是最小单 kernel demo，不代表已经完整复现论文中的所有实验。
-- RAG、HeteroRefactor、批量实验和优化流程还需要后续分别验证。
-- 当前已经消除了 AG2 的 unknown-model cost warning，但还没有在每次运行结束时打印总 token 和总费用统计。
-- DeepSeek 价格可能随官方调整而变化；如果需要精确费用统计，应在 config 中显式覆盖 `price` 字段。
-- DeepSeek V4 Flash 已完成端到端测试；OpenAI/Gemini 目前主要是配置层兼容，仍需使用对应 API key 做完整运行验证。
-
-### 项目来源与致谢
-
-AgRefactor++ 基于原始 AgRefactor 项目修改而来。  
-使用、引用或分发本仓库时，请保留原项目说明、论文引用和 license 信息。
-
-<!-- AGREFACTORPP_OVERVIEW_END -->
-
-
-**A self-evolving agentic workflow for HLS compatibility and performance.**
-
-AgRefactor takes a C/C++ program and a user-specified top-level function and
-automatically produces a synthesizable Vitis HLS implementation, then
-(optionally) optimizes it for hardware performance. It combines:
-
-- a **multi-agent refactoring pipeline** (test generation → identification →
-  planning → refactoring → synthesis/simulation → analyze-and-fix loop);
-- a **self-evolving long-term memory** that accumulates strategic and factual
-  knowledge across tasks and retrieves it for unseen programs;
-- **tool integration** with HeteroRefactor via an LLM *Tool Specialist*; and
-- a **performance-optimization agent** that drives Vitis HLS, fast latency
-  estimation, and source-to-source transformation tools.
-
-This repository releases the **flow**. Large experimental artifacts (full run
-logs, pre-built memory stores, raw coverage data) are not committed; they are
-available on request (see [docs/results](docs/results/) for summaries).
-
----
-
-## Repository layout
-
-| Path | What it is |
-|------|------------|
-| `flow/` | Refactoring flow: agents (`agents/*.yaml`), tools (`tools/*.py`), long-term memory (`rag/`), and entry points (`new.py`, `parallel_kernel.py`, `parallel_eval.py`). |
-| `flow/inflight_tb/` | Optional engineer↔rater testbench loop (paper appendix). |
-| `opt/` | Performance-optimization agent (`opt/simple_iter/main.py`). |
-| `src/` | Benchmark suite + baselines (`app/`, `heterorefactor/`, `leetcode/`, `hlsrewritter/`, `opt/`). |
-| `scripts/` | Reproduction & infrastructure helpers (paper tables, coverage, remote HLS server, vLLM serving). |
-| `containers/` | Apptainer recipe + build guide for the HeteroRefactor toolchain. |
-| `knowledge_db/` | Memory-store location (stores not committed; see its README). |
-| `docs/` | Paper PDF and result summaries (`docs/results/`). |
-
-The flow logic is intentionally unchanged from the research code; only paths
-and secrets have been externalized to environment variables.
-
----
-
-## Prerequisites
-
-- **Python 3.10+**
-- **Vitis HLS 2023.2** on `PATH` (`vitis_hls`), with `$XILINX_HLS/include`
-  available to `g++` (used for C-simulation). *Licensed; install on the host.*
-- **Apptainer** — only for HeteroRefactor tool integration (see
-  [containers/README.md](containers/README.md)).
-- **CUDA GPU** — recommended (not required) for fast memory embeddings.
-- An **OpenAI-compatible LLM API key** (OpenAI, or a Gemini/vLLM endpoint).
-
-## Install
-
-```bash
-conda create -n agrefactor python=3.10 -y && conda activate agrefactor
-pip install -r requirements.txt
-cp .env.example .env        # then edit .env (see below)
+```text
+HLS refactoring with RAG completed successfully.
 ```
 
-## Configure
-
-Edit `.env` (loaded automatically). Minimum to run the base flow:
-
-```bash
-OPENAI_API_KEY=sk-...
-RUN_DIR=/abs/path/to/agrefactor/runs   # where run outputs/logs are written
-```
-
-Add `HETEROREFACTOR_DIR` to enable the tool path. See `.env.example` for the
-full list.
+说明：这里的 `with RAG` 是原 AgRefactor 流程中的固定输出文本，不代表你一定启用了 RAG。
 
 ---
 
-## Quick start
+## 支持的大模型后端
 
-### 1. Refactor one kernel into synthesizable HLS
+当前代码层面支持以下类型的大模型后端：
+
+- **DeepSeek V4 Flash**：已完成最小 demo 端到端测试。
+- **DeepSeek V4 Pro**：已完成配置层适配，完整流程需要进一步测试。
+- **OpenAI-compatible API**：可通过 `OPENAI_BASE_URL` 接入。
+- **OpenAI 官方 API**：保留 OpenAI-compatible 配置路径。
+- **Gemini**：保留原有 Gemini 配置路径。
+
+---
+
+## 常用命令
+
+运行单 kernel 重构：
 
 ```bash
 python -m flow.new \
-    --kernel_path src/heterorefactor/dfs/kernel.cpp \
-    --kernel_name process_top \
-    --model gpt-5-mini \
-    --reasoning_effort low \
-    --debug
+  --kernel_path <path/to/kernel.cpp> \
+  --kernel_name <top_function_name> \
+  --model <model_name> \
+  --base_url <openai_compatible_base_url> \
+  --debug
 ```
 
-Outputs land in `$RUN_DIR/<...>`: `output.txt` (full log, ends with
-`RETRY_COUNT:<n>`), `context_*.json` snapshots per stage, and per-iteration
-`csynth_*/` / `csim_*/` artifacts.
-
-### 2. Add long-term memory (the paper's self-evolving RAG)
+查看最近一次运行结果：
 
 ```bash
-python -m flow.new \
-    --kernel_path src/app/libjpeg/encode_one_block.cpp \
-    --kernel_name encode_one_block \
-    --model gpt-5-mini \
-    --enable_rag \
-    --knowledge_db_path knowledge_db/your_store \
-    --debug
+latest=$(ls -td "$RUN_DIR"/$(date +%Y%m%d)/* | head -n 1)
+echo "$latest"
+tail -n 120 "$latest/output.txt"
 ```
 
-`--enable_rag` retrieves plans/critiques from the memory store;
-`--enable_rag_update` records the current trial back into it. See
-[knowledge_db/README.md](knowledge_db/README.md) to build or obtain a store.
+常见输出文件包括：
 
-### 3. Add the HeteroRefactor tool path (greedy tool + Tool Specialist)
-
-```bash
-python -m flow.new \
-    --kernel_path src/heterorefactor/dfs/kernel.cpp \
-    --kernel_name process_top \
-    --model gpt-5-mini \
-    --hetero_enabled --debug
-```
-
-Requires `HETEROREFACTOR_DIR` set and the container built.
-
-### 4. Optimize a synthesizable design for performance
-
-```bash
-python -m opt.simple_iter.main \
-    --kernel_path src/opt/prometheus/2mm_extra_large.cpp \
-    --top_name top \
-    --model gpt-5 \
-    --reasoning_effort high
-```
-
-### 5. Scale out (many kernels / repeats → pass@K, success rate)
-
-```bash
-python -m flow.parallel_kernel \
-    --exp_name my_eval \
-    --kernels_file flow/test_kernels.json \
-    --model gpt-5-mini \
-    --enable_rag --repeat 20 --max_workers 20
+```text
+output.txt
+context_final.json
+csim_*/refactor_code.cpp
+csim_*/testbench.cpp
+csynth_*/process_top_hls.cpp
+csynth_*/csynth/solution/syn/report/*_csynth.rpt
 ```
 
 ---
 
-## Notes & limitations
+## 文档结构
 
-- **Vitis HLS is required** for synthesis/simulation; it is host-installed and
-  not containerized.
-- The repo is **fully self-contained** — no undeclared external packages. The
-  testbench coverage / hidden-TB rater is the self-contained AG2 implementation
-  in `flow/tools/tb_optimizer.py`.
+```text
+README.md                 项目入口与快速上手
+docs/CHANGELOG.md         变更记录
+docs/ENVIRONMENT.md       环境、依赖与复现说明
+docs/environment/         当前验证环境导出文件
+```
+
+---
+
+## 项目来源与致谢
+
+AgRefactor++ 基于原始 AgRefactor 项目修改而来，保留并继承其 HLS 自动重构智能体流程。  
+使用、引用或分发本仓库时，请同时尊重原项目的论文引用、license 与作者贡献。
+
+原项目：
+
+```text
+https://github.com/Williamzou0123/AgRefactor
+```
