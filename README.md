@@ -1,5 +1,7 @@
 # AgRefactor++
 
+项目开源地址：`https://github.com/UTZZTU/AgRefactorPlusPlus`
+
 AgRefactor++ 是一个面向 **Vitis HLS** 的版本感知型 **LLM4HLS 智能体**，目标是自动完成 HLS 代码重构、修复与跨版本迁移。
 
 相比原始 AgRefactor，AgRefactor++ 不只关注把普通 C/C++ 程序转换为可综合 HLS 代码，还进一步引入目标 Vitis HLS 版本约束，使系统能够根据用户指定的工具链版本生成更合适的 HLS 工程。项目当前已完成基础流程复现，并适配 DeepSeek API 作为大模型后端。后续将围绕 Vitis HLS 多版本知识库、编译/综合反馈驱动修复、可复用 AST/Clang 迁移规则以及跨版本 HLS 迁移测试集继续建设。
@@ -183,7 +185,7 @@ python -m flow.new \
   --debug
 ```
 
-说明：Pro 已通过最小 demo 端到端测试，但成本高于 Flash。当前建议 Flash 作为默认重构模型，Pro 主要用于优化阶段或疑难重构实验。
+说明：Pro 已通过最小 demo 端到端测试，但成本高于 Flash。当前命令属于重构实验，因此仍使用 `reasoning_effort=low`；后续如果将 Pro 用于优化阶段或复杂策略推理，再单独考虑提高 reasoning effort。
 
 ---
 

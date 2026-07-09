@@ -113,3 +113,17 @@ README 只保留上手所需内容，具体变更放在这里维护。
 - 当前暂定模型分工：
   - DeepSeek V4 Flash 用于 HLS 重构 / 基础构建。
   - DeepSeek V4 Pro 用于 HLS 性能优化 / 复杂策略推理。
+
+
+
+---
+
+## Reasoning effort 使用策略澄清
+
+- DeepSeek V4 Pro 已完成 DFS 最小 demo 端到端重构验证。
+- 当前 README / ENVIRONMENT 中的 Pro 示例命令属于“重构实验”，因此仍保持 `reasoning_effort=low`。
+- 暂定模型分工保持不变：
+  - DeepSeek V4 Flash 用于 HLS 重构 / 基础构建。
+  - DeepSeek V4 Pro 用于 HLS 性能优化 / 复杂策略推理。
+- 后续真正接入优化阶段时，再单独为优化流程评估是否使用更高 reasoning effort。
+- 当前开源仓库地址：`https://github.com/UTZZTU/AgRefactorPlusPlus`。
