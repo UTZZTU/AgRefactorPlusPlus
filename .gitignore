@@ -43,3 +43,6 @@ golden_tb_rater_flow/_staging/
 .vscode/
 .idea/
 .DS_Store
+
+# AgRefactor++ local RAG test stores
+knowledge_db/agrefpp_*/
