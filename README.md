@@ -4,52 +4,52 @@
 
 ## AgRefactor++ v0.1
 
-**AgRefactor++** is a provider-compatibility upgrade of the original AgRefactor project.  
-It keeps the original AgRefactor workflow while adding practical compatibility fixes for newer AG2/AutoGen versions and OpenAI-compatible LLM providers such as DeepSeek V4.
+**AgRefactor++** 是基于原始 AgRefactor 项目的兼容性增强版本。  
+本项目保留 AgRefactor 原有的自动化 HLS 重构流程，同时针对新版 AG2/AutoGen 以及 DeepSeek V4 等 OpenAI-compatible 大模型接口做了实际适配。
 
-This repository currently focuses on making the basic AgRefactor single-kernel refactoring flow reproducible with Vitis HLS and DeepSeek V4 Flash.
+当前 v0.1 版本的重点是：让 AgRefactor 的基础单 kernel 重构流程可以在 Vitis HLS 2023.2 + DeepSeek V4 Flash 环境下稳定复现。
 
-### What is new in AgRefactor++
+### AgRefactor++ 新增内容
 
-AgRefactor++ v0.1 adds:
+AgRefactor++ v0.1 主要加入了以下改动：
 
-- Compatibility with AG2/AutoGen 0.11.x `LLMConfig(config_dict)` initialization.
-- Provider-neutral LLM configuration construction.
-- Preserved OpenAI-compatible and Gemini configuration paths.
-- DeepSeek/OpenAI-compatible endpoint support through `OPENAI_BASE_URL`.
-- DeepSeek structured-output compatibility by converting Python/Pydantic `response_format` objects to JSON mode.
-- Larger default `max_tokens` for DeepSeek V4 thinking-mode responses.
-- DeepSeek price metadata to avoid AG2 unknown-model cost warnings.
-- More robust identifier parsing that accepts both:
+- 兼容 AG2/AutoGen 0.11.x 中 `LLMConfig(config_dict)` 的初始化方式。
+- 保留 OpenAI-compatible provider 的配置路径。
+- 保留 Gemini 的 `api_type="google"` 配置路径。
+- 支持通过 `OPENAI_BASE_URL` 接入 DeepSeek 等 OpenAI-compatible API。
+- 针对 DeepSeek 修复 Python/Pydantic `response_format` 不兼容问题，将结构化输出转换为 JSON mode。
+- 针对 DeepSeek V4 thinking mode 增大默认 `max_tokens`，避免模型只输出 reasoning 内容而没有最终 `content`。
+- 为 DeepSeek V4 Flash / Pro 添加默认价格元数据，避免 AG2 输出 unknown-model cost warning。
+- 增强 identifier 阶段的 JSON 解析鲁棒性，同时兼容：
   - `{"identified_items": [...]}`
   - `[...]`
 
-### Tested environment
+### 已验证环境
 
-The current v0.1 validation was performed with:
+当前 v0.1 版本已经在以下环境中完成最小 demo 验证：
 
-| Component | Version / Setting |
+| 组件 | 版本 / 设置 |
 |---|---|
-| OS | Ubuntu 22.04 LTS |
+| 操作系统 | Ubuntu 22.04 LTS |
 | Python | 3.10 |
-| Conda env | `agrefactor` |
-| Vitis HLS | 2023.2 |
-| LLM provider tested end-to-end | DeepSeek V4 Flash |
-| DeepSeek base URL | `https://api.deepseek.com` |
-| Minimal benchmark tested | `src/heterorefactor/dfs/kernel.cpp` |
-| Kernel tested | `process_top` -> `process_top_hls` |
+| Conda 环境 | `agrefactor` |
+| HLS 工具 | Vitis HLS 2023.2 |
+| 已端到端测试的大模型 | DeepSeek V4 Flash |
+| DeepSeek Base URL | `https://api.deepseek.com` |
+| 最小测试样例 | `src/heterorefactor/dfs/kernel.cpp` |
+| 测试 kernel | `process_top` -> `process_top_hls` |
 
-Expected success message for the validated minimal demo:
+最小 demo 成功时，`output.txt` 末尾应出现：
 
 ```text
 HLS refactoring with RAG completed successfully.
 ```
 
-> Note: In this minimal validation, RAG, HeteroRefactor, batch mode, and optimization were not enabled. The success message is the original AgRefactor runtime message.
+> 说明：本次最小验证未开启 RAG、HeteroRefactor、batch mode 和 optimization。日志中的 `with RAG` 是原 AgRefactor 运行流程中的固定输出信息。
 
-### Quick start with DeepSeek V4 Flash
+### 使用 DeepSeek V4 Flash 快速运行
 
-Create or edit `.env`:
+创建或修改 `.env`：
 
 ```bash
 OPENAI_API_KEY=sk-your-key-here
@@ -58,7 +58,7 @@ RUN_DIR=/data/agrefactor_runs
 WORK_DIR=/data/agrefactor_work
 ```
 
-Load Vitis HLS and activate the Python environment:
+加载 Vitis HLS 环境并激活 Python 环境：
 
 ```bash
 source /data/agrefactor_vitis_env.sh
@@ -69,7 +69,7 @@ conda activate agrefactor
 cd /data/AgRefactor
 ```
 
-Run the minimal demo:
+运行最小 demo：
 
 ```bash
 python -m flow.new \
@@ -81,7 +81,7 @@ python -m flow.new \
   --debug
 ```
 
-Check the latest output:
+查看最新运行日志：
 
 ```bash
 latest=$(ls -td /data/agrefactor_runs/$(date +%Y%m%d)/* | head -n 1)
@@ -89,28 +89,28 @@ echo "$latest"
 tail -n 120 "$latest/output.txt"
 ```
 
-### Provider compatibility status
+### Provider 兼容状态
 
-| Provider / Model family | Status | Notes |
+| Provider / 模型族 | 当前状态 | 说明 |
 |---|---|---|
-| DeepSeek V4 Flash | Tested end-to-end | Minimal single-kernel demo passed with Vitis HLS 2023.2. |
-| DeepSeek V4 Pro | Config-compatible | LLM config path is supported; full HLS run should be tested separately. |
-| OpenAI-compatible APIs | Config-compatible | Uses `api_type="openai"` and optional `base_url`. |
-| OpenAI official API | Config-compatible | Requires a valid OpenAI API key and model selection. |
-| Gemini | Config-compatible | Existing `api_type="google"` path is preserved. |
+| DeepSeek V4 Flash | 已端到端测试 | 最小单 kernel demo 已在 Vitis HLS 2023.2 下通过。 |
+| DeepSeek V4 Pro | 配置层兼容 | LLM config 路径已支持，完整 HLS 流程需要后续单独测试。 |
+| OpenAI-compatible API | 配置层兼容 | 使用 `api_type="openai"`，可通过 `base_url` 接入兼容接口。 |
+| OpenAI 官方 API | 配置层兼容 | 需要有效 OpenAI API key 和对应模型名后再做完整测试。 |
+| Gemini | 配置层兼容 | 保留原有 `api_type="google"` 路径。 |
 
-### Known limitations in v0.1
+### v0.1 已知限制
 
-- The validated result is a minimal single-kernel run, not a full reproduction of every paper experiment.
-- RAG, HeteroRefactor, batch experiments, and optimization flows still need separate validation.
-- Price metadata removes AG2's unknown-model cost warning, but AgRefactor++ does not yet print a full total-cost summary at the end of each run.
-- Provider prices may change; override the `price` field in config when exact cost tracking matters.
-- DeepSeek V4 Flash has been tested end-to-end; OpenAI/Gemini compatibility is currently verified at the configuration level unless separately tested.
+- 当前验证结果是最小单 kernel demo，不代表已经完整复现论文中的所有实验。
+- RAG、HeteroRefactor、批量实验和优化流程还需要后续分别验证。
+- 当前已经消除了 AG2 的 unknown-model cost warning，但还没有在每次运行结束时打印总 token 和总费用统计。
+- DeepSeek 价格可能随官方调整而变化；如果需要精确费用统计，应在 config 中显式覆盖 `price` 字段。
+- DeepSeek V4 Flash 已完成端到端测试；OpenAI/Gemini 目前主要是配置层兼容，仍需使用对应 API key 做完整运行验证。
 
-### Attribution
+### 项目来源与致谢
 
-AgRefactor++ is derived from the original AgRefactor project.  
-Please keep the original project attribution, paper citation, and license information when using or redistributing this repository.
+AgRefactor++ 基于原始 AgRefactor 项目修改而来。  
+使用、引用或分发本仓库时，请保留原项目说明、论文引用和 license 信息。
 
 <!-- AGREFACTORPP_OVERVIEW_END -->
 
