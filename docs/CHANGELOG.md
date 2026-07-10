@@ -1,129 +1,80 @@
 # 变更记录
 
-本文件记录 AgRefactor++ 相对于原始 AgRefactor 的主要修改。  
-README 只保留上手所需内容，具体变更放在这里维护。
+本文档记录 AgRefactor++ 相对于原始 AgRefactor 的主要代码与文档修改。原项目已有但仅在本地完成复现的功能，统一记录在 `docs/REPRODUCTION_STATUS.md`，避免把“复现验证”误写成“新增功能”。
 
----
+## 未发布
 
-## README 中文化与文档重构
+### 文档
 
-- 将 README 主体整理为中文说明。
-- 将项目名统一为 **AgRefactor++**。
-- 删除中英文混排造成的重复说明。
-- 将环境说明从 README 中拆出到 `docs/ENVIRONMENT.md`。
-- 将版本/提交变更从 README 中拆出到 `docs/CHANGELOG.md`。
-- README 主体聚焦项目思想、快速开始、模型后端和常用命令。
+- 精简主 README，使其只保留项目定位、已验证能力、快速开始和文档入口。
+- 新增 `docs/USAGE.md`，集中维护单 kernel、RAG、批量实验和 optimization 命令。
+- 新增 `docs/REPRODUCTION_STATUS.md`，区分已验证、部分验证、暂未验证和暂停功能。
+- 修正安装说明：仓库当前没有 `setup.py` 或 `pyproject.toml`，不再建议执行 `pip install -e .`。
+- 明确版本感知迁移仍是研究方向，而不是当前已经完整实现的能力。
+- 明确 HeteroRefactor 不是主流程必需依赖，当前因外部 EDG binary 不可用而暂停。
 
----
+### 复现状态同步
 
-## Provider-compatible LLM config
+- 补充 RAG 成功/失败 trial 写入与检索的验证状态。
+- 补充 `flow.parallel_kernel` 的小规模框架验证和稳定性限制。
+- 补充 `opt.simple_iter` 的多轮综合反馈优化与最佳设计保存验证。
+- 将 coverage/hidden TB、remote HLS/MCP 等代码路径标记为尚未纳入稳定主验证基线。
+
+## DeepSeek 与 OpenAI-compatible 适配
 
 - 修复 AG2/AutoGen 0.11.x 下 `LLMConfig` 初始化方式变化导致的兼容问题。
-- 将原来的 `LLMConfig(**config_dict)` 调整为 `LLMConfig(config_dict)`。
 - 保留 OpenAI-compatible provider 的 `api_type="openai"` 配置路径。
+- 支持通过 `OPENAI_BASE_URL` 接入 DeepSeek 等兼容服务。
 - 保留 Gemini 的 `api_type="google"` 配置路径。
-- 支持通过 `OPENAI_BASE_URL` 接入 DeepSeek 等 OpenAI-compatible API。
+- 使用 DeepSeek V4 Flash 和 Pro 完成 DFS 最小样例端到端验证。
 
----
+## Structured output 与 token 配置
 
-## DeepSeek V4 适配
+- 将不适用于 DeepSeek 的 Python/Pydantic `response_format` 转换为 JSON mode：
 
-- 已使用 DeepSeek V4 Flash 完成最小 demo 端到端测试。
-- 针对 DeepSeek structured output，将 Python/Pydantic `response_format` 转换为 JSON mode：
-  - `{"type": "json_object"}`
-- 为 DeepSeek V4 thinking mode 设置更大的默认 `max_tokens`，避免只返回 reasoning 内容而不返回最终 `content`。
-- 添加 DeepSeek V4 Flash / Pro 的默认价格元数据，避免 AG2 输出 unknown-model cost warning。
-- 当前默认价格仅用于消除 warning 与粗略估算；如果需要精确成本统计，应按模型服务商最新价格覆盖 config 中的 `price` 字段。
+  ```json
+  {"type": "json_object"}
+  ```
 
----
+- 为 thinking 模型设置更大的默认 token 预算，减少只返回 reasoning、没有最终 content 的情况。
+- 增加 DeepSeek V4 Flash / Pro 的价格元数据，用于消除 unknown-model warning 和提供粗略成本统计。
+- 价格元数据不应视为长期准确报价。
 
 ## Identifier JSON 解析增强
 
-- 原 AgRefactor 默认 identifier agent 返回：
-  - `{"identified_items": [...]}`
-- 在 OpenAI-compatible 模型中，实际可能返回裸 JSON list：
-  - `[...]`
-- AgRefactor++ 增加 `_parse_identified_items()`，同时兼容上述两种格式。
-- 对异常 JSON 类型给出更明确的错误信息，方便后续调试。
+- 新增 `_parse_identified_items()`。
+- 同时兼容：
 
----
+  ```json
+  {"identified_items": []}
+  ```
 
-## 已完成的最小验证
+  和：
 
-当前已验证：
+  ```json
+  []
+  ```
 
-- 基础 `flow.new` 单 kernel 流程可以运行。
-- 示例 kernel：`src/heterorefactor/dfs/kernel.cpp`
-- 原始 kernel：`process_top`
-- 目标 kernel：`process_top_hls`
-- 大模型后端：DeepSeek V4 Flash
-- HLS 工具：Vitis HLS 2023.2
-- 成功日志：`HLS refactoring with RAG completed successfully.`
+- 对异常 JSON 类型提供更明确的错误信息。
 
----
+## RAG memory 解析增强
 
-## 后续计划
+- 增强 RAG agent 对模型输出的解析能力。
+- 兼容代码块、对象、列表等更灵活的 JSON 包装形式。
+- 忽略本地实验生成的临时 RAG store，避免把运行数据库误提交到 Git。
 
-- Vitis HLS 多版本知识库。
-- 编译/综合反馈驱动的多轮修复。
-- 可复用 AST/Clang 迁移规则。
-- 跨版本 HLS 迁移测试集。
-- 固定版本之间的 HLS 工程迁移与适配。
-- 更完整的 RAG、HeteroRefactor、batch mode、optimization 流程验证。
-- 运行结束后的 token 与费用统计。
+## Token / Cost 汇总
 
+- 在 `flow.new` 开始时重置本次 usage registry。
+- agent 创建后注册到统一 usage registry。
+- 在流程成功或失败退出前打印 `Token / Cost Summary`。
+- 优先使用 AG2 聚合接口；失败时回退到单 agent usage。
+- 已在 DeepSeek Flash 和 Pro 的最小重构实验中验证输出。
 
----
+## 文档中文化与结构调整
 
-## 文档结构调整
-
-- README 增加仓库结构说明，方便快速理解各目录用途。
-- README 中将项目定位从“相比传统 HLS 重构流程”修正为“相比原始 AgRefactor”。
-- README 主体保持快速上手导向，详细变更和环境说明分别放入 `docs/CHANGELOG.md` 与 `docs/ENVIRONMENT.md`。
-
----
-
-## 运行结束 Token / Cost 统计
-
-- 在基础 `flow.new` 流程中增加 token / cost 统计。
-- 每次运行开始时清空本次 agent usage registry。
-- 每个 `ConversableAgent` 创建后自动注册到 usage registry。
-- 运行成功或失败结束时自动打印 `Token / Cost Summary`。
-- 优先使用 `autogen.gather_usage_summary()` 汇总 usage。
-- 如果 AG2 聚合失败，则回退到每个 agent 的 `get_actual_usage()` / `get_total_usage()`。
-- 已使用 DeepSeek V4 Flash 最小 demo 验证统计输出正常。
-
-
----
-
-## DeepSeek V4 Pro 端到端验证
-
-- DeepSeek V4 Pro 已完成 DFS 最小 demo 端到端重构验证。
-- 测试样例：
-  - `src/heterorefactor/dfs/kernel.cpp`
-  - `process_top` -> `process_top_hls`
-- 成功日志：
-  - `RETRY_COUNT:0`
-  - `HLS refactoring with RAG completed successfully.`
-- 本次 Pro 运行的 token / cost 统计：
-  - Prompt tokens: 9,877
-  - Completion tokens: 13,604
-  - Total tokens: 23,481
-  - Estimated cost: $0.016132
-- 当前暂定模型分工：
-  - DeepSeek V4 Flash 用于 HLS 重构 / 基础构建。
-  - DeepSeek V4 Pro 用于 HLS 性能优化 / 复杂策略推理。
-
-
-
----
-
-## Reasoning effort 使用策略澄清
-
-- DeepSeek V4 Pro 已完成 DFS 最小 demo 端到端重构验证。
-- 当前 README / ENVIRONMENT 中的 Pro 示例命令属于“重构实验”，因此仍保持 `reasoning_effort=low`。
-- 暂定模型分工保持不变：
-  - DeepSeek V4 Flash 用于 HLS 重构 / 基础构建。
-  - DeepSeek V4 Pro 用于 HLS 性能优化 / 复杂策略推理。
-- 后续真正接入优化阶段时，再单独为优化流程评估是否使用更高 reasoning effort。
-- 当前开源仓库地址：`https://github.com/UTZZTU/AgRefactorPlusPlus`。
+- 将项目名统一为 AgRefactor++。
+- README 主体改为中文并删除重复的中英文说明。
+- 将环境说明拆分到 `docs/ENVIRONMENT.md`。
+- 将详细代码修改拆分到 `docs/CHANGELOG.md`。
+- README 聚焦新用户第一次运行所需内容。
