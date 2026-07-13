@@ -6,10 +6,13 @@ from .budget import (
     BudgetManager,
     BudgetUsage,
 )
+from .trace import TraceEvent, TraceRecorder
 
 __all__ = [
     "BudgetExceededError",
     "BudgetLimits",
     "BudgetManager",
     "BudgetUsage",
+    "TraceEvent",
+    "TraceRecorder",
 ]
