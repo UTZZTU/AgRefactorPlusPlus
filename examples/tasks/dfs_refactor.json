@@ -1,0 +1,12 @@
+{
+  "task_id": "dfs-refactor",
+  "kernel_path": "src/heterorefactor/dfs/kernel.cpp",
+  "kernel_name": "process_top",
+  "mode": "refactor",
+  "target": {
+    "name": "vitis-2023.2-default",
+    "toolchain": "vitis_hls",
+    "toolchain_version": "2023.2",
+    "clock_period_ns": 10.0
+  }
+}
