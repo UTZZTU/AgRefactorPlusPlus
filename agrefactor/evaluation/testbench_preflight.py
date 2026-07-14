@@ -27,6 +27,69 @@ _UNDEFINED_REFERENCE_RE = re.compile(
 )
 
 
+_EXTERN_VARIABLE_RE = re.compile(
+    r'^\s*extern\s+(?!"C"\s)(?P<body>[^;(){}]+);',
+    re.MULTILINE,
+)
+_GLOBAL_VARIABLE_RE = re.compile(
+    r'^\s*(?!extern\b|typedef\b|using\b|return\b|#)'
+    r'(?P<body>[^;(){}]+);'
+)
+
+
+def _declarator_names(body: str) -> tuple[str, ...]:
+    names: list[str] = []
+    for chunk in body.split(","):
+        declaration = chunk.split("=", 1)[0].strip()
+        match = re.search(
+            r"([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*$",
+            declaration,
+        )
+        if match:
+            names.append(match.group(1))
+    return tuple(dict.fromkeys(names))
+
+
+def _top_level_global_names(source: str) -> set[str]:
+    cleaned = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
+    depth = 0
+    names: set[str] = set()
+
+    for raw_line in cleaned.splitlines():
+        line = raw_line.split("//", 1)[0]
+        if depth == 0:
+            match = _GLOBAL_VARIABLE_RE.match(line)
+            if match:
+                names.update(_declarator_names(match.group("body")))
+
+        depth += line.count("{") - line.count("}")
+        depth = max(depth, 0)
+
+    return names
+
+
+def find_forbidden_internal_dependencies(
+    *,
+    testbench_code: str,
+    original_code: str,
+    candidate_code: str,
+) -> tuple[tuple[str, int, str], ...]:
+    implementation_globals = (
+        _top_level_global_names(original_code)
+        | _top_level_global_names(candidate_code)
+    )
+    findings: list[tuple[str, int, str]] = []
+
+    for match in _EXTERN_VARIABLE_RE.finditer(testbench_code):
+        line = testbench_code.count("\n", 0, match.start()) + 1
+        raw = match.group(0).strip()
+        for name in _declarator_names(match.group("body")):
+            if name in implementation_globals:
+                findings.append((name, line, raw))
+
+    return tuple(dict.fromkeys(findings))
+
+
 def _undefined_function_names(stderr: str) -> tuple[str, ...]:
     names: list[str] = []
     for match in _UNDEFINED_REFERENCE_RE.finditer(stderr):
@@ -190,6 +253,48 @@ class TestbenchPreflight:
             if not isinstance(content, str) or not content.strip():
                 raise ValueError(f"{name} source must not be empty")
             (directory / name).write_text(content, encoding="utf-8")
+
+        forbidden = find_forbidden_internal_dependencies(
+            testbench_code=testbench_code,
+            original_code=original_code,
+            candidate_code=candidate_code,
+        )
+        if forbidden:
+            diagnostics = tuple(
+                TestbenchDiagnostic(
+                    kind=(
+                        TestbenchFailureKind
+                        .FORBIDDEN_INTERNAL_DEPENDENCY
+                    ),
+                    message=(
+                        "testbench declares implementation-private "
+                        f"file-scope variable: {name}"
+                    ),
+                    file="testbench.cpp",
+                    line=line,
+                    raw=raw,
+                )
+                for name, line, raw in forbidden
+            )
+            return TestbenchPreflightResult(
+                status=TestbenchPreflightStatus.FAILED,
+                stage=TestbenchStage.STATIC_CHECK,
+                failure_kind=(
+                    TestbenchFailureKind
+                    .FORBIDDEN_INTERNAL_DEPENDENCY
+                ),
+                failure_owner=TestbenchFailureOwner.TESTBENCH,
+                return_code=None,
+                command=(),
+                diagnostics=diagnostics,
+                stderr="\n".join(
+                    item.message for item in diagnostics
+                ),
+                artifacts=tuple(
+                    str(directory / name) for name in sources
+                ),
+                duration_s=0.0,
+            )
 
         command = [
             self._compiler,

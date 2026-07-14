@@ -91,14 +91,52 @@ class TestbenchPreflightTests(unittest.TestCase):
         self.assertEqual(result.status, TestbenchPreflightStatus.FAILED)
         self.assertEqual(
             result.failure_kind,
-            TestbenchFailureKind.UNDECLARED_TYPE,
+            TestbenchFailureKind.FORBIDDEN_INTERNAL_DEPENDENCY,
         )
+        self.assertEqual(result.stage.value, "static_check")
         self.assertEqual(
             result.failure_owner,
             TestbenchFailureOwner.TESTBENCH,
         )
         self.assertEqual(result.next_action, "repair_testbench")
         self.assertEqual(result.diagnostics[0].file, "testbench.cpp")
+
+    def test_source_derived_private_global_name_is_rejected(
+        self,
+    ) -> None:
+        original = "long hidden_accumulator = 0;\n" + ORIGINAL
+        testbench = VALID_TB.replace(
+            "int main() {",
+            (
+                "extern long hidden_accumulator;\n"
+                "int main() {\n"
+                "    hidden_accumulator = 0;"
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = TestbenchPreflight(
+                compiler="compiler-that-does-not-exist"
+            ).compile_and_link(
+                work_dir=directory,
+                testbench_code=testbench,
+                original_code=original,
+                candidate_code=CANDIDATE,
+            )
+
+        self.assertEqual(
+            result.failure_kind,
+            TestbenchFailureKind.FORBIDDEN_INTERNAL_DEPENDENCY,
+        )
+        self.assertEqual(
+            result.failure_owner,
+            TestbenchFailureOwner.TESTBENCH,
+        )
+        self.assertEqual(result.stage.value, "static_check")
+        self.assertIn(
+            "hidden_accumulator",
+            result.diagnostics[0].message,
+        )
 
     def test_public_interface_only_testbench_passes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -198,8 +236,11 @@ class TestbenchPreflightTests(unittest.TestCase):
                 candidate_code=CANDIDATE,
             )
         payload = result.to_dict()
-        self.assertEqual(payload["stage"], "compile_link")
-        self.assertEqual(payload["failure_kind"], "undeclared_type")
+        self.assertEqual(payload["stage"], "static_check")
+        self.assertEqual(
+            payload["failure_kind"],
+            "forbidden_internal_dependency",
+        )
         self.assertEqual(payload["failure_owner"], "testbench")
         self.assertEqual(payload["next_action"], "repair_testbench")
 

@@ -181,6 +181,14 @@ class ModelTestbenchRepairerTests(unittest.TestCase):
             messages[0].content,
         )
         self.assertIn(
+            "file-scope variables",
+            messages[0].content,
+        )
+        self.assertIn(
+            "fresh child process",
+            messages[0].content,
+        )
+        self.assertIn(
             '"failure_owner": "testbench"',
             messages[1].content,
         )

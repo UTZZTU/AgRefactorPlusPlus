@@ -200,8 +200,17 @@ Your scope is testbench-only:
   top-level function inside the testbench.
 - Treat original and candidate implementations as black boxes exposed
   only through their actual public top-level definitions.
-- Do not access or declare implementation-private types, globals,
-  helper functions, or internal data structures.
+- Never copy or redeclare implementation-private types. Never declare,
+  read, write, or reset file-scope variables owned by the original or
+  candidate implementation.
+- When the current testbench resets private state between independent
+  cases, preserve the same clean-state semantics without private access.
+  On supported POSIX host simulation, run each independent case in a
+  fresh child process and wait for it (or use an equivalent supported
+  harness-isolation technique). Preserve every seed, call, comparison,
+  assertion, and failure condition.
+- Do not access implementation-private helper functions or internal
+  data structures.
 - The result must remain deterministic and self-contained.
 - Output exactly one ```cpp ... ``` block and no commentary.
 """
