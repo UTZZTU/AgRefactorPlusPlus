@@ -208,3 +208,64 @@ best_design.json
 ```
 
 该选项依赖外部 HeteroRefactor、ROSE 和 EDG binary，当前不属于稳定主流程。
+
+<!-- AGREFPP_UNIFIED_CLI:START -->
+## 统一 CLI（Stage 1/2）
+
+共享入口：
+
+```text
+python -m agrefactor.cli
+```
+
+TaskSpec 示例：
+
+```json
+{
+  "task_id": "dfs-refactor",
+  "kernel_path": "src/heterorefactor/dfs/kernel.cpp",
+  "kernel_name": "process_top",
+  "mode": "refactor",
+  "testbench_path": null,
+  "target": {
+    "name": "vitis-hls-2023.2-xcu200",
+    "toolchain": "Vitis HLS",
+    "toolchain_version": "2023.2",
+    "device": "xcu200-fsgd2104-2-e",
+    "clock_period_ns": 5.0,
+    "compile_flags": []
+  }
+}
+```
+
+校验：
+
+```bash
+python -m agrefactor.cli validate-task task.json
+```
+
+Dry run：
+
+```bash
+python -m agrefactor.cli run task.json --dry-run --trace /tmp/trace.jsonl
+```
+
+当前真实 legacy refactor：
+
+```bash
+python -m agrefactor.cli run task.json \
+  --legacy \
+  --model deepseek-v4-flash \
+  --base-url https://api.deepseek.com \
+  --reasoning-effort low \
+  --enable-testbench-repair \
+  --max-testbench-repair-attempts 2 \
+  --max-retry-attempts 3 \
+  --output-dir "$RUN_DIR/my_run/legacy" \
+  --trace "$RUN_DIR/my_run/trace.jsonl" \
+  --run-id my-run \
+  --debug
+```
+
+当前限制：`--legacy` 只正式支持 `mode=refactor`；`optimize/full` 只可 dry-run；TargetProfile 尚未全部下传；LLM calls 为已知下界；tool_calls 尚未细分；repair cost 缺失时 `cost_complete=false`，未知不得解释为零。
+<!-- AGREFPP_UNIFIED_CLI:END -->

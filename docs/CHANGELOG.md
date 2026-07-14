@@ -4,6 +4,23 @@
 
 ## 未发布
 
+<!-- AGREFPP_STAGE1_STAGE2_CHANGELOG:START -->
+### Stage 1 共享架构
+
+- 新增 TaskSpec、TargetProfile、模型抽象/Registry/Provider、Evaluator/Evidence、Budget/Trace、UnifiedRunner 与 CLI。
+- 新增 Legacy Refactor Adapter 与 module-entrypoint regression。
+- 合并 AutoGen 与 testbench repair known usage，并按 artifact 去重。
+- 明确 TargetProfile 真实下传与完整工具预算仍未完成。
+
+### Stage 2 证据闭环核心
+
+- 新增 testbench preflight、failure stage/kind/owner/next-action。
+- 新增 testbench-only bounded repair、ABI/linkage evidence 与私有 global gate。
+- provider 异常、空/未修改回复会消耗 budget 并在剩余预算允许时继续。
+- 新增 repair artifact、统一 usage、110 个测试与真实统一 CLI + DeepSeek + Vitis 验收。
+- 新增 Stage 0–6 Roadmap、Current State 与阶段文档，固定 Stage 5 真实版本迁移目标。
+<!-- AGREFPP_STAGE1_STAGE2_CHANGELOG:END -->
+
 ### 文档
 
 - 精简主 README，使其只保留项目定位、已验证能力、快速开始和文档入口。
@@ -78,3 +95,13 @@
 - 将环境说明拆分到 `docs/ENVIRONMENT.md`。
 - 将详细代码修改拆分到 `docs/CHANGELOG.md`。
 - README 聚焦新用户第一次运行所需内容。
+
+<!-- AGREFPP_ROADMAP_EXPANSION:START -->
+### Roadmap 与开发接续文档扩展
+
+- 将 Stage 0–6 路线扩展为详细目标、实现机制、未完成项、完成标准和评测要求。
+- 新增 `GOAL_TRACEABILITY.md`，追踪最初八项目标的当前实现、缺口和完成证据。
+- 新增 Stage 3–6 专项设计文档，避免安全优化、Memory Gate、版本迁移和评测目标被遗忘或弱化。
+- 明确 `PROJECT_STATE.md` 保持简洁，详细依据由 ROADMAP 和各 Stage 文档承载。
+- 明确任何核心路线变更必须同步更新 Roadmap、Goal Traceability、Project State、Stage 文档和 Changelog。
+<!-- AGREFPP_ROADMAP_EXPANSION:END -->

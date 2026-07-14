@@ -18,6 +18,37 @@ AgRefactor++ 是一个基于原始 AgRefactor 扩展的 **Vitis HLS 智能体实
 
 更详细的验证范围和限制见 [`docs/REPRODUCTION_STATUS.md`](docs/REPRODUCTION_STATUS.md)。
 
+<!-- AGREFPP_PROJECT_CONTINUITY:START -->
+## 开发接续与权威路线
+
+为避免新对话或局部开发导致方向漂移，后续开发按以下文档接续：
+
+1. [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md)：当前真实状态与下一任务；
+2. [`docs/ROADMAP.md`](docs/ROADMAP.md)：八项不可删除目标、Stage 0–6 与完成标准；
+3. [`docs/STAGE0_BASELINE.md`](docs/STAGE0_BASELINE.md)；
+4. [`docs/STAGE1_INFRASTRUCTURE.md`](docs/STAGE1_INFRASTRUCTURE.md)；
+5. [`docs/STAGE2_EVIDENCE_LOOP.md`](docs/STAGE2_EVIDENCE_LOOP.md)；
+6. [`docs/stage2_acceptance.md`](docs/stage2_acceptance.md)。
+
+当前主线是：用户指定模型、Memory、目标 Vitis 与预算 → 证据驱动修复 → 安全三级优化 → Memory Gate → Stage 5 真实版本迁移 → 返回 best_correct 与完整轨迹。版本迁移不得删除。
+<!-- AGREFPP_PROJECT_CONTINUITY:END -->
+
+<!-- AGREFPP_DETAILED_DOCS:START -->
+## 详细开发文档
+
+- [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md)：新对话首先阅读；
+- [`docs/ROADMAP.md`](docs/ROADMAP.md)：Stage 0–6 权威路线与完成标准；
+- [`docs/GOAL_TRACEABILITY.md`](docs/GOAL_TRACEABILITY.md)：八项目标的实现、缺口与证据追踪；
+- [`docs/STAGE0_BASELINE.md`](docs/STAGE0_BASELINE.md)：基线冻结；
+- [`docs/STAGE1_INFRASTRUCTURE.md`](docs/STAGE1_INFRASTRUCTURE.md)：共享基础设施；
+- [`docs/STAGE2_EVIDENCE_LOOP.md`](docs/STAGE2_EVIDENCE_LOOP.md)：证据闭环；
+- [`docs/STAGE3_SAFE_OPTIMIZER.md`](docs/STAGE3_SAFE_OPTIMIZER.md)：安全三级优化器；
+- [`docs/STAGE4_MEMORY_GATE.md`](docs/STAGE4_MEMORY_GATE.md)：Memory Applicability Gate；
+- [`docs/STAGE5_VERSION_MIGRATION.md`](docs/STAGE5_VERSION_MIGRATION.md)：真实版本迁移；
+- [`docs/STAGE6_EVALUATION.md`](docs/STAGE6_EVALUATION.md)：系统评测与最终交付；
+- [`docs/stage2_acceptance.md`](docs/stage2_acceptance.md)：Testbench Reliability 验收。
+<!-- AGREFPP_DETAILED_DOCS:END -->
+
 ## 快速开始
 
 ### 1. 获取代码

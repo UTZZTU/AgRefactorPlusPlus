@@ -166,6 +166,24 @@ HeteroRefactor 属于可选外部工具，不是当前 AgRefactor++ 主流程的
 - 多版本 Vitis HLS 行为差异与迁移规则。
 - 固定 benchmark 上的正确率、成功率、延迟和资源指标。
 
+<!-- AGREFPP_STAGE1_STAGE2_STATUS:START -->
+## AgRefactor++ Stage 1/2 补充状态
+
+### Stage 1 共享架构
+
+TaskSpec、TargetProfile、Model Registry、OpenAI-compatible Provider、UnifiedRunner、CLI、Budget core、Trace、Legacy Adapter 与已知 usage 合并已验证。TargetProfile 尚未完整控制实际 Vitis settings/part/clock/flags/Tcl，因此应表述为“核心架构完成，真实下传未完成”。
+
+### Stage 2 Testbench Reliability
+
+preflight、ownership、私有 global gate、ABI/linkage、bounded repair、剩余预算重试、artifact、统一 usage、110 个确定性测试与一个真实状态型 kernel E2E 已验证。
+
+详见 [`STAGE2_EVIDENCE_LOOP.md`](STAGE2_EVIDENCE_LOOP.md) 与 [`stage2_acceptance.md`](stage2_acceptance.md)。
+
+### 尚不能宣称
+
+110 个测试不等于 110 个真实 kernel；尚无多类型真实 smoke；general VitisFeedbackParser、完整状态机、正式 Prompt Builder、安全优化器、Memory Gate 与真实版本迁移均未完成。
+<!-- AGREFPP_STAGE1_STAGE2_STATUS:END -->
+
 ## 文档原则
 
 后续更新时建议始终区分：
