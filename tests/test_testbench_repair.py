@@ -63,7 +63,10 @@ class RecordingRepairer:
         self.requests.append(request)
         if not self.responses:
             raise AssertionError("unexpected repair call")
-        return self.responses.pop(0)
+        response = self.responses.pop(0)
+        if isinstance(response, BaseException):
+            raise response
+        return response
 
 
 class TestbenchRepairLoopTests(unittest.TestCase):
@@ -151,7 +154,47 @@ class TestbenchRepairLoopTests(unittest.TestCase):
 
         self.assertEqual(result.status, TestbenchRepairStatus.ERROR)
         self.assertIn("unchanged", result.reason)
-        self.assertEqual(result.repair_attempts_used, 0)
+        self.assertEqual(result.repair_attempts_used, 1)
+
+    def test_empty_proposal_counts_provider_call(self) -> None:
+        repairer = RecordingRepairer([""])
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.make_loop(repairer).run(
+                work_dir=directory,
+                testbench_code=BROKEN_TB,
+                original_code=ORIGINAL,
+                candidate_code=CANDIDATE,
+            )
+            artifact = json.loads(
+                Path(result.artifact_path).read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(result.status, TestbenchRepairStatus.ERROR)
+        self.assertIn("empty", result.reason)
+        self.assertEqual(result.repair_attempts_used, 1)
+        self.assertEqual(artifact["repair_attempts_used"], 1)
+        self.assertEqual(len(repairer.requests), 1)
+
+    def test_provider_exception_counts_provider_call(self) -> None:
+        repairer = RecordingRepairer([RuntimeError("provider failed")])
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.make_loop(repairer).run(
+                work_dir=directory,
+                testbench_code=BROKEN_TB,
+                original_code=ORIGINAL,
+                candidate_code=CANDIDATE,
+            )
+            artifact = json.loads(
+                Path(result.artifact_path).read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(result.status, TestbenchRepairStatus.ERROR)
+        self.assertIn("provider failed", result.reason)
+        self.assertEqual(result.repair_attempts_used, 1)
+        self.assertEqual(artifact["repair_attempts_used"], 1)
+        self.assertEqual(len(repairer.requests), 1)
 
     def test_zero_budget_returns_exhausted(self) -> None:
         repairer = RecordingRepairer([])

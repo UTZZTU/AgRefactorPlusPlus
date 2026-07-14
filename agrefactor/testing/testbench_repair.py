@@ -74,15 +74,22 @@ class TestbenchRepairResult:
     attempts: tuple[TestbenchRepairAttempt, ...]
     final_preflight: TestbenchPreflightResult
     reason: str
+    repair_attempts_used: int
     artifact_path: str
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.repair_attempts_used, bool)
+            or not isinstance(self.repair_attempts_used, int)
+            or self.repair_attempts_used < 0
+        ):
+            raise ValueError(
+                "repair_attempts_used must be a non-negative integer"
+            )
 
     @property
     def succeeded(self) -> bool:
         return self.status is TestbenchRepairStatus.PASSED
-
-    @property
-    def repair_attempts_used(self) -> int:
-        return max(0, len(self.attempts) - 1)
 
     def to_dict(self) -> dict:
         return {
@@ -132,6 +139,7 @@ class TestbenchRepairLoop:
         candidate = self._require_source("candidate_code", candidate_code)
 
         attempts: list[TestbenchRepairAttempt] = []
+        repair_attempts_used = 0
 
         initial = self._run_preflight(
             root=root,
@@ -195,6 +203,7 @@ class TestbenchRepairLoop:
                 preflight=latest,
             )
 
+            repair_attempts_used += 1
             try:
                 proposed = self._repairer.repair(request)
             except Exception as exc:
@@ -208,6 +217,7 @@ class TestbenchRepairLoop:
                         "testbench repair provider raised "
                         f"{type(exc).__name__}: {exc}"
                     ),
+                    repair_attempts_used=repair_attempts_used,
                 )
 
             if not isinstance(proposed, str) or not proposed.strip():
@@ -218,6 +228,7 @@ class TestbenchRepairLoop:
                     attempts=attempts,
                     final_preflight=latest,
                     reason="testbench repair provider returned empty source",
+                    repair_attempts_used=repair_attempts_used,
                 )
 
             proposed = proposed.strip()
@@ -229,6 +240,7 @@ class TestbenchRepairLoop:
                     attempts=attempts,
                     final_preflight=latest,
                     reason="testbench repair provider returned unchanged source",
+                    repair_attempts_used=repair_attempts_used,
                 )
 
             latest = self._run_preflight(
@@ -259,6 +271,7 @@ class TestbenchRepairLoop:
                         "testbench passed after "
                         f"{attempt_number} repair attempt(s)"
                     ),
+                    repair_attempts_used=repair_attempts_used,
                 )
 
             stop_reason = self._non_repairable_reason(latest)
@@ -270,6 +283,7 @@ class TestbenchRepairLoop:
                     attempts=attempts,
                     final_preflight=latest,
                     reason=stop_reason,
+                    repair_attempts_used=repair_attempts_used,
                 )
 
         return self._finish(
@@ -282,6 +296,7 @@ class TestbenchRepairLoop:
                 "testbench remained invalid after "
                 f"{self._max_repair_attempts} repair attempt(s)"
             ),
+            repair_attempts_used=repair_attempts_used,
         )
 
     def _run_preflight(
@@ -328,6 +343,7 @@ class TestbenchRepairLoop:
         attempts: list[TestbenchRepairAttempt],
         final_preflight: TestbenchPreflightResult,
         reason: str,
+        repair_attempts_used: int = 0,
     ) -> TestbenchRepairResult:
         artifact_path = root / "testbench_repair.json"
         result = TestbenchRepairResult(
@@ -336,6 +352,7 @@ class TestbenchRepairLoop:
             attempts=tuple(attempts),
             final_preflight=final_preflight,
             reason=reason,
+            repair_attempts_used=repair_attempts_used,
             artifact_path=str(artifact_path),
         )
         artifact_path.write_text(
