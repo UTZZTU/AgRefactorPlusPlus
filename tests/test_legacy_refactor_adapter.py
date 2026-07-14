@@ -113,6 +113,66 @@ class LegacyRefactorAdapterTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             adapter(self.make_context())
 
+    def test_records_legacy_token_and_cost_usage(self) -> None:
+        context = self.make_context()
+        adapter = LegacyRefactorAdapter(
+            backend=lambda **kwargs: (True, None),
+            usage_supplier=lambda: {
+                "agents": 4,
+                "models": {
+                    "deepseek-v4-flash": {
+                        "prompt_tokens": 900,
+                        "completion_tokens": 100,
+                        "total_tokens": 1000,
+                        "cost": 0.000154,
+                    }
+                },
+                "total_tokens": 1000,
+                "total_cost": 0.000154,
+                "source": "test-summary",
+            },
+        )
+
+        result = adapter(context)
+        usage = context.budget.snapshot()
+
+        self.assertEqual(usage.tokens, 1000)
+        self.assertAlmostEqual(usage.cost_usd, 0.000154)
+        self.assertEqual(
+            result.metadata["legacy_usage"]["accounting_mode"],
+            "post_hoc",
+        )
+        self.assertFalse(
+            result.metadata["legacy_usage"]["llm_calls_tracked"]
+        )
+        self.assertIn(
+            "legacy_refactor.usage_recorded",
+            [event.event for event in context.trace.events],
+        )
+
+    def test_usage_supplier_failure_does_not_hide_success(self) -> None:
+        context = self.make_context()
+
+        def fail_usage():
+            raise RuntimeError("usage unavailable")
+
+        adapter = LegacyRefactorAdapter(
+            backend=lambda **kwargs: (True, None),
+            usage_supplier=fail_usage,
+        )
+
+        result = adapter(context)
+
+        self.assertEqual(result.status, PhaseStatus.SUCCEEDED)
+        self.assertEqual(
+            result.metadata["legacy_usage"]["accounting_mode"],
+            "unavailable",
+        )
+        self.assertIn(
+            "legacy_refactor.usage_unavailable",
+            [event.event for event in context.trace.events],
+        )
+
     def test_restores_streams_after_legacy_redirection(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             log_path = Path(directory) / "legacy-output.txt"

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 import sys
 from typing import Any
@@ -17,6 +18,7 @@ from agrefactor.runtime import (
 )
 
 LegacyRefactorBackend = Callable[..., Any]
+LegacyUsageSupplier = Callable[[], Mapping[str, Any]]
 
 
 def _call_backend_preserving_standard_streams(
@@ -158,9 +160,11 @@ class LegacyRefactorAdapter:
         settings: LegacyRefactorSettings | None = None,
         *,
         backend: LegacyRefactorBackend | None = None,
+        usage_supplier: LegacyUsageSupplier | None = None,
     ) -> None:
         self._settings = settings or LegacyRefactorSettings()
         self._backend = backend
+        self._usage_supplier = usage_supplier
 
     def __call__(self, context: RunContext) -> PhaseResult:
         kwargs = build_legacy_refactor_kwargs(
@@ -184,6 +188,7 @@ class LegacyRefactorAdapter:
             kwargs,
         )
         success = self._extract_success(raw_result)
+        usage_metadata = self._record_usage(context)
 
         context.trace.record(
             "legacy_refactor.returned",
@@ -203,16 +208,76 @@ class LegacyRefactorAdapter:
                 if success
                 else "Legacy refactoring flow reported failure"
             ),
-            metadata={"adapter": "flow.new"},
+            metadata={
+                "adapter": "flow.new",
+                "legacy_usage": usage_metadata,
+            },
         )
+
+    def _record_usage(self, context: RunContext) -> dict[str, Any]:
+        supplier = self._usage_supplier
+
+        if supplier is None and self._backend is None:
+            supplier = self._load_usage_supplier()
+
+        if supplier is None:
+            metadata = {
+                "accounting_mode": "unavailable",
+                "reason": "No usage supplier for injected legacy backend",
+                "llm_calls_tracked": False,
+                "tool_calls_tracked": False,
+            }
+            context.trace.record(
+                "legacy_refactor.usage_unavailable",
+                phase=RunPhase.REFACTOR.value,
+                status="warning",
+                metadata=metadata,
+            )
+            return metadata
+
+        try:
+            raw_summary = supplier()
+            if not isinstance(raw_summary, Mapping):
+                raise TypeError("usage supplier must return a mapping")
+            metadata = _normalize_usage(raw_summary)
+        except Exception as exc:
+            metadata = {
+                "accounting_mode": "unavailable",
+                "reason": f"{type(exc).__name__}: {exc}",
+                "llm_calls_tracked": False,
+                "tool_calls_tracked": False,
+            }
+            context.trace.record(
+                "legacy_refactor.usage_unavailable",
+                phase=RunPhase.REFACTOR.value,
+                status="warning",
+                metadata=metadata,
+            )
+            return metadata
+
+        context.budget.consume(
+            tokens=metadata["tokens"],
+            cost_usd=metadata["cost_usd"],
+        )
+        context.trace.record(
+            "legacy_refactor.usage_recorded",
+            phase=RunPhase.REFACTOR.value,
+            status="recorded",
+            metadata=metadata,
+        )
+        return metadata
 
     @staticmethod
     def _load_backend() -> LegacyRefactorBackend:
-        # Lazy import keeps unit tests and dry-runs independent of heavy
-        # AutoGen, embedding, and HLS dependencies.
         from flow.new import hls_refactor_with_rag
 
         return hls_refactor_with_rag
+
+    @staticmethod
+    def _load_usage_supplier() -> LegacyUsageSupplier:
+        from flow.base_agent import get_agrefactorpp_usage_summary
+
+        return get_agrefactorpp_usage_summary
 
     @staticmethod
     def _extract_success(raw_result: Any) -> bool:
@@ -230,3 +295,56 @@ class LegacyRefactorAdapter:
             "Legacy refactor backend must return bool or a tuple "
             "whose first item is bool"
         )
+
+
+def _normalize_usage(summary: Mapping[str, Any]) -> dict[str, Any]:
+    models: dict[str, Any] = {}
+    raw_models = summary.get("models", {})
+
+    if isinstance(raw_models, Mapping):
+        for model_name, raw_info in raw_models.items():
+            if not isinstance(raw_info, Mapping):
+                continue
+            models[str(model_name)] = {
+                "prompt_tokens": _nonnegative_int(
+                    raw_info.get("prompt_tokens")
+                ),
+                "completion_tokens": _nonnegative_int(
+                    raw_info.get("completion_tokens")
+                ),
+                "total_tokens": _nonnegative_int(
+                    raw_info.get("total_tokens")
+                ),
+                "cost_usd": _nonnegative_float(
+                    raw_info.get("cost", raw_info.get("total_cost"))
+                ),
+            }
+
+    return {
+        "accounting_mode": "post_hoc",
+        "source": str(summary.get("source", "unknown")),
+        "registered_agents": _nonnegative_int(summary.get("agents")),
+        "tokens": _nonnegative_int(summary.get("total_tokens")),
+        "cost_usd": _nonnegative_float(summary.get("total_cost")),
+        "models": models,
+        "llm_calls_tracked": False,
+        "tool_calls_tracked": False,
+    }
+
+
+def _nonnegative_int(value: Any) -> int:
+    try:
+        number = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, number)
+
+
+def _nonnegative_float(value: Any) -> float:
+    try:
+        number = float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    if not isfinite(number) or number < 0:
+        return 0.0
+    return number
