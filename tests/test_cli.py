@@ -213,6 +213,13 @@ class CliTests(unittest.TestCase):
                         "low",
                         "--max-retry-attempts",
                         "3",
+                        "--enable-testbench-repair",
+                        "--max-testbench-repair-attempts",
+                        "2",
+                        "--testbench-repair-model",
+                        "deepseek-chat",
+                        "--testbench-repair-api-key-env",
+                        "DEEPSEEK_API_KEY",
                     ],
                     stdout=stdout,
                     stderr=stderr,
@@ -226,6 +233,42 @@ class CliTests(unittest.TestCase):
             settings = adapter_class.call_args.args[0]
             self.assertEqual(settings.model, "deepseek-v4-flash")
             self.assertEqual(settings.max_retry_attempts, 3)
+            self.assertTrue(settings.enable_testbench_repair)
+            self.assertEqual(
+                settings.max_testbench_repair_attempts,
+                2,
+            )
+            self.assertEqual(
+                settings.testbench_repair_model,
+                "deepseek-chat",
+            )
+            self.assertEqual(
+                settings.testbench_repair_api_key_env,
+                "DEEPSEEK_API_KEY",
+            )
+
+    def test_legacy_repair_requires_a_model(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            task_path = Path(directory) / "task.json"
+            write_task(task_path, mode="refactor")
+            stderr = io.StringIO()
+
+            exit_code = main(
+                [
+                    "run",
+                    str(task_path),
+                    "--legacy",
+                    "--enable-testbench-repair",
+                ],
+                stdout=io.StringIO(),
+                stderr=stderr,
+            )
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn(
+            "requires testbench_repair_model or model",
+            stderr.getvalue(),
+        )
 
     def test_legacy_accepts_zero_retries(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

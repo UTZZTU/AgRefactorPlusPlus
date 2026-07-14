@@ -1,3 +1,8 @@
+from .factory import (
+    build_openai_compatible_testbench_repairer,
+    infer_model_family,
+)
+
 from .model_testbench_repairer import (
     ModelTestbenchRepairer,
     TestbenchRepairContract,
@@ -18,6 +23,8 @@ from .testbench_repair import (
 )
 
 __all__ = [
+    "infer_model_family",
+    "build_openai_compatible_testbench_repairer",
     "extract_complete_cpp_block",
     "build_testbench_repair_messages",
     "TestbenchRepairResponseError",

@@ -75,6 +75,10 @@ class LegacyRefactorSettings:
     remote: bool = False
     reasoning_effort: str | None = None
     base_url: str | None = None
+    enable_testbench_repair: bool = False
+    max_testbench_repair_attempts: int = 2
+    testbench_repair_model: str | None = None
+    testbench_repair_api_key_env: str = "OPENAI_API_KEY"
     external_tb_instruction: str | None = None
     external_kernel_name: str | None = None
     enable_tb_coverage_loop: bool = False
@@ -91,6 +95,36 @@ class LegacyRefactorSettings:
     def __post_init__(self) -> None:
         if self.max_retry_attempts < 0:
             raise ValueError("max_retry_attempts must not be negative")
+        if self.max_testbench_repair_attempts < 0:
+            raise ValueError(
+                "max_testbench_repair_attempts must not be negative"
+            )
+        if (
+            not isinstance(self.testbench_repair_api_key_env, str)
+            or not self.testbench_repair_api_key_env.strip()
+        ):
+            raise ValueError(
+                "testbench_repair_api_key_env must not be empty"
+            )
+        if self.enable_testbench_repair:
+            if self.remote:
+                raise ValueError(
+                    "testbench repair currently supports local "
+                    "validation only"
+                )
+            if self.max_testbench_repair_attempts < 1:
+                raise ValueError(
+                    "enabled testbench repair requires at least "
+                    "one repair attempt"
+                )
+            if not (
+                self.testbench_repair_model
+                or self.model
+            ):
+                raise ValueError(
+                    "enabled testbench repair requires "
+                    "testbench_repair_model or model"
+                )
         if self.public_tb_rounds < 1:
             raise ValueError("public_tb_rounds must be at least 1")
         if self.hidden_tb_rounds < 1:
@@ -136,6 +170,18 @@ def build_legacy_refactor_kwargs(
         "remote": settings.remote,
         "reasoning_effort": settings.reasoning_effort,
         "base_url": settings.base_url,
+        "enable_testbench_repair": (
+            settings.enable_testbench_repair
+        ),
+        "max_testbench_repair_attempts": (
+            settings.max_testbench_repair_attempts
+        ),
+        "testbench_repair_model": (
+            settings.testbench_repair_model
+        ),
+        "testbench_repair_api_key_env": (
+            settings.testbench_repair_api_key_env
+        ),
         "external_testbench": external_testbench,
         "external_tb_instruction": settings.external_tb_instruction,
         "external_kernel_name": settings.external_kernel_name,

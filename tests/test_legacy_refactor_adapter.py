@@ -45,6 +45,10 @@ class LegacyRefactorAdapterTests(unittest.TestCase):
             model="deepseek-v4-flash",
             reasoning_effort="low",
             base_url="https://api.deepseek.com",
+            enable_testbench_repair=True,
+            max_testbench_repair_attempts=2,
+            testbench_repair_model="deepseek-chat",
+            testbench_repair_api_key_env="DEEPSEEK_API_KEY",
             debug=True,
         )
 
@@ -54,7 +58,34 @@ class LegacyRefactorAdapterTests(unittest.TestCase):
         self.assertEqual(kwargs["model"], "deepseek-v4-flash")
         self.assertEqual(kwargs["reasoning_effort"], "low")
         self.assertEqual(kwargs["debug"], 1)
+        self.assertTrue(kwargs["enable_testbench_repair"])
+        self.assertEqual(
+            kwargs["max_testbench_repair_attempts"],
+            2,
+        )
+        self.assertEqual(
+            kwargs["testbench_repair_model"],
+            "deepseek-chat",
+        )
+        self.assertEqual(
+            kwargs["testbench_repair_api_key_env"],
+            "DEEPSEEK_API_KEY",
+        )
         self.assertIsNone(kwargs["external_testbench"])
+
+    def test_rejects_enabled_repair_without_model(self) -> None:
+        with self.assertRaises(ValueError):
+            LegacyRefactorSettings(
+                enable_testbench_repair=True,
+            )
+
+    def test_rejects_remote_testbench_repair(self) -> None:
+        with self.assertRaises(ValueError):
+            LegacyRefactorSettings(
+                model="deepseek-chat",
+                enable_testbench_repair=True,
+                remote=True,
+            )
 
     def test_reads_external_testbench_from_task(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

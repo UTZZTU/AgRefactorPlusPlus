@@ -4,6 +4,9 @@ from typing import Optional, Dict, Any
 import flow.tools as tools
 from flow.rag.rag_integration import KnowledgeManager
 from flow.base_agent import reset_agrefactorpp_usage_registry, print_agrefactorpp_usage_summary
+from agrefactor.testing import (
+    build_openai_compatible_testbench_repairer,
+)
 
 dotenv.load_dotenv('.env', override=True)
 RUN_DIR = os.getenv('RUN_DIR')   # base dir for run outputs/logs, e.g. "$AGREFACTOR_ROOT/runs"
@@ -50,6 +53,10 @@ def hls_refactor_with_rag(
     remote: bool = False,
     reasoning_effort: Optional[str] = None,
     base_url: Optional[str] = None,
+    enable_testbench_repair: bool = False,
+    max_testbench_repair_attempts: int = 2,
+    testbench_repair_model: Optional[str] = None,
+    testbench_repair_api_key_env: str = "OPENAI_API_KEY",
     external_testbench: Optional[str] = None,
     external_tb_instruction: Optional[str] = None,
     external_kernel_name: Optional[str] = None,
@@ -68,6 +75,38 @@ def hls_refactor_with_rag(
 ):
     reset_agrefactorpp_usage_registry()
     llm_config = make_llm_config(model, reasoning_effort, base_url)
+
+    if max_testbench_repair_attempts < 0:
+        raise ValueError(
+            "max_testbench_repair_attempts must not be negative"
+        )
+
+    testbench_repairer = None
+    if enable_testbench_repair:
+        if remote:
+            raise ValueError(
+                "testbench repair currently supports local "
+                "validation only"
+            )
+        if max_testbench_repair_attempts < 1:
+            raise ValueError(
+                "enabled testbench repair requires at least "
+                "one repair attempt"
+            )
+        repair_model = testbench_repair_model or model
+        if not repair_model:
+            raise ValueError(
+                "enabled testbench repair requires "
+                "testbench_repair_model or model"
+            )
+        testbench_repairer = (
+            build_openai_compatible_testbench_repairer(
+                model=repair_model,
+                base_url=base_url,
+                api_key_env=testbench_repair_api_key_env,
+            )
+        )
+
     output_dir = tools.general.create_output_dir(output_dir)
     tools.general.create_log_and_redirect(output_dir)
     
@@ -220,7 +259,17 @@ def hls_refactor_with_rag(
         if remote:
             kill_other, first_task, first_res, second_task, second_res = tools.general.csynth_and_csim_remote(cv, retry_count == 0)
         else:
-            kill_other, first_task, first_res, second_task, second_res = tools.general.csynth_and_csim(output_dir, cv, retry_count == 0)
+            kill_other, first_task, first_res, second_task, second_res = tools.general.csynth_and_csim(
+                output_dir,
+                cv,
+                retry_count == 0,
+                testbench_repairer=testbench_repairer,
+                max_testbench_repair_attempts=(
+                    max_testbench_repair_attempts
+                    if enable_testbench_repair
+                    else 0
+                ),
+            )
         if kill_other and (not first_task) and (not second_task):
             status = "succeeded by hetero"
             cv["hetero"] = "succeeded by hetero"
@@ -242,6 +291,7 @@ def hls_refactor_with_rag(
             "code_for_hetero": cv["code_for_hetero"],
             "error_msg": error_msg,
             "testbench_preflight": cv.get("testbench_preflight"),
+            "testbench_repair": cv.get("testbench_repair"),
         })
         if enable_rag_update:
             knowledge_manager = KnowledgeManager(
@@ -337,6 +387,10 @@ def main():
     parser.add_argument("--remote", action="store_true", default=False, help="Use remote HLS server for csynth/csim")
     parser.add_argument("--reasoning_effort", type=str, default=None, help="Reasoning effort (low/medium/high)")
     parser.add_argument("--base_url", type=str, default=None, help="Base URL for local serving endpoint")
+    parser.add_argument("--enable_testbench_repair", action="store_true", default=False, help="Enable bounded testbench-only repair before synthesis")
+    parser.add_argument("--max_testbench_repair_attempts", type=int, default=2, help="Independent testbench repair budget")
+    parser.add_argument("--testbench_repair_model", type=str, default=None, help="Optional dedicated model for testbench repair; defaults to --model")
+    parser.add_argument("--testbench_repair_api_key_env", type=str, default="OPENAI_API_KEY", help="Environment variable containing the testbench repair API key")
     parser.add_argument("--external_testbench_file", type=str, default=None, help="Path to external testbench file (bypass TB generation)")
     parser.add_argument("--external_tb_instruction", type=str, default=None, help="TB-aligned instruction for external testbench")
     parser.add_argument("--external_kernel_name", type=str, default=None, help="HLS top function name for external testbench")
@@ -370,6 +424,14 @@ def main():
         remote=args.remote,
         reasoning_effort=args.reasoning_effort,
         base_url=args.base_url,
+        enable_testbench_repair=args.enable_testbench_repair,
+        max_testbench_repair_attempts=(
+            args.max_testbench_repair_attempts
+        ),
+        testbench_repair_model=args.testbench_repair_model,
+        testbench_repair_api_key_env=(
+            args.testbench_repair_api_key_env
+        ),
         external_testbench=open(args.external_testbench_file).read() if args.external_testbench_file else None,
         external_tb_instruction=args.external_tb_instruction,
         external_kernel_name=args.external_kernel_name,

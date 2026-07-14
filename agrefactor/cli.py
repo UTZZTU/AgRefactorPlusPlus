@@ -97,6 +97,33 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     run_parser.add_argument(
+        "--enable-testbench-repair",
+        action="store_true",
+        help=(
+            "Enable bounded testbench-only repair before synthesis."
+        ),
+    )
+    run_parser.add_argument(
+        "--max-testbench-repair-attempts",
+        type=int,
+        default=2,
+        help="Independent testbench repair budget. Default: 2.",
+    )
+    run_parser.add_argument(
+        "--testbench-repair-model",
+        help=(
+            "Dedicated repair model; defaults to --model when omitted."
+        ),
+    )
+    run_parser.add_argument(
+        "--testbench-repair-api-key-env",
+        default="OPENAI_API_KEY",
+        help=(
+            "Environment variable containing the repair API key. "
+            "Default: OPENAI_API_KEY."
+        ),
+    )
+    run_parser.add_argument(
         "--output-dir",
         help="Optional isolated working directory for the legacy flow.",
     )
@@ -293,6 +320,18 @@ def main(
                     base_url=args.base_url,
                     reasoning_effort=args.reasoning_effort,
                     max_retry_attempts=args.max_retry_attempts,
+                    enable_testbench_repair=(
+                        args.enable_testbench_repair
+                    ),
+                    max_testbench_repair_attempts=(
+                        args.max_testbench_repair_attempts
+                    ),
+                    testbench_repair_model=(
+                        args.testbench_repair_model
+                    ),
+                    testbench_repair_api_key_env=(
+                        args.testbench_repair_api_key_env
+                    ),
                     output_dir=args.output_dir,
                     debug=args.debug,
                 )
