@@ -173,6 +173,68 @@ class LegacyRefactorAdapterTests(unittest.TestCase):
             [event.event for event in context.trace.events],
         )
 
+    def test_records_partial_usage_when_backend_raises(self) -> None:
+        context = self.make_context()
+
+        def backend(**kwargs):
+            raise RuntimeError("provider unavailable")
+
+        adapter = LegacyRefactorAdapter(
+            backend=backend,
+            usage_supplier=lambda: {
+                "agents": 1,
+                "models": {
+                    "deepseek-v4-flash": {
+                        "prompt_tokens": 300,
+                        "completion_tokens": 20,
+                        "total_tokens": 320,
+                        "cost": 0.0000476,
+                    }
+                },
+                "total_tokens": 320,
+                "total_cost": 0.0000476,
+                "source": "partial-test-summary",
+            },
+        )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "provider unavailable",
+        ):
+            adapter(context)
+
+        usage = context.budget.snapshot()
+        self.assertEqual(usage.tokens, 320)
+        self.assertAlmostEqual(usage.cost_usd, 0.0000476)
+
+        events = [event.event for event in context.trace.events]
+        self.assertIn("legacy_refactor.usage_recorded", events)
+        self.assertIn("legacy_refactor.errored", events)
+
+    def test_usage_failure_does_not_mask_backend_error(self) -> None:
+        context = self.make_context()
+
+        def backend(**kwargs):
+            raise RuntimeError("original backend error")
+
+        def usage_supplier():
+            raise ValueError("usage supplier error")
+
+        adapter = LegacyRefactorAdapter(
+            backend=backend,
+            usage_supplier=usage_supplier,
+        )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "original backend error",
+        ):
+            adapter(context)
+
+        events = [event.event for event in context.trace.events]
+        self.assertIn("legacy_refactor.usage_unavailable", events)
+        self.assertIn("legacy_refactor.errored", events)
+
     def test_restores_streams_after_legacy_redirection(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             log_path = Path(directory) / "legacy-output.txt"

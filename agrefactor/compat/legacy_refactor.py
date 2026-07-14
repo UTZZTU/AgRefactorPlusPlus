@@ -183,10 +183,22 @@ class LegacyRefactorAdapter:
             },
         )
 
-        raw_result = _call_backend_preserving_standard_streams(
-            backend,
-            kwargs,
-        )
+        try:
+            raw_result = _call_backend_preserving_standard_streams(
+                backend,
+                kwargs,
+            )
+        except Exception as exc:
+            usage_metadata = self._record_usage_after_error(context)
+            context.trace.record(
+                "legacy_refactor.errored",
+                phase=RunPhase.REFACTOR.value,
+                status="error",
+                message=f"{type(exc).__name__}: {exc}",
+                metadata={"legacy_usage": usage_metadata},
+            )
+            raise
+
         success = self._extract_success(raw_result)
         usage_metadata = self._record_usage(context)
 
@@ -213,6 +225,32 @@ class LegacyRefactorAdapter:
                 "legacy_usage": usage_metadata,
             },
         )
+
+    def _record_usage_after_error(
+        self,
+        context: RunContext,
+    ) -> dict[str, Any]:
+        """Record partial usage without masking the backend error."""
+
+        try:
+            return self._record_usage(context)
+        except Exception as exc:
+            metadata = {
+                "accounting_mode": "unavailable",
+                "reason": (
+                    "Usage accounting failed while preserving a backend "
+                    f"error: {type(exc).__name__}: {exc}"
+                ),
+                "llm_calls_tracked": False,
+                "tool_calls_tracked": False,
+            }
+            context.trace.record(
+                "legacy_refactor.usage_unavailable",
+                phase=RunPhase.REFACTOR.value,
+                status="warning",
+                metadata=metadata,
+            )
+            return metadata
 
     def _record_usage(self, context: RunContext) -> dict[str, Any]:
         supplier = self._usage_supplier
