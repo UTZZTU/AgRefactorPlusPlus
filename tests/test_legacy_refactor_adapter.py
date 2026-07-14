@@ -1,3 +1,4 @@
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -111,6 +112,63 @@ class LegacyRefactorAdapterTests(unittest.TestCase):
 
         with self.assertRaises(TypeError):
             adapter(self.make_context())
+
+    def test_restores_streams_after_legacy_redirection(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / "legacy-output.txt"
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            redirected = None
+
+            def backend(**kwargs):
+                nonlocal redirected
+                redirected = log_path.open("w", encoding="utf-8")
+                sys.stdout = redirected
+                sys.stderr = redirected
+                print("legacy log line")
+                return True, None
+
+            adapter = LegacyRefactorAdapter(backend=backend)
+            result = adapter(self.make_context())
+
+            self.assertEqual(result.status, PhaseStatus.SUCCEEDED)
+            self.assertIs(sys.stdout, original_stdout)
+            self.assertIs(sys.stderr, original_stderr)
+            self.assertIsNotNone(redirected)
+            self.assertTrue(redirected.closed)
+            self.assertIn(
+                "legacy log line",
+                log_path.read_text(encoding="utf-8"),
+            )
+
+    def test_restores_streams_when_legacy_backend_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / "legacy-error.txt"
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            redirected = None
+
+            def backend(**kwargs):
+                nonlocal redirected
+                redirected = log_path.open("w", encoding="utf-8")
+                sys.stdout = redirected
+                sys.stderr = redirected
+                print("before failure")
+                raise RuntimeError("legacy failure")
+
+            adapter = LegacyRefactorAdapter(backend=backend)
+
+            with self.assertRaisesRegex(RuntimeError, "legacy failure"):
+                adapter(self.make_context())
+
+            self.assertIs(sys.stdout, original_stdout)
+            self.assertIs(sys.stderr, original_stderr)
+            self.assertIsNotNone(redirected)
+            self.assertTrue(redirected.closed)
+            self.assertIn(
+                "before failure",
+                log_path.read_text(encoding="utf-8"),
+            )
 
     def test_rejects_zero_retry_limit(self) -> None:
         with self.assertRaises(ValueError):

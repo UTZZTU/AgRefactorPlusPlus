@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+import sys
 from typing import Any
 
 from agrefactor.config import TaskSpec
@@ -16,6 +17,43 @@ from agrefactor.runtime import (
 )
 
 LegacyRefactorBackend = Callable[..., Any]
+
+
+def _call_backend_preserving_standard_streams(
+    backend: LegacyRefactorBackend,
+    kwargs: dict[str, Any],
+) -> Any:
+    """Call a legacy backend without leaking global stdout/stderr changes."""
+
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+
+    try:
+        return backend(**kwargs)
+    finally:
+        redirected_streams = (sys.stdout, sys.stderr)
+        sys.stdout = original_stdout
+        sys.stderr = original_stderr
+
+        closed_ids: set[int] = set()
+        for stream in redirected_streams:
+            stream_id = id(stream)
+            if stream_id in closed_ids:
+                continue
+            closed_ids.add(stream_id)
+
+            if stream is original_stdout or stream is original_stderr:
+                continue
+
+            try:
+                stream.flush()
+            except Exception:
+                pass
+
+            try:
+                stream.close()
+            except Exception:
+                pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,7 +179,10 @@ class LegacyRefactorAdapter:
             },
         )
 
-        raw_result = backend(**kwargs)
+        raw_result = _call_backend_preserving_standard_streams(
+            backend,
+            kwargs,
+        )
         success = self._extract_success(raw_result)
 
         context.trace.record(
