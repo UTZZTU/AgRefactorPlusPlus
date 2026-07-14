@@ -227,6 +227,37 @@ class CliTests(unittest.TestCase):
             self.assertEqual(settings.model, "deepseek-v4-flash")
             self.assertEqual(settings.max_retry_attempts, 3)
 
+    def test_legacy_accepts_zero_retries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            task_path = Path(directory) / "task.json"
+            write_task(task_path, mode="refactor")
+
+            def fake_handler(context):
+                return PhaseResult(
+                    phase=RunPhase.REFACTOR,
+                    status=PhaseStatus.SUCCEEDED,
+                )
+
+            with patch(
+                "agrefactor.cli.LegacyRefactorAdapter",
+                return_value=fake_handler,
+            ) as adapter_class:
+                exit_code = main(
+                    [
+                        "run",
+                        str(task_path),
+                        "--legacy",
+                        "--max-retry-attempts",
+                        "0",
+                    ],
+                    stdout=io.StringIO(),
+                    stderr=io.StringIO(),
+                )
+
+            self.assertEqual(exit_code, 0)
+            settings = adapter_class.call_args.args[0]
+            self.assertEqual(settings.max_retry_attempts, 0)
+
     def test_legacy_rejects_full_mode_until_optimizer_adapter_exists(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             task_path = Path(directory) / "task.json"

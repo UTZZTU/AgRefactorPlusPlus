@@ -170,9 +170,13 @@ class LegacyRefactorAdapterTests(unittest.TestCase):
                 log_path.read_text(encoding="utf-8"),
             )
 
-    def test_rejects_zero_retry_limit(self) -> None:
+    def test_accepts_zero_retry_limit_for_single_attempt(self) -> None:
+        settings = LegacyRefactorSettings(max_retry_attempts=0)
+        self.assertEqual(settings.max_retry_attempts, 0)
+
+    def test_rejects_negative_retry_limit(self) -> None:
         with self.assertRaises(ValueError):
-            LegacyRefactorSettings(max_retry_attempts=0)
+            LegacyRefactorSettings(max_retry_attempts=-1)
 
 
 if __name__ == "__main__":

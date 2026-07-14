@@ -90,8 +90,11 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--max-retry-attempts",
         type=int,
-        default=4,
-        help="Maximum legacy refactoring attempts. Default: 4.",
+        default=3,
+        help=(
+            "Maximum repair retries after the initial legacy attempt. "
+            "Use 0 for a single attempt. Default: 3."
+        ),
     )
     run_parser.add_argument(
         "--output-dir",

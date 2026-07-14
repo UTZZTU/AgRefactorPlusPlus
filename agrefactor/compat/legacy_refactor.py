@@ -66,7 +66,7 @@ class LegacyRefactorSettings:
     enable_rag_update: bool = False
     reset_knowledge_db: bool = False
     output_dir: str | None = None
-    max_retry_attempts: int = 4
+    max_retry_attempts: int = 3
     hetero_enabled: bool = False
     debug: bool = False
     model: str | None = None
@@ -87,8 +87,8 @@ class LegacyRefactorSettings:
     use_cached_tb_as_public: bool = False
 
     def __post_init__(self) -> None:
-        if self.max_retry_attempts < 1:
-            raise ValueError("max_retry_attempts must be at least 1")
+        if self.max_retry_attempts < 0:
+            raise ValueError("max_retry_attempts must not be negative")
         if self.public_tb_rounds < 1:
             raise ValueError("public_tb_rounds must be at least 1")
         if self.hidden_tb_rounds < 1:
