@@ -360,3 +360,6 @@ def main(
 
     stderr.write(f"Unsupported command: {args.command}\n")
     return 2
+
+if __name__ == "__main__":
+    raise SystemExit(main())

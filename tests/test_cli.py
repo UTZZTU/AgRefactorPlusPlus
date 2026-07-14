@@ -1,5 +1,7 @@
 import io
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -52,6 +54,30 @@ class CliTests(unittest.TestCase):
             self.assertEqual(payload["mode"], "refactor")
             self.assertEqual(payload["kernel_name"], "process_top")
             self.assertEqual(payload["target"]["clock_period_ns"], 10.0)
+
+    def test_module_entrypoint_executes_main(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            task_path = Path(directory) / "task.json"
+            write_task(task_path)
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agrefactor.cli",
+                    "validate-task",
+                    str(task_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(completed.stderr, "")
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["mode"], "refactor")
+        self.assertEqual(payload["kernel_name"], "process_top")
 
     def test_validate_task_writes_output_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
