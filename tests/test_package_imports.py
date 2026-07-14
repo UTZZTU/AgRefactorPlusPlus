@@ -9,6 +9,7 @@ class PackageImportTests(unittest.TestCase):
             "agrefactor.config",
             "agrefactor.models",
             "agrefactor.evaluation",
+            "agrefactor.evidence",
             "agrefactor.runtime",
         ]
         for module_name in modules:
