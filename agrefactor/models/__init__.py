@@ -1,3 +1,10 @@
+from .openai_compatible import (
+    MissingModelCredentialError,
+    OpenAICompatibleProvider,
+    OpenAICompatibleProviderError,
+    OpenAICompatibleResponseError,
+)
+
 """Model registry and provider abstractions."""
 
 from .base import (
@@ -16,6 +23,10 @@ from .registry import (
 )
 
 __all__ = [
+    "OpenAICompatibleResponseError",
+    "OpenAICompatibleProviderError",
+    "OpenAICompatibleProvider",
+    "MissingModelCredentialError",
     "ChatMessage",
     "ModelProvider",
     "ModelRegistry",
