@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 from autogen.agentchat.group import ContextVariables # type: ignore
 import flow.tools as tools
 from agrefactor.evaluation import TestbenchPreflight
+from agrefactor.testing import TestbenchRepairLoop
 
 dotenv.load_dotenv('.env', override=True)
 RUN_DIR = os.getenv('RUN_DIR')
@@ -165,6 +166,155 @@ def run_testbench_preflight(
     return result
 
 
+def _collect_testbench_repair_usage(
+    testbench_repairer,
+    *,
+    start_index: int = 0,
+):
+    responses = tuple(
+        getattr(testbench_repairer, "responses", ())
+    )[start_index:]
+    prompt_tokens = 0
+    completion_tokens = 0
+    costs = []
+    models = []
+
+    for response in responses:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            continue
+        prompt_tokens += int(
+            getattr(usage, "prompt_tokens", 0)
+        )
+        completion_tokens += int(
+            getattr(usage, "completion_tokens", 0)
+        )
+        cost = getattr(usage, "cost_usd", None)
+        if cost is not None:
+            costs.append(float(cost))
+        model = getattr(response, "model", None)
+        if isinstance(model, str) and model:
+            models.append(model)
+
+    return {
+        "calls": len(responses),
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+        "cost_usd": (
+            sum(costs)
+            if len(costs) == len(responses)
+            else None
+        ),
+        "models": models,
+    }
+
+
+def run_testbench_validation_gate(
+    output_dir: str,
+    cv: ContextVariables,
+    *,
+    testbench_repairer=None,
+    max_testbench_repair_attempts: int = 0,
+):
+    if (
+        isinstance(max_testbench_repair_attempts, bool)
+        or not isinstance(max_testbench_repair_attempts, int)
+        or max_testbench_repair_attempts < 0
+    ):
+        raise ValueError(
+            "max_testbench_repair_attempts must be a "
+            "non-negative integer"
+        )
+
+    if (
+        testbench_repairer is None
+        or max_testbench_repair_attempts == 0
+    ):
+        return run_testbench_preflight(output_dir, cv)
+
+    response_start = len(
+        tuple(
+            getattr(
+                testbench_repairer,
+                "responses",
+                (),
+            )
+        )
+    )
+
+    timestamp = datetime.now().strftime("%H%M%S_%f")
+    work_dir = os.path.join(
+        output_dir,
+        f"testbench_repair_{timestamp}",
+    )
+    result = TestbenchRepairLoop(
+        preflight=TestbenchPreflight(),
+        repairer=testbench_repairer,
+        max_repair_attempts=max_testbench_repair_attempts,
+    ).run(
+        work_dir=work_dir,
+        testbench_code=cv["testbench"],
+        original_code=cv["orig_code"],
+        candidate_code=cv["curr_code"],
+    )
+
+    payload = result.to_dict()
+    payload["gate_decision"] = (
+        "continue_to_csynth"
+        if result.succeeded
+        else "stop_before_csynth"
+    )
+    payload["model_usage"] = _collect_testbench_repair_usage(
+        testbench_repairer,
+        start_index=response_start,
+    )
+
+    with open(
+        result.artifact_path,
+        "w",
+        encoding="utf-8",
+    ) as file:
+        json.dump(
+            payload,
+            file,
+            indent=2,
+            ensure_ascii=False,
+        )
+
+    cv["testbench_repair"] = payload
+
+    preflight_payload = result.final_preflight.to_dict()
+    preflight_payload["gate_decision"] = payload["gate_decision"]
+    preflight_payload["repair_artifact_path"] = (
+        result.artifact_path
+    )
+    cv["testbench_preflight"] = preflight_payload
+
+    if result.succeeded:
+        cv["testbench"] = result.testbench_code
+
+    print(f"TESTBENCH_REPAIR_STATUS:{payload['status']}")
+    print(
+        "TESTBENCH_REPAIR_ATTEMPTS:"
+        f"{payload['repair_attempts_used']}"
+    )
+    print(
+        "TESTBENCH_REPAIR_GATE_DECISION:"
+        f"{payload['gate_decision']}"
+    )
+    print(
+        "TESTBENCH_PREFLIGHT_STATUS:"
+        f"{preflight_payload['status']}"
+    )
+    print(
+        "TESTBENCH_PREFLIGHT_OWNER:"
+        f"{preflight_payload['failure_owner']}"
+    )
+
+    return result.final_preflight
+
+
 def is_terminal_validation_failure(
     failed_task: Optional[str],
 ) -> bool:
@@ -175,6 +325,9 @@ def csynth_and_csim(
     output_dir: str,
     cv: ContextVariables,
     first_time: bool,
+    *,
+    testbench_repairer=None,
+    max_testbench_repair_attempts: int = 0,
 ):
     if cv["code_for_hetero"] != "" and first_time:
         csynth_dir_for_hetero = os.path.join(
@@ -213,15 +366,57 @@ def csynth_and_csim(
         if status == "succeeded":
             return True, None, None, None, None
 
-    preflight_result = run_testbench_preflight(output_dir, cv)
+    preflight_result = run_testbench_validation_gate(
+        output_dir,
+        cv,
+        testbench_repairer=testbench_repairer,
+        max_testbench_repair_attempts=(
+            max_testbench_repair_attempts
+        ),
+    )
     if not preflight_result.succeeded:
+        repair_payload = cv.get("testbench_repair")
         error_msg = preflight_result.stderr
+        status = "tb_compile_failed"
+
+        if repair_payload:
+            owner = preflight_result.failure_owner.value
+            repair_status = repair_payload.get("status")
+            attempts_used = int(
+                repair_payload.get(
+                    "repair_attempts_used",
+                    0,
+                )
+                or 0
+            )
+
+            if owner == "candidate":
+                status = "candidate_compile_failed"
+            elif owner == "original":
+                status = "original_compile_failed"
+            elif owner == "toolchain":
+                status = "preflight_error"
+            elif owner == "testbench" and (
+                attempts_used > 0
+                or repair_status in {
+                    "error",
+                    "exhausted",
+                }
+            ):
+                status = "tb_repair_failed"
+            else:
+                status = "compile_preflight_failed"
+
+            error_msg = repair_payload.get(
+                "reason",
+                error_msg,
+            )
         if not error_msg and preflight_result.diagnostics:
             error_msg = preflight_result.diagnostics[0].message
         return (
             True,
             "testbench_preflight",
-            ("tb_compile_failed", error_msg),
+            (status, error_msg),
             None,
             None,
         )
