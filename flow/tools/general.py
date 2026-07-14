@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from autogen.agentchat.group import ContextVariables # type: ignore
 import flow.tools as tools
+from agrefactor.evaluation import TestbenchPreflight
 
 dotenv.load_dotenv('.env', override=True)
 RUN_DIR = os.getenv('RUN_DIR')
@@ -124,45 +125,131 @@ def create_log_and_redirect(output_dir: str):
     sys.stderr = log_file
 
 
-def csynth_and_csim(output_dir: str, cv: ContextVariables, first_time: bool):
-    csim_dir = os.path.join(output_dir, f"csim_{datetime.now().strftime('%H%M%S')}")
-    os.makedirs(csim_dir, exist_ok=True)
-    csynth_dir = os.path.join(output_dir, f"csynth_{datetime.now().strftime('%H%M%S')}")
-    os.makedirs(csynth_dir, exist_ok=True)
+def run_testbench_preflight(
+    output_dir: str,
+    cv: ContextVariables,
+):
+    timestamp = datetime.now().strftime("%H%M%S_%f")
+    work_dir = os.path.join(
+        output_dir,
+        f"testbench_preflight_{timestamp}",
+    )
+    result = TestbenchPreflight().compile_and_link(
+        work_dir=work_dir,
+        testbench_code=cv["testbench"],
+        original_code=cv["orig_code"],
+        candidate_code=cv["curr_code"],
+    )
+
+    payload = result.to_dict()
+    payload["gate_decision"] = (
+        "continue_to_csynth"
+        if result.succeeded
+        else "stop_before_csynth"
+    )
+    evidence_path = os.path.join(
+        work_dir,
+        "testbench_preflight.json",
+    )
+    with open(evidence_path, "w", encoding="utf-8") as file:
+        json.dump(payload, file, indent=2, ensure_ascii=False)
+
+    payload["evidence_path"] = evidence_path
+    cv["testbench_preflight"] = payload
+
+    print(f"TESTBENCH_PREFLIGHT_STATUS:{payload['status']}")
+    print(f"TESTBENCH_PREFLIGHT_KIND:{payload['failure_kind']}")
+    print(f"TESTBENCH_PREFLIGHT_OWNER:{payload['failure_owner']}")
+    print(f"TESTBENCH_PREFLIGHT_NEXT_ACTION:{payload['next_action']}")
+
+    return result
+
+
+def is_terminal_validation_failure(
+    failed_task: Optional[str],
+) -> bool:
+    return failed_task == "testbench_preflight"
+
+
+def csynth_and_csim(
+    output_dir: str,
+    cv: ContextVariables,
+    first_time: bool,
+):
     if cv["code_for_hetero"] != "" and first_time:
-        csynth_dir_for_hetero = os.path.join(output_dir, f"csynth_for_hetero_{datetime.now().strftime('%H%M%S')}")
+        csynth_dir_for_hetero = os.path.join(
+            output_dir,
+            f"csynth_for_hetero_{datetime.now().strftime('%H%M%S')}",
+        )
         os.makedirs(csynth_dir_for_hetero, exist_ok=True)
-        status, _ = tools.csynth.run_csynth(csynth_dir_for_hetero, cv=ContextVariables(data={
-            "curr_code": cv["code_for_hetero"],
-            "new_kernel_name": cv["new_kernel_name"]
-        }))
+        status, _ = tools.csynth.run_csynth(
+            csynth_dir_for_hetero,
+            cv=ContextVariables(
+                data={
+                    "curr_code": cv["code_for_hetero"],
+                    "new_kernel_name": cv["new_kernel_name"],
+                }
+            ),
+        )
         if status != "succeeded":
             cv["code_for_hetero"] = ""
+
     if cv["code_for_hetero"] != "":
-        csim_dir_for_hetero = os.path.join(output_dir, f"csim_for_hetero_{datetime.now().strftime('%H%M%S')}")
+        csim_dir_for_hetero = os.path.join(
+            output_dir,
+            f"csim_for_hetero_{datetime.now().strftime('%H%M%S')}",
+        )
         os.makedirs(csim_dir_for_hetero, exist_ok=True)
-        status, _ = tools.csim.run_csim(csim_dir_for_hetero, cv=ContextVariables(data={
-            "curr_code": cv["code_for_hetero"],
-            "orig_code": cv["orig_code"],
-            "testbench": cv["testbench"],
-        }))
+        status, _ = tools.csim.run_csim(
+            csim_dir_for_hetero,
+            cv=ContextVariables(
+                data={
+                    "curr_code": cv["code_for_hetero"],
+                    "orig_code": cv["orig_code"],
+                    "testbench": cv["testbench"],
+                }
+            ),
+        )
         if status == "succeeded":
             return True, None, None, None, None
 
+    preflight_result = run_testbench_preflight(output_dir, cv)
+    if not preflight_result.succeeded:
+        error_msg = preflight_result.stderr
+        if not error_msg and preflight_result.diagnostics:
+            error_msg = preflight_result.diagnostics[0].message
+        return (
+            True,
+            "testbench_preflight",
+            ("tb_compile_failed", error_msg),
+            None,
+            None,
+        )
+
+    csim_dir = os.path.join(
+        output_dir,
+        f"csim_{datetime.now().strftime('%H%M%S')}",
+    )
+    os.makedirs(csim_dir, exist_ok=True)
+    csynth_dir = os.path.join(
+        output_dir,
+        f"csynth_{datetime.now().strftime('%H%M%S')}",
+    )
+    os.makedirs(csynth_dir, exist_ok=True)
+
     csynth_res = tools.csynth.run_csynth(csynth_dir, cv)
     first_task, first_res = "csynth", csynth_res
-    
+
     kill_other = False
     second_task = None
     second_res = None
-    
+
     if first_res[0] != "succeeded":
         kill_other = True
-        second_task, second_res = None, None
     else:
         csim_res = tools.csim.run_csim(csim_dir, cv)
         second_task, second_res = "csim", csim_res
-    
+
     return kill_other, first_task, first_res, second_task, second_res
 
 

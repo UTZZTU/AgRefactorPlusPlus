@@ -10,6 +10,7 @@ from typing import Iterable
 from agrefactor.evidence import (
     TestbenchDiagnostic,
     TestbenchFailureKind,
+    TestbenchFailureOwner,
     TestbenchPreflightResult,
     TestbenchPreflightStatus,
     TestbenchStage,
@@ -67,6 +68,29 @@ def parse_compiler_diagnostics(
             )
         )
     return tuple(items)
+
+
+def infer_failure_owner(
+    diagnostics: tuple[TestbenchDiagnostic, ...],
+) -> TestbenchFailureOwner:
+    owners: set[TestbenchFailureOwner] = set()
+
+    for diagnostic in diagnostics:
+        if not diagnostic.file:
+            continue
+        name = Path(diagnostic.file).name
+        if name == "testbench.cpp":
+            owners.add(TestbenchFailureOwner.TESTBENCH)
+        elif name == "orig_code.cpp":
+            owners.add(TestbenchFailureOwner.ORIGINAL)
+        elif name == "refactor_code.cpp":
+            owners.add(TestbenchFailureOwner.CANDIDATE)
+        else:
+            owners.add(TestbenchFailureOwner.UNKNOWN)
+
+    if len(owners) == 1:
+        return next(iter(owners))
+    return TestbenchFailureOwner.UNKNOWN
 
 
 class TestbenchPreflight:
@@ -160,6 +184,7 @@ class TestbenchPreflight:
                 status=TestbenchPreflightStatus.PASSED,
                 stage=TestbenchStage.COMPILE_LINK,
                 failure_kind=TestbenchFailureKind.NONE,
+                failure_owner=TestbenchFailureOwner.NONE,
                 return_code=0,
                 command=tuple(command),
                 stdout=completed.stdout,
@@ -183,10 +208,13 @@ class TestbenchPreflight:
                 ),
             )
 
+        owner = infer_failure_owner(diagnostics)
+
         return TestbenchPreflightResult(
             status=TestbenchPreflightStatus.FAILED,
             stage=TestbenchStage.COMPILE_LINK,
             failure_kind=kind,
+            failure_owner=owner,
             return_code=completed.returncode,
             command=tuple(command),
             diagnostics=diagnostics,
@@ -214,6 +242,7 @@ class TestbenchPreflight:
             status=TestbenchPreflightStatus.ERROR,
             stage=TestbenchStage.COMPILE_LINK,
             failure_kind=kind,
+            failure_owner=TestbenchFailureOwner.TOOLCHAIN,
             return_code=None,
             command=tuple(command),
             diagnostics=(diagnostic,),

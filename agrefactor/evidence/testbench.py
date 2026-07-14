@@ -33,6 +33,15 @@ class TestbenchFailureKind(str, Enum):
     UNKNOWN = "unknown"
 
 
+class TestbenchFailureOwner(str, Enum):
+    NONE = "none"
+    TESTBENCH = "testbench"
+    ORIGINAL = "original"
+    CANDIDATE = "candidate"
+    TOOLCHAIN = "toolchain"
+    UNKNOWN = "unknown"
+
+
 @dataclass(frozen=True, slots=True)
 class TestbenchDiagnostic:
     kind: TestbenchFailureKind
@@ -65,6 +74,7 @@ class TestbenchPreflightResult:
     status: TestbenchPreflightStatus
     stage: TestbenchStage
     failure_kind: TestbenchFailureKind
+    failure_owner: TestbenchFailureOwner
     return_code: int | None
     command: tuple[str, ...]
     diagnostics: tuple[TestbenchDiagnostic, ...] = ()
@@ -81,21 +91,22 @@ class TestbenchPreflightResult:
     def next_action(self) -> str:
         if self.succeeded:
             return "continue_validation"
-        if self.failure_kind in {
-            TestbenchFailureKind.FORBIDDEN_INTERNAL_DEPENDENCY,
-            TestbenchFailureKind.UNDECLARED_TYPE,
-            TestbenchFailureKind.UNDECLARED_SYMBOL,
-            TestbenchFailureKind.SYNTAX_ERROR,
-            TestbenchFailureKind.LINK_ERROR,
-        }:
+        if self.failure_owner is TestbenchFailureOwner.TESTBENCH:
             return "repair_testbench"
-        return "inspect_testbench_failure"
+        if self.failure_owner is TestbenchFailureOwner.CANDIDATE:
+            return "repair_candidate"
+        if self.failure_owner is TestbenchFailureOwner.ORIGINAL:
+            return "inspect_original"
+        if self.failure_owner is TestbenchFailureOwner.TOOLCHAIN:
+            return "inspect_toolchain"
+        return "inspect_compile_failure"
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "status": self.status.value,
             "stage": self.stage.value,
             "failure_kind": self.failure_kind.value,
+            "failure_owner": self.failure_owner.value,
             "return_code": self.return_code,
             "command": list(self.command),
             "diagnostics": [item.to_dict() for item in self.diagnostics],

@@ -241,6 +241,7 @@ def hls_refactor_with_rag(
             "refactored_code": cv["curr_code"],
             "code_for_hetero": cv["code_for_hetero"],
             "error_msg": error_msg,
+            "testbench_preflight": cv.get("testbench_preflight"),
         })
         if enable_rag_update:
             knowledge_manager = KnowledgeManager(
@@ -259,6 +260,13 @@ def hls_refactor_with_rag(
             debug_print(debug, f"Knowledge DB stats: {stats}")
         if status == "succeeded" or (status == "succeeded by hetero" and hetero_enabled):
             break
+        if tools.general.is_terminal_validation_failure(failed_task):
+            debug_print(
+                debug,
+                "Stopping kernel retry: testbench preflight must be "
+                "repaired independently",
+            )
+            break
         retry_count += 1
         if retry_count > max_retry_attempts:
             break
@@ -266,7 +274,10 @@ def hls_refactor_with_rag(
         tools.general.save_context(f"csynth_csim_iteration_{retry_count}", cv, output_dir)
 
     # Hidden TB eval gate (eval-only; never triggers extra refactor work)
-    final_succeeded = retry_count <= max_retry_attempts
+    final_succeeded = (
+        status == "succeeded"
+        or (status == "succeeded by hetero" and hetero_enabled)
+    )
     if enable_hidden_tb_eval and final_succeeded:
         debug_print(debug, "Hidden TB eval")
         golden = tools.tb_optimizer.make_golden_hidden_tb(

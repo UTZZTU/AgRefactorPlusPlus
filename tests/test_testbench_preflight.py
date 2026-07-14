@@ -8,6 +8,7 @@ from agrefactor.evaluation import (
 )
 from agrefactor.evidence import (
     TestbenchFailureKind,
+    TestbenchFailureOwner,
     TestbenchPreflightStatus,
 )
 
@@ -92,6 +93,10 @@ class TestbenchPreflightTests(unittest.TestCase):
             result.failure_kind,
             TestbenchFailureKind.UNDECLARED_TYPE,
         )
+        self.assertEqual(
+            result.failure_owner,
+            TestbenchFailureOwner.TESTBENCH,
+        )
         self.assertEqual(result.next_action, "repair_testbench")
         self.assertEqual(result.diagnostics[0].file, "testbench.cpp")
 
@@ -107,7 +112,31 @@ class TestbenchPreflightTests(unittest.TestCase):
                 (Path(directory) / "testbench_preflight").is_file()
             )
         self.assertTrue(result.succeeded)
+        self.assertEqual(
+            result.failure_owner,
+            TestbenchFailureOwner.NONE,
+        )
         self.assertEqual(result.next_action, "continue_validation")
+
+
+    def test_candidate_compile_error_is_not_owned_by_testbench(self) -> None:
+        bad_candidate = CANDIDATE.replace(
+            'for (int i = 0; i < n; ++i) out[i] = in[i];',
+            'this is not valid C++;',
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            result = TestbenchPreflight().compile_and_link(
+                work_dir=directory,
+                testbench_code=VALID_TB,
+                original_code=ORIGINAL,
+                candidate_code=bad_candidate,
+            )
+
+        self.assertEqual(
+            result.failure_owner,
+            TestbenchFailureOwner.CANDIDATE,
+        )
+        self.assertEqual(result.next_action, "repair_candidate")
 
     def test_evidence_serializes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -120,6 +149,7 @@ class TestbenchPreflightTests(unittest.TestCase):
         payload = result.to_dict()
         self.assertEqual(payload["stage"], "compile_link")
         self.assertEqual(payload["failure_kind"], "undeclared_type")
+        self.assertEqual(payload["failure_owner"], "testbench")
         self.assertEqual(payload["next_action"], "repair_testbench")
 
     def test_missing_compiler_is_structured_error(self) -> None:
@@ -137,6 +167,11 @@ class TestbenchPreflightTests(unittest.TestCase):
             result.failure_kind,
             TestbenchFailureKind.COMPILER_NOT_FOUND,
         )
+        self.assertEqual(
+            result.failure_owner,
+            TestbenchFailureOwner.TOOLCHAIN,
+        )
+        self.assertEqual(result.next_action, "inspect_toolchain")
 
 
 if __name__ == "__main__":
