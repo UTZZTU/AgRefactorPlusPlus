@@ -141,26 +141,38 @@ class TestbenchRepairLoopTests(unittest.TestCase):
         self.assertIn("owner=candidate", result.reason)
         self.assertEqual(repairer.requests, [])
 
-    def test_unchanged_proposal_is_an_error(self) -> None:
+    def test_unchanged_proposal_exhausts_one_attempt(self) -> None:
         repairer = RecordingRepairer([BROKEN_TB])
 
         with tempfile.TemporaryDirectory() as directory:
-            result = self.make_loop(repairer).run(
+            result = self.make_loop(
+                repairer,
+                attempts=1,
+            ).run(
                 work_dir=directory,
                 testbench_code=BROKEN_TB,
                 original_code=ORIGINAL,
                 candidate_code=CANDIDATE,
             )
 
-        self.assertEqual(result.status, TestbenchRepairStatus.ERROR)
+        self.assertEqual(result.status, TestbenchRepairStatus.EXHAUSTED)
         self.assertIn("unchanged", result.reason)
         self.assertEqual(result.repair_attempts_used, 1)
+        self.assertEqual(
+            result.attempts[-1].action,
+            "repair_rejected_unchanged",
+        )
 
-    def test_empty_proposal_counts_provider_call(self) -> None:
+    def test_empty_proposal_counts_and_exhausts_one_attempt(
+        self,
+    ) -> None:
         repairer = RecordingRepairer([""])
 
         with tempfile.TemporaryDirectory() as directory:
-            result = self.make_loop(repairer).run(
+            result = self.make_loop(
+                repairer,
+                attempts=1,
+            ).run(
                 work_dir=directory,
                 testbench_code=BROKEN_TB,
                 original_code=ORIGINAL,
@@ -170,17 +182,26 @@ class TestbenchRepairLoopTests(unittest.TestCase):
                 Path(result.artifact_path).read_text(encoding="utf-8")
             )
 
-        self.assertEqual(result.status, TestbenchRepairStatus.ERROR)
+        self.assertEqual(result.status, TestbenchRepairStatus.EXHAUSTED)
         self.assertIn("empty", result.reason)
         self.assertEqual(result.repair_attempts_used, 1)
         self.assertEqual(artifact["repair_attempts_used"], 1)
         self.assertEqual(len(repairer.requests), 1)
+        self.assertEqual(
+            artifact["attempts"][-1]["action"],
+            "repair_rejected_empty",
+        )
 
-    def test_provider_exception_counts_provider_call(self) -> None:
+    def test_provider_exception_counts_and_exhausts_one_attempt(
+        self,
+    ) -> None:
         repairer = RecordingRepairer([RuntimeError("provider failed")])
 
         with tempfile.TemporaryDirectory() as directory:
-            result = self.make_loop(repairer).run(
+            result = self.make_loop(
+                repairer,
+                attempts=1,
+            ).run(
                 work_dir=directory,
                 testbench_code=BROKEN_TB,
                 original_code=ORIGINAL,
@@ -190,11 +211,69 @@ class TestbenchRepairLoopTests(unittest.TestCase):
                 Path(result.artifact_path).read_text(encoding="utf-8")
             )
 
-        self.assertEqual(result.status, TestbenchRepairStatus.ERROR)
+        self.assertEqual(result.status, TestbenchRepairStatus.EXHAUSTED)
         self.assertIn("provider failed", result.reason)
         self.assertEqual(result.repair_attempts_used, 1)
         self.assertEqual(artifact["repair_attempts_used"], 1)
         self.assertEqual(len(repairer.requests), 1)
+        self.assertEqual(
+            artifact["attempts"][-1]["action"],
+            "repair_provider_error",
+        )
+
+    def test_empty_proposal_uses_remaining_budget(self) -> None:
+        repairer = RecordingRepairer(["", VALID_TB])
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.make_loop(
+                repairer,
+                attempts=2,
+            ).run(
+                work_dir=directory,
+                testbench_code=BROKEN_TB,
+                original_code=ORIGINAL,
+                candidate_code=CANDIDATE,
+            )
+
+        self.assertTrue(result.succeeded)
+        self.assertEqual(result.repair_attempts_used, 2)
+        self.assertEqual(len(repairer.requests), 2)
+        self.assertEqual(
+            result.attempts[1].action,
+            "repair_rejected_empty",
+        )
+        self.assertEqual(
+            result.attempts[2].action,
+            "repair_and_preflight",
+        )
+
+    def test_provider_exception_uses_remaining_budget(self) -> None:
+        repairer = RecordingRepairer(
+            [RuntimeError("temporary failure"), VALID_TB]
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.make_loop(
+                repairer,
+                attempts=2,
+            ).run(
+                work_dir=directory,
+                testbench_code=BROKEN_TB,
+                original_code=ORIGINAL,
+                candidate_code=CANDIDATE,
+            )
+
+        self.assertTrue(result.succeeded)
+        self.assertEqual(result.repair_attempts_used, 2)
+        self.assertEqual(len(repairer.requests), 2)
+        self.assertEqual(
+            result.attempts[1].action,
+            "repair_provider_error",
+        )
+        self.assertIn(
+            "temporary failure",
+            result.attempts[1].error or "",
+        )
 
     def test_zero_budget_returns_exhausted(self) -> None:
         repairer = RecordingRepairer([])

@@ -57,6 +57,7 @@ class TestbenchRepairAttempt:
     action: str
     changed: bool
     preflight: TestbenchPreflightResult
+    error: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -64,6 +65,7 @@ class TestbenchRepairAttempt:
             "action": self.action,
             "changed": self.changed,
             "preflight": self.preflight.to_dict(),
+            "error": self.error,
         }
 
 
@@ -189,6 +191,7 @@ class TestbenchRepairLoop:
             )
 
         latest = initial
+        last_repair_error: str | None = None
 
         for attempt_number in range(
             1,
@@ -207,42 +210,53 @@ class TestbenchRepairLoop:
             try:
                 proposed = self._repairer.repair(request)
             except Exception as exc:
-                return self._finish(
-                    root=root,
-                    status=TestbenchRepairStatus.ERROR,
-                    testbench_code=current,
-                    attempts=attempts,
-                    final_preflight=latest,
-                    reason=(
-                        "testbench repair provider raised "
-                        f"{type(exc).__name__}: {exc}"
-                    ),
-                    repair_attempts_used=repair_attempts_used,
+                last_repair_error = (
+                    "testbench repair provider raised "
+                    f"{type(exc).__name__}: {exc}"
                 )
+                attempts.append(
+                    TestbenchRepairAttempt(
+                        index=attempt_number,
+                        action="repair_provider_error",
+                        changed=False,
+                        preflight=latest,
+                        error=last_repair_error,
+                    )
+                )
+                continue
 
             if not isinstance(proposed, str) or not proposed.strip():
-                return self._finish(
-                    root=root,
-                    status=TestbenchRepairStatus.ERROR,
-                    testbench_code=current,
-                    attempts=attempts,
-                    final_preflight=latest,
-                    reason="testbench repair provider returned empty source",
-                    repair_attempts_used=repair_attempts_used,
+                last_repair_error = (
+                    "testbench repair provider returned empty source"
                 )
+                attempts.append(
+                    TestbenchRepairAttempt(
+                        index=attempt_number,
+                        action="repair_rejected_empty",
+                        changed=False,
+                        preflight=latest,
+                        error=last_repair_error,
+                    )
+                )
+                continue
 
             proposed = proposed.strip()
             if proposed == current.strip():
-                return self._finish(
-                    root=root,
-                    status=TestbenchRepairStatus.ERROR,
-                    testbench_code=current,
-                    attempts=attempts,
-                    final_preflight=latest,
-                    reason="testbench repair provider returned unchanged source",
-                    repair_attempts_used=repair_attempts_used,
+                last_repair_error = (
+                    "testbench repair provider returned unchanged source"
                 )
+                attempts.append(
+                    TestbenchRepairAttempt(
+                        index=attempt_number,
+                        action="repair_rejected_unchanged",
+                        changed=False,
+                        preflight=latest,
+                        error=last_repair_error,
+                    )
+                )
+                continue
 
+            last_repair_error = None
             latest = self._run_preflight(
                 root=root,
                 index=attempt_number,
@@ -286,16 +300,24 @@ class TestbenchRepairLoop:
                     repair_attempts_used=repair_attempts_used,
                 )
 
+        reason = (
+            "testbench remained invalid after "
+            f"{self._max_repair_attempts} repair attempt(s)"
+        )
+        if last_repair_error is not None:
+            reason = (
+                "testbench repair budget exhausted after "
+                f"{self._max_repair_attempts} attempt(s); "
+                f"last repair error: {last_repair_error}"
+            )
+
         return self._finish(
             root=root,
             status=TestbenchRepairStatus.EXHAUSTED,
             testbench_code=current,
             attempts=attempts,
             final_preflight=latest,
-            reason=(
-                "testbench remained invalid after "
-                f"{self._max_repair_attempts} repair attempt(s)"
-            ),
+            reason=reason,
             repair_attempts_used=repair_attempts_used,
         )
 
