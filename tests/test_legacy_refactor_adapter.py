@@ -181,6 +181,133 @@ class LegacyRefactorAdapterTests(unittest.TestCase):
             [event.event for event in context.trace.events],
         )
 
+    def test_merges_repair_usage_without_double_counting_history(
+        self,
+    ) -> None:
+        context = self.make_context()
+        repair = {
+            "artifact_path": "/tmp/testbench_repair.json",
+            "model_usage": {
+                "calls": 2,
+                "prompt_tokens": 40,
+                "completion_tokens": 10,
+                "total_tokens": 50,
+                "cost_usd": None,
+                "models": [
+                    "deepseek-v4-flash",
+                    "deepseek-v4-flash",
+                ],
+            },
+        }
+
+        adapter = LegacyRefactorAdapter(
+            backend=lambda **kwargs: (
+                True,
+                {
+                    "testbench_repair": repair,
+                    "csynth_csim_history": [
+                        {"testbench_repair": repair},
+                    ],
+                },
+            ),
+            usage_supplier=lambda: {
+                "agents": 4,
+                "models": {
+                    "deepseek-v4-flash": {
+                        "prompt_tokens": 900,
+                        "completion_tokens": 100,
+                        "total_tokens": 1000,
+                        "cost": 0.000154,
+                    }
+                },
+                "total_tokens": 1000,
+                "total_cost": 0.000154,
+                "source": "test-summary",
+            },
+        )
+
+        result = adapter(context)
+        usage = context.budget.snapshot()
+        metadata = result.metadata["legacy_usage"]
+
+        self.assertEqual(usage.tokens, 1050)
+        self.assertEqual(usage.llm_calls, 2)
+        self.assertAlmostEqual(usage.cost_usd, 0.000154)
+        self.assertEqual(
+            metadata["accounting_mode"],
+            "post_hoc_combined",
+        )
+        self.assertEqual(metadata["known_llm_calls"], 2)
+        self.assertFalse(metadata["llm_calls_complete"])
+        self.assertFalse(metadata["cost_complete"])
+        self.assertEqual(metadata["unknown_cost_calls"], 2)
+        self.assertEqual(
+            metadata["testbench_repair_usage"]["total_tokens"],
+            50,
+        )
+        self.assertEqual(
+            metadata["testbench_repair_usage"]["artifacts"],
+            ["/tmp/testbench_repair.json"],
+        )
+
+    def test_merges_distinct_repair_artifacts_once_each(self) -> None:
+        context = self.make_context()
+        first = {
+            "artifact_path": "/tmp/repair-1.json",
+            "model_usage": {
+                "calls": 1,
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15,
+                "cost_usd": 0.0001,
+                "models": ["repair-model"],
+            },
+        }
+        second = {
+            "artifact_path": "/tmp/repair-2.json",
+            "model_usage": {
+                "calls": 1,
+                "prompt_tokens": 20,
+                "completion_tokens": 5,
+                "total_tokens": 25,
+                "cost_usd": 0.0002,
+                "models": ["repair-model"],
+            },
+        }
+
+        adapter = LegacyRefactorAdapter(
+            backend=lambda **kwargs: (
+                True,
+                {
+                    "testbench_repair": second,
+                    "csynth_csim_history": [
+                        {"testbench_repair": first},
+                        {"testbench_repair": second},
+                    ],
+                },
+            ),
+            usage_supplier=lambda: {
+                "agents": 1,
+                "models": {},
+                "total_tokens": 100,
+                "total_cost": 0.001,
+                "source": "test-summary",
+            },
+        )
+
+        result = adapter(context)
+        usage = context.budget.snapshot()
+        metadata = result.metadata["legacy_usage"]
+
+        self.assertEqual(usage.tokens, 140)
+        self.assertEqual(usage.llm_calls, 2)
+        self.assertAlmostEqual(usage.cost_usd, 0.0013)
+        self.assertTrue(metadata["cost_complete"])
+        self.assertEqual(
+            metadata["testbench_repair_usage"]["artifacts"],
+            ["/tmp/repair-2.json", "/tmp/repair-1.json"],
+        )
+
     def test_usage_supplier_failure_does_not_hide_success(self) -> None:
         context = self.make_context()
 

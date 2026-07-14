@@ -246,7 +246,10 @@ class LegacyRefactorAdapter:
             raise
 
         success = self._extract_success(raw_result)
-        usage_metadata = self._record_usage(context)
+        usage_metadata = self._record_usage(
+            context,
+            raw_result=raw_result,
+        )
 
         context.trace.record(
             "legacy_refactor.returned",
@@ -298,7 +301,12 @@ class LegacyRefactorAdapter:
             )
             return metadata
 
-    def _record_usage(self, context: RunContext) -> dict[str, Any]:
+    def _record_usage(
+        self,
+        context: RunContext,
+        *,
+        raw_result: Any = None,
+    ) -> dict[str, Any]:
         supplier = self._usage_supplier
 
         if supplier is None and self._backend is None:
@@ -324,6 +332,13 @@ class LegacyRefactorAdapter:
             if not isinstance(raw_summary, Mapping):
                 raise TypeError("usage supplier must return a mapping")
             metadata = _normalize_usage(raw_summary)
+            repair_usage = _collect_testbench_repair_usage(
+                raw_result
+            )
+            metadata = _merge_testbench_repair_usage(
+                metadata,
+                repair_usage,
+            )
         except Exception as exc:
             metadata = {
                 "accounting_mode": "unavailable",
@@ -340,6 +355,7 @@ class LegacyRefactorAdapter:
             return metadata
 
         context.budget.consume(
+            llm_calls=metadata.get("known_llm_calls", 0),
             tokens=metadata["tokens"],
             cost_usd=metadata["cost_usd"],
         )
@@ -379,6 +395,168 @@ class LegacyRefactorAdapter:
             "Legacy refactor backend must return bool or a tuple "
             "whose first item is bool"
         )
+
+
+def _extract_backend_context(
+    raw_result: Any,
+) -> Mapping[str, Any] | None:
+    if not (
+        isinstance(raw_result, tuple)
+        and len(raw_result) >= 2
+    ):
+        return None
+
+    payload = raw_result[1]
+    if isinstance(payload, Mapping):
+        return payload
+
+    data = getattr(payload, "data", None)
+    if isinstance(data, Mapping):
+        return data
+
+    return None
+
+
+def _collect_testbench_repair_usage(
+    raw_result: Any,
+) -> dict[str, Any]:
+    backend_context = _extract_backend_context(raw_result)
+    empty = {
+        "artifacts": [],
+        "calls": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "known_cost_usd": 0.0,
+        "cost_complete": True,
+        "unknown_cost_calls": 0,
+        "models": [],
+    }
+    if backend_context is None:
+        return empty
+
+    candidates: list[Mapping[str, Any]] = []
+    top_level = backend_context.get("testbench_repair")
+    if isinstance(top_level, Mapping):
+        candidates.append(top_level)
+
+    histories = backend_context.get("csynth_csim_history")
+    if isinstance(histories, list):
+        for history in histories:
+            if not isinstance(history, Mapping):
+                continue
+            repair = history.get("testbench_repair")
+            if isinstance(repair, Mapping):
+                candidates.append(repair)
+
+    seen: set[tuple[str, Any]] = set()
+    unique: list[Mapping[str, Any]] = []
+    for repair in candidates:
+        artifact = (
+            repair.get("artifact_path")
+            or repair.get("repair_artifact_path")
+        )
+        key = (
+            ("artifact", str(artifact))
+            if artifact
+            else ("object", id(repair))
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(repair)
+
+    result = dict(empty)
+    model_names: list[str] = []
+
+    for repair in unique:
+        usage = repair.get("model_usage")
+        if not isinstance(usage, Mapping):
+            continue
+
+        calls = _nonnegative_int(usage.get("calls"))
+        prompt_tokens = _nonnegative_int(
+            usage.get("prompt_tokens")
+        )
+        completion_tokens = _nonnegative_int(
+            usage.get("completion_tokens")
+        )
+        total_tokens = _nonnegative_int(
+            usage.get(
+                "total_tokens",
+                prompt_tokens + completion_tokens,
+            )
+        )
+
+        result["calls"] += calls
+        result["prompt_tokens"] += prompt_tokens
+        result["completion_tokens"] += completion_tokens
+        result["total_tokens"] += total_tokens
+
+        artifact = (
+            repair.get("artifact_path")
+            or repair.get("repair_artifact_path")
+        )
+        if artifact:
+            result["artifacts"].append(str(artifact))
+
+        raw_cost = usage.get("cost_usd")
+        if raw_cost is None:
+            if calls > 0:
+                result["cost_complete"] = False
+                result["unknown_cost_calls"] += calls
+        else:
+            result["known_cost_usd"] += _nonnegative_float(
+                raw_cost
+            )
+
+        models = usage.get("models")
+        if isinstance(models, (list, tuple)):
+            for model in models:
+                if isinstance(model, str) and model:
+                    model_names.append(model)
+
+    result["models"] = list(dict.fromkeys(model_names))
+    return result
+
+
+def _merge_testbench_repair_usage(
+    base: dict[str, Any],
+    repair: Mapping[str, Any],
+) -> dict[str, Any]:
+    repair_tokens = _nonnegative_int(repair.get("total_tokens"))
+    repair_calls = _nonnegative_int(repair.get("calls"))
+
+    if repair_tokens == 0 and repair_calls == 0:
+        return base
+
+    merged = dict(base)
+    merged["accounting_mode"] = "post_hoc_combined"
+    merged["tokens"] = (
+        _nonnegative_int(base.get("tokens"))
+        + repair_tokens
+    )
+    merged["cost_usd"] = (
+        _nonnegative_float(base.get("cost_usd"))
+        + _nonnegative_float(repair.get("known_cost_usd"))
+    )
+    merged["known_llm_calls"] = repair_calls
+    merged["llm_calls_complete"] = False
+    merged["llm_calls_tracked"] = False
+    merged["cost_complete"] = bool(
+        repair.get("cost_complete", True)
+    )
+    merged["unknown_cost_calls"] = _nonnegative_int(
+        repair.get("unknown_cost_calls")
+    )
+    merged["model_breakdown_complete"] = False
+    merged["testbench_repair_usage"] = dict(repair)
+    merged["deduplication"] = (
+        "AutoGen agent usage and provider-backed testbench repair "
+        "usage are separate sources; repair artifacts are counted "
+        "once by artifact path."
+    )
+    return merged
 
 
 def _normalize_usage(summary: Mapping[str, Any]) -> dict[str, Any]:
