@@ -11,6 +11,7 @@ class PackageImportTests(unittest.TestCase):
             "agrefactor.evaluation",
             "agrefactor.evidence",
             "agrefactor.runtime",
+            "agrefactor.testing",
         ]
         for module_name in modules:
             with self.subTest(module=module_name):
