@@ -173,6 +173,14 @@ class ModelTestbenchRepairerTests(unittest.TestCase):
             messages[0].content,
         )
         self.assertIn(
+            "declarations are not authoritative",
+            messages[0].content,
+        )
+        self.assertIn(
+            "Never define, stub, wrap, or reimplement",
+            messages[0].content,
+        )
+        self.assertIn(
             '"failure_owner": "testbench"',
             messages[1].content,
         )
@@ -200,6 +208,37 @@ class ModelTestbenchRepairerTests(unittest.TestCase):
         )
         self.assertTrue(
             any("reduced call count" in issue for issue in issues)
+        )
+
+    def test_contract_allows_linkage_correction(self) -> None:
+        contract = TestbenchRepairContract.from_testbench(
+            BROKEN_TB
+        )
+        corrected = FIXED_TB.replace('extern "C" ', '')
+
+        self.assertEqual(
+            contract.validate(corrected),
+            (),
+        )
+
+    def test_contract_rejects_top_function_stub(self) -> None:
+        contract = TestbenchRepairContract.from_testbench(
+            BROKEN_TB
+        )
+        stubbed = FIXED_TB.replace(
+            'extern "C" void process_top(int, int *, int *);',
+            (
+                'extern "C" void process_top(int, int *, int *);\n'
+                'extern "C" void process_top(int, int *, int *) {}'
+            ),
+        )
+
+        issues = contract.validate(stubbed)
+        self.assertTrue(
+            any(
+                "must not define, stub, or wrap" in issue
+                for issue in issues
+            )
         )
 
     def test_model_adapter_uses_registry_and_merges_parameters(self) -> None:

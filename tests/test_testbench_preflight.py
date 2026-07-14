@@ -119,6 +119,57 @@ class TestbenchPreflightTests(unittest.TestCase):
         self.assertEqual(result.next_action, "continue_validation")
 
 
+    def test_cpp_definition_with_c_declaration_is_testbench_owned(
+        self,
+    ) -> None:
+        original = ORIGINAL.replace('extern "C" ', '')
+        candidate = CANDIDATE.replace('extern "C" ', '')
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = TestbenchPreflight().compile_and_link(
+                work_dir=directory,
+                testbench_code=VALID_TB,
+                original_code=original,
+                candidate_code=candidate,
+            )
+
+        self.assertEqual(
+            result.failure_kind,
+            TestbenchFailureKind.LINKAGE_MISMATCH,
+        )
+        self.assertEqual(
+            result.failure_owner,
+            TestbenchFailureOwner.TESTBENCH,
+        )
+        self.assertEqual(result.next_action, "repair_testbench")
+        self.assertIn(
+            "process_top",
+            result.diagnostics[0].message,
+        )
+
+    def test_true_missing_definition_remains_unknown(self) -> None:
+        missing_candidate = CANDIDATE.replace(
+            "process_top_hls",
+            "different_name",
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = TestbenchPreflight().compile_and_link(
+                work_dir=directory,
+                testbench_code=VALID_TB,
+                original_code=ORIGINAL,
+                candidate_code=missing_candidate,
+            )
+
+        self.assertEqual(
+            result.failure_kind,
+            TestbenchFailureKind.LINK_ERROR,
+        )
+        self.assertEqual(
+            result.failure_owner,
+            TestbenchFailureOwner.UNKNOWN,
+        )
+
     def test_candidate_compile_error_is_not_owned_by_testbench(self) -> None:
         bad_candidate = CANDIDATE.replace(
             'for (int i = 0; i < n; ++i) out[i] = in[i];',

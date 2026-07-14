@@ -29,9 +29,11 @@ _FENCE_RE = re.compile(
     r"```(?:cpp|c\+\+|cxx)?\s*(.*?)```",
     re.DOTALL | re.IGNORECASE,
 )
-_EXTERN_C_DECL_RE = re.compile(
-    r'extern\s+"C"\s+[^;{}]+?\([^;{}]*\)\s*;',
-    re.DOTALL,
+_FUNCTION_DECL_RE = re.compile(
+    r'^\s*(?:extern\s+"C"\s+)?'
+    r'(?:[A-Za-z_]\w*(?:::\w+)*(?:\s*[*&]\s*|\s+))+'
+    r'(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*;',
+    re.MULTILINE,
 )
 _DEFINE_RE = re.compile(
     r"^\s*#define\s+[A-Za-z_]\w*[^\n]*$",
@@ -77,10 +79,14 @@ def extract_complete_cpp_block(text: str) -> str:
     return code
 
 
-def _extract_declarations(source: str) -> tuple[str, ...]:
+def _extract_declared_function_names(
+    source: str,
+) -> tuple[str, ...]:
     return tuple(
-        _normalize_fragment(match.group(0))
-        for match in _EXTERN_C_DECL_RE.finditer(source)
+        dict.fromkeys(
+            match.group("name")
+            for match in _FUNCTION_DECL_RE.finditer(source)
+        )
     )
 
 
@@ -91,16 +97,8 @@ def _extract_macros(source: str) -> tuple[str, ...]:
     )
 
 
-def _function_name(declaration: str) -> str | None:
-    names = re.findall(
-        r"\b([A-Za-z_]\w*)\s*\(",
-        declaration,
-    )
-    return names[-1] if names else None
-
-
 def _call_count(source: str, function_name: str) -> int:
-    without_declarations = _EXTERN_C_DECL_RE.sub("", source)
+    without_declarations = _FUNCTION_DECL_RE.sub("", source)
     return len(
         re.findall(
             rf"\b{re.escape(function_name)}\s*\(",
@@ -113,7 +111,7 @@ def _call_count(source: str, function_name: str) -> int:
 class TestbenchRepairContract:
     """Deterministic obligations a compile-only repair must preserve."""
 
-    required_declarations: tuple[str, ...]
+    required_function_names: tuple[str, ...]
     required_macros: tuple[str, ...]
     minimum_call_counts: Mapping[str, int]
 
@@ -122,16 +120,14 @@ class TestbenchRepairContract:
         cls,
         source: str,
     ) -> "TestbenchRepairContract":
-        declarations = _extract_declarations(source)
-        call_counts: dict[str, int] = {}
-
-        for declaration in declarations:
-            name = _function_name(declaration)
-            if name:
-                call_counts[name] = _call_count(source, name)
+        function_names = _extract_declared_function_names(source)
+        call_counts = {
+            name: _call_count(source, name)
+            for name in function_names
+        }
 
         return cls(
-            required_declarations=declarations,
+            required_function_names=function_names,
             required_macros=_extract_macros(source),
             minimum_call_counts=call_counts,
         )
@@ -142,14 +138,28 @@ class TestbenchRepairContract:
         if not re.search(r"\bint\s+main\s*\(", proposed):
             issues.append("missing int main(...) entry point")
 
-        proposed_declarations = set(
-            _extract_declarations(proposed)
+        proposed_names = set(
+            _extract_declared_function_names(proposed)
         )
-        for declaration in self.required_declarations:
-            if declaration not in proposed_declarations:
+        for function_name in self.required_function_names:
+            if function_name not in proposed_names:
                 issues.append(
-                    "missing required declaration: "
-                    + declaration
+                    "missing required declaration for function: "
+                    + function_name
+                )
+
+            definition_pattern = re.compile(
+                rf"^\s*(?:extern\s+\"C\"\s+)?"
+                rf"(?:[A-Za-z_]\w*(?:::\w+)*"
+                rf"(?:\s*[*&]\s*|\s+))+"
+                rf"{re.escape(function_name)}\s*"
+                rf"\([^;{{}}]*\)\s*\{{",
+                re.MULTILINE,
+            )
+            if definition_pattern.search(proposed):
+                issues.append(
+                    "testbench must not define, stub, or wrap function: "
+                    + function_name
                 )
 
         proposed_macros = set(_extract_macros(proposed))
@@ -179,10 +189,17 @@ Your scope is testbench-only:
 - Never modify or propose changes to the candidate HLS kernel.
 - Repair only defects supported by the structured compiler evidence.
 - Preserve all existing test cases, seeds, comparisons, assertions,
-  macros, public function declarations, public calls, and return semantics.
+  macros, required top-level calls, and return semantics.
 - Do not reduce test count or weaken any check.
+- Existing testbench declarations are not authoritative. When compiler
+  or linker evidence shows an interface declaration mismatch, correct
+  only the declaration's return type, parameter types, qualifiers, or
+  C/C++ language linkage so it matches the corresponding definition in
+  the read-only original or candidate source.
+- Never define, stub, wrap, or reimplement an original or candidate
+  top-level function inside the testbench.
 - Treat original and candidate implementations as black boxes exposed
-  only through their declared public top-level interfaces.
+  only through their actual public top-level definitions.
 - Do not access or declare implementation-private types, globals,
   helper functions, or internal data structures.
 - The result must remain deterministic and self-contained.

@@ -22,6 +22,66 @@ _DIAGNOSTIC_RE = re.compile(
 )
 
 
+_UNDEFINED_REFERENCE_RE = re.compile(
+    r"undefined reference to [`'‘](?P<symbol>.+?)[`'’]"
+)
+
+
+def _undefined_function_names(stderr: str) -> tuple[str, ...]:
+    names: list[str] = []
+    for match in _UNDEFINED_REFERENCE_RE.finditer(stderr):
+        symbol = match.group("symbol").strip()
+        base = symbol.split("(", 1)[0].strip()
+        if re.fullmatch(r"[A-Za-z_]\w*", base):
+            names.append(base)
+    return tuple(dict.fromkeys(names))
+
+
+def _declared_linkage(source: str, function_name: str) -> str | None:
+    pattern = re.compile(
+        rf"^\s*(?P<c>extern\s+\"C\"\s+)?"
+        rf"(?:[A-Za-z_]\w*(?:::\w+)*(?:\s*[*&]\s*|\s+))+"
+        rf"{re.escape(function_name)}\s*\([^;{{}}]*\)\s*;",
+        re.MULTILINE,
+    )
+    match = pattern.search(source)
+    if not match:
+        return None
+    return "c" if match.group("c") else "cpp"
+
+
+def _defined_linkage(source: str, function_name: str) -> str | None:
+    pattern = re.compile(
+        rf"^\s*(?P<c>extern\s+\"C\"\s+)?"
+        rf"(?:[A-Za-z_]\w*(?:::\w+)*(?:\s*[*&]\s*|\s+))+"
+        rf"{re.escape(function_name)}\s*\([^;{{}}]*\)\s*\{{",
+        re.MULTILINE,
+    )
+    match = pattern.search(source)
+    if not match:
+        return None
+    return "c" if match.group("c") else "cpp"
+
+
+def infer_linkage_mismatch(
+    stderr: str,
+    *,
+    testbench_code: str,
+    original_code: str,
+    candidate_code: str,
+) -> tuple[str, ...]:
+    mismatches: list[str] = []
+    for name in _undefined_function_names(stderr):
+        declared = _declared_linkage(testbench_code, name)
+        defined = (
+            _defined_linkage(original_code, name)
+            or _defined_linkage(candidate_code, name)
+        )
+        if declared and defined and declared != defined:
+            mismatches.append(name)
+    return tuple(dict.fromkeys(mismatches))
+
+
 def classify_compile_failure(stderr: str) -> TestbenchFailureKind:
     lowered = stderr.lower()
     if "does not name a type" in lowered or "unknown type name" in lowered:
@@ -209,6 +269,29 @@ class TestbenchPreflight:
             )
 
         owner = infer_failure_owner(diagnostics)
+
+        if kind is TestbenchFailureKind.LINK_ERROR:
+            linkage_mismatches = infer_linkage_mismatch(
+                completed.stderr,
+                testbench_code=testbench_code,
+                original_code=original_code,
+                candidate_code=candidate_code,
+            )
+            if linkage_mismatches:
+                kind = TestbenchFailureKind.LINKAGE_MISMATCH
+                owner = TestbenchFailureOwner.TESTBENCH
+                diagnostics = (
+                    TestbenchDiagnostic(
+                        kind=kind,
+                        message=(
+                            "testbench C/C++ language linkage does not "
+                            "match implementation definitions: "
+                            + ", ".join(linkage_mismatches)
+                        ),
+                        file="testbench.cpp",
+                        raw=completed.stderr or None,
+                    ),
+                )
 
         return TestbenchPreflightResult(
             status=TestbenchPreflightStatus.FAILED,

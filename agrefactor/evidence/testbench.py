@@ -24,6 +24,7 @@ class TestbenchFailureKind(str, Enum):
     UNDECLARED_SYMBOL = "undeclared_symbol"
     SYNTAX_ERROR = "syntax_error"
     LINK_ERROR = "link_error"
+    LINKAGE_MISMATCH = "linkage_mismatch"
     COMPILE_TIMEOUT = "compile_timeout"
     COMPILER_NOT_FOUND = "compiler_not_found"
     RUNTIME_ERROR = "runtime_error"
