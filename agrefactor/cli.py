@@ -9,7 +9,11 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, TextIO
 
-from agrefactor.config import TaskSpec
+from agrefactor.compat import (
+    LegacyRefactorAdapter,
+    LegacyRefactorSettings,
+)
+from agrefactor.config import RunMode, TaskSpec
 from agrefactor.runtime import (
     PhaseResult,
     PhaseStatus,
@@ -58,6 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exercise orchestration without invoking legacy flows or tools.",
     )
     run_parser.add_argument(
+        "--legacy",
+        action="store_true",
+        help="Invoke the existing flow.new refactoring backend.",
+    )
+    run_parser.add_argument(
         "--run-id",
         help="Optional stable run identifier.",
     )
@@ -65,6 +74,33 @@ def build_parser() -> argparse.ArgumentParser:
         "--trace",
         type=Path,
         help="Optional JSONL path for the structured trace.",
+    )
+    run_parser.add_argument(
+        "--model",
+        help="Legacy refactoring model override.",
+    )
+    run_parser.add_argument(
+        "--base-url",
+        help="Legacy OpenAI-compatible API base URL.",
+    )
+    run_parser.add_argument(
+        "--reasoning-effort",
+        help="Legacy reasoning effort, such as low, medium, or high.",
+    )
+    run_parser.add_argument(
+        "--max-retry-attempts",
+        type=int,
+        default=4,
+        help="Maximum legacy refactoring attempts. Default: 4.",
+    )
+    run_parser.add_argument(
+        "--output-dir",
+        help="Optional isolated working directory for the legacy flow.",
+    )
+    run_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable legacy flow debug output.",
     )
 
     return parser
@@ -144,6 +180,31 @@ def _run_dry_task(
     )
 
 
+def _run_legacy_refactor(
+    task: TaskSpec,
+    *,
+    run_id: str | None,
+    trace_path: Path | None,
+    settings: LegacyRefactorSettings,
+) -> RunResult:
+    if task.mode is not RunMode.REFACTOR:
+        raise ValueError(
+            "Legacy execution currently supports only mode='refactor'. "
+            "Use --dry-run for optimize/full until their adapters are added."
+        )
+
+    runner = UnifiedRunner(
+        {
+            RunPhase.REFACTOR: LegacyRefactorAdapter(settings),
+        }
+    )
+    return runner.run(
+        task,
+        run_id=run_id,
+        trace_path=trace_path,
+    )
+
+
 def _run_result_to_dict(result: RunResult) -> dict[str, Any]:
     usage = result.budget_usage
     return {
@@ -209,18 +270,36 @@ def main(
             return 0
 
         if args.command == "run":
-            if not args.dry_run:
+            if args.dry_run == args.legacy:
                 stderr.write(
-                    "Real execution is not connected yet; use --dry-run.\n"
+                    "Choose exactly one execution mode: --dry-run or --legacy.\n"
                 )
                 return 2
 
             task = load_task_file(args.task_file)
-            result = _run_dry_task(
-                task,
-                run_id=args.run_id,
-                trace_path=args.trace,
-            )
+
+            if args.dry_run:
+                result = _run_dry_task(
+                    task,
+                    run_id=args.run_id,
+                    trace_path=args.trace,
+                )
+            else:
+                settings = LegacyRefactorSettings(
+                    model=args.model,
+                    base_url=args.base_url,
+                    reasoning_effort=args.reasoning_effort,
+                    max_retry_attempts=args.max_retry_attempts,
+                    output_dir=args.output_dir,
+                    debug=args.debug,
+                )
+                result = _run_legacy_refactor(
+                    task,
+                    run_id=args.run_id,
+                    trace_path=args.trace,
+                    settings=settings,
+                )
+
             _write_run_result(result, stdout)
             return 0 if result.succeeded else 1
 

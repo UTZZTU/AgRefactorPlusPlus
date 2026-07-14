@@ -3,8 +3,14 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from agrefactor.cli import main
+from agrefactor.runtime import (
+    PhaseResult,
+    PhaseStatus,
+    RunPhase,
+)
 
 
 def write_task(path: Path, *, mode: str = "refactor") -> None:
@@ -156,7 +162,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(events[-1], "run.finished")
             self.assertEqual(events.count("dry_run.checked"), 2)
 
-    def test_run_without_dry_run_is_rejected(self) -> None:
+    def test_run_without_execution_mode_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             task_path = Path(directory) / "task.json"
             write_task(task_path)
@@ -169,7 +175,75 @@ class CliTests(unittest.TestCase):
             )
 
             self.assertEqual(exit_code, 2)
-            self.assertIn("Real execution is not connected", stderr.getvalue())
+            self.assertIn(
+                "Choose exactly one execution mode",
+                stderr.getvalue(),
+            )
+
+    def test_legacy_refactor_uses_adapter_without_real_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            task_path = Path(directory) / "task.json"
+            write_task(task_path, mode="refactor")
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            def fake_handler(context):
+                return PhaseResult(
+                    phase=RunPhase.REFACTOR,
+                    status=PhaseStatus.SUCCEEDED,
+                    metadata={"fake": True},
+                )
+
+            with patch(
+                "agrefactor.cli.LegacyRefactorAdapter",
+                return_value=fake_handler,
+            ) as adapter_class:
+                exit_code = main(
+                    [
+                        "run",
+                        str(task_path),
+                        "--legacy",
+                        "--run-id",
+                        "legacy-test",
+                        "--model",
+                        "deepseek-v4-flash",
+                        "--base-url",
+                        "https://api.deepseek.com",
+                        "--reasoning-effort",
+                        "low",
+                        "--max-retry-attempts",
+                        "3",
+                    ],
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(stderr.getvalue(), "")
+            payload = json.loads(stdout.getvalue())
+            self.assertTrue(payload["succeeded"])
+            self.assertEqual(payload["run_id"], "legacy-test")
+            settings = adapter_class.call_args.args[0]
+            self.assertEqual(settings.model, "deepseek-v4-flash")
+            self.assertEqual(settings.max_retry_attempts, 3)
+
+    def test_legacy_rejects_full_mode_until_optimizer_adapter_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            task_path = Path(directory) / "task.json"
+            write_task(task_path, mode="full")
+            stderr = io.StringIO()
+
+            exit_code = main(
+                ["run", str(task_path), "--legacy"],
+                stdout=io.StringIO(),
+                stderr=stderr,
+            )
+
+            self.assertEqual(exit_code, 2)
+            self.assertIn(
+                "currently supports only mode='refactor'",
+                stderr.getvalue(),
+            )
 
 
 if __name__ == "__main__":
