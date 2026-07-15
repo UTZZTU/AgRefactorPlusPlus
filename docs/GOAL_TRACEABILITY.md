@@ -13,7 +13,7 @@
 | 结构化反馈/状态机 | Stage 2 | TestbenchPreflight evidence | general parser、完整 state machine | 多类错误分类并驱动合法动作 |
 | 安全三级优化器 | Stage 3 | legacy `simple_iter` baseline | hypothesis、3 levels、checkpoint、rollback、cache、best_correct | 多 kernel 与 baseline 对照 |
 | Memory Applicability Gate | Stage 4 | legacy RAG 正负 trial | schema、score、abstention、off/gated/always | 负迁移与弃权实验 |
-| BudgetManager | Stage 1/3 | token/cost core、repair calls、wall-time core；csynth aggregate+specific hard limit、pre-probe block、exact-once accounting、UnifiedRunner/legacy propagation、real Vitis smoke | compile/public-test/csim/cosim hard limits；Stage 3 budget exhaustion 返回 best_correct | [`stage1_csynth_budget_acceptance.md`](stage1_csynth_budget_acceptance.md) |
+| BudgetManager | Stage 1/3 | token/cost core、repair calls、wall-time core；compile/csynth/csim aggregate+specific hard limits、pre-call block、exact-once accounting、UnifiedRunner/legacy propagation、real Vitis csynth smoke、real local csim smoke | public-test/cosim 真实语义审计与预算决策；真实完整工具链总验收；Stage 3 budget exhaustion 返回 best_correct | [`stage1_csynth_budget_acceptance.md`](stage1_csynth_budget_acceptance.md)、[`stage1_compile_csim_budget_acceptance.md`](stage1_compile_csim_budget_acceptance.md) |
 
 ## 2. TargetProfile 当前边界
 
@@ -36,9 +36,9 @@ TargetProfile 一次真实运行成功 ≠ 任意版本支持
 TaskSpec 有 version 字段 ≠ 版本迁移
 RAG 检索存在 ≠ Memory Applicability Gate
 simple_iter 能循环 ≠ 安全三级优化器
-169 个确定性测试 ≠ 169 个真实 kernel
+204 个确定性测试 ≠ 204 个真实 kernel
 一次 PPA 改善 ≠ 稳定优化收益
-csynth hard budget 已生效 ≠ 所有工具预算已完成
+compile/csynth/csim hard budget 已生效 ≠ Stage 1 已整体关闭
 ```
 
 ## 4. 完成声明检查表
@@ -56,16 +56,14 @@ csynth hard budget 已生效 ≠ 所有工具预算已完成
 
 ## 5. 当前下一任务
 
-csynth 链路已经完成确定性测试、统一入口测试和真实 Vitis smoke。
+compile、csynth 与本地 csim 已完成底层、统一入口和真实工具 smoke 验收。
 
 当前下一任务：
 
 ```text
-audit compile/public-test/csim/cosim
-→ choose one tool
-→ pre-call hard check
-→ exact-once accounting
-→ exhaustion evidence
-→ deterministic tests
-→ real tool smoke
+audit public-test/cosim canonical actions
+→ confirm real external launches
+→ define a dedicated budget only when semantically meaningful
+→ deterministic/real-tool evidence
+→ final real Preflight → Vitis csynth → csim acceptance
 ```

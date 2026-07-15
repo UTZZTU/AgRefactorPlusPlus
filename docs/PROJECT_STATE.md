@@ -4,14 +4,15 @@
 
 ## 1. 当前快照
 
-- 当前开发分支：`stage1-csynth-hard-budget`
-- 当前代码基线：`eb1575a84fd41c1f2269da6977e25d6cdb084f74`
-- 最新确定性测试：**169/169 passed**
-- 最新真实工具验收：**UnifiedRunner → shared BudgetManager → real Vitis 2023.2 csynth → second call blocked before probe**
+- 当前开发分支：`stage1-csim-compile-hard-budget`
+- 当前代码基线：`18b7b188a26c90b804cd61a43ba924f75f2cc7f1`
+- 最新确定性测试：**204/204 passed**
+- 最新真实工具验收：**UnifiedRunner → shared BudgetManager → real local g++ → generated csim executable → second call blocked before compile**
 - TargetProfile 验收记录：[`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md)
 - csynth hard budget 验收记录：[`stage1_csynth_budget_acceptance.md`](stage1_csynth_budget_acceptance.md)
+- compile/csim hard budget 验收记录：[`stage1_compile_csim_budget_acceptance.md`](stage1_compile_csim_budget_acceptance.md)
 - Testbench Reliability 验收记录：[`stage2_acceptance.md`](stage2_acceptance.md)
-- 当前关键任务：**将相同硬预算契约扩展到剩余工具，暂不开始 Stage 3**
+- 当前关键任务：**审计 public-test/cosim 的真实工具语义，并准备 Stage 1 最终真实全链路验收；暂不开始 Stage 3**
 
 ## 2. 已完成
 
@@ -96,6 +97,39 @@ UnifiedRunner
 
 详见 [`stage1_csynth_budget_acceptance.md`](stage1_csynth_budget_acceptance.md)。
 
+
+### Stage 1 Compile 与 C Simulation Hard Budget：已验收
+
+完整确定性链路：
+
+```text
+UnifiedRunner
+→ RunContext.budget
+→ LegacyRefactorAdapter
+→ Testbench Preflight
+→ run_csynth
+→ run_csim
+```
+
+关键结论：
+
+- aggregate `max_tool_calls/tool_calls`；
+- `max_compile_calls/compile_calls`；
+- `max_csim_calls/csim_calls`；
+- Preflight 与 csim 编译共享 compile 额度；
+- csim 完整计划在 `g++` 前 prospective hard check；
+- compile 与 simulation 分别在真实启动前 exact-once consume；
+- success/failure/timeout/launcher exception 语义已覆盖；
+- 完整联合精确额度：`4 tool / 2 compile / 1 csynth / 1 csim`；
+- 确定性测试：`204/204 passed`；
+- 真实本地 csim smoke：
+  `/data/agrefactor_runs/stage1_real_local_csim_budget_smoke_20260715_215055`；
+- 第一次真实 `g++` 与生成的 `./csim` 执行成功；
+- 第二次在 `g++` 前阻断；
+- final usage：`tool_calls=2`、`compile_calls=1`、`csim_calls=1`。
+
+详见 [`stage1_compile_csim_budget_acceptance.md`](stage1_compile_csim_budget_acceptance.md)。
+
 ### Stage 2 Testbench Reliability 核心
 
 - structured preflight；
@@ -110,8 +144,8 @@ UnifiedRunner
 
 ### Stage 1 阻塞项
 
-1. compile/public-test/csim/cosim 的完整计数与硬限制；
-2. 剩余工具的 pre-call check、exact-once accounting 与 evidence；
+1. public-test/cosim 的规范化工具语义与硬预算决策；
+2. 一次真实 Preflight → Vitis csynth → csim 的共享预算全链路验收；
 3. 预算耗尽时停止后续候选并在 Stage 3 返回 `best_correct`；
 4. TargetProfile stable named profiles；
 5. per-profile executable/settings；
@@ -135,21 +169,20 @@ UnifiedRunner
 
 ## 4. 当前下一任务
 
-csynth hard budget 已完成验收。下一步先只读审计剩余工具调用图，再一次只选择一个工具复制同一契约。
+compile、csynth 与本地 csim hard budget 已完成验收。下一步先审计 public-test/cosim 是否存在规范化、活跃的真实工具动作，再决定是否需要独立预算字段。
 
 推荐顺序：
 
 ```text
-A. 审计 compile/public-test/csim/cosim call sites
-B. 固定下一个工具的 budget key、limit、usage 与 evidence
-C. 在任何真实 subprocess/tool launch 前 hard check
-D. 对真实尝试执行 exact-once accounting
-E. 覆盖 limit=0、limit=1、failure、timeout、exception
-F. 贯通 UnifiedRunner 与 legacy 主流程
-G. 完成确定性测试和一次真实工具 smoke
+A. 定位 public-test/cosim canonical action 与真实 external launch
+B. 区分已有 preflight/csim 行为与独立工具动作
+C. 只有存在真实动作时才定义专项 budget key
+D. 定义 pre-call hard check、exact-once accounting 与 evidence
+E. 完成确定性测试和可执行的真实工具 smoke
+F. 执行真实 Preflight → Vitis csynth → csim 总验收
 ```
 
-不要一次同时修改 compile、public-test、csim 和 cosim。
+不要为了补齐清单而创建没有真实 call site 的伪工具预算。
 
 ## 5. 多 Vitis 版本的当前显式用法
 
@@ -183,8 +216,8 @@ requested 与 actual 不一致时，系统会在 csynth 前阻断。完整命令
 - 已支持任意版本迁移；
 - 已支持任意器件或任意 kernel；
 - Stage 1 已经关闭；
-- csynth hard budget 等于所有工具预算已完成；
-- 169 个测试等于 169 个真实 kernel。
+- compile/csynth/csim hard budget 等于 Stage 1 已整体关闭；
+- 204 个测试等于 204 个真实 kernel。
 
 ## 7. 新对话阅读顺序
 
@@ -195,9 +228,10 @@ requested 与 actual 不一致时，系统会在 csynth 前阻断。完整命令
 4. docs/STAGE1_INFRASTRUCTURE.md
 5. docs/stage1_target_profile_acceptance.md
 6. docs/stage1_csynth_budget_acceptance.md
-7. docs/STAGE2_EVIDENCE_LOOP.md
-8. docs/stage2_acceptance.md
-9. docs/REPRODUCTION_STATUS.md
-10. docs/USAGE.md
-11. git log
+7. docs/stage1_compile_csim_budget_acceptance.md
+8. docs/STAGE2_EVIDENCE_LOOP.md
+9. docs/stage2_acceptance.md
+10. docs/REPRODUCTION_STATUS.md
+11. docs/USAGE.md
+12. git log
 ```

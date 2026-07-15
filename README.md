@@ -43,6 +43,7 @@ AgRefactor++ 是一个基于原始 AgRefactor 扩展的 **Vitis HLS 智能体实
 - [`docs/STAGE1_INFRASTRUCTURE.md`](docs/STAGE1_INFRASTRUCTURE.md)：共享基础设施；
 - [`docs/stage1_target_profile_acceptance.md`](docs/stage1_target_profile_acceptance.md)：TargetProfile 真实工具验收；
 - [`docs/stage1_csynth_budget_acceptance.md`](docs/stage1_csynth_budget_acceptance.md)：csynth 硬预算真实工具验收；
+- [`docs/stage1_compile_csim_budget_acceptance.md`](docs/stage1_compile_csim_budget_acceptance.md)：compile/csim 硬预算与真实本地 csim 验收；
 - [`docs/STAGE2_EVIDENCE_LOOP.md`](docs/STAGE2_EVIDENCE_LOOP.md)：证据闭环；
 - [`docs/STAGE3_SAFE_OPTIMIZER.md`](docs/STAGE3_SAFE_OPTIMIZER.md)：安全三级优化器；
 - [`docs/STAGE4_MEMORY_GATE.md`](docs/STAGE4_MEMORY_GATE.md)：Memory Applicability Gate；
@@ -94,7 +95,7 @@ export AGREFACTOR_VITIS_RUN=/path/to/Vitis/<version>/bin/vitis-run
 
 完整用法见 [`docs/USAGE.md`](docs/USAGE.md)，验收证据见 [`docs/stage1_target_profile_acceptance.md`](docs/stage1_target_profile_acceptance.md)。
 
-Stage 1 尚未关闭；csynth hard budget 已完成，剩余 compile/public-test/csim/cosim 仍需按同一契约实现。
+Stage 1 尚未关闭；compile/csynth/csim hard budget 已完成，剩余 public-test/cosim 及最终真实全链路验收仍待完成。
 <!-- AGREFPP_STAGE1_TARGET_PROFILE_STATUS:END -->
 
 <!-- AGREFPP_STAGE1_CSYNTH_BUDGET_STATUS:START -->
@@ -126,8 +127,41 @@ UnifiedRunner
 
 验收证据见 [`docs/stage1_csynth_budget_acceptance.md`](docs/stage1_csynth_budget_acceptance.md)。
 
-Stage 1 仍未整体关闭：compile/public-test/csim/cosim 硬预算及 TargetProfile 后续配置化仍未完成。
+Stage 1 仍未整体关闭：public-test/cosim 语义审计、最终真实全链路验收及 TargetProfile 后续配置化仍未完成。
 <!-- AGREFPP_STAGE1_CSYNTH_BUDGET_STATUS:END -->
+
+
+<!-- AGREFPP_STAGE1_COMPILE_CSIM_BUDGET_STATUS:START -->
+## Stage 1 Compile 与 C Simulation Hard Budget 最新状态
+
+完整预算链路已经完成确定性验收：
+
+```text
+UnifiedRunner
+→ shared BudgetManager
+→ Testbench Preflight g++
+→ run_csynth
+→ run_csim g++
+→ generated ./csim
+```
+
+已验证：
+
+- `max_tool_calls`、`max_compile_calls`、`max_csynth_calls`、`max_csim_calls`；
+- Preflight 与 csim 编译共享 `compile_calls`；
+- csim 在完整两进程计划不足时于 `g++` 前阻断；
+- compile/csim success、failure、timeout、launcher exception 的 exact-once 语义；
+- 完整联合成功预算：`tool_calls=4`、`compile_calls=2`、`csynth_calls=1`、`csim_calls=1`；
+- `204/204` 确定性测试；
+- 真实本地 csim 首次 `g++ + ./csim` 成功；
+- 第二次调用在 `g++` 前阻断；
+- final usage：`tool_calls=2`、`compile_calls=1`、`csim_calls=1`；
+- `REAL_LOCAL_CSIM_BUDGET_SMOKE_READY=1`。
+
+验收证据见 [`docs/stage1_compile_csim_budget_acceptance.md`](docs/stage1_compile_csim_budget_acceptance.md)。
+
+Stage 1 仍未整体关闭：public-test/cosim 需要先确认真实工具语义；最终真实 Preflight → Vitis csynth → csim 全链路验收仍待完成。
+<!-- AGREFPP_STAGE1_COMPILE_CSIM_BUDGET_STATUS:END -->
 
 ## 快速开始
 
