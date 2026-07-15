@@ -13,7 +13,7 @@
 | 结构化反馈/状态机 | Stage 2 | TestbenchPreflight evidence | general parser、完整 state machine | 多类错误分类并驱动合法动作 |
 | 安全三级优化器 | Stage 3 | legacy `simple_iter` baseline | hypothesis、3 levels、checkpoint、rollback、cache、best_correct | 多 kernel 与 baseline 对照 |
 | Memory Applicability Gate | Stage 4 | legacy RAG 正负 trial | schema、score、abstention、off/gated/always | 负迁移与弃权实验 |
-| BudgetManager | Stage 1/3 | token/cost core、repair calls、wall-time core | compile/public-test/csim/csynth/cosim hard limits | 超预算前阻断，后续返回 best_correct |
+| BudgetManager | Stage 1/3 | token/cost core、repair calls、wall-time core；csynth aggregate+specific hard limit、pre-probe block、exact-once accounting、UnifiedRunner/legacy propagation、real Vitis smoke | compile/public-test/csim/cosim hard limits；Stage 3 budget exhaustion 返回 best_correct | [`stage1_csynth_budget_acceptance.md`](stage1_csynth_budget_acceptance.md) |
 
 ## 2. TargetProfile 当前边界
 
@@ -36,9 +36,9 @@ TargetProfile 一次真实运行成功 ≠ 任意版本支持
 TaskSpec 有 version 字段 ≠ 版本迁移
 RAG 检索存在 ≠ Memory Applicability Gate
 simple_iter 能循环 ≠ 安全三级优化器
-153 个确定性测试 ≠ 153 个真实 kernel
+169 个确定性测试 ≠ 169 个真实 kernel
 一次 PPA 改善 ≠ 稳定优化收益
-BudgetManager 类存在 ≠ 工具硬预算已生效
+csynth hard budget 已生效 ≠ 所有工具预算已完成
 ```
 
 ## 4. 完成声明检查表
@@ -56,13 +56,16 @@ BudgetManager 类存在 ≠ 工具硬预算已生效
 
 ## 5. 当前下一任务
 
+csynth 链路已经完成确定性测试、统一入口测试和真实 Vitis smoke。
+
+当前下一任务：
+
 ```text
-BudgetManager
-→ csynth pre-call hard check
-→ real-call accounting
+audit compile/public-test/csim/cosim
+→ choose one tool
+→ pre-call hard check
+→ exact-once accounting
 → exhaustion evidence
 → deterministic tests
-→ real Vitis budget smoke
+→ real tool smoke
 ```
-
-先完成 csynth，再按统一契约扩展到 compile/public-test/csim/cosim。

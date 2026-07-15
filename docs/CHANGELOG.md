@@ -28,9 +28,26 @@
 - 新增多版本显式指定文档：`target.toolchain_version` + `AGREFACTOR_VITIS_RUN`。
 - 新增 `stage1_target_profile_acceptance.md`。
 
+### Stage 1 csynth Hard Budget
+
+- 新增 `max_csynth_calls/csynth_calls`，并保留 aggregate `max_tool_calls/tool_calls`。
+- 在 Vitis version probe 前执行 prospective hard check。
+- 版本匹配后、真实 launcher 前执行 exact-once consume。
+- success、failure、timeout、launch exception 均计一次真实尝试。
+- version mismatch/probe failure 不消耗真实 csynth 次数。
+- 将同一个 `BudgetManager` 从 UnifiedRunner/RunContext 贯通到 legacy `run_csynth()`。
+- 普通与 HeteroRF csynth 路径均完成预算下传。
+- 有硬工具预算时显式拒绝无法共享本地 manager 的 remote 路径。
+- 新增底层、legacy plumbing、UnifiedRunner 完整链路测试。
+- 确定性测试达到 169/169。
+- Vitis 2023.2 真实 budget smoke 通过：
+  `/data/agrefactor_runs/stage1_real_vitis_csynth_budget_smoke_20260715_184955`。
+- 第一次真实综合成功，第二次在 version probe 前阻断，final usage 为 1/1。
+- 新增 `stage1_csynth_budget_acceptance.md`。
+
 ### Stage 1 当前缺口
 
-- compile/public-test/csim/csynth/cosim 工具硬预算；
+- compile/public-test/csim/cosim 工具硬预算；
 - stable named profiles；
 - per-profile executable/settings；
 - platform/resources/parser；

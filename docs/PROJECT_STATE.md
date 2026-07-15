@@ -4,13 +4,14 @@
 
 ## 1. 当前快照
 
-- 当前开发分支：`stage1-target-profile-forwarding`
-- TargetProfile 代码基线：`717fdef83a2ac96d3636461df7c733a85998ad3b`
-- 最新确定性测试：**153/153 passed**
-- 最新真实工具验收：**TargetProfile → target-aware Tcl → Vitis 2023.2 version gate → real csynth**
+- 当前开发分支：`stage1-csynth-hard-budget`
+- 当前代码基线：`eb1575a84fd41c1f2269da6977e25d6cdb084f74`
+- 最新确定性测试：**169/169 passed**
+- 最新真实工具验收：**UnifiedRunner → shared BudgetManager → real Vitis 2023.2 csynth → second call blocked before probe**
 - TargetProfile 验收记录：[`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md)
+- csynth hard budget 验收记录：[`stage1_csynth_budget_acceptance.md`](stage1_csynth_budget_acceptance.md)
 - Testbench Reliability 验收记录：[`stage2_acceptance.md`](stage2_acceptance.md)
-- 当前关键任务：**完成 Stage 1 工具硬预算，暂不开始 Stage 3**
+- 当前关键任务：**将相同硬预算契约扩展到剩余工具，暂不开始 Stage 3**
 
 ## 2. 已完成
 
@@ -64,6 +65,37 @@ TaskSpec.target
 - 语义 compile flag 已由 `#error` guard 验证；
 - Estimated Fmax：`342.47 MHz`。
 
+### Stage 1 csynth Hard Budget：已验收
+
+已完成真实链路：
+
+```text
+UnifiedRunner
+→ RunContext.budget
+→ LegacyRefactorAdapter
+→ hls_refactor_with_rag
+→ csynth_and_csim
+→ run_csynth
+→ real vitis-run
+```
+
+关键结论：
+
+- aggregate `max_tool_calls/tool_calls` 与专项 `max_csynth_calls/csynth_calls`；
+- pre-version-probe hard check；
+- pre-launch exact-once consume；
+- success/failure/timeout/launch exception 计一次；
+- mismatch 不计真实 csynth；
+- local normal/HeteroRF 路径共享同一预算实例；
+- bounded remote tool budget 显式拒绝；
+- 真实 Vitis 2023.2 smoke：
+  `/data/agrefactor_runs/stage1_real_vitis_csynth_budget_smoke_20260715_184955`；
+- 第一次真实综合成功并生成 report；
+- 第二次在 version probe 前阻断；
+- final usage：`tool_calls=1`、`csynth_calls=1`。
+
+详见 [`stage1_csynth_budget_acceptance.md`](stage1_csynth_budget_acceptance.md)。
+
 ### Stage 2 Testbench Reliability 核心
 
 - structured preflight；
@@ -78,14 +110,13 @@ TaskSpec.target
 
 ### Stage 1 阻塞项
 
-1. compile/public-test/csim/csynth/cosim 的完整计数与硬限制；
-2. 工具调用前预算检查；
-3. 工具调用后真实消耗记录；
-4. 预算耗尽时的安全停止；
-5. TargetProfile stable named profiles；
-6. per-profile executable/settings；
-7. platform、resource limits、report parser profile；
-8. effective profile 每字段 provenance。
+1. compile/public-test/csim/cosim 的完整计数与硬限制；
+2. 剩余工具的 pre-call check、exact-once accounting 与 evidence；
+3. 预算耗尽时停止后续候选并在 Stage 3 返回 `best_correct`；
+4. TargetProfile stable named profiles；
+5. per-profile executable/settings；
+6. platform、resource limits、report parser profile；
+7. effective profile 每字段 provenance。
 
 ### Stage 2 剩余项
 
@@ -104,23 +135,21 @@ TaskSpec.target
 
 ## 4. 当前下一任务
 
-先完成 **csynth hard budget**，再扩展到其他工具。
+csynth hard budget 已完成验收。下一步先只读审计剩余工具调用图，再一次只选择一个工具复制同一契约。
 
 推荐顺序：
 
 ```text
-A. 审计 BudgetManager 数据结构和所有 csynth call sites
-B. 定义 csynth budget key、limit、usage 与 exhaustion evidence
-C. 在任何版本探测和 Vitis 启动前执行 hard check
-D. 调用完成后只记一次真实 csynth 消耗
-E. limit=0 时确认 subprocess 完全不启动
-F. limit=1 时第一次允许、第二次阻断
-G. 异常、timeout、failure 仍计入一次真实调用
-H. 将结果写入 trace / result evidence
-I. 确定性测试后再做一次真实 Vitis budget smoke
+A. 审计 compile/public-test/csim/cosim call sites
+B. 固定下一个工具的 budget key、limit、usage 与 evidence
+C. 在任何真实 subprocess/tool launch 前 hard check
+D. 对真实尝试执行 exact-once accounting
+E. 覆盖 limit=0、limit=1、failure、timeout、exception
+F. 贯通 UnifiedRunner 与 legacy 主流程
+G. 完成确定性测试和一次真实工具 smoke
 ```
 
-不要一次同时改 compile、public test、csim、csynth、cosim。先把 csynth 的契约做正确，再复制同一模式。
+不要一次同时修改 compile、public-test、csim 和 cosim。
 
 ## 5. 多 Vitis 版本的当前显式用法
 
@@ -154,7 +183,8 @@ requested 与 actual 不一致时，系统会在 csynth 前阻断。完整命令
 - 已支持任意版本迁移；
 - 已支持任意器件或任意 kernel；
 - Stage 1 已经关闭；
-- 153 个测试等于 153 个真实 kernel。
+- csynth hard budget 等于所有工具预算已完成；
+- 169 个测试等于 169 个真实 kernel。
 
 ## 7. 新对话阅读顺序
 
@@ -164,9 +194,10 @@ requested 与 actual 不一致时，系统会在 csynth 前阻断。完整命令
 3. docs/GOAL_TRACEABILITY.md
 4. docs/STAGE1_INFRASTRUCTURE.md
 5. docs/stage1_target_profile_acceptance.md
-6. docs/STAGE2_EVIDENCE_LOOP.md
-7. docs/stage2_acceptance.md
-8. docs/REPRODUCTION_STATUS.md
-9. docs/USAGE.md
-10. git log
+6. docs/stage1_csynth_budget_acceptance.md
+7. docs/STAGE2_EVIDENCE_LOOP.md
+8. docs/stage2_acceptance.md
+9. docs/REPRODUCTION_STATUS.md
+10. docs/USAGE.md
+11. git log
 ```

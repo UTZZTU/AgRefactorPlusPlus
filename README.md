@@ -42,6 +42,7 @@ AgRefactor++ 是一个基于原始 AgRefactor 扩展的 **Vitis HLS 智能体实
 - [`docs/STAGE0_BASELINE.md`](docs/STAGE0_BASELINE.md)：基线冻结；
 - [`docs/STAGE1_INFRASTRUCTURE.md`](docs/STAGE1_INFRASTRUCTURE.md)：共享基础设施；
 - [`docs/stage1_target_profile_acceptance.md`](docs/stage1_target_profile_acceptance.md)：TargetProfile 真实工具验收；
+- [`docs/stage1_csynth_budget_acceptance.md`](docs/stage1_csynth_budget_acceptance.md)：csynth 硬预算真实工具验收；
 - [`docs/STAGE2_EVIDENCE_LOOP.md`](docs/STAGE2_EVIDENCE_LOOP.md)：证据闭环；
 - [`docs/STAGE3_SAFE_OPTIMIZER.md`](docs/STAGE3_SAFE_OPTIMIZER.md)：安全三级优化器；
 - [`docs/STAGE4_MEMORY_GATE.md`](docs/STAGE4_MEMORY_GATE.md)：Memory Applicability Gate；
@@ -93,8 +94,40 @@ export AGREFACTOR_VITIS_RUN=/path/to/Vitis/<version>/bin/vitis-run
 
 完整用法见 [`docs/USAGE.md`](docs/USAGE.md)，验收证据见 [`docs/stage1_target_profile_acceptance.md`](docs/stage1_target_profile_acceptance.md)。
 
-Stage 1 尚未关闭；当前下一任务是 compile/public-test/csim/csynth/cosim 工具硬预算。
+Stage 1 尚未关闭；csynth hard budget 已完成，剩余 compile/public-test/csim/cosim 仍需按同一契约实现。
 <!-- AGREFPP_STAGE1_TARGET_PROFILE_STATUS:END -->
+
+<!-- AGREFPP_STAGE1_CSYNTH_BUDGET_STATUS:START -->
+## Stage 1 csynth Hard Budget 最新状态
+
+真实链路已经验收：
+
+```text
+UnifiedRunner
+→ RunContext.budget
+→ LegacyRefactorAdapter
+→ flow.new / csynth_and_csim
+→ run_csynth
+→ real Vitis 2023.2
+```
+
+已验证：
+
+- `max_tool_calls` 与 `max_csynth_calls` 双重限制；
+- 预算检查发生在 version probe 前；
+- 通过版本检查后、真实启动前精确计数一次；
+- success/failure/timeout/launch exception 的 exact-once 语义；
+- version mismatch 不消耗真实 csynth 次数；
+- `limit=0` 不执行 probe 或 Vitis；
+- `limit=1` 第一次真实综合成功，第二次在 probe 前阻断；
+- final usage：`tool_calls=1`、`csynth_calls=1`；
+- `169/169` 确定性测试；
+- `REAL_VITIS_CSYNTH_BUDGET_SMOKE_READY=1`。
+
+验收证据见 [`docs/stage1_csynth_budget_acceptance.md`](docs/stage1_csynth_budget_acceptance.md)。
+
+Stage 1 仍未整体关闭：compile/public-test/csim/cosim 硬预算及 TargetProfile 后续配置化仍未完成。
+<!-- AGREFPP_STAGE1_CSYNTH_BUDGET_STATUS:END -->
 
 ## 快速开始
 

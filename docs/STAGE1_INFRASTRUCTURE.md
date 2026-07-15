@@ -12,7 +12,7 @@ TargetProfile 真正控制一次真实 Vitis run
 BudgetManager 真正控制真实工具调用
 ```
 
-第一项已经完成，第二项仍是当前阻塞项。
+第一项已经完成；第二项中的 csynth 已完成真实验收，但 compile/public-test/csim/cosim 仍未完成，因此 Stage 1 尚未关闭。
 
 ## 2. 已实现的共享底座
 
@@ -112,35 +112,41 @@ requested 与 actual 不一致时，csynth 前阻断。
 
 ### 5.1 Tool hard budget
 
-必须分别记录和限制：
-
-```text
-compile
-public_test
-csim
-csynth
-cosim
-wall_time
-```
-
-每个工具调用的统一契约：
+统一契约：
 
 ```text
 pre-call hard check
 → allow or block
 → real tool launch
-→ post-call accounting
+→ exact-once accounting
 → structured evidence
 ```
 
-当前先做 csynth：
+#### csynth：已完成真实验收
 
-- `max_csynth_calls=0`：版本探测和 Vitis 均不得启动；
-- `max_csynth_calls=1`：第一次允许，第二次阻断；
-- timeout/failure/exception：只要真实启动就计一次；
-- mismatch 在真正 csynth 之前发生，需要明确预算语义并测试；
-- 预算阻断不能伪装成综合失败；
-- 后续优化阶段预算耗尽要返回 `best_correct`。
+- aggregate `max_tool_calls/tool_calls`；
+-专项 `max_csynth_calls/csynth_calls`；
+- `limit=0` 在 version probe 前阻断；
+- `limit=1` 第一次允许，第二次在 probe 前阻断；
+- success/failure/timeout/launch exception 计一次；
+- version mismatch 不消耗真实 csynth；
+- UnifiedRunner/Legacy/local normal/HeteroRF 链路贯通；
+- bounded remote tool budget 显式拒绝；
+- 169/169 确定性测试；
+- Vitis 2023.2 真实 smoke 通过。
+
+验收见 [`stage1_csynth_budget_acceptance.md`](stage1_csynth_budget_acceptance.md)。
+
+#### 仍未完成
+
+```text
+compile
+public_test
+csim
+cosim
+```
+
+还需在 Stage 3 中实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ### 5.2 TargetProfile 后续配置化
 
@@ -165,11 +171,11 @@ pre-call hard check
 ## 6. 下一实现步骤
 
 ```text
-1. 只读审计 BudgetManager 与 csynth call graph
-2. 固定 csynth budget contract
-3. 确定性测试
-4. 接入 local run_csynth
-5. 持久化 budget evidence
-6. 真实 Vitis budget smoke
-7. 再扩展 csim/public-test/compile/cosim
+1. csynth hard budget 已完成并真实验收
+2. 只读审计 compile/public-test/csim/cosim call graph
+3. 一次只选择一个工具固定 budget contract
+4. 接入 pre-call check、exact-once accounting 与 evidence
+5. 贯通 UnifiedRunner/legacy flow
+6. 确定性测试
+7. 真实工具 smoke
 ```

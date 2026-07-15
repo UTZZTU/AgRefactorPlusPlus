@@ -267,10 +267,18 @@ wall time
 - `effective_target_profile.json`；
 - `csynth_invocation.json`；
 - remote non-default target rejection；
-- 153/153 确定性测试；
-- Vitis 2023.2 真实 csynth 验收。
+- TargetProfile 确定性测试与 Vitis 2023.2 真实 csynth 验收；
+- csynth aggregate+specific hard budget；
+- pre-version-probe block 与 pre-launch exact-once accounting；
+- UnifiedRunner → LegacyRefactorAdapter → local `run_csynth()` 预算贯通；
+- limit=0/1、mismatch、failure、timeout、launch exception 测试；
+- 169/169 确定性测试；
+- Vitis 2023.2 真实 csynth budget smoke。
 
-验收记录：[`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md)。
+验收记录：
+
+- [`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md)；
+- [`stage1_csynth_budget_acceptance.md`](stage1_csynth_budget_acceptance.md)。
 
 ### 5.4 尚未完成
 
@@ -278,14 +286,15 @@ wall time
 
 必须补齐：
 
+csynth 已完成 aggregate/specific limit、pre-call check、exact-once accounting、exhaustion evidence、统一入口传播与真实 Vitis smoke。
+
+仍需补齐：
+
 - compile count/limit；
 - public test count/limit；
 - csim count/limit；
-- csynth count/limit；
 - cosim count/limit；
-- 工具调用前 hard check；
-- 工具调用后真实 accounting；
-- exhaustion evidence；
+- 上述工具的 pre-call check、exact-once accounting 与 evidence；
 - 预算耗尽后的安全停止；
 - Stage 3 中返回 `best_correct`。
 
@@ -321,18 +330,20 @@ AGREFACTOR_VITIS_RUN=/path/to/matching/vitis-run
 ```text
 TargetProfile 真正控制一次真实 Vitis run
 +
-BudgetManager 真正控制工具调用
+BudgetManager 真正控制所需本地工具调用
 ```
 
-第一项已经通过 commit `717fdef` 和真实运行：
+TargetProfile 已通过 commit `717fdef` 与真实运行完成本地执行核心验收。
+
+csynth hard budget 已通过 commits `fc8a646`、`9be882a`、`eb1575a` 与真实运行：
 
 ```text
-/data/agrefactor_runs/stage1_target_profile_real_vitis_20260715_141118
+/data/agrefactor_runs/stage1_real_vitis_csynth_budget_smoke_20260715_184955
 ```
 
 完成验收。
 
-当前 Stage 1 唯一主阻塞项是 **工具硬预算**。
+Stage 1 尚未关闭；当前主阻塞项是 compile/public-test/csim/cosim 硬预算与 TargetProfile 后续完整配置化。
 
 详细文档：[`STAGE1_INFRASTRUCTURE.md`](STAGE1_INFRASTRUCTURE.md)。
 
