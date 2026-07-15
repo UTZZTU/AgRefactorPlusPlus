@@ -53,7 +53,7 @@ class CliTests(unittest.TestCase):
             payload = json.loads(stdout.getvalue())
             self.assertEqual(payload["mode"], "refactor")
             self.assertEqual(payload["kernel_name"], "process_top")
-            self.assertEqual(payload["target"]["clock_period_ns"], 10.0)
+            self.assertEqual(payload["target"]["clock_period_ns"], 5.0)
 
     def test_module_entrypoint_executes_main(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

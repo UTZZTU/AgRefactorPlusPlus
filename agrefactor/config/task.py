@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from .target import TargetProfile
+from .target import (
+    TargetProfile,
+    default_target_profile,
+    resolve_target_profile,
+)
 
 
 class RunMode(str, Enum):
@@ -25,8 +29,10 @@ class TaskSpec:
     task_id: str
     kernel_path: str
     kernel_name: str
-    target: TargetProfile
-    mode: RunMode = RunMode.FULL
+    target: TargetProfile = field(
+        default_factory=default_target_profile
+    )
+    mode: RunMode = RunMode.REFACTOR
     testbench_path: str | None = None
 
     def __post_init__(self) -> None:
@@ -51,7 +57,8 @@ class TaskSpec:
             except ValueError as exc:
                 choices = ", ".join(item.value for item in RunMode)
                 raise ValueError(
-                    f"Unsupported mode {self.mode!r}; expected one of: {choices}"
+                    f"Unsupported mode {self.mode!r}; expected one of: "
+                    f"{choices}"
                 ) from exc
 
         object.__setattr__(self, "task_id", task_id)
@@ -69,7 +76,7 @@ class TaskSpec:
         return cleaned or None
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-serializable representation."""
+        """Return a JSON-serializable, fully resolved representation."""
 
         return {
             "task_id": self.task_id,
@@ -82,17 +89,15 @@ class TaskSpec:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "TaskSpec":
-        """Build a task from a mapping such as parsed JSON or YAML."""
-
-        target_data = data["target"]
-        if not isinstance(target_data, Mapping):
-            raise TypeError("TaskSpec.target must be a mapping")
+        """Build a task while resolving optional target defaults."""
 
         return cls(
             task_id=data["task_id"],
             kernel_path=data["kernel_path"],
             kernel_name=data["kernel_name"],
-            target=TargetProfile.from_dict(target_data),
-            mode=RunMode(data.get("mode", RunMode.FULL.value)),
+            target=resolve_target_profile(data.get("target")),
+            mode=RunMode(
+                data.get("mode", RunMode.REFACTOR.value)
+            ),
             testbench_path=data.get("testbench_path"),
         )
