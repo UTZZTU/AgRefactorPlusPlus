@@ -130,17 +130,25 @@ def create_log_and_redirect(output_dir: str):
 def run_testbench_preflight(
     output_dir: str,
     cv: ContextVariables,
+    *,
+    budget: BudgetManager | None = None,
 ):
     timestamp = datetime.now().strftime("%H%M%S_%f")
     work_dir = os.path.join(
         output_dir,
         f"testbench_preflight_{timestamp}",
     )
+    os.makedirs(work_dir, exist_ok=True)
+    preflight_kwargs = {
+        "work_dir": work_dir,
+        "testbench_code": cv["testbench"],
+        "original_code": cv["orig_code"],
+        "candidate_code": cv["curr_code"],
+    }
+    if budget is not None:
+        preflight_kwargs["budget"] = budget
     result = TestbenchPreflight().compile_and_link(
-        work_dir=work_dir,
-        testbench_code=cv["testbench"],
-        original_code=cv["orig_code"],
-        candidate_code=cv["curr_code"],
+        **preflight_kwargs
     )
 
     payload = result.to_dict()
@@ -217,6 +225,7 @@ def run_testbench_validation_gate(
     *,
     testbench_repairer=None,
     max_testbench_repair_attempts: int = 0,
+    budget: BudgetManager | None = None,
 ):
     if (
         isinstance(max_testbench_repair_attempts, bool)
@@ -232,7 +241,13 @@ def run_testbench_validation_gate(
         testbench_repairer is None
         or max_testbench_repair_attempts == 0
     ):
-        return run_testbench_preflight(output_dir, cv)
+        if budget is None:
+            return run_testbench_preflight(output_dir, cv)
+        return run_testbench_preflight(
+            output_dir,
+            cv,
+            budget=budget,
+        )
 
     response_start = len(
         tuple(
@@ -249,16 +264,20 @@ def run_testbench_validation_gate(
         output_dir,
         f"testbench_repair_{timestamp}",
     )
-    result = TestbenchRepairLoop(
+    repair_loop = TestbenchRepairLoop(
         preflight=TestbenchPreflight(),
         repairer=testbench_repairer,
         max_repair_attempts=max_testbench_repair_attempts,
-    ).run(
-        work_dir=work_dir,
-        testbench_code=cv["testbench"],
-        original_code=cv["orig_code"],
-        candidate_code=cv["curr_code"],
     )
+    repair_kwargs = {
+        "work_dir": work_dir,
+        "testbench_code": cv["testbench"],
+        "original_code": cv["orig_code"],
+        "candidate_code": cv["curr_code"],
+    }
+    if budget is not None:
+        repair_kwargs["budget"] = budget
+    result = repair_loop.run(**repair_kwargs)
 
     payload = result.to_dict()
     payload["gate_decision"] = (
@@ -371,13 +390,18 @@ def csynth_and_csim(
         if status == "succeeded":
             return True, None, None, None, None
 
+    preflight_gate_kwargs = {
+        "testbench_repairer": testbench_repairer,
+        "max_testbench_repair_attempts": (
+            max_testbench_repair_attempts
+        ),
+    }
+    if budget is not None:
+        preflight_gate_kwargs["budget"] = budget
     preflight_result = run_testbench_validation_gate(
         output_dir,
         cv,
-        testbench_repairer=testbench_repairer,
-        max_testbench_repair_attempts=(
-            max_testbench_repair_attempts
-        ),
+        **preflight_gate_kwargs,
     )
     if not preflight_result.succeeded:
         repair_payload = cv.get("testbench_repair")

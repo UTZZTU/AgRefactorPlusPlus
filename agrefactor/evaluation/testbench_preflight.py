@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
 import time
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from agrefactor.evidence import (
     TestbenchDiagnostic,
@@ -15,6 +16,68 @@ from agrefactor.evidence import (
     TestbenchPreflightStatus,
     TestbenchStage,
 )
+from agrefactor.runtime.budget import (
+    BudgetExceededError,
+    BudgetManager,
+    BudgetUsage,
+)
+
+
+PREFLIGHT_COMPILE_BUDGET_INCREMENT = {
+    "tool_calls": 1,
+    "compile_calls": 1,
+}
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.write_text(
+        json.dumps(
+            payload,
+            indent=2,
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _budget_usage_to_dict(
+    usage: BudgetUsage,
+) -> dict[str, Any]:
+    return {
+        "llm_calls": usage.llm_calls,
+        "tool_calls": usage.tool_calls,
+        "compile_calls": usage.compile_calls,
+        "csim_calls": usage.csim_calls,
+        "csynth_calls": usage.csynth_calls,
+        "tokens": usage.tokens,
+        "cost_usd": usage.cost_usd,
+        "elapsed_s": usage.elapsed_s,
+    }
+
+
+def _blocked_budget_evidence(
+    exc: BudgetExceededError,
+    *,
+    usage_before: BudgetUsage | None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "status": "blocked",
+        "checkpoint": "before_compile_launch",
+        "requested_increment": dict(
+            PREFLIGHT_COMPILE_BUDGET_INCREMENT
+        ),
+        "resource": exc.resource,
+        "limit": exc.limit,
+        "attempted": exc.attempted,
+    }
+    if usage_before is not None:
+        payload["usage_before"] = _budget_usage_to_dict(
+            usage_before
+        )
+    return payload
+
 
 _DIAGNOSTIC_RE = re.compile(
     r"^(?P<file>.*?):(?P<line>\d+):(?P<column>\d+):\s+"
@@ -241,6 +304,7 @@ class TestbenchPreflight:
         testbench_code: str,
         original_code: str,
         candidate_code: str,
+        budget: BudgetManager | None = None,
     ) -> TestbenchPreflightResult:
         directory = Path(work_dir)
         directory.mkdir(parents=True, exist_ok=True)
@@ -254,12 +318,53 @@ class TestbenchPreflight:
                 raise ValueError(f"{name} source must not be empty")
             (directory / name).write_text(content, encoding="utf-8")
 
+        invocation_path = (
+            directory / "testbench_preflight_invocation.json"
+        )
+        invocation: dict[str, Any] = {
+            "schema_version": 1,
+            "phase": "testbench_preflight_compile",
+            "work_dir": str(directory.resolve()),
+            "source_files": list(sources),
+            "compiler": self._compiler,
+            "command": [],
+            "timeout_seconds": self._timeout_s,
+            "budget": {
+                "status": (
+                    "not_configured"
+                    if budget is None
+                    else "pending"
+                ),
+                "requested_increment": dict(
+                    PREFLIGHT_COMPILE_BUDGET_INCREMENT
+                ),
+            },
+            "execution": {
+                "status": "pending",
+                "returncode": None,
+                "timeout": False,
+            },
+        }
+        _write_json(invocation_path, invocation)
+
         forbidden = find_forbidden_internal_dependencies(
             testbench_code=testbench_code,
             original_code=original_code,
             candidate_code=candidate_code,
         )
         if forbidden:
+            invocation["budget"]["status"] = (
+                "not_configured"
+                if budget is None
+                else "not_consumed_static_check"
+            )
+            invocation["execution"] = {
+                "status": "skipped_by_static_check",
+                "returncode": None,
+                "timeout": False,
+            }
+            _write_json(invocation_path, invocation)
+
             diagnostics = tuple(
                 TestbenchDiagnostic(
                     kind=(
@@ -311,6 +416,46 @@ class TestbenchPreflight:
         command.extend(self._extra_flags)
         command.extend(sources)
         command.extend(["-o", "testbench_preflight"])
+        invocation["command"] = list(command)
+        _write_json(invocation_path, invocation)
+
+        if budget is not None:
+            usage_before = None
+            try:
+                budget.ensure_available(
+                    **PREFLIGHT_COMPILE_BUDGET_INCREMENT
+                )
+                usage_before = budget.snapshot()
+                usage_after = budget.consume(
+                    **PREFLIGHT_COMPILE_BUDGET_INCREMENT
+                )
+            except BudgetExceededError as exc:
+                invocation["budget"] = _blocked_budget_evidence(
+                    exc,
+                    usage_before=usage_before,
+                )
+                invocation["execution"] = {
+                    "status": "blocked_by_budget",
+                    "returncode": None,
+                    "timeout": False,
+                }
+                _write_json(invocation_path, invocation)
+                raise
+
+            invocation["budget"] = {
+                "status": "consumed",
+                "checkpoint": "before_compile_launch",
+                "requested_increment": dict(
+                    PREFLIGHT_COMPILE_BUDGET_INCREMENT
+                ),
+                "usage_before": _budget_usage_to_dict(
+                    usage_before
+                ),
+                "usage_after": _budget_usage_to_dict(
+                    usage_after
+                ),
+            }
+            _write_json(invocation_path, invocation)
 
         started = time.monotonic()
         try:
@@ -323,6 +468,12 @@ class TestbenchPreflight:
                 check=False,
             )
         except subprocess.TimeoutExpired:
+            invocation["execution"] = {
+                "status": "timeout",
+                "returncode": None,
+                "timeout": True,
+            }
+            _write_json(invocation_path, invocation)
             return self._error_result(
                 command,
                 directory,
@@ -332,6 +483,14 @@ class TestbenchPreflight:
                 time.monotonic() - started,
             )
         except FileNotFoundError as exc:
+            invocation["execution"] = {
+                "status": "launch_error",
+                "returncode": None,
+                "timeout": False,
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:4000],
+            }
+            _write_json(invocation_path, invocation)
             return self._error_result(
                 command,
                 directory,
@@ -342,6 +501,13 @@ class TestbenchPreflight:
             )
 
         duration = time.monotonic() - started
+        invocation["execution"] = {
+            "status": "completed",
+            "returncode": completed.returncode,
+            "timeout": False,
+        }
+        _write_json(invocation_path, invocation)
+
         artifacts = tuple(str(directory / name) for name in sources)
 
         if completed.returncode == 0:

@@ -13,6 +13,7 @@ from agrefactor.evidence import (
     TestbenchFailureOwner,
     TestbenchPreflightResult,
 )
+from agrefactor.runtime.budget import BudgetManager
 
 
 class TestbenchRepairStatus(str, Enum):
@@ -132,6 +133,7 @@ class TestbenchRepairLoop:
         testbench_code: str,
         original_code: str,
         candidate_code: str,
+        budget: BudgetManager | None = None,
     ) -> TestbenchRepairResult:
         root = Path(work_dir)
         root.mkdir(parents=True, exist_ok=True)
@@ -149,6 +151,7 @@ class TestbenchRepairLoop:
             testbench_code=current,
             original_code=original,
             candidate_code=candidate,
+            budget=budget,
         )
         attempts.append(
             TestbenchRepairAttempt(
@@ -263,6 +266,7 @@ class TestbenchRepairLoop:
                 testbench_code=proposed,
                 original_code=original,
                 candidate_code=candidate,
+                budget=budget,
             )
             attempts.append(
                 TestbenchRepairAttempt(
@@ -329,13 +333,17 @@ class TestbenchRepairLoop:
         testbench_code: str,
         original_code: str,
         candidate_code: str,
+        budget: BudgetManager | None,
     ) -> TestbenchPreflightResult:
-        return self._preflight.compile_and_link(
-            work_dir=root / f"attempt_{index:02d}",
-            testbench_code=testbench_code,
-            original_code=original_code,
-            candidate_code=candidate_code,
-        )
+        kwargs = {
+            "work_dir": root / f"attempt_{index:02d}",
+            "testbench_code": testbench_code,
+            "original_code": original_code,
+            "candidate_code": candidate_code,
+        }
+        if budget is not None:
+            kwargs["budget"] = budget
+        return self._preflight.compile_and_link(**kwargs)
 
     @staticmethod
     def _non_repairable_reason(
