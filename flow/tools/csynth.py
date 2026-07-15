@@ -1,4 +1,4 @@
-import os, requests
+import json, os, requests, shlex, shutil
 from collections.abc import Mapping
 from flow.base_agent import HLSAgentLoader
 from autogen.agentchat.group import ContextVariables # type: ignore
@@ -15,7 +15,10 @@ HLS_SERVER_URL = os.getenv("HLS_SERVER_URL")
 
 CSYNTH_TIMEOUT = 300
 ERROR_LINES = 15
-CSYNTH_CMD = "vitis-run --mode hls --tcl --input_file vitis.tcl"
+CSYNTH_EXECUTABLE_ENV = "AGREFACTOR_VITIS_RUN"
+DEFAULT_CSYNTH_EXECUTABLE = "vitis-run"
+CSYNTH_ARGUMENTS = "--mode hls --tcl --input_file vitis.tcl"
+CSYNTH_CMD = f"{DEFAULT_CSYNTH_EXECUTABLE} {CSYNTH_ARGUMENTS}"
 
 
 def get_error_msg(synth_dir: str) -> str:
@@ -25,6 +28,84 @@ def get_error_msg(synth_dir: str) -> str:
             log_content = f.read()
             return "\n".join(log_content.strip().splitlines()[-ERROR_LINES:])
     return ""
+
+
+def _write_json(path: str, payload: dict[str, Any]) -> None:
+    with open(path, "w", encoding="utf-8") as stream:
+        json.dump(
+            payload,
+            stream,
+            indent=2,
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        stream.write("\n")
+
+
+def resolve_csynth_command() -> dict[str, Any]:
+    configured = os.getenv(CSYNTH_EXECUTABLE_ENV)
+    if configured is None:
+        executable = DEFAULT_CSYNTH_EXECUTABLE
+        source = "builtin_default"
+    else:
+        executable = configured.strip()
+        if not executable:
+            raise ValueError(
+                f"{CSYNTH_EXECUTABLE_ENV} must not be empty"
+            )
+        source = f"environment:{CSYNTH_EXECUTABLE_ENV}"
+
+    if any(character in executable for character in ("\x00", "\r", "\n")):
+        raise ValueError(
+            "Vitis executable must not contain NUL or newline characters"
+        )
+
+    resolved_executable = shutil.which(executable)
+    if resolved_executable is None and os.path.isabs(executable):
+        if os.path.isfile(executable):
+            resolved_executable = executable
+
+    command = f"{shlex.quote(executable)} {CSYNTH_ARGUMENTS}"
+    return {
+        "command": command,
+        "command_source": source,
+        "executable": executable,
+        "resolved_executable": resolved_executable,
+    }
+
+
+def _build_csynth_invocation(
+    *,
+    work_dir: str,
+    top_kernel_name: str,
+    source_files: list[str],
+    profile: TargetProfile,
+    command_resolution: dict[str, Any],
+    timelimit: int,
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "phase": "csynth",
+        "work_dir": os.path.abspath(work_dir),
+        "top_kernel": top_kernel_name,
+        "source_files": source_files,
+        "tcl_path": os.path.abspath(
+            os.path.join(work_dir, "vitis.tcl")
+        ),
+        "timeout_seconds": timelimit,
+        "target_profile": profile.to_dict(),
+        "requested_toolchain_version": profile.toolchain_version,
+        "toolchain_version_verification": {
+            "status": "not_checked",
+            "actual": None,
+        },
+        **command_resolution,
+        "execution": {
+            "status": "pending",
+            "returncode": None,
+            "timeout": None,
+        },
+    }
 
 
 TargetProfileInput = (
@@ -127,19 +208,57 @@ def run_csynth(
 ):
     top_kernel_name = cv["new_kernel_name"]
     file_list = {f"{top_kernel_name}.cpp": cv["curr_code"]}
+    profile = resolve_target_profile(cv.get("target_profile"))
     make_csynth_script(
         work_dir,
         top_kernel_name,
         file_list,
-        target_profile=cv.get("target_profile"),
+        target_profile=profile,
     )
+
+    command_resolution = resolve_csynth_command()
+    invocation = _build_csynth_invocation(
+        work_dir=work_dir,
+        top_kernel_name=top_kernel_name,
+        source_files=list(file_list.keys()),
+        profile=profile,
+        command_resolution=command_resolution,
+        timelimit=timelimit,
+    )
+    effective_profile_path = os.path.join(
+        work_dir,
+        "effective_target_profile.json",
+    )
+    invocation_path = os.path.join(
+        work_dir,
+        "csynth_invocation.json",
+    )
+    _write_json(
+        effective_profile_path,
+        {
+            "schema_version": 1,
+            "profile": profile.to_dict(),
+        },
+    )
+    _write_json(invocation_path, invocation)
+
+    command = command_resolution["command"]
     print(f">>> Synthesizing in {work_dir}... <<<")
-    result = tools.general.run_cmd(work_dir, CSYNTH_CMD, timelimit)
+    result = tools.general.run_cmd(work_dir, command, timelimit)
+    invocation["execution"] = {
+        "status": "completed",
+        "returncode": result.get("returncode"),
+        "timeout": bool(result.get("timeout", False)),
+    }
+    _write_json(invocation_path, invocation)
     # Check if the synthesis tool actually ran
     if result["returncode"] != 0 and not result.get("timeout", False):
         stderr = result.get("stderr", "")
         if "not found" in stderr or "No such file" in stderr or result["returncode"] == 127:
-            raise RuntimeError(f"CSYNTH_CMD failed to launch: {CSYNTH_CMD}\nstderr: {stderr[:500]}")
+            raise RuntimeError(
+                f"CSYNTH command failed to launch: {command}\n"
+                f"stderr: {stderr[:500]}"
+            )
     rpt_path = os.path.join(work_dir, "csynth", "solution", "syn", "report", f"{top_kernel_name}_csynth.rpt")
     if result["timeout"]:
         if (not os.path.exists(rpt_path)):
