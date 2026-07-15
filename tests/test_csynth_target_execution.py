@@ -17,6 +17,18 @@ CUSTOM_TARGET = {
 }
 
 
+MATCHED_VERIFICATION = {
+    "status": "matched",
+    "requested": "2023.2",
+    "actual": "2023.2",
+    "probe_command": "/mock/bin/vitis-run --version",
+    "probe_source": "resolved_executable",
+    "returncode": 0,
+    "stdout": "****** vitis-run v2023.2 (64-bit)\n",
+    "stderr": "",
+}
+
+
 def make_context(
     *,
     target_profile=None,
@@ -83,15 +95,20 @@ class CsynthTargetExecutionTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             with patch.object(
-                csynth.tools.general,
-                "run_cmd",
-                side_effect=fake_run_cmd,
+                csynth,
+                "probe_csynth_version",
+                return_value=MATCHED_VERIFICATION,
             ):
-                result = csynth.run_csynth(
-                    directory,
-                    make_context(target_profile=CUSTOM_TARGET),
-                    timelimit=17,
-                )
+                with patch.object(
+                    csynth.tools.general,
+                    "run_cmd",
+                    side_effect=fake_run_cmd,
+                ):
+                    result = csynth.run_csynth(
+                        directory,
+                        make_context(target_profile=CUSTOM_TARGET),
+                        timelimit=17,
+                    )
 
         self.assertEqual(result[0], "csynth_failed")
         self.assertEqual(observed["command"], csynth.CSYNTH_CMD)
@@ -121,14 +138,19 @@ class CsynthTargetExecutionTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             with patch.object(
-                csynth.tools.general,
-                "run_cmd",
-                side_effect=fake_run_cmd,
+                csynth,
+                "probe_csynth_version",
+                return_value=MATCHED_VERIFICATION,
             ):
-                csynth.run_csynth(
-                    directory,
-                    make_context(),
-                )
+                with patch.object(
+                    csynth.tools.general,
+                    "run_cmd",
+                    side_effect=fake_run_cmd,
+                ):
+                    csynth.run_csynth(
+                        directory,
+                        make_context(),
+                    )
 
         self.assertIn(
             'set_part "xcu200-fsgd2104-2-e"',

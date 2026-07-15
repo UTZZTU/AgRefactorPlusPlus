@@ -17,6 +17,18 @@ CUSTOM_TARGET = {
 }
 
 
+MATCHED_VERIFICATION = {
+    "status": "matched",
+    "requested": "2023.2",
+    "actual": "2023.2",
+    "probe_command": "/mock/bin/vitis-run --version",
+    "probe_source": "resolved_executable",
+    "returncode": 0,
+    "stdout": "****** vitis-run v2023.2 (64-bit)\n",
+    "stderr": "",
+}
+
+
 def make_context(target_profile=None) -> ContextVariables:
     data = {
         "curr_code": 'extern "C" void top_hls() {}\n',
@@ -120,15 +132,20 @@ class CsynthExecutionEvidenceTests(unittest.TestCase):
                 return_value="/mock/bin/vitis-run",
             ):
                 with patch.object(
-                    csynth.tools.general,
-                    "run_cmd",
-                    side_effect=fake_run_cmd,
+                    csynth,
+                    "probe_csynth_version",
+                    return_value=MATCHED_VERIFICATION,
                 ):
-                    result = csynth.run_csynth(
-                        directory,
-                        make_context(CUSTOM_TARGET),
-                        timelimit=23,
-                    )
+                    with patch.object(
+                        csynth.tools.general,
+                        "run_cmd",
+                        side_effect=fake_run_cmd,
+                    ):
+                        result = csynth.run_csynth(
+                            directory,
+                            make_context(CUSTOM_TARGET),
+                            timelimit=23,
+                        )
 
             invocation_after = json.loads(
                 (
@@ -163,7 +180,13 @@ class CsynthExecutionEvidenceTests(unittest.TestCase):
             observed["invocation_before"][
                 "toolchain_version_verification"
             ]["status"],
-            "not_checked",
+            "matched",
+        )
+        self.assertEqual(
+            observed["invocation_before"][
+                "toolchain_version_verification"
+            ]["actual"],
+            "2023.2",
         )
         self.assertEqual(
             observed["invocation_before"]["resolved_executable"],
@@ -194,14 +217,19 @@ class CsynthExecutionEvidenceTests(unittest.TestCase):
                 return_value="/mock/bin/vitis-run",
             ):
                 with patch.object(
-                    csynth.tools.general,
-                    "run_cmd",
-                    side_effect=fake_run_cmd,
+                    csynth,
+                    "probe_csynth_version",
+                    return_value=MATCHED_VERIFICATION,
                 ):
-                    csynth.run_csynth(
-                        directory,
-                        make_context(),
-                    )
+                    with patch.object(
+                        csynth.tools.general,
+                        "run_cmd",
+                        side_effect=fake_run_cmd,
+                    ):
+                        csynth.run_csynth(
+                            directory,
+                            make_context(),
+                        )
 
             saved = json.loads(
                 (

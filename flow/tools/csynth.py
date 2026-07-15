@@ -1,4 +1,4 @@
-import json, os, requests, shlex, shutil
+import json, os, re, requests, shlex, shutil, subprocess
 from collections.abc import Mapping
 from flow.base_agent import HLSAgentLoader
 from autogen.agentchat.group import ContextVariables # type: ignore
@@ -19,6 +19,7 @@ CSYNTH_EXECUTABLE_ENV = "AGREFACTOR_VITIS_RUN"
 DEFAULT_CSYNTH_EXECUTABLE = "vitis-run"
 CSYNTH_ARGUMENTS = "--mode hls --tcl --input_file vitis.tcl"
 CSYNTH_CMD = f"{DEFAULT_CSYNTH_EXECUTABLE} {CSYNTH_ARGUMENTS}"
+CSYNTH_VERSION_PROBE_TIMEOUT = 20
 
 
 def get_error_msg(synth_dir: str) -> str:
@@ -74,6 +75,131 @@ def resolve_csynth_command() -> dict[str, Any]:
     }
 
 
+def _extract_vitis_version(output: str) -> str | None:
+    match = re.search(
+        r"\bv(?P<version>\d{4}\.\d+(?:\.\d+)?)\b",
+        output,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    return match.group("version")
+
+
+def _normalize_toolchain_version(
+    value: str | None,
+) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if cleaned.lower().startswith("v"):
+        cleaned = cleaned[1:]
+    return cleaned or None
+
+
+def probe_csynth_version(
+    command_resolution: Mapping[str, Any],
+    requested_version: str | None,
+    *,
+    timeout_seconds: int = CSYNTH_VERSION_PROBE_TIMEOUT,
+) -> dict[str, Any]:
+    executable = command_resolution.get("resolved_executable")
+    if executable is None:
+        executable = command_resolution.get("executable")
+
+    probe_command = [str(executable), "--version"]
+    base = {
+        "requested": requested_version,
+        "actual": None,
+        "probe_command": shlex.join(probe_command),
+        "probe_source": (
+            "resolved_executable"
+            if command_resolution.get("resolved_executable")
+            else "configured_executable"
+        ),
+        "returncode": None,
+        "stdout": "",
+        "stderr": "",
+    }
+
+    if command_resolution.get("resolved_executable") is None:
+        return {
+            **base,
+            "status": "executable_not_found",
+        }
+
+    try:
+        completed = subprocess.run(
+            probe_command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout or ""
+        stderr = exc.stderr or ""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", errors="replace")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        return {
+            **base,
+            "status": "probe_timeout",
+            "stdout": stdout[:4000],
+            "stderr": stderr[:4000],
+        }
+    except OSError as exc:
+        return {
+            **base,
+            "status": "probe_failed",
+            "stderr": str(exc)[:4000],
+        }
+
+    stdout = completed.stdout[:4000]
+    stderr = completed.stderr[:4000]
+    combined = f"{stdout}\n{stderr}"
+    actual = _extract_vitis_version(combined)
+    requested = _normalize_toolchain_version(requested_version)
+
+    if completed.returncode != 0:
+        status = "probe_failed"
+    elif actual is None:
+        status = "unparseable"
+    elif requested is None:
+        status = "detected"
+    elif actual == requested:
+        status = "matched"
+    else:
+        status = "mismatch"
+
+    return {
+        **base,
+        "status": status,
+        "actual": actual,
+        "returncode": completed.returncode,
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+
+
+def _require_compatible_toolchain(
+    verification: Mapping[str, Any],
+) -> None:
+    if verification.get("status") in {"matched", "detected"}:
+        return
+
+    raise RuntimeError(
+        "Vitis toolchain verification failed before csynth: "
+        f"status={verification.get('status')}, "
+        f"requested={verification.get('requested')!r}, "
+        f"actual={verification.get('actual')!r}, "
+        f"probe={verification.get('probe_command')!r}"
+    )
+
+
 def _build_csynth_invocation(
     *,
     work_dir: str,
@@ -96,7 +222,8 @@ def _build_csynth_invocation(
         "target_profile": profile.to_dict(),
         "requested_toolchain_version": profile.toolchain_version,
         "toolchain_version_verification": {
-            "status": "not_checked",
+            "status": "pending",
+            "requested": profile.toolchain_version,
             "actual": None,
         },
         **command_resolution,
@@ -240,6 +367,23 @@ def run_csynth(
             "profile": profile.to_dict(),
         },
     )
+    _write_json(invocation_path, invocation)
+
+    verification = probe_csynth_version(
+        command_resolution,
+        profile.toolchain_version,
+    )
+    invocation["toolchain_version_verification"] = verification
+    try:
+        _require_compatible_toolchain(verification)
+    except RuntimeError:
+        invocation["execution"] = {
+            "status": "blocked_before_csynth",
+            "returncode": None,
+            "timeout": False,
+        }
+        _write_json(invocation_path, invocation)
+        raise
     _write_json(invocation_path, invocation)
 
     command = command_resolution["command"]
