@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 from autogen.agentchat.group import ContextVariables # type: ignore
 import flow.tools as tools
 from agrefactor.evaluation import TestbenchPreflight
+from agrefactor.runtime.budget import BudgetManager
 from agrefactor.testing import TestbenchRepairLoop
 
 dotenv.load_dotenv('.env', override=True)
@@ -328,6 +329,7 @@ def csynth_and_csim(
     *,
     testbench_repairer=None,
     max_testbench_repair_attempts: int = 0,
+    budget: BudgetManager | None = None,
 ):
     if cv["code_for_hetero"] != "" and first_time:
         csynth_dir_for_hetero = os.path.join(
@@ -344,6 +346,7 @@ def csynth_and_csim(
                     "target_profile": cv.get("target_profile"),
                 }
             ),
+            budget=budget,
         )
         if status != "succeeded":
             cv["code_for_hetero"] = ""
@@ -433,7 +436,11 @@ def csynth_and_csim(
     )
     os.makedirs(csynth_dir, exist_ok=True)
 
-    csynth_res = tools.csynth.run_csynth(csynth_dir, cv)
+    csynth_res = tools.csynth.run_csynth(
+        csynth_dir,
+        cv,
+        budget=budget,
+    )
     first_task, first_res = "csynth", csynth_res
 
     kill_other = False

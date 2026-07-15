@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 import flow.tools as tools
 from flow.rag.rag_integration import KnowledgeManager
 from flow.base_agent import reset_agrefactorpp_usage_registry, print_agrefactorpp_usage_summary
+from agrefactor.runtime.budget import BudgetManager
 from agrefactor.testing import (
     build_openai_compatible_testbench_repairer,
 )
@@ -54,6 +55,7 @@ def hls_refactor_with_rag(
     reasoning_effort: Optional[str] = None,
     base_url: Optional[str] = None,
     target_profile: Optional[Dict[str, Any]] = None,
+    budget: Optional[BudgetManager] = None,
     enable_testbench_repair: bool = False,
     max_testbench_repair_attempts: int = 2,
     testbench_repair_model: Optional[str] = None,
@@ -86,6 +88,19 @@ def hls_refactor_with_rag(
         dict,
     ):
         raise TypeError("target_profile must be a dictionary")
+    if budget is not None and not isinstance(
+        budget,
+        BudgetManager,
+    ):
+        raise TypeError("budget must be a BudgetManager or None")
+    if remote and budget is not None and (
+        budget.limits.max_tool_calls is not None
+        or budget.limits.max_csynth_calls is not None
+    ):
+        raise ValueError(
+            "hard tool budgets currently require local execution; "
+            "the remote HLS path cannot share the BudgetManager"
+        )
 
     testbench_repairer = None
     if enable_testbench_repair:
@@ -142,7 +157,11 @@ def hls_refactor_with_rag(
         if tools.heterorefactor.call_heterorefactor(output_dir, cv):
             with open(os.path.join(output_dir, "refactored_code.cpp"), "r", encoding="utf-8") as f:
                 cv["curr_code"] = f.read()
-            status, error_msg = tools.csynth.run_csynth(output_dir, cv)
+            status, error_msg = tools.csynth.run_csynth(
+                output_dir,
+                cv,
+                budget=budget,
+            )
             if status != "succeeded":
                 cv["curr_code"] = source_code
             else:
@@ -276,6 +295,7 @@ def hls_refactor_with_rag(
                     if enable_testbench_repair
                     else 0
                 ),
+                budget=budget,
             )
         if kill_other and (not first_task) and (not second_task):
             status = "succeeded by hetero"

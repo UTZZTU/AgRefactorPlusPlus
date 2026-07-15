@@ -218,6 +218,7 @@ class LegacyRefactorAdapter:
             context.task,
             self._settings,
         )
+        kwargs["budget"] = context.budget
         backend = self._backend or self._load_backend()
 
         context.trace.record(
