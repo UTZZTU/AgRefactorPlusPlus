@@ -53,6 +53,7 @@ def hls_refactor_with_rag(
     remote: bool = False,
     reasoning_effort: Optional[str] = None,
     base_url: Optional[str] = None,
+    target_profile: Optional[Dict[str, Any]] = None,
     enable_testbench_repair: bool = False,
     max_testbench_repair_attempts: int = 2,
     testbench_repair_model: Optional[str] = None,
@@ -80,6 +81,11 @@ def hls_refactor_with_rag(
         raise ValueError(
             "max_testbench_repair_attempts must not be negative"
         )
+    if target_profile is not None and not isinstance(
+        target_profile,
+        dict,
+    ):
+        raise TypeError("target_profile must be a dictionary")
 
     testbench_repairer = None
     if enable_testbench_repair:
@@ -120,6 +126,7 @@ def hls_refactor_with_rag(
         "curr_code": source_code,     # current code
         "code_for_hetero": "",        # current code for hetero tool to refactor
         "new_kernel_name": "",        # new kernel function name
+        "target_profile": dict(target_profile or {}),
         "identified_items": [],       # identified items
         "items_hetero": [],           # identified items for heterorefactor
         "testbench": "",              # generated testbench

@@ -55,6 +55,10 @@ class LegacyRefactorAdapterTests(unittest.TestCase):
         kwargs = build_legacy_refactor_kwargs(self.task, settings)
 
         self.assertEqual(kwargs["kernel_name"], "process_top")
+        self.assertEqual(
+            kwargs["target_profile"],
+            self.target.to_dict(),
+        )
         self.assertEqual(kwargs["model"], "deepseek-v4-flash")
         self.assertEqual(kwargs["reasoning_effort"], "low")
         self.assertEqual(kwargs["debug"], 1)
@@ -126,6 +130,10 @@ class LegacyRefactorAdapterTests(unittest.TestCase):
 
         self.assertEqual(result.status, PhaseStatus.SUCCEEDED)
         self.assertEqual(captured["kernel_path"], self.task.kernel_path)
+        self.assertEqual(
+            captured["target_profile"],
+            self.target.to_dict(),
+        )
 
     def test_adapter_converts_failure_result(self) -> None:
         adapter = LegacyRefactorAdapter(

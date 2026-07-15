@@ -157,6 +157,7 @@ def build_legacy_refactor_kwargs(
     return {
         "kernel_path": task.kernel_path,
         "kernel_name": task.kernel_name,
+        "target_profile": task.target.to_dict(),
         "knowledge_db_path": settings.knowledge_db_path,
         "embedding_model": settings.embedding_model,
         "enable_rag": settings.enable_rag,
