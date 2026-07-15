@@ -95,6 +95,8 @@ def hls_refactor_with_rag(
         raise TypeError("budget must be a BudgetManager or None")
     if remote and budget is not None and (
         budget.limits.max_tool_calls is not None
+        or budget.limits.max_compile_calls is not None
+        or budget.limits.max_csim_calls is not None
         or budget.limits.max_csynth_calls is not None
     ):
         raise ValueError(

@@ -366,6 +366,7 @@ def csynth_and_csim(
                     "testbench": cv["testbench"],
                 }
             ),
+            budget=budget,
         )
         if status == "succeeded":
             return True, None, None, None, None
@@ -450,7 +451,11 @@ def csynth_and_csim(
     if first_res[0] != "succeeded":
         kill_other = True
     else:
-        csim_res = tools.csim.run_csim(csim_dir, cv)
+        csim_res = tools.csim.run_csim(
+            csim_dir,
+            cv,
+            budget=budget,
+        )
         second_task, second_res = "csim", csim_res
 
     return kill_other, first_task, first_res, second_task, second_res
