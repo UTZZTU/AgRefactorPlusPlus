@@ -258,6 +258,7 @@ def _run_result_to_dict(result: RunResult) -> dict[str, Any]:
             else {
                 "llm_calls": usage.llm_calls,
                 "tool_calls": usage.tool_calls,
+                "csynth_calls": usage.csynth_calls,
                 "tokens": usage.tokens,
                 "cost_usd": usage.cost_usd,
                 "elapsed_s": usage.elapsed_s,

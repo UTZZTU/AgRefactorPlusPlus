@@ -10,6 +10,11 @@ from agrefactor.config import (
     default_target_profile,
     resolve_target_profile,
 )
+from agrefactor.runtime.budget import (
+    BudgetExceededError,
+    BudgetManager,
+    BudgetUsage,
+)
 
 HLS_SERVER_URL = os.getenv("HLS_SERVER_URL")
 
@@ -20,6 +25,10 @@ DEFAULT_CSYNTH_EXECUTABLE = "vitis-run"
 CSYNTH_ARGUMENTS = "--mode hls --tcl --input_file vitis.tcl"
 CSYNTH_CMD = f"{DEFAULT_CSYNTH_EXECUTABLE} {CSYNTH_ARGUMENTS}"
 CSYNTH_VERSION_PROBE_TIMEOUT = 20
+CSYNTH_BUDGET_INCREMENT = {
+    "tool_calls": 1,
+    "csynth_calls": 1,
+}
 
 
 def get_error_msg(synth_dir: str) -> str:
@@ -208,6 +217,7 @@ def _build_csynth_invocation(
     profile: TargetProfile,
     command_resolution: dict[str, Any],
     timelimit: int,
+    budget: BudgetManager | None,
 ) -> dict[str, Any]:
     return {
         "schema_version": 1,
@@ -227,11 +237,45 @@ def _build_csynth_invocation(
             "actual": None,
         },
         **command_resolution,
+        "budget": {
+            "status": (
+                "not_configured"
+                if budget is None
+                else "pending"
+            ),
+            "requested_increment": dict(CSYNTH_BUDGET_INCREMENT),
+        },
         "execution": {
             "status": "pending",
             "returncode": None,
             "timeout": None,
         },
+    }
+
+
+def _budget_usage_to_dict(usage: BudgetUsage) -> dict[str, Any]:
+    return {
+        "llm_calls": usage.llm_calls,
+        "tool_calls": usage.tool_calls,
+        "csynth_calls": usage.csynth_calls,
+        "tokens": usage.tokens,
+        "cost_usd": usage.cost_usd,
+        "elapsed_s": usage.elapsed_s,
+    }
+
+
+def _blocked_budget_evidence(
+    exc: BudgetExceededError,
+    *,
+    checkpoint: str,
+) -> dict[str, Any]:
+    return {
+        "status": "blocked",
+        "checkpoint": checkpoint,
+        "requested_increment": dict(CSYNTH_BUDGET_INCREMENT),
+        "resource": exc.resource,
+        "limit": exc.limit,
+        "attempted": exc.attempted,
     }
 
 
@@ -332,6 +376,8 @@ def run_csynth(
     work_dir: str,
     cv: ContextVariables,
     timelimit: int = CSYNTH_TIMEOUT,
+    *,
+    budget: BudgetManager | None = None,
 ):
     top_kernel_name = cv["new_kernel_name"]
     file_list = {f"{top_kernel_name}.cpp": cv["curr_code"]}
@@ -351,6 +397,7 @@ def run_csynth(
         profile=profile,
         command_resolution=command_resolution,
         timelimit=timelimit,
+        budget=budget,
     )
     effective_profile_path = os.path.join(
         work_dir,
@@ -369,6 +416,31 @@ def run_csynth(
     )
     _write_json(invocation_path, invocation)
 
+    if budget is not None:
+        try:
+            budget.ensure_available(**CSYNTH_BUDGET_INCREMENT)
+            usage_before = budget.snapshot()
+        except BudgetExceededError as exc:
+            invocation["budget"] = _blocked_budget_evidence(
+                exc,
+                checkpoint="before_version_probe",
+            )
+            invocation["execution"] = {
+                "status": "blocked_by_budget",
+                "returncode": None,
+                "timeout": False,
+            }
+            _write_json(invocation_path, invocation)
+            raise
+
+        invocation["budget"] = {
+            "status": "available",
+            "checkpoint": "before_version_probe",
+            "requested_increment": dict(CSYNTH_BUDGET_INCREMENT),
+            "usage_before": _budget_usage_to_dict(usage_before),
+        }
+        _write_json(invocation_path, invocation)
+
     verification = probe_csynth_version(
         command_resolution,
         profile.toolchain_version,
@@ -386,9 +458,46 @@ def run_csynth(
         raise
     _write_json(invocation_path, invocation)
 
+    if budget is not None:
+        try:
+            usage_after = budget.consume(**CSYNTH_BUDGET_INCREMENT)
+        except BudgetExceededError as exc:
+            invocation["budget"] = _blocked_budget_evidence(
+                exc,
+                checkpoint="before_csynth_launch",
+            )
+            invocation["execution"] = {
+                "status": "blocked_by_budget",
+                "returncode": None,
+                "timeout": False,
+            }
+            _write_json(invocation_path, invocation)
+            raise
+
+        invocation["budget"] = {
+            "status": "consumed",
+            "checkpoint": "before_csynth_launch",
+            "requested_increment": dict(CSYNTH_BUDGET_INCREMENT),
+            "usage_before": invocation["budget"].get("usage_before"),
+            "usage_after": _budget_usage_to_dict(usage_after),
+        }
+        _write_json(invocation_path, invocation)
+
     command = command_resolution["command"]
     print(f">>> Synthesizing in {work_dir}... <<<")
-    result = tools.general.run_cmd(work_dir, command, timelimit)
+    try:
+        result = tools.general.run_cmd(work_dir, command, timelimit)
+    except Exception as exc:
+        invocation["execution"] = {
+            "status": "launch_error",
+            "returncode": None,
+            "timeout": False,
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:4000],
+        }
+        _write_json(invocation_path, invocation)
+        raise
+
     invocation["execution"] = {
         "status": "completed",
         "returncode": result.get("returncode"),
