@@ -32,6 +32,8 @@ class BudgetLimits:
 
     max_llm_calls: int | None = None
     max_tool_calls: int | None = None
+    max_compile_calls: int | None = None
+    max_csim_calls: int | None = None
     max_csynth_calls: int | None = None
     max_tokens: int | None = None
     max_cost_usd: float | None = None
@@ -40,6 +42,14 @@ class BudgetLimits:
     def __post_init__(self) -> None:
         self._validate_integer_limit("max_llm_calls", self.max_llm_calls)
         self._validate_integer_limit("max_tool_calls", self.max_tool_calls)
+        self._validate_integer_limit(
+            "max_compile_calls",
+            self.max_compile_calls,
+        )
+        self._validate_integer_limit(
+            "max_csim_calls",
+            self.max_csim_calls,
+        )
         self._validate_integer_limit(
             "max_csynth_calls",
             self.max_csynth_calls,
@@ -65,6 +75,8 @@ class BudgetUsage:
 
     llm_calls: int
     tool_calls: int
+    compile_calls: int
+    csim_calls: int
     csynth_calls: int
     tokens: int
     cost_usd: float
@@ -85,6 +97,8 @@ class BudgetManager:
         self._started_at = clock()
         self._llm_calls = 0
         self._tool_calls = 0
+        self._compile_calls = 0
+        self._csim_calls = 0
         self._csynth_calls = 0
         self._tokens = 0
         self._cost_usd = 0.0
@@ -105,6 +119,8 @@ class BudgetManager:
         return BudgetUsage(
             llm_calls=self._llm_calls,
             tool_calls=self._tool_calls,
+            compile_calls=self._compile_calls,
+            csim_calls=self._csim_calls,
             csynth_calls=self._csynth_calls,
             tokens=self._tokens,
             cost_usd=self._cost_usd,
@@ -116,6 +132,8 @@ class BudgetManager:
         *,
         llm_calls: int = 0,
         tool_calls: int = 0,
+        compile_calls: int = 0,
+        csim_calls: int = 0,
         csynth_calls: int = 0,
         tokens: int = 0,
         cost_usd: float = 0.0,
@@ -124,6 +142,8 @@ class BudgetManager:
 
         self._validate_increment("llm_calls", llm_calls)
         self._validate_increment("tool_calls", tool_calls)
+        self._validate_increment("compile_calls", compile_calls)
+        self._validate_increment("csim_calls", csim_calls)
         self._validate_increment("csynth_calls", csynth_calls)
         self._validate_increment("tokens", tokens)
         self._validate_cost_increment(cost_usd)
@@ -137,6 +157,16 @@ class BudgetManager:
             "tool_calls",
             self._tool_calls + tool_calls,
             self._limits.max_tool_calls,
+        )
+        self._check_limit(
+            "compile_calls",
+            self._compile_calls + compile_calls,
+            self._limits.max_compile_calls,
+        )
+        self._check_limit(
+            "csim_calls",
+            self._csim_calls + csim_calls,
+            self._limits.max_csim_calls,
         )
         self._check_limit(
             "csynth_calls",
@@ -164,6 +194,8 @@ class BudgetManager:
         *,
         llm_calls: int = 0,
         tool_calls: int = 0,
+        compile_calls: int = 0,
+        csim_calls: int = 0,
         csynth_calls: int = 0,
         tokens: int = 0,
         cost_usd: float = 0.0,
@@ -173,6 +205,8 @@ class BudgetManager:
         self.ensure_available(
             llm_calls=llm_calls,
             tool_calls=tool_calls,
+            compile_calls=compile_calls,
+            csim_calls=csim_calls,
             csynth_calls=csynth_calls,
             tokens=tokens,
             cost_usd=cost_usd,
@@ -180,6 +214,8 @@ class BudgetManager:
 
         self._llm_calls += llm_calls
         self._tool_calls += tool_calls
+        self._compile_calls += compile_calls
+        self._csim_calls += csim_calls
         self._csynth_calls += csynth_calls
         self._tokens += tokens
         self._cost_usd += cost_usd
@@ -192,6 +228,8 @@ class BudgetManager:
         checks = (
             (usage.llm_calls, self._limits.max_llm_calls),
             (usage.tool_calls, self._limits.max_tool_calls),
+            (usage.compile_calls, self._limits.max_compile_calls),
+            (usage.csim_calls, self._limits.max_csim_calls),
             (usage.csynth_calls, self._limits.max_csynth_calls),
             (usage.tokens, self._limits.max_tokens),
             (usage.cost_usd, self._limits.max_cost_usd),
