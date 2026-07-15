@@ -1,14 +1,18 @@
 import os, requests
+from collections.abc import Mapping
 from flow.base_agent import HLSAgentLoader
 from autogen.agentchat.group import ContextVariables # type: ignore
 import flow.tools as tools
 from typing import Optional, Dict, Any
+
+from agrefactor.config import TargetProfile, resolve_target_profile
 
 HLS_SERVER_URL = os.getenv("HLS_SERVER_URL")
 
 CSYNTH_TIMEOUT = 300
 ERROR_LINES = 15
 CSYNTH_CMD = "vitis-run --mode hls --tcl --input_file vitis.tcl"
+
 
 def get_error_msg(synth_dir: str) -> str:
     path = os.path.join(synth_dir, "csynth", "solution", "solution.log")
@@ -18,19 +22,78 @@ def get_error_msg(synth_dir: str) -> str:
             return "\n".join(log_content.strip().splitlines()[-ERROR_LINES:])
     return ""
 
-def make_vitis_tcl(top_kernel: str, file_list: list[str]) -> str:
+
+TargetProfileInput = (
+    TargetProfile
+    | Mapping[str, Any]
+    | str
+    | None
+)
+
+
+def _tcl_quote(value: str, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{field_name} must be a string")
+    if not value:
+        raise ValueError(f"{field_name} must not be empty")
+    if any(character in value for character in ("\x00", "\r", "\n")):
+        raise ValueError(
+            f"{field_name} must not contain NUL or newline characters"
+        )
+
+    escaped = (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("$", "\\$")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+    )
+    return f'"{escaped}"'
+
+
+def make_vitis_tcl(
+    top_kernel: str,
+    file_list: list[str],
+    target_profile: TargetProfileInput = None,
+) -> str:
+    profile = resolve_target_profile(target_profile)
+    if profile.toolchain != "vitis_hls":
+        raise ValueError(
+            "make_vitis_tcl supports only toolchain='vitis_hls'"
+        )
+    if profile.device is None:
+        raise ValueError(
+            "target profile device is required for Vitis synthesis"
+        )
+    if not file_list:
+        raise ValueError("file_list must not be empty")
+
+    quoted_top = _tcl_quote(top_kernel, "top_kernel")
+    quoted_device = _tcl_quote(profile.device, "target device")
+    compile_flags = " ".join(profile.compile_flags)
+
     tcl_lines = []
-    tcl_lines.append('open_project csynth')
-    tcl_lines.append(f'set_top {top_kernel}')
+    tcl_lines.append("open_project csynth")
+    tcl_lines.append(f"set_top {quoted_top}")
     for fname in file_list:
-        tcl_lines.append(f'add_files "{fname}" -cflags " -D XILINX "')
-    tcl_lines.append('open_solution -flow_target vitis solution')
-    tcl_lines.append('set_part xcu200-fsgd2104-2-e')
-    tcl_lines.append('create_clock -period 200MHz -name default')
-    tcl_lines.append('csynth_design')
-    tcl_lines.append('close_project')
-    tcl_lines.append('exit')
-    return '\n'.join(tcl_lines)
+        line = f"add_files {_tcl_quote(fname, 'source file')}"
+        if compile_flags:
+            line += (
+                " -cflags "
+                + _tcl_quote(compile_flags, "compile flags")
+            )
+        tcl_lines.append(line)
+    tcl_lines.append("open_solution -flow_target vitis solution")
+    tcl_lines.append(f"set_part {quoted_device}")
+    tcl_lines.append(
+        "create_clock -period "
+        f"{profile.clock_period_ns} -name default"
+    )
+    tcl_lines.append("csynth_design")
+    tcl_lines.append("close_project")
+    tcl_lines.append("exit")
+    return "\n".join(tcl_lines)
+
 
 def make_csynth_script(work_dir: str, top_kernel: str, file_list: dict[str, str]):
     for fname, fcontent in file_list.items():
@@ -42,6 +105,7 @@ def make_csynth_script(work_dir: str, top_kernel: str, file_list: dict[str, str]
     tcl_path = os.path.join(work_dir, "vitis.tcl")
     with open(tcl_path, "w", encoding="utf-8") as f:
         f.write(tcl_content)
+
 
 def run_csynth(
     work_dir: str,
