@@ -5,7 +5,11 @@ from autogen.agentchat.group import ContextVariables # type: ignore
 import flow.tools as tools
 from typing import Optional, Dict, Any
 
-from agrefactor.config import TargetProfile, resolve_target_profile
+from agrefactor.config import (
+    TargetProfile,
+    default_target_profile,
+    resolve_target_profile,
+)
 
 HLS_SERVER_URL = os.getenv("HLS_SERVER_URL")
 
@@ -95,13 +99,22 @@ def make_vitis_tcl(
     return "\n".join(tcl_lines)
 
 
-def make_csynth_script(work_dir: str, top_kernel: str, file_list: dict[str, str]):
+def make_csynth_script(
+    work_dir: str,
+    top_kernel: str,
+    file_list: dict[str, str],
+    target_profile: TargetProfileInput = None,
+):
     for fname, fcontent in file_list.items():
         file_path = os.path.join(work_dir, fname)
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(fcontent)
 
-    tcl_content = make_vitis_tcl(top_kernel, list(file_list.keys()))
+    tcl_content = make_vitis_tcl(
+        top_kernel,
+        list(file_list.keys()),
+        target_profile=target_profile,
+    )
     tcl_path = os.path.join(work_dir, "vitis.tcl")
     with open(tcl_path, "w", encoding="utf-8") as f:
         f.write(tcl_content)
@@ -114,7 +127,12 @@ def run_csynth(
 ):
     top_kernel_name = cv["new_kernel_name"]
     file_list = {f"{top_kernel_name}.cpp": cv["curr_code"]}
-    make_csynth_script(work_dir, top_kernel_name, file_list)
+    make_csynth_script(
+        work_dir,
+        top_kernel_name,
+        file_list,
+        target_profile=cv.get("target_profile"),
+    )
     print(f">>> Synthesizing in {work_dir}... <<<")
     result = tools.general.run_cmd(work_dir, CSYNTH_CMD, timelimit)
     # Check if the synthesis tool actually ran
@@ -142,12 +160,27 @@ def run_csynth(
     return status, error_msg
 
 
+def require_remote_default_target(
+    cv: ContextVariables,
+) -> TargetProfile:
+    """Reject target overrides that the legacy remote API would drop."""
+
+    profile = resolve_target_profile(cv.get("target_profile"))
+    if profile != default_target_profile():
+        raise ValueError(
+            "remote synthesis currently supports only the default "
+            "target profile; use local execution for target overrides"
+        )
+    return profile
+
+
 def run_csynth_remote(
     cv: ContextVariables,
     timelimit: int = CSYNTH_TIMEOUT,
 ):
     if not HLS_SERVER_URL:
         raise RuntimeError("HLS_SERVER_URL environment variable not set")
+    require_remote_default_target(cv)
     payload = {
         "curr_code": cv["curr_code"],
         "new_kernel_name": cv["new_kernel_name"],

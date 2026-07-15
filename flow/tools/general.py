@@ -341,6 +341,7 @@ def csynth_and_csim(
                 data={
                     "curr_code": cv["code_for_hetero"],
                     "new_kernel_name": cv["new_kernel_name"],
+                    "target_profile": cv.get("target_profile"),
                 }
             ),
         )
@@ -451,6 +452,7 @@ def csynth_and_csim(
 def csynth_and_csim_remote(cv: ContextVariables, first_time: bool):
     if not HLS_SERVER_URL:
         raise RuntimeError("HLS_SERVER_URL environment variable not set")
+    tools.csynth.require_remote_default_target(cv)
     payload = {
         "orig_code": cv["orig_code"],
         "curr_code": cv["curr_code"],
