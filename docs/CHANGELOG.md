@@ -10,15 +10,40 @@
 - 新增 TaskSpec、TargetProfile、模型抽象/Registry/Provider、Evaluator/Evidence、Budget/Trace、UnifiedRunner 与 CLI。
 - 新增 Legacy Refactor Adapter 与 module-entrypoint regression。
 - 合并 AutoGen 与 testbench repair known usage，并按 artifact 去重。
-- 明确 TargetProfile 真实下传与完整工具预算仍未完成。
 
-### Stage 2 证据闭环核心
+### Stage 1 TargetProfile 本地执行核心
+
+- 新增 default target profile 与 partial override resolver。
+- 支持 clock period/frequency、compile flags replace/append。
+- 将 TargetProfile 下传到 legacy `flow.new` 与 csynth。
+- 从 TargetProfile 生成 part、clock 和 cflags 对应 Tcl。
+- 新增 `AGREFACTOR_VITIS_RUN` 可选 executable 覆盖。
+- 新增 actual executable resolution 与 `vitis-run --version` probe。
+- requested/actual mismatch、probe failure、timeout、unparseable 会在 csynth 前阻断。
+- 新增 `effective_target_profile.json` 与 `csynth_invocation.json`。
+- remote non-default target 显式拒绝，避免静默丢配置。
+- 确定性测试达到 153/153。
+- Vitis 2023.2 真实 csynth smoke 通过：
+  `/data/agrefactor_runs/stage1_target_profile_real_vitis_20260715_141118`。
+- 新增多版本显式指定文档：`target.toolchain_version` + `AGREFACTOR_VITIS_RUN`。
+- 新增 `stage1_target_profile_acceptance.md`。
+
+### Stage 1 当前缺口
+
+- compile/public-test/csim/csynth/cosim 工具硬预算；
+- stable named profiles；
+- per-profile executable/settings；
+- platform/resources/parser；
+- per-field provenance；
+- 更多版本、器件和 kernel 验证。
+
+### Stage 2 Testbench Reliability 核心
 
 - 新增 testbench preflight、failure stage/kind/owner/next-action。
-- 新增 testbench-only bounded repair、ABI/linkage evidence 与私有 global gate。
-- provider 异常、空/未修改回复会消耗 budget 并在剩余预算允许时继续。
-- 新增 repair artifact、统一 usage、110 个测试与真实统一 CLI + DeepSeek + Vitis 验收。
-- 新增 Stage 0–6 Roadmap、Current State 与阶段文档，固定 Stage 5 真实版本迁移目标。
+- 新增 testbench-only bounded repair、ABI/linkage evidence 与 private-global gate。
+- provider 异常、空/未修改回复会消耗 repair budget。
+- 新增 repair artifact、统一 usage 与真实 unified CLI + DeepSeek + Vitis 验收。
+- Stage 2 仍缺 general parser、完整 state machine、Shared Prompt Builder 与多类型 smoke。
 <!-- AGREFPP_STAGE1_STAGE2_CHANGELOG:END -->
 
 ### 文档

@@ -36,19 +36,50 @@ docs/environment/pip-freeze.txt
 
 ## Vitis HLS
 
-```bash
-export VITIS_HLS_SETTINGS=/your/path/to/Xilinx/Vitis_HLS/2023.2/settings64.sh
-source "$VITIS_HLS_SETTINGS"
-```
+当前真实验收版本是 **Vitis 2023.2**。
 
-检查：
+加载环境：
 
 ```bash
-which vitis_hls
-vitis_hls -version
+source /your/path/to/Xilinx/Vitis/2023.2/settings64.sh
 ```
 
-当前文档中的复现结论以 Vitis HLS 2023.2 为准。其他版本可能出现命令、报告格式、综合结果或支持语法差异。
+检查实际 launcher：
+
+```bash
+which vitis-run
+vitis-run --version
+```
+
+单版本机器可以依赖 PATH。
+
+多版本机器必须显式指定当前运行所用 launcher：
+
+```bash
+export AGREFACTOR_VITIS_RUN=/your/path/to/Xilinx/Vitis/2023.2/bin/vitis-run
+```
+
+并在 TaskSpec 中声明一致版本：
+
+```json
+{
+  "target": {
+    "toolchain_version": "2023.2"
+  }
+}
+```
+
+系统会对 selected executable 执行 `--version`。requested 与 actual 不一致时，在 csynth 前阻断。
+
+不同版本示例：
+
+```bash
+source /your/path/to/Xilinx/Vitis/2024.1/settings64.sh
+export AGREFACTOR_VITIS_RUN=/your/path/to/Xilinx/Vitis/2024.1/bin/vitis-run
+python -m agrefactor.cli run task-2024.1.json --legacy
+```
+
+当前文档的真实综合结论只适用于 2023.2。其他版本可能存在 launcher、Tcl、器件、报告格式和综合行为差异，必须独立验证。
 
 ## API 配置
 

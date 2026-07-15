@@ -1,37 +1,47 @@
 # AgRefactor++ Goal Traceability
 
-> 本文档用于回答三个问题：最初目标是否还在、它在哪个 Stage 实现、目前究竟完成到什么程度。
+> 本文档回答：最初目标是否还在、在哪个 Stage 实现、目前完成到什么程度、下一证据是什么。
 
 ## 1. 核心目标追踪表
 
-| 目标 | 主要 Stage | 当前实现 | 仍缺内容 | 完成证据 |
+| 目标 | 主要 Stage | 当前实现 | 仍缺内容 | 当前证据 |
 |---|---|---|---|---|
-| TargetProfile | Stage 1 | 数据结构、TaskSpec 引用、CLI 展示 | settings/tool/part/clock/flags/Tcl/parser 真正下传，effective profile artifact | 真实 Vitis run 使用 profile 且可审计 |
-| 双模式 | Stage 5 | 当前仅 refactor/optimize/full 数据结构预留 | `migrate`、source profile、source baseline、migration report | 至少一组真实 source→target |
-| Model API Registry | Stage 1 | Model Registry、OpenAI-compatible Provider、DeepSeek 验证 | 更多 provider profile、用户授权模型池配置 | 不改主流程即可接入授权模型 |
-| 分层 Prompt | Stage 2 | Testbench repair prompt 与证据注入是局部实现 | 共享 Prompt Builder、阶段层、TargetProfile 层、family adapter | 多模型/多阶段真实工具结果 |
-| 结构化反馈/状态机 | Stage 2 | Testbench preflight evidence | general parser、全流程 state machine | 多类错误正确分类并驱动动作 |
-| 安全三级优化器 | Stage 3 | 仅有 legacy `simple_iter` baseline | hypothesis、3 levels、checkpoint、rollback、cache、best_correct | 多 kernel 与 baseline 对照 |
-| Memory Applicability Gate | Stage 4 | 当前 RAG 可检索正负 trial | schema、score、abstention、off/gated/always | 负迁移与弃权实验 |
-| BudgetManager | Stage 1/3 | token/cost core、repair calls、wall time | compile/test/csim/csynth/cosim 计数与硬限制 | 超预算前停止并返回 best_correct |
+| TargetProfile | Stage 1/5 | default/override、legacy propagation、actual command、version gate、part、clock、flags、Tcl、effective profile、invocation evidence | named profiles、settings/executable 自包含、platform/resources/parser、provenance、多版本/多 kernel | [`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md) |
+| 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
+| Model API Registry | Stage 1 | Registry、OpenAI-compatible Provider、DeepSeek 验证 | 更多 provider profiles、用户授权模型池 | 不改主流程即可接入授权模型 |
+| 分层 Prompt | Stage 2 | testbench repair prompt 与 evidence injection 的局部实现 | Shared Prompt Builder、stage layer、TargetProfile layer、family adapter | 多模型/多阶段真实工具结果 |
+| 结构化反馈/状态机 | Stage 2 | TestbenchPreflight evidence | general parser、完整 state machine | 多类错误分类并驱动合法动作 |
+| 安全三级优化器 | Stage 3 | legacy `simple_iter` baseline | hypothesis、3 levels、checkpoint、rollback、cache、best_correct | 多 kernel 与 baseline 对照 |
+| Memory Applicability Gate | Stage 4 | legacy RAG 正负 trial | schema、score、abstention、off/gated/always | 负迁移与弃权实验 |
+| BudgetManager | Stage 1/3 | token/cost core、repair calls、wall-time core | compile/public-test/csim/csynth/cosim hard limits | 超预算前阻断，后续返回 best_correct |
 
-## 2. 防止概念偷换
+## 2. TargetProfile 当前边界
 
-以下等式均不成立：
+已经能够声明：
+
+> 在 commit `717fdef` 上，TargetProfile 本地执行核心已真实控制 Vitis 2023.2 的 executable、版本、part、clock、compile flags 和 Tcl，并留下可审计证据。
+
+仍不能声明：
+
+- 支持任意 Vitis 版本；
+- 支持任意 source→target 迁移；
+- 支持任意器件；
+- 支持任意 kernel；
+- per-task executable/settings 已完全配置化。
+
+## 3. 防止概念偷换
 
 ```text
-TargetProfile 类存在 ≠ TargetProfile 已驱动真实工具
+TargetProfile 一次真实运行成功 ≠ 任意版本支持
+TaskSpec 有 version 字段 ≠ 版本迁移
 RAG 检索存在 ≠ Memory Applicability Gate
 simple_iter 能循环 ≠ 安全三级优化器
-TaskSpec 有 version 字段 ≠ 版本迁移
-110 个测试通过 ≠ 110 个真实 kernel
-一个 kernel 成功 ≠ 普适支持
-一次 PPA 改善 ≠ 稳定优化能力
+153 个确定性测试 ≠ 153 个真实 kernel
+一次 PPA 改善 ≠ 稳定优化收益
+BudgetManager 类存在 ≠ 工具硬预算已生效
 ```
 
-## 3. 完成声明模板
-
-对外声明某模块完成前，至少回答：
+## 4. 完成声明检查表
 
 1. 数据结构是否存在？
 2. 是否接入真实主流程？
@@ -42,17 +52,17 @@ TaskSpec 有 version 字段 ≠ 版本迁移
 7. 文档是否同步？
 8. 当前限制是否明确？
 
-任何一项为否，应使用“部分完成”“核心完成”或“尚未验证”，不得写“全面支持”。
+任一关键项为否，应表述为“部分完成”“核心完成”或“尚未验证”。
 
-## 4. 当前下一任务
-
-当前不是 Stage 3。下一任务是：
+## 5. 当前下一任务
 
 ```text
-TaskSpec/TargetProfile
-→ LegacyRefactorAdapter
-→ flow.new / csynth tooling
-→ actual Vitis command and Tcl
+BudgetManager
+→ csynth pre-call hard check
+→ real-call accounting
+→ exhaustion evidence
+→ deterministic tests
+→ real Vitis budget smoke
 ```
 
-先使 target settings、part、clock 与 flags 真正生效并持久化证据。
+先完成 csynth，再按统一契约扩展到 compile/public-test/csim/cosim。

@@ -171,17 +171,68 @@ HeteroRefactor 属于可选外部工具，不是当前 AgRefactor++ 主流程的
 
 ### Stage 1 共享架构
 
-TaskSpec、TargetProfile、Model Registry、OpenAI-compatible Provider、UnifiedRunner、CLI、Budget core、Trace、Legacy Adapter 与已知 usage 合并已验证。TargetProfile 尚未完整控制实际 Vitis settings/part/clock/flags/Tcl，因此应表述为“核心架构完成，真实下传未完成”。
+TaskSpec、TargetProfile、Model Registry、OpenAI-compatible Provider、UnifiedRunner、CLI、Budget core、Trace、Legacy Adapter 与已知 usage 合并已经实现。
+
+### Stage 1 TargetProfile 本地执行核心：已验证
+
+在 commit `717fdef` 上完成：
+
+- default profile 与 partial override；
+- part/device；
+- 4.0 ns clock；
+- compile flag semantic guard；
+- target-aware Tcl；
+- actual `/data/Xilinx/Vitis/2023.2/bin/vitis-run`；
+- requested/actual version `2023.2` matched；
+- mismatch-before-csynth；
+- effective profile 与 invocation evidence；
+- 153 个确定性测试；
+- 真实 Vitis csynth。
+
+真实运行：
+
+```text
+/data/agrefactor_runs/stage1_target_profile_real_vitis_20260715_141118
+```
+
+结果：
+
+```text
+REAL_VITIS_SMOKE_PASSED=1
+Target device=xcu200-fsgd2104-2-e
+Target clock=4.00 ns
+Estimated clock=2.920 ns
+Estimated Fmax=342.47 MHz
+```
+
+多版本机器当前通过 `target.toolchain_version` 加 `AGREFACTOR_VITIS_RUN` 显式指定；只有 2023.2 已完成真实验收。
+
+### Stage 1 尚未关闭
+
+工具硬预算尚未完成：
+
+```text
+compile/public-test/csim/csynth/cosim
+pre-call hard check
+post-call accounting
+safe exhaustion
+```
 
 ### Stage 2 Testbench Reliability
 
-preflight、ownership、私有 global gate、ABI/linkage、bounded repair、剩余预算重试、artifact、统一 usage、110 个确定性测试与一个真实状态型 kernel E2E 已验证。
-
-详见 [`STAGE2_EVIDENCE_LOOP.md`](STAGE2_EVIDENCE_LOOP.md) 与 [`stage2_acceptance.md`](stage2_acceptance.md)。
+preflight、ownership、private-global gate、ABI/linkage、bounded repair、artifact、统一 usage 与一个真实状态型 kernel E2E 已验证。
 
 ### 尚不能宣称
 
-110 个测试不等于 110 个真实 kernel；尚无多类型真实 smoke；general VitisFeedbackParser、完整状态机、正式 Prompt Builder、安全优化器、Memory Gate 与真实版本迁移均未完成。
+- 153 个测试不等于 153 个真实 kernel；
+- 一次 2023.2 smoke 不等于支持任意版本；
+- general parser、完整 state machine、Shared Prompt Builder、安全优化器、Memory Gate 与真实版本迁移均未完成。
+
+详见：
+
+- [`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md)
+- [`STAGE2_EVIDENCE_LOOP.md`](STAGE2_EVIDENCE_LOOP.md)
+- [`stage2_acceptance.md`](stage2_acceptance.md)
 <!-- AGREFPP_STAGE1_STAGE2_STATUS:END -->
 
 ## 文档原则

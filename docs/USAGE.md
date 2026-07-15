@@ -218,24 +218,53 @@ best_design.json
 python -m agrefactor.cli
 ```
 
-TaskSpec 示例：
+### 最小 TaskSpec
+
+`target` 和 `mode` 可以省略。当前默认：
+
+```text
+mode=refactor
+profile=vitis-2023.2-default
+toolchain=vitis_hls
+toolchain_version=2023.2
+device=xcu200-fsgd2104-2-e
+clock_period_ns=5.0
+compile_flags=-D XILINX
+```
 
 ```json
 {
   "task_id": "dfs-refactor",
   "kernel_path": "src/heterorefactor/dfs/kernel.cpp",
+  "kernel_name": "process_top"
+}
+```
+
+### TargetProfile 局部覆盖
+
+```json
+{
+  "task_id": "dfs-refactor-250mhz",
+  "kernel_path": "src/heterorefactor/dfs/kernel.cpp",
   "kernel_name": "process_top",
   "mode": "refactor",
-  "testbench_path": null,
   "target": {
-    "name": "vitis-hls-2023.2-xcu200",
-    "toolchain": "Vitis HLS",
     "toolchain_version": "2023.2",
     "device": "xcu200-fsgd2104-2-e",
-    "clock_period_ns": 5.0,
-    "compile_flags": []
+    "clock_frequency_mhz": 250,
+    "append_compile_flags": [
+      "-I include"
+    ]
   }
 }
+```
+
+解析结果：
+
+```text
+clock_frequency_mhz=250 → clock_period_ns=4.0
+compile_flags → 替换默认 flags
+append_compile_flags → 在默认 flags 后追加
 ```
 
 校验：
@@ -247,25 +276,111 @@ python -m agrefactor.cli validate-task task.json
 Dry run：
 
 ```bash
-python -m agrefactor.cli run task.json --dry-run --trace /tmp/trace.jsonl
+python -m agrefactor.cli run task.json   --dry-run   --trace /tmp/trace.jsonl
 ```
 
-当前真实 legacy refactor：
+真实 legacy refactor：
 
 ```bash
-python -m agrefactor.cli run task.json \
-  --legacy \
-  --model deepseek-v4-flash \
-  --base-url https://api.deepseek.com \
-  --reasoning-effort low \
-  --enable-testbench-repair \
-  --max-testbench-repair-attempts 2 \
-  --max-retry-attempts 3 \
-  --output-dir "$RUN_DIR/my_run/legacy" \
-  --trace "$RUN_DIR/my_run/trace.jsonl" \
-  --run-id my-run \
-  --debug
+python -m agrefactor.cli run task.json   --legacy   --model deepseek-v4-flash   --base-url https://api.deepseek.com   --reasoning-effort low   --enable-testbench-repair   --max-testbench-repair-attempts 2   --max-retry-attempts 3   --output-dir "$RUN_DIR/my_run/legacy"   --trace "$RUN_DIR/my_run/trace.jsonl"   --run-id my-run   --debug
 ```
 
-当前限制：`--legacy` 只正式支持 `mode=refactor`；`optimize/full` 只可 dry-run；TargetProfile 尚未全部下传；LLM calls 为已知下界；tool_calls 尚未细分；repair cost 缺失时 `cost_complete=false`，未知不得解释为零。
+### 多 Vitis 版本：必须显式指定
+
+机器只安装一个版本时，可以加载该版本环境并使用 PATH 中的 `vitis-run`。
+
+机器安装多个版本时，必须协调：
+
+1. `target.toolchain_version`；
+2. `AGREFACTOR_VITIS_RUN`；
+3. 建议 source 同一版本的 `settings64.sh`。
+
+#### Vitis 2023.2
+
+```bash
+source /data/Xilinx/Vitis/2023.2/settings64.sh
+export AGREFACTOR_VITIS_RUN=/data/Xilinx/Vitis/2023.2/bin/vitis-run
+python -m agrefactor.cli run task-2023.2.json --legacy
+```
+
+#### Vitis 2024.1
+
+```bash
+source /data/Xilinx/Vitis/2024.1/settings64.sh
+export AGREFACTOR_VITIS_RUN=/data/Xilinx/Vitis/2024.1/bin/vitis-run
+python -m agrefactor.cli run task-2024.1.json --legacy
+```
+
+对应任务：
+
+```json
+{
+  "task_id": "example-2024.1",
+  "kernel_path": "kernel.cpp",
+  "kernel_name": "kernel_top",
+  "target": {
+    "toolchain_version": "2024.1",
+    "device": "xcu200-fsgd2104-2-e",
+    "clock_period_ns": 4.0
+  }
+}
+```
+
+系统会对 selected executable 执行：
+
+```bash
+/path/to/vitis-run --version
+```
+
+任务要求 `2023.2`、实际选择 `2024.1` 时：
+
+```text
+status=mismatch
+execution=blocked_before_csynth
+```
+
+不会静默使用错误版本。
+
+不同版本顺序运行可使用单命令环境变量：
+
+```bash
+AGREFACTOR_VITIS_RUN=/data/Xilinx/Vitis/2023.2/bin/vitis-run python -m agrefactor.cli run task-2023.2.json --legacy
+
+AGREFACTOR_VITIS_RUN=/data/Xilinx/Vitis/2024.1/bin/vitis-run python -m agrefactor.cli run task-2024.1.json --legacy
+```
+
+当前只有 Vitis 2023.2 经过真实 csynth 验收。其他版本必须单独验证 launcher、Tcl、器件和 report parser 兼容性。
+
+### TargetProfile 运行证据
+
+每个本地 csynth 目录保存：
+
+```text
+vitis.tcl
+effective_target_profile.json
+csynth_invocation.json
+```
+
+其中记录：
+
+- effective profile；
+- actual command；
+- command source；
+- resolved executable；
+- requested/actual version；
+- probe result；
+- Tcl path；
+- timeout；
+- return code；
+- execution status。
+
+验收记录：[`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md)。
+
+### 当前统一 CLI 限制
+
+- `--legacy` 正式支持 `mode=refactor`；
+- `optimize/full` 当前只可 dry-run；
+- LLM calls 仍是已知下界；
+- tool hard budget 尚未完成；
+- repair cost 缺失时 `cost_complete=false`，未知不能解释为零。
 <!-- AGREFPP_UNIFIED_CLI:END -->

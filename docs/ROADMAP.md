@@ -187,7 +187,7 @@ Stage 0 作为复现基线**基本完成**。后续可追加证据，但不能�
 
 ### 5.1 目标
 
-建立修复、优化、Memory 与迁移共同使用的共享底座，避免继续在 legacy `flow/`、`opt/` 中各自堆叠不可统一的逻辑。
+建立修复、优化、Memory 与迁移共同使用的共享底座，避免在 legacy `flow/`、`opt/` 中继续形成不一致逻辑。
 
 ### 5.2 必须包含
 
@@ -211,14 +211,11 @@ report parser
 #### Model Registry
 
 - provider-neutral；
-- 不写死 DeepSeek；
-- API key 只读环境变量；
+- API key 只通过环境变量；
 - fixed policy 默认；
 - auto 仅在用户授权模型池中工作。
 
 #### TaskSpec 与统一 CLI
-
-统一表达：
 
 ```text
 refactor
@@ -233,38 +230,51 @@ full
 
 #### BudgetManager
 
-记录和限制 LLM calls、input/output tokens、cost、compile、public test、csim、csynth、cosim、wall time。
+记录并硬限制：
+
+```text
+LLM calls
+input/output tokens
+cost
+compile
+public test
+csim
+csynth
+cosim
+wall time
+```
 
 ### 5.3 当前已完成
 
-- `TaskSpec`；
-- `TargetProfile` 数据结构；
+- `TaskSpec`、`TargetProfile`、`RunMode`；
 - Model Registry；
 - OpenAI-compatible Provider；
+- Evaluator/Evidence 基础接口；
 - `UnifiedRunner`；
 - CLI；
 - `TraceRecorder`；
 - Budget core；
 - Legacy Refactor Adapter；
 - AutoGen 与 repair known usage 合并；
-- task validation、dry-run 与 refactor real-run 测试。
+- TargetProfile legacy propagation；
+- default profile 与 partial override；
+- part/device、clock、compile flags；
+- target-aware Tcl；
+- `AGREFACTOR_VITIS_RUN` executable override；
+- actual executable resolution；
+- `vitis-run --version` verification；
+- mismatch-before-csynth failure；
+- `effective_target_profile.json`；
+- `csynth_invocation.json`；
+- remote non-default target rejection；
+- 153/153 确定性测试；
+- Vitis 2023.2 真实 csynth 验收。
+
+验收记录：[`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md)。
 
 ### 5.4 尚未完成
 
-#### TargetProfile 仍主要是描述性元数据
-
-必须补齐：
-
-1. settings/tool selection；
-2. part/device；
-3. clock；
-4. compile flags；
-5. Tcl generation；
-6. report parser selection；
-7. effective profile 持久化；
-8. profile 与实际命令不一致时的失败检测。
-
-#### BudgetManager 仍缺工具硬控制
+#### BudgetManager 工具硬控制
 
 必须补齐：
 
@@ -273,17 +283,40 @@ full
 - csim count/limit；
 - csynth count/limit；
 - cosim count/limit；
-- 工具调用前预算检查；
+- 工具调用前 hard check；
+- 工具调用后真实 accounting；
+- exhaustion evidence；
 - 预算耗尽后的安全停止；
-- 后续优化阶段返回 `best_correct`。
+- Stage 3 中返回 `best_correct`。
 
-#### 稳定配置文件尚未完成
+#### TargetProfile 后续完整配置
+
+本地执行核心已验收，但仍需：
+
+1. stable named target profiles；
+2. per-profile executable；
+3. per-profile settings script；
+4. platform；
+5. resource limits；
+6. report parser profile；
+7. per-field provenance；
+8. 更多 Vitis 版本、器件和 kernel 验证。
+
+当前多版本显式方式：
+
+```text
+TaskSpec.target.toolchain_version
++
+AGREFACTOR_VITIS_RUN=/path/to/matching/vitis-run
+```
+
+详细用法见 [`USAGE.md`](USAGE.md)。
+
+#### 稳定配置模板
 
 需要 target profiles、model registry examples 和不含 secret 的配置模板。
 
 ### 5.5 完成判定
-
-Stage 1 只有在：
 
 ```text
 TargetProfile 真正控制一次真实 Vitis run
@@ -291,7 +324,15 @@ TargetProfile 真正控制一次真实 Vitis run
 BudgetManager 真正控制工具调用
 ```
 
-之后才能完全关闭。
+第一项已经通过 commit `717fdef` 和真实运行：
+
+```text
+/data/agrefactor_runs/stage1_target_profile_real_vitis_20260715_141118
+```
+
+完成验收。
+
+当前 Stage 1 唯一主阻塞项是 **工具硬预算**。
 
 详细文档：[`STAGE1_INFRASTRUCTURE.md`](STAGE1_INFRASTRUCTURE.md)。
 

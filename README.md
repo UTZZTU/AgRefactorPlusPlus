@@ -41,6 +41,7 @@ AgRefactor++ 是一个基于原始 AgRefactor 扩展的 **Vitis HLS 智能体实
 - [`docs/GOAL_TRACEABILITY.md`](docs/GOAL_TRACEABILITY.md)：八项目标的实现、缺口与证据追踪；
 - [`docs/STAGE0_BASELINE.md`](docs/STAGE0_BASELINE.md)：基线冻结；
 - [`docs/STAGE1_INFRASTRUCTURE.md`](docs/STAGE1_INFRASTRUCTURE.md)：共享基础设施；
+- [`docs/stage1_target_profile_acceptance.md`](docs/stage1_target_profile_acceptance.md)：TargetProfile 真实工具验收；
 - [`docs/STAGE2_EVIDENCE_LOOP.md`](docs/STAGE2_EVIDENCE_LOOP.md)：证据闭环；
 - [`docs/STAGE3_SAFE_OPTIMIZER.md`](docs/STAGE3_SAFE_OPTIMIZER.md)：安全三级优化器；
 - [`docs/STAGE4_MEMORY_GATE.md`](docs/STAGE4_MEMORY_GATE.md)：Memory Applicability Gate；
@@ -48,6 +49,52 @@ AgRefactor++ 是一个基于原始 AgRefactor 扩展的 **Vitis HLS 智能体实
 - [`docs/STAGE6_EVALUATION.md`](docs/STAGE6_EVALUATION.md)：系统评测与最终交付；
 - [`docs/stage2_acceptance.md`](docs/stage2_acceptance.md)：Testbench Reliability 验收。
 <!-- AGREFPP_DETAILED_DOCS:END -->
+
+<!-- AGREFPP_STAGE1_TARGET_PROFILE_STATUS:START -->
+## Stage 1 TargetProfile 最新状态
+
+TargetProfile 本地执行核心已经在 Vitis 2023.2 上完成真实 csynth 验收：
+
+```text
+TaskSpec.target
+→ legacy flow
+→ target-aware Tcl
+→ selected vitis-run
+→ version match
+→ real csynth
+```
+
+已验证：
+
+- device `xcu200-fsgd2104-2-e`；
+- target clock `4.0 ns`；
+- compile flag 真实到达编译器；
+- requested/actual version `2023.2` matched；
+- mismatch 在 csynth 前阻断；
+- effective profile 与 invocation evidence；
+- 153/153 确定性测试；
+- `REAL_VITIS_SMOKE_PASSED=1`。
+
+多版本机器必须显式协调：
+
+```bash
+export AGREFACTOR_VITIS_RUN=/path/to/Vitis/<version>/bin/vitis-run
+```
+
+与 TaskSpec 的：
+
+```json
+{
+  "target": {
+    "toolchain_version": "<version>"
+  }
+}
+```
+
+完整用法见 [`docs/USAGE.md`](docs/USAGE.md)，验收证据见 [`docs/stage1_target_profile_acceptance.md`](docs/stage1_target_profile_acceptance.md)。
+
+Stage 1 尚未关闭；当前下一任务是 compile/public-test/csim/csynth/cosim 工具硬预算。
+<!-- AGREFPP_STAGE1_TARGET_PROFILE_STATUS:END -->
 
 ## 快速开始
 
@@ -70,15 +117,22 @@ pip install -r requirements.txt
 
 ### 3. 加载 Vitis HLS
 
-当前已验证版本是 **Vitis HLS 2023.2**：
+当前真实验收版本是 **Vitis 2023.2**：
 
 ```bash
-export VITIS_HLS_SETTINGS=/your/path/to/Xilinx/Vitis_HLS/2023.2/settings64.sh
-source "$VITIS_HLS_SETTINGS"
+source /your/path/to/Xilinx/Vitis/2023.2/settings64.sh
 
-which vitis_hls
-vitis_hls -version
+which vitis-run
+vitis-run --version
 ```
+
+多版本机器需要显式指定本次使用的 launcher：
+
+```bash
+export AGREFACTOR_VITIS_RUN=/your/path/to/Xilinx/Vitis/2023.2/bin/vitis-run
+```
+
+该 launcher 必须与 TaskSpec 的 `target.toolchain_version` 一致。完整说明见 [`docs/USAGE.md`](docs/USAGE.md)。
 
 ### 4. 配置 API 与输出目录
 
