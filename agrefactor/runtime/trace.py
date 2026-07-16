@@ -6,12 +6,22 @@ import json
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any
+
+from agrefactor.evidence import TestEvaluationEvidence
 
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class TraceEvidenceView(str, Enum):
+    """Select the evidence view persisted in a trace event."""
+
+    AGENT_SAFE = "agent_safe"
+    OPERATOR_FULL = "operator_full"
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +80,54 @@ class TraceRecorder:
         """Return an immutable snapshot of all recorded events."""
 
         return tuple(self._events)
+
+    def record_test_evaluation(
+        self,
+        evidence: TestEvaluationEvidence,
+        *,
+        view: TraceEvidenceView = TraceEvidenceView.AGENT_SAFE,
+        phase: str = "validation",
+    ) -> TraceEvent:
+        """Record one test result using an explicit evidence audience.
+
+        The secure default is ``agent_safe``. Hidden-suite details are
+        redacted before both metadata and the event message are persisted.
+        Full hidden evidence requires the explicit ``operator_full`` view.
+        """
+
+        if not isinstance(evidence, TestEvaluationEvidence):
+            raise TypeError(
+                "evidence must be a TestEvaluationEvidence"
+            )
+
+        if not isinstance(view, TraceEvidenceView):
+            try:
+                view = TraceEvidenceView(str(view))
+            except ValueError as exc:
+                choices = ", ".join(
+                    item.value for item in TraceEvidenceView
+                )
+                raise ValueError(
+                    f"Unsupported trace evidence view {view!r}; "
+                    f"expected one of: {choices}"
+                ) from exc
+
+        payload = (
+            evidence.to_agent_dict()
+            if view is TraceEvidenceView.AGENT_SAFE
+            else evidence.to_dict()
+        )
+
+        return self.record(
+            "test_evaluation.finished",
+            phase=phase,
+            status=evidence.status.value,
+            message=payload["summary"],
+            metadata={
+                "evidence_view": view.value,
+                "test_evaluation": payload,
+            },
+        )
 
     def record(
         self,

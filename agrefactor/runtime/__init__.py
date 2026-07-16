@@ -16,7 +16,11 @@ from .runner import (
     RunStatus,
     UnifiedRunner,
 )
-from .trace import TraceEvent, TraceRecorder
+from .trace import (
+    TraceEvent,
+    TraceEvidenceView,
+    TraceRecorder,
+)
 
 __all__ = [
     "BudgetExceededError",
@@ -31,6 +35,7 @@ __all__ = [
     "RunResult",
     "RunStatus",
     "TraceEvent",
+    "TraceEvidenceView",
     "TraceRecorder",
     "UnifiedRunner",
 ]
