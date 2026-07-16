@@ -1,3 +1,4 @@
+from .csynth_artifact_feedback import CsynthArtifactFeedbackEvaluator
 from .csynth_diagnostics import CsynthDiagnosticParser
 from .csynth_feedback import CsynthFeedbackAdapter
 from .csynth_feedback_composer import CsynthFeedbackComposer
@@ -30,6 +31,7 @@ from .base import (
 __all__ = [
     "CsimSuiteEvaluationResult",
     "CsimSuiteEvaluator",
+    "CsynthArtifactFeedbackEvaluator",
     "CsynthDiagnosticParser",
     "CsynthFeedbackAdapter",
     "CsynthFeedbackComposer",
