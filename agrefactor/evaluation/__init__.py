@@ -2,6 +2,9 @@ from .csim_suite import (
     CsimSuiteEvaluationResult,
     CsimSuiteEvaluator,
 )
+from .preflight_feedback import (
+    TestbenchPreflightFeedbackAdapter,
+)
 from .testbench_preflight import (
     TestbenchPreflight,
     classify_compile_failure,
@@ -25,6 +28,7 @@ __all__ = [
     "classify_compile_failure",
     "infer_failure_owner",
     "TestbenchPreflight",
+    "TestbenchPreflightFeedbackAdapter",
     "EvaluationRequest",
     "EvaluationResult",
     "EvaluationStatus",
