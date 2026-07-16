@@ -1,3 +1,11 @@
+from .feedback import (
+    FeedbackCategory,
+    FeedbackItem,
+    FeedbackOwner,
+    FeedbackReport,
+    FeedbackSeverity,
+    FeedbackStage,
+)
 from .test_evaluation import (
     TestEvaluationEvidence,
     TestEvaluationStatus,
@@ -12,6 +20,12 @@ from .testbench import (
 )
 
 __all__ = [
+    "FeedbackCategory",
+    "FeedbackItem",
+    "FeedbackOwner",
+    "FeedbackReport",
+    "FeedbackSeverity",
+    "FeedbackStage",
     "TestEvaluationEvidence",
     "TestEvaluationStatus",
     "TestbenchDiagnostic",
