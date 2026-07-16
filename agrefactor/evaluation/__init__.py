@@ -1,3 +1,7 @@
+from .csim_suite import (
+    CsimSuiteEvaluationResult,
+    CsimSuiteEvaluator,
+)
 from .testbench_preflight import (
     TestbenchPreflight,
     classify_compile_failure,
@@ -15,6 +19,8 @@ from .base import (
 )
 
 __all__ = [
+    "CsimSuiteEvaluationResult",
+    "CsimSuiteEvaluator",
     "parse_compiler_diagnostics",
     "classify_compile_failure",
     "infer_failure_owner",
