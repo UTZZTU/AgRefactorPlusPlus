@@ -244,63 +244,107 @@ cosim
 wall time
 ```
 
-### 5.3 当前已完成
+这里的工具预算按真实执行语义解释：
+
+- `public test` 是测试集角色和反馈可见性，不是新的物理进程；当前由
+  `compile_calls`、`csim_calls` 和 `tool_calls` 约束真实执行；
+- 原始 AgRefactor 没有活跃的 RTL cosim 调用，因此 Stage 1 Core 不创建
+  空的 `cosim_calls`；以后加入真实 `cosim_design` 或等价调用时，再实现
+  专项预算与证据；
+- 不得为了补齐名词清单而创建没有真实 call site 的伪预算字段。
+
+### 5.3 Stage 1 Core：已完成并关闭
+
+已完成的共享底座：
 
 - `TaskSpec`、`TargetProfile`、`RunMode`；
-- Model Registry；
-- OpenAI-compatible Provider；
+- Model Registry 与 OpenAI-compatible Provider；
 - Evaluator/Evidence 基础接口；
-- `UnifiedRunner`；
-- CLI；
+- `UnifiedRunner`、`RunContext` 与统一 CLI；
 - `TraceRecorder`；
 - Budget core；
 - Legacy Refactor Adapter；
-- AutoGen 与 repair known usage 合并；
-- TargetProfile legacy propagation；
+- AutoGen 与 testbench repair known usage 合并。
+
+TargetProfile 本地执行核心已真实完成：
+
 - default profile 与 partial override；
+- Vitis version 与实际 `vitis-run --version` 校验；
+- `AGREFACTOR_VITIS_RUN` executable override；
 - part/device、clock、compile flags；
 - target-aware Tcl；
-- `AGREFACTOR_VITIS_RUN` executable override；
-- actual executable resolution；
-- `vitis-run --version` verification；
-- mismatch-before-csynth failure；
+- requested/actual version mismatch 在 csynth 前阻断；
 - `effective_target_profile.json`；
 - `csynth_invocation.json`；
-- remote non-default target rejection；
-- TargetProfile 确定性测试与 Vitis 2023.2 真实 csynth 验收；
-- csynth aggregate+specific hard budget；
-- pre-version-probe block 与 pre-launch exact-once accounting；
-- UnifiedRunner → LegacyRefactorAdapter → local `run_csynth()` 预算贯通；
-- limit=0/1、mismatch、failure、timeout、launch exception 测试；
-- 169/169 确定性测试；
-- Vitis 2023.2 真实 csynth budget smoke。
+- remote non-default target 显式拒绝；
+- Vitis HLS 2023.2 真实 csynth 验收。
+
+BudgetManager 的活跃本地工具硬控制已完成：
+
+- aggregate `max_tool_calls/tool_calls`；
+- `max_compile_calls/compile_calls`；
+- `max_csynth_calls/csynth_calls`；
+- `max_csim_calls/csim_calls`；
+- prospective/pre-call hard check；
+- real launch 前 exact-once accounting；
+- success、failure、timeout、launch exception 语义；
+- UnifiedRunner → LegacyRefactorAdapter → legacy tool flow 使用同一个
+  `BudgetManager`；
+- 预算不足时在真实工具启动前阻断；
+- structured invocation evidence。
+
+确定性验收：
+
+```text
+204/204 passed
+```
+
+真实代表性 kernel 总验收：
+
+```text
+src/heterorefactor/dfs/kernel.cpp
+→ UnifiedRunner
+→ shared BudgetManager
+→ real Testbench Preflight g++
+→ real Vitis HLS 2023.2 csynth
+→ real csim g++
+→ real generated ./csim
+→ exhausted-budget extra Preflight blocked before g++
+```
+
+精确预算使用量：
+
+```text
+tool_calls=4
+compile_calls=2
+csynth_calls=1
+csim_calls=1
+REAL_DFS_FULL_CHAIN_BUDGET_READY=1
+```
+
+运行目录：
+
+```text
+/data/agrefactor_runs/
+stage1_real_dfs_full_chain_budget_v2_20260716_111358
+```
+
+该验收使用真实上游 DFS 原始代码和确定性 synthesis-safe reference
+candidate，没有调用 LLM API，因此证明的是 Stage 1 工具与预算基础设施，
+不代表智能体已经自动重构 DFS。
 
 验收记录：
 
 - [`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md)；
-- [`stage1_csynth_budget_acceptance.md`](stage1_csynth_budget_acceptance.md)。
+- [`stage1_csynth_budget_acceptance.md`](stage1_csynth_budget_acceptance.md)；
+- [`stage1_compile_csim_budget_acceptance.md`](stage1_compile_csim_budget_acceptance.md)；
+- [`stage1_core_acceptance.md`](stage1_core_acceptance.md)。
 
-### 5.4 尚未完成
+### 5.4 Stage 1 Hardening 与跨 Stage 边界
 
-#### BudgetManager 工具硬控制
+下列内容保留在路线图中，但不阻塞 Stage 1 Core 关闭。
 
-必须补齐：
-
-csynth 已完成 aggregate/specific limit、pre-call check、exact-once accounting、exhaustion evidence、统一入口传播与真实 Vitis smoke。
-
-仍需补齐：
-
-- compile count/limit；
-- public test count/limit；
-- csim count/limit；
-- cosim count/limit；
-- 上述工具的 pre-call check、exact-once accounting 与 evidence；
-- 预算耗尽后的安全停止；
-- Stage 3 中返回 `best_correct`。
-
-#### TargetProfile 后续完整配置
-
-本地执行核心已验收，但仍需：
+#### TargetProfile Hardening
 
 1. stable named target profiles；
 2. per-profile executable；
@@ -308,10 +352,10 @@ csynth 已完成 aggregate/specific limit、pre-call check、exact-once accounti
 4. platform；
 5. resource limits；
 6. report parser profile；
-7. per-field provenance；
-8. 更多 Vitis 版本、器件和 kernel 验证。
+7. per-field effective-value provenance；
+8. 更多 Vitis 版本、器件和真实 kernel 验证。
 
-当前多版本显式方式：
+当前多版本显式方式仍是：
 
 ```text
 TaskSpec.target.toolchain_version
@@ -319,33 +363,86 @@ TaskSpec.target.toolchain_version
 AGREFACTOR_VITIS_RUN=/path/to/matching/vitis-run
 ```
 
-详细用法见 [`USAGE.md`](USAGE.md)。
+#### Model Registry Hardening
+
+- 当前 provider-neutral registry 和用户显式指定模型路径已完成；
+- `model_policy=fixed` 的正式配置契约仍需稳定化；
+- `auto` 只能在用户授权的 `allowed_models` 内工作，仍需后续实现和验收。
+
+#### TaskSpec、CLI 与 Trace 的后续接入
+
+- `TaskSpec`/`UnifiedRunner` 已具备 `refactor/optimize/full` 结构；
+- 当前真实 legacy CLI 只接入 `refactor`；
+- `optimize/full` 的真实 adapter、候选 checkpoint、rollback 和候选树属于
+  Stage 3；
+- 当前 Trace 已覆盖运行、阶段、预算和工具证据；
+- parent、假设、接受/拒绝、回滚、`best_correct` 等候选级轨迹属于 Stage 3。
+
+#### Test 与 cosim 的边界
+
+- public/hidden test split、suite identity、coverage 和 feedback visibility
+  属于 Stage 2；
+- public test 的物理执行继续由 compile/csim 预算控制；
+- 当前不创建独立 `public_test_calls`；
+- cosim 不在原项目活跃路径内，可在后期作为 RTL co-simulation 能力单独建设。
+
+#### Budget exhaustion 与 `best_correct`
+
+Stage 1 已能在预算不足时阻断后续真实工具调用。
+
+以下候选级语义属于 Stage 3：
+
+```text
+预算耗尽
+→ 停止生成新候选
+→ 保留 checkpoint
+→ 返回 best_correct
+```
 
 #### 稳定配置模板
 
-需要 target profiles、model registry examples 和不含 secret 的配置模板。
+仍需补充：
+
+- target profile examples；
+- model registry examples；
+- 不含 secret 的稳定配置模板。
 
 ### 5.5 完成判定
+
+Stage 1 Core 的关闭条件是：
 
 ```text
 TargetProfile 真正控制一次真实 Vitis run
 +
-BudgetManager 真正控制所需本地工具调用
+BudgetManager 真正控制所需活跃本地工具调用
++
+真实代表性 kernel 完成共享预算全链路
 ```
 
-TargetProfile 已通过 commit `717fdef` 与真实运行完成本地执行核心验收。
+上述三项已经在 commit `e37496f` 前后形成完整代码、测试、真实工具证据
+和验收文档，因此：
 
-csynth hard budget 已通过 commits `fc8a646`、`9be882a`、`eb1575a` 与真实运行：
+> **Stage 1 Core 已关闭。**
+
+这不等于：
+
+- Stage 1 Hardening 已全部完成；
+- 支持任意 Vitis 版本、器件或 kernel；
+- 真实 `optimize/full/migrate` adapter 已完成；
+- LLM 智能体已经自动重构 DFS；
+- Stage 3 的 `best_correct`、候选树和安全优化器已完成。
+
+下一主线：
 
 ```text
-/data/agrefactor_runs/stage1_real_vitis_csynth_budget_smoke_20260715_184955
+Stage 2 public/hidden test roles and evidence
+→ general feedback parser and state transitions
+→ Stage 3 controlled real DFS API refactor loop
+→ bounded repair, checkpoint and best_correct
 ```
 
-完成验收。
-
-Stage 1 尚未关闭；当前主阻塞项是 compile/public-test/csim/cosim 硬预算与 TargetProfile 后续完整配置化。
-
-详细文档：[`STAGE1_INFRASTRUCTURE.md`](STAGE1_INFRASTRUCTURE.md)。
+详细验收文档：
+[`stage1_core_acceptance.md`](stage1_core_acceptance.md)。
 
 ## 6. Stage 2 — 结构化证据闭环
 
