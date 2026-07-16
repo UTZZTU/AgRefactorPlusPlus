@@ -44,6 +44,7 @@ AgRefactor++ 是一个基于原始 AgRefactor 扩展的 **Vitis HLS 智能体实
 - [`docs/stage1_target_profile_acceptance.md`](docs/stage1_target_profile_acceptance.md)：TargetProfile 真实工具验收；
 - [`docs/stage1_csynth_budget_acceptance.md`](docs/stage1_csynth_budget_acceptance.md)：csynth 硬预算真实工具验收；
 - [`docs/stage1_compile_csim_budget_acceptance.md`](docs/stage1_compile_csim_budget_acceptance.md)：compile/csim 硬预算与真实本地 csim 验收；
+- [`docs/stage1_core_acceptance.md`](docs/stage1_core_acceptance.md)：真实 DFS 全链路与 Stage 1 Core 关闭验收；
 - [`docs/STAGE2_EVIDENCE_LOOP.md`](docs/STAGE2_EVIDENCE_LOOP.md)：证据闭环；
 - [`docs/STAGE3_SAFE_OPTIMIZER.md`](docs/STAGE3_SAFE_OPTIMIZER.md)：安全三级优化器；
 - [`docs/STAGE4_MEMORY_GATE.md`](docs/STAGE4_MEMORY_GATE.md)：Memory Applicability Gate；
@@ -95,7 +96,7 @@ export AGREFACTOR_VITIS_RUN=/path/to/Vitis/<version>/bin/vitis-run
 
 完整用法见 [`docs/USAGE.md`](docs/USAGE.md)，验收证据见 [`docs/stage1_target_profile_acceptance.md`](docs/stage1_target_profile_acceptance.md)。
 
-Stage 1 尚未关闭；compile/csynth/csim hard budget 已完成，剩余 public-test/cosim 及最终真实全链路验收仍待完成。
+Stage 1 Core 已通过真实 DFS 全链路验收并关闭；TargetProfile 配置化、多版本/多器件等继续作为 Hardening 和后续 Stage 建设。
 <!-- AGREFPP_STAGE1_TARGET_PROFILE_STATUS:END -->
 
 <!-- AGREFPP_STAGE1_CSYNTH_BUDGET_STATUS:START -->
@@ -127,7 +128,7 @@ UnifiedRunner
 
 验收证据见 [`docs/stage1_csynth_budget_acceptance.md`](docs/stage1_csynth_budget_acceptance.md)。
 
-Stage 1 仍未整体关闭：public-test/cosim 语义审计、最终真实全链路验收及 TargetProfile 后续配置化仍未完成。
+Stage 1 Core 已关闭；public test 保留为 Stage 2 评测语义，cosim 不属于当前活跃范围，TargetProfile 后续配置化作为 Hardening。
 <!-- AGREFPP_STAGE1_CSYNTH_BUDGET_STATUS:END -->
 
 
@@ -160,8 +161,45 @@ UnifiedRunner
 
 验收证据见 [`docs/stage1_compile_csim_budget_acceptance.md`](docs/stage1_compile_csim_budget_acceptance.md)。
 
-Stage 1 仍未整体关闭：public-test/cosim 需要先确认真实工具语义；最终真实 Preflight → Vitis csynth → csim 全链路验收仍待完成。
+Stage 1 Core 已完成真实 DFS Preflight → Vitis csynth → csim 全链路验收。public test 不新增独立预算；cosim 与原项目一致，不在当前活跃范围。
 <!-- AGREFPP_STAGE1_COMPILE_CSIM_BUDGET_STATUS:END -->
+
+
+<!-- AGREFPP_STAGE1_CORE_ACCEPTANCE:START -->
+## Stage 1 Core 已关闭
+
+真实代表性 kernel 验收：
+
+```text
+src/heterorefactor/dfs/kernel.cpp
+→ UnifiedRunner
+→ shared BudgetManager
+→ real Preflight g++
+→ real Vitis HLS 2023.2 csynth
+→ real csim g++
+→ real ./csim
+```
+
+结果：
+
+- `RESULT_STATUS=succeeded`；
+- `tool_calls=4`；
+- `compile_calls=2`；
+- `csynth_calls=1`；
+- `csim_calls=1`；
+- 额度耗尽后的额外 Preflight 在 `g++` 前阻断；
+- `REAL_DFS_FULL_CHAIN_BUDGET_READY=1`。
+
+该验收没有调用 LLM API。综合候选是确定性的 synthesis-safe reference，用于验证基础设施，不代表智能体已经自动重构 DFS。
+
+范围决策：
+
+- public test 保留为 Stage 2/3 的 test-suite role 和反馈策略，不新增独立 `public_test_calls`；
+- cosim 在原始 AgRefactor 中没有活跃实现，不属于 Stage 1 Core；
+- TargetProfile named profiles、per-profile executable/settings、platform/resources/parser/provenance 属于 Hardening。
+
+完整证据见 [`docs/stage1_core_acceptance.md`](docs/stage1_core_acceptance.md)。
+<!-- AGREFPP_STAGE1_CORE_ACCEPTANCE:END -->
 
 ## 快速开始
 

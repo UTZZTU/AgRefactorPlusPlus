@@ -12,7 +12,7 @@ TargetProfile 真正控制一次真实 Vitis run
 BudgetManager 真正控制真实工具调用
 ```
 
-第一项已经完成；第二项中的 csynth 已完成真实验收，但 compile/public-test/csim/cosim 仍未完成，因此 Stage 1 尚未关闭。
+TargetProfile 和 BudgetManager 已在真实 DFS 的 Preflight → Vitis csynth → csim 共享预算全链路中完成验收，因此 Stage 1 Core 已关闭。
 
 ## 2. 已实现的共享底座
 
@@ -108,9 +108,9 @@ requested 与 actual 不一致时，csynth 前阻断。
 
 当前只有 2023.2 完成真实 csynth 验收；其他版本必须单独验证。
 
-## 5. 尚未完成
+## 5. Stage 1 Core 最终状态
 
-### 5.1 Tool hard budget
+### 5.1 Tool hard budget：已完成
 
 统一契约：
 
@@ -122,33 +122,29 @@ pre-call hard check
 → structured evidence
 ```
 
-#### csynth：已完成真实验收
+#### compile/csynth/csim：已完成真实验收
 
 - aggregate `max_tool_calls/tool_calls`；
--专项 `max_csynth_calls/csynth_calls`；
+- 专项 `max_compile_calls/compile_calls`、`max_csynth_calls/csynth_calls`、`max_csim_calls/csim_calls`；
 - `limit=0` 在 version probe 前阻断；
 - `limit=1` 第一次允许，第二次在 probe 前阻断；
 - success/failure/timeout/launch exception 计一次；
 - version mismatch 不消耗真实 csynth；
 - UnifiedRunner/Legacy/local normal/HeteroRF 链路贯通；
 - bounded remote tool budget 显式拒绝；
-- 169/169 确定性测试；
-- Vitis 2023.2 真实 smoke 通过。
+- 204/204 确定性测试；
+- Vitis 2023.2 真实 csynth smoke；
+- 真实本地 csim smoke；
+- 真实 DFS Preflight → Vitis → csim 全链路通过；
+- 精确使用量 `4 tool / 2 compile / 1 csynth / 1 csim`。
 
-验收见 [`stage1_csynth_budget_acceptance.md`](stage1_csynth_budget_acceptance.md)。
+验收见 [`stage1_core_acceptance.md`](stage1_core_acceptance.md)。
 
-#### 仍未完成
+public test 作为 Stage 2/3 的评测角色，由 compile/csim 执行，不新增独立预算。原始项目无活跃 cosim，当前不属于 Core；后续新增 RTL co-simulation 时再独立设计。
 
-```text
-compile
-public_test
-csim
-cosim
-```
+Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
-还需在 Stage 3 中实现预算耗尽时停止新候选并返回 `best_correct`。
-
-### 5.2 TargetProfile 后续配置化
+### 5.2 TargetProfile Hardening
 
 仍需：
 
@@ -171,11 +167,10 @@ cosim
 ## 6. 下一实现步骤
 
 ```text
-1. csynth hard budget 已完成并真实验收
-2. 只读审计 compile/public-test/csim/cosim call graph
-3. 一次只选择一个工具固定 budget contract
-4. 接入 pre-call check、exact-once accounting 与 evidence
-5. 贯通 UnifiedRunner/legacy flow
-6. 确定性测试
-7. 真实工具 smoke
+1. Stage 2 固定 public/hidden test split 与 evidence
+2. general feedback parser/state transitions
+3. Stage 3 受控 DFS API 候选生成
+4. 真实工具反馈驱动修复
+5. bounded retry/checkpoint/best_correct
+6. 并行推进 TargetProfile Hardening
 ```

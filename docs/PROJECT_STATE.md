@@ -5,14 +5,15 @@
 ## 1. 当前快照
 
 - 当前开发分支：`stage1-csim-compile-hard-budget`
-- 当前代码基线：`18b7b188a26c90b804cd61a43ba924f75f2cc7f1`
+- 当前代码基线：`6d6f608e402d13827faa837de7e1e8674ecf12b6`
 - 最新确定性测试：**204/204 passed**
-- 最新真实工具验收：**UnifiedRunner → shared BudgetManager → real local g++ → generated csim executable → second call blocked before compile**
+- 最新真实工具验收：**real DFS → Preflight g++ → Vitis 2023.2 csynth → csim g++ → real executable，shared exact budget 4/2/1/1**
 - TargetProfile 验收记录：[`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md)
 - csynth hard budget 验收记录：[`stage1_csynth_budget_acceptance.md`](stage1_csynth_budget_acceptance.md)
 - compile/csim hard budget 验收记录：[`stage1_compile_csim_budget_acceptance.md`](stage1_compile_csim_budget_acceptance.md)
+- Stage 1 Core 总验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收记录：[`stage2_acceptance.md`](stage2_acceptance.md)
-- 当前关键任务：**审计 public-test/cosim 的真实工具语义，并准备 Stage 1 最终真实全链路验收；暂不开始 Stage 3**
+- 当前关键任务：**Stage 1 Core 已关闭；下一步在 Stage 2 固定 public/hidden test 角色与证据，然后进入 Stage 3 受控 API 重构闭环**
 
 ## 2. 已完成
 
@@ -130,6 +131,47 @@ UnifiedRunner
 
 详见 [`stage1_compile_csim_budget_acceptance.md`](stage1_compile_csim_budget_acceptance.md)。
 
+
+### Stage 1 Core：已关闭
+
+真实 DFS 总链路：
+
+```text
+real upstream DFS original
+→ UnifiedRunner
+→ shared BudgetManager
+→ Preflight compile
+→ Vitis HLS 2023.2 csynth
+→ csim compile
+→ generated executable
+```
+
+精确结果：
+
+```text
+tool_calls=4
+compile_calls=2
+csynth_calls=1
+csim_calls=1
+REAL_DFS_FULL_CHAIN_BUDGET_READY=1
+```
+
+运行目录：
+
+```text
+/data/agrefactor_runs/stage1_real_dfs_full_chain_budget_v2_20260716_111358
+```
+
+本次未调用 LLM API；候选为确定性可综合参考实现。该验收证明工具执行与预算基础设施可承载真实 DFS，不证明智能体已经自动重构 DFS。
+
+范围决策：
+
+- public test 是 Stage 2/3 的评测角色，不新增物理工具预算；
+- cosim 在原项目无活跃实现，不阻塞 Stage 1 Core；
+- named profiles、executable/settings、platform/resources/parser/provenance 继续作为 Hardening。
+
+详见 [`stage1_core_acceptance.md`](stage1_core_acceptance.md)。
+
 ### Stage 2 Testbench Reliability 核心
 
 - structured preflight；
@@ -142,15 +184,15 @@ UnifiedRunner
 
 ## 3. 未完成
 
-### Stage 1 阻塞项
+### Stage 1 Hardening（不阻塞 Core 关闭）
 
-1. public-test/cosim 的规范化工具语义与硬预算决策；
-2. 一次真实 Preflight → Vitis csynth → csim 的共享预算全链路验收；
-3. 预算耗尽时停止后续候选并在 Stage 3 返回 `best_correct`；
-4. TargetProfile stable named profiles；
-5. per-profile executable/settings；
-6. platform、resource limits、report parser profile；
-7. effective profile 每字段 provenance。
+1. TargetProfile stable named profiles；
+2. per-profile executable/settings；
+3. platform、resource limits、report parser profile；
+4. effective profile 每字段 provenance；
+5. 更多 Vitis 版本、器件和真实 kernel。
+
+Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ### Stage 2 剩余项
 
@@ -169,20 +211,17 @@ UnifiedRunner
 
 ## 4. 当前下一任务
 
-compile、csynth 与本地 csim hard budget 已完成验收。下一步先审计 public-test/cosim 是否存在规范化、活跃的真实工具动作，再决定是否需要独立预算字段。
-
-推荐顺序：
+Stage 1 Core 已关闭。下一步：
 
 ```text
-A. 定位 public-test/cosim canonical action 与真实 external launch
-B. 区分已有 preflight/csim 行为与独立工具动作
-C. 只有存在真实动作时才定义专项 budget key
-D. 定义 pre-call hard check、exact-once accounting 与 evidence
-E. 完成确定性测试和可执行的真实工具 smoke
-F. 执行真实 Preflight → Vitis csynth → csim 总验收
+A. Stage 2 定义 public/hidden test split、suite identity、feedback visibility 与 evidence
+B. 完善 general feedback parser/state transitions
+C. Stage 3 运行受控 DFS API 重构 smoke
+D. 真实 Preflight/csynth/csim 反馈驱动至少一次候选修复
+E. 实现 bounded retries、checkpoint 与 best_correct
 ```
 
-不要为了补齐清单而创建没有真实 call site 的伪工具预算。
+public test 不新增 `public_test_calls`；cosim 后续作为可选 RTL 能力独立建设。
 
 ## 5. 多 Vitis 版本的当前显式用法
 
@@ -215,8 +254,8 @@ requested 与 actual 不一致时，系统会在 csynth 前阻断。完整命令
 - 已支持任意 Vitis 版本；
 - 已支持任意版本迁移；
 - 已支持任意器件或任意 kernel；
-- Stage 1 已经关闭；
-- compile/csynth/csim hard budget 等于 Stage 1 已整体关闭；
+- Stage 1 Core 之外的 Hardening 已全部完成；
+- Stage 1 Core 关闭等于智能体已经通过 API 自动重构 DFS；
 - 204 个测试等于 204 个真实 kernel。
 
 ## 7. 新对话阅读顺序
@@ -229,9 +268,10 @@ requested 与 actual 不一致时，系统会在 csynth 前阻断。完整命令
 5. docs/stage1_target_profile_acceptance.md
 6. docs/stage1_csynth_budget_acceptance.md
 7. docs/stage1_compile_csim_budget_acceptance.md
-8. docs/STAGE2_EVIDENCE_LOOP.md
-9. docs/stage2_acceptance.md
-10. docs/REPRODUCTION_STATUS.md
-11. docs/USAGE.md
-12. git log
+8. docs/stage1_core_acceptance.md
+9. docs/STAGE2_EVIDENCE_LOOP.md
+10. docs/stage2_acceptance.md
+11. docs/REPRODUCTION_STATUS.md
+12. docs/USAGE.md
+13. git log
 ```

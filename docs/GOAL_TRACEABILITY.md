@@ -13,7 +13,7 @@
 | 结构化反馈/状态机 | Stage 2 | TestbenchPreflight evidence | general parser、完整 state machine | 多类错误分类并驱动合法动作 |
 | 安全三级优化器 | Stage 3 | legacy `simple_iter` baseline | hypothesis、3 levels、checkpoint、rollback、cache、best_correct | 多 kernel 与 baseline 对照 |
 | Memory Applicability Gate | Stage 4 | legacy RAG 正负 trial | schema、score、abstention、off/gated/always | 负迁移与弃权实验 |
-| BudgetManager | Stage 1/3 | token/cost core、repair calls、wall-time core；compile/csynth/csim aggregate+specific hard limits、pre-call block、exact-once accounting、UnifiedRunner/legacy propagation、real Vitis csynth smoke、real local csim smoke | public-test/cosim 真实语义审计与预算决策；真实完整工具链总验收；Stage 3 budget exhaustion 返回 best_correct | [`stage1_csynth_budget_acceptance.md`](stage1_csynth_budget_acceptance.md)、[`stage1_compile_csim_budget_acceptance.md`](stage1_compile_csim_budget_acceptance.md) |
+| BudgetManager | Stage 1/3 | token/cost core、repair calls、wall-time core；compile/csynth/csim hard limits、pre-call block、exact-once accounting、UnifiedRunner/legacy propagation；真实 DFS Preflight→Vitis→csim 共享预算全链路通过 | Stage 3 budget exhaustion 停止新候选并返回 best_correct | [`stage1_core_acceptance.md`](stage1_core_acceptance.md) |
 
 ## 2. TargetProfile 当前边界
 
@@ -38,7 +38,7 @@ RAG 检索存在 ≠ Memory Applicability Gate
 simple_iter 能循环 ≠ 安全三级优化器
 204 个确定性测试 ≠ 204 个真实 kernel
 一次 PPA 改善 ≠ 稳定优化收益
-compile/csynth/csim hard budget 已生效 ≠ Stage 1 已整体关闭
+Stage 1 Core 已关闭 ≠ Stage 1 Hardening 已完成，也 ≠ API 智能体已自动重构 DFS
 ```
 
 ## 4. 完成声明检查表
@@ -56,14 +56,13 @@ compile/csynth/csim hard budget 已生效 ≠ Stage 1 已整体关闭
 
 ## 5. 当前下一任务
 
-compile、csynth 与本地 csim 已完成底层、统一入口和真实工具 smoke 验收。
+Stage 1 Core 已完成真实 DFS 共享预算全链路验收。
 
 当前下一任务：
 
 ```text
-audit public-test/cosim canonical actions
-→ confirm real external launches
-→ define a dedicated budget only when semantically meaningful
-→ deterministic/real-tool evidence
-→ final real Preflight → Vitis csynth → csim acceptance
+Stage 2 public/hidden test roles and evidence
+→ general feedback/state transitions
+→ Stage 3 controlled DFS API refactor smoke
+→ bounded repair loop and best_correct
 ```
