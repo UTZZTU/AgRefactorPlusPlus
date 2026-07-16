@@ -1,3 +1,4 @@
+from .csynth_diagnostics import CsynthDiagnosticParser
 from .csynth_feedback import CsynthFeedbackAdapter
 from .csim_suite import (
     CsimSuiteEvaluationResult,
@@ -28,6 +29,7 @@ from .base import (
 __all__ = [
     "CsimSuiteEvaluationResult",
     "CsimSuiteEvaluator",
+    "CsynthDiagnosticParser",
     "CsynthFeedbackAdapter",
     "parse_compiler_diagnostics",
     "classify_compile_failure",
