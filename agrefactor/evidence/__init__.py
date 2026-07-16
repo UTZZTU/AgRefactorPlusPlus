@@ -1,3 +1,7 @@
+from .test_evaluation import (
+    TestEvaluationEvidence,
+    TestEvaluationStatus,
+)
 from .testbench import (
     TestbenchDiagnostic,
     TestbenchFailureKind,
@@ -8,6 +12,8 @@ from .testbench import (
 )
 
 __all__ = [
+    "TestEvaluationEvidence",
+    "TestEvaluationStatus",
     "TestbenchDiagnostic",
     "TestbenchFailureKind",
     "TestbenchFailureOwner",
