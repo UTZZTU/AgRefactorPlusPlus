@@ -83,7 +83,8 @@ Public/Hidden 与通用反馈：
   `/data/agrefactor_runs/stage2_real_csim_handler_resume5_20260717_184240`。
 - 精确预算：`6 tool / 3 compile / 1 csynth / 2 csim`。
 - Hidden-only mismatch 终止且不泄漏；zero CSIM budget 在 compile 前阻断。
-- Stage 2 仍缺 Shared Layered Prompt Builder、多类型 smoke 与最终 closure。<!-- AGREFPP_STAGE1_STAGE2_CHANGELOG:END -->
+- Stage 2 仍缺 Shared Layered Prompt Builder、多类型 smoke 与最终 closure。
+<!-- AGREFPP_STAGE1_STAGE2_CHANGELOG:END -->
 
 ### 文档
 
