@@ -3,6 +3,10 @@ from .csynth_diagnostics import CsynthDiagnosticParser
 from .csynth_feedback import CsynthFeedbackAdapter
 from .csynth_feedback_composer import CsynthFeedbackComposer
 from .csynth_feedback_view import CsynthFeedbackViewAdapter
+from .feedback_coordination import (
+    ValidationFeedbackCoordinator,
+    ValidationFeedbackResult,
+)
 from .feedback_routing import (
     FeedbackRouteAction,
     FeedbackRouteDecision,
@@ -54,6 +58,8 @@ __all__ = [
     "FeedbackRouteAction",
     "FeedbackRouteDecision",
     "FeedbackRouter",
+    "ValidationFeedbackCoordinator",
+    "ValidationFeedbackResult",
     "ValidationState",
     "ValidationStateMachine",
     "ValidationTransition",
