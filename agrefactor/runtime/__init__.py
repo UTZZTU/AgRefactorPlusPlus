@@ -21,6 +21,11 @@ from .preflight_stage import (
     PreflightValidationStageHandler,
     read_preflight_invocation_summary,
 )
+from .csynth_stage import (
+    CsynthStageInputs,
+    CsynthValidationStageHandler,
+    read_csynth_invocation_summary,
+)
 from .trace import (
     TraceEvent,
     TraceEvidenceView,
@@ -38,6 +43,8 @@ __all__ = [
     "BudgetLimits",
     "BudgetManager",
     "BudgetUsage",
+    "CsynthStageInputs",
+    "CsynthValidationStageHandler",
     "PhaseHandler",
     "PhaseResult",
     "PhaseStatus",
@@ -50,6 +57,7 @@ __all__ = [
     "TraceEvent",
     "TraceEvidenceView",
     "TraceRecorder",
+    "read_csynth_invocation_summary",
     "read_preflight_invocation_summary",
     "UnifiedRunner",
     "ValidationOrchestrationResult",
