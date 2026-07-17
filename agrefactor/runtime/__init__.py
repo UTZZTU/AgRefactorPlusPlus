@@ -53,6 +53,18 @@ _LAZY_EXPORTS = {
         ".csynth_stage",
         "read_csynth_invocation_summary",
     ),
+    "CsimStageInputs": (
+        ".csim_stage",
+        "CsimStageInputs",
+    ),
+    "CsimValidationStageHandler": (
+        ".csim_stage",
+        "CsimValidationStageHandler",
+    ),
+    "read_csim_invocation_summary": (
+        ".csim_stage",
+        "read_csim_invocation_summary",
+    ),
     "ValidationOrchestrationResult": (
         ".validation_orchestrator",
         "ValidationOrchestrationResult",
@@ -77,6 +89,8 @@ __all__ = [
     "BudgetLimits",
     "BudgetManager",
     "BudgetUsage",
+    "CsimStageInputs",
+    "CsimValidationStageHandler",
     "CsynthStageInputs",
     "CsynthValidationStageHandler",
     "PhaseHandler",
@@ -91,6 +105,7 @@ __all__ = [
     "TraceEvent",
     "TraceEvidenceView",
     "TraceRecorder",
+    "read_csim_invocation_summary",
     "read_csynth_invocation_summary",
     "read_preflight_invocation_summary",
     "UnifiedRunner",
