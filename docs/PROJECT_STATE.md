@@ -5,13 +5,13 @@
 ## 1. 当前快照
 
 - 当前开发分支：`stage2-general-feedback`
-- 当前代码基线：`ec9802c12c9612ad8652ec35afd664a82c9d726f`
-- 最新确定性测试：**554/554 passed**
+- 当前功能代码基线：`dc44be344f9bf9bae3eb8e43675fb49f0c017708`
+- 最新确定性测试：**574/574 passed**
 - 最新真实工具验收：**Preflight g++ → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 6/3/1/2**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.4.1 和 2.4.2 已完成；下一步 Stage 2.4.3 Candidate Repair Prompt Policies**
+- 当前关键任务：**Stage 2.4.1、2.4.2 和 2.4.3.1 已完成；下一步 Candidate Model Adapter / Response Contract**
 ## 2. 已完成
 
 ### Stage 0
@@ -194,6 +194,51 @@ REAL_DFS_FULL_CHAIN_BUDGET_READY=1
 - 531 个确定性测试；
 - 真实 Vitis 2023.2 全验证链，预算 `6 tool / 3 compile / 1 csynth / 2 csim`。
 
+### Stage 2.4.3.1 Candidate Repair Prompt Policies
+
+已经完成。
+
+功能提交：
+
+```text
+dc44be344f9bf9bae3eb8e43675fb49f0c017708
+feat: add candidate repair prompt policies
+```
+
+测试：
+
+```text
+20/20 targeted passed
+574/574 full passed
+```
+
+完成：
+
+- 新增 `CandidateRepairPromptInputs`；
+- 公开三个确定性构建函数：Compile、CSYNTH、Public CSIM；
+- 三个入口共享一个私有 policy implementation 和
+  `SharedLayeredPromptBuilder` renderer；
+- candidate kernel 是唯一 editable artifact；
+- original program 始终只读；
+- Compile 与 CSYNTH 的 Public testbench 可选，存在时只读；
+- Public CSIM 的 Public testbench 必须存在且只读；
+- 只接受 blocking、candidate-owned、stage-matching、
+  agent-safe feedback；
+- Hidden、operator-full、wrong owner 和 wrong stage 被拒绝；
+- CSYNTH Prompt 显式携带 effective TargetProfile；
+- 不调用模型、网络、编译器、CSIM、CSYNTH 或 Vitis；
+- 未实现 Candidate Model Adapter、响应解析、repair loop
+  或 orchestrator 模型接入。
+
+确定性验收目录：
+
+```text
+/data/agrefactor_runs/stage2_candidate_prompt_policies_acceptance_recovery_20260718_035345
+```
+
+本验收证明 Prompt Policy 的确定性、安全边界和结构契约，
+不是真实模型或真实工具链 candidate repair 验收。
+
 ## 3. 未完成
 
 ### Stage 1 Hardening（不阻塞 Core 关闭）
@@ -208,8 +253,8 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ### Stage 2 剩余项
 
-1. Stage 2.4.3 Candidate Compile / CSYNTH / Public CSIM Prompt Policies；
-2. 后续 Candidate Model Adapter、Response Contract、bounded repair loop 与 orchestrator 接入；
+1. Candidate Model Adapter / Response Contract；
+2. bounded Candidate Repair Loop 与 ValidationOrchestrator 接入；
 3. Stage 2.5 多类型真实 kernel smoke matrix；
 4. Stage 2.6 最终文档、复现和关闭审查。
 
@@ -227,19 +272,23 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ## 4. 当前下一任务
 
-Stage 2.1–2.3、Stage 2.4.1 和 Stage 2.4.2 已完成。下一步：
+Stage 2.1–2.3、Stage 2.4.1、2.4.2 和 2.4.3.1 已完成。
+下一步：
 
 ```text
-A. Stage 2.4.3 Candidate Compile / CSYNTH / Public CSIM Prompt Policies
-B. 暂不调用模型、暂不执行 candidate repair loop
-C. 保证 Hidden evidence 永不进入模型 Prompt
-D. 后续单独设计 Candidate Model Adapter / Response Contract
-E. 后续单独设计 bounded Candidate Repair Loop 与 orchestrator 接入
-F. Stage 2.5 多类型真实 kernel smoke matrix
-G. Stage 2.6 最终文档与关闭审查
+A. Candidate Model Adapter / Response Contract
+B. 保持 provider-neutral，不启动自动 repair loop
+C. 定义完整 candidate C++ replacement 的响应解析与拒绝契约
+D. 保持 Hidden evidence 永不进入模型 Prompt
+E. 后续单独实现 bounded Candidate Repair Loop
+F. 后续再接入 ValidationOrchestrator
+G. Stage 2.5 多类型真实 kernel smoke matrix
+H. Stage 2.6 最终文档与关闭审查
 ```
 
-当前不提前进入 Stage 3，也不把 handler 存在表述为模型修复闭环已经完成。
+当前不提前进入 Stage 3，也不把 Prompt Policy 表述为
+CandidateGenerator、模型修复闭环或真实模型验收已经完成。
+
 ## 5. 多 Vitis 版本的当前显式用法
 
 多版本机器必须同时指定：

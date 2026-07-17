@@ -30,9 +30,9 @@ GitHub：UTZZTU/AgRefactorPlusPlus
 origin：git@github.com:UTZZTU/AgRefactorPlusPlus.git
 开发分支：stage2-general-feedback
 最新功能提交：
-ec9802c12c9612ad8652ec35afd664a82c9d726f
+dc44be344f9bf9bae3eb8e43675fb49f0c017708
 提交信息：
-refactor: migrate testbench repair to layered prompts
+feat: add candidate repair prompt policies
 ```
 
 环境：
@@ -64,8 +64,8 @@ git log -15 --oneline
 - branch 必须是 `stage2-general-feedback`；
 - local 与 remote 应一致；
 - worktree 应干净；
-- Git 历史中必须存在 `ec9802c`；
-- 如果 HEAD 是后续纯文档提交，功能父提交仍应是 `ec9802c`；
+- Git 历史中必须存在 `ec9802c` 和 `dc44be3`；
+- 如果 HEAD 是后续纯文档提交，功能父提交应为 `dc44be3`；
 - 如状态不一致，先停止修改并解释差异。
 
 # 三、不可改变的工程原则
@@ -348,134 +348,92 @@ csynth_calls=0
 /data/agrefactor_runs/stage2_testbench_layered_prompt_migration_resume3_20260717_210348
 ```
 
-# 五、当前唯一主任务：Stage 2.4.3
+# 五、Stage 2.4.3.1 Candidate Prompt Policies 已完成
+
+功能提交：
+
+```text
+dc44be344f9bf9bae3eb8e43675fb49f0c017708
+feat: add candidate repair prompt policies
+```
+
+测试：
+
+```text
+20/20 targeted passed
+574/574 full passed
+```
+
+实现边界：
+
+- `CandidateRepairPromptInputs` 是唯一公开输入对象；
+- 公开 API 只有三个构建函数：
+  `build_candidate_compile_repair_prompt(...)`、
+  `build_candidate_csynth_repair_prompt(...)`、
+  `build_candidate_public_csim_repair_prompt(...)`；
+- 三个函数委托同一个私有 policy implementation；
+- 最终渲染继续唯一复用 `SharedLayeredPromptBuilder`；
+- candidate 是唯一 editable artifact；
+- original 始终只读；
+- Compile：Public testbench 可选，存在时只读；
+- CSYNTH：Public testbench 可选，存在时只读；
+- Public CSIM：Public testbench 必须存在且只读；
+- CSYNTH Policy 只接受 stage=csynth、owner=candidate、
+  blocking=true、agent-safe 的反馈；
+- toolchain、configuration、evaluator、unknown 等 CSYNTH
+  failure 不得进入 Candidate Repair Prompt；
+- Public CSIM 要求 explicit public split 和
+  `feedback_visible_to_agent=true`；
+- Hidden、operator-full、wrong owner 和 wrong stage 均拒绝；
+- 不调用模型、网络或工具，不执行 repair loop。
+
+确定性验收目录：
+
+```text
+/data/agrefactor_runs/stage2_candidate_prompt_policies_acceptance_recovery_20260718_035345
+```
+
+该验收不是 CandidateGenerator、真实模型 API、自动 repair loop、
+ValidationOrchestrator 模型接入或真实 Vitis candidate repair。
+
+# 六、当前唯一主任务：Candidate Model Adapter / Response Contract
 
 当前只做：
 
 ```text
-Candidate Compile Repair Prompt Policy
-Candidate CSYNTH Repair Prompt Policy
-Candidate Public CSIM Repair Prompt Policy
+provider-neutral Candidate Model Adapter
+complete candidate C++ response extraction
+response rejection contract
+model usage / prompt manifest audit boundary
 ```
 
 当前绝对不要做：
 
-- 不启动完整 CandidateGenerator；
 - 不创建自动 candidate repair loop；
 - 不把模型 repair 接入 ValidationOrchestrator；
-- 不修改状态机让其自动调用模型；
+- 不修改状态机自动调用模型；
 - 不接入 Hidden feedback；
 - 不开始 Stage 3 optimizer；
 - 不实现 Memory retrieval 或 applicability scoring；
 - 不开始 multi-kernel smoke；
 - 不声称 Candidate Repair 闭环已完成。
 
-# 六、Stage 2.4.3 推荐最小闭环
+# 七、下一任务设计边界
 
-目标是建立一个纯确定性的 Candidate Prompt Policy 层，继续复用唯一的 SharedLayeredPromptBuilder。
+下一里程碑应消费已经构建好的 `LayeredPrompt`，负责：
 
-先检查仓库当前结构后再定最终文件名。推荐方向：
-
-```text
-agrefactor/prompts/candidate_repair.py
-tests/test_candidate_repair_prompts.py
-```
-
-可能的 API：
-
-```text
-CandidateRepairPromptInputs
-CandidateRepairPromptPolicy
-build_candidate_compile_repair_prompt(...)
-build_candidate_csynth_repair_prompt(...)
-build_candidate_public_csim_repair_prompt(...)
-```
-
-不要机械照搬命名，先看现有代码风格。
-
-Policy 层只负责：
-
-- 选择 PromptPurpose；
-- 定义 objective；
-- 定义 candidate-only ModificationScope；
-- 定义 read-only artifacts；
-- 定义 stage-specific forbidden actions；
-- 定义 PromptOutputContract；
-- 把 agent-safe FeedbackReport 交给 SharedLayeredPromptBuilder。
-
-Policy 层不负责：
-
-- Model Registry；
-- provider 调用；
-- 模型响应解析；
-- repair loop；
-- 编译、CSIM、CSYNTH；
-- operator artifacts；
-- Hidden evidence；
-- Memory 选择；
-- 状态机转移。
-
-## Candidate Compile Policy
-
-- Purpose 为 candidate_compile_repair；
-- agent-safe；
-- candidate-owned；
-- stage 为 static check / compile / link；
-- candidate 唯一 editable；
-- original read-only；
-- Public testbench 可选 read-only；
-- 输出完整 candidate C++ replacement。
-
-## Candidate CSYNTH Policy
-
-- Purpose 为 candidate_csynth_repair；
-- agent-safe；
-- candidate-owned；
-- stage 为 CSYNTH；
-- effective TargetProfile 显式进入 Prompt；
-- candidate 唯一 editable；
-- original / Public testbench read-only；
-- 不得删除接口、弱化功能、伪造 pragma 成功。
-
-## Candidate Public CSIM Policy
-
-- Purpose 为 candidate_public_csim_repair；
-- split 显式 public；
-- feedback_visible_to_agent 显式 true；
-- candidate-owned；
-- stage 为 test / CSIM；
-- candidate 唯一 editable；
-- original 与 Public testbench read-only；
-- Hidden identifiers、paths、diagnostics、artifacts 不得出现。
-
-# 七、首个提交测试要求
-
-至少覆盖：
-
-1. compile policy 的 purpose、scope、output contract；
-2. CSYNTH policy 包含 effective TargetProfile；
-3. Public CSIM policy 接受 Public agent-visible feedback；
-4. Hidden feedback 被拒绝；
-5. operator-full 被拒绝；
-6. wrong owner 被拒绝；
-7. wrong stage 被拒绝；
-8. original / Public testbench 只读；
-9. candidate 唯一 editable；
-10. source_evidence、evidence_ref、metadata secret、绝对路径不泄漏；
-11. 不调用模型；
-12. 不调用工具；
-13. JSON 可序列化；
-14. 输入不 mutation；
-15. 三个 policy 共享同一个 renderer；
-16. generic naming；
-17. 完整测试通过。
-
-首个 2.4.3 子里程碑只做 deterministic acceptance，不调用网络模型，不运行 Vitis。
+- 通过既有 Model Registry / provider 进行一次受控调用；
+- 解析且只接受一个完整 candidate C++ replacement；
+- 拒绝 commentary、空输出、多代码块、patch/diff 和非法格式；
+- 保存 prompt manifest、normalized response 和 usage；
+- 不执行 compile、CSIM、CSYNTH；
+- 不负责 repair loop、预算迭代或状态机转移；
+- 不接触 Hidden evidence。
 
 # 八、后续路线
 
 ```text
-Stage 2.4.3 Candidate Prompt Policies
+Stage 2.4.3.1 Candidate Prompt Policies（已完成）
 → Candidate Model Adapter / Response Contract
 → bounded Candidate Repair Loop
 → ValidationOrchestrator 接入
@@ -502,12 +460,14 @@ Stage 2 未关闭前，不进入 Stage 3。
 6. docs/stage2_acceptance.md
 7. docs/stage2_runtime_evidence_acceptance.md
 8. agrefactor/prompts/layered.py
-9. agrefactor/prompts/__init__.py
-10. agrefactor/testing/model_testbench_repairer.py
-11. agrefactor/testing/testbench_repair.py
-12. Preflight / CSYNTH / Test Evaluation feedback adapters 和 views
-13. 相关 tests
-14. git log -15 --oneline
+9. agrefactor/prompts/candidate_repair.py
+10. agrefactor/prompts/__init__.py
+11. tests/test_candidate_repair_prompts.py
+12. agrefactor/testing/model_testbench_repairer.py
+13. agrefactor/testing/testbench_repair.py
+14. Preflight / CSYNTH / Test Evaluation feedback adapters 和 views
+15. 相关 tests
+16. git log -15 --oneline
 ```
 
 事实由以下共同决定：
@@ -545,7 +505,7 @@ Git history
 - 脚本包含安全检查、修改、测试、验收、commit、push；
 - 先 bash -n；
 - 内嵌 Python 先编译；
-- 失败后生成 state-aware recovery；
+- 失败时不回滚、不自动生成通用 recovery；保留现场、输出完整诊断和日志后停止；
 - 不盲目回滚；
 - 不重复运行会重复插入代码的旧脚本。
 
@@ -572,25 +532,33 @@ Git history
 - Prompt policy 不等于 CandidateGenerator；
 - handler 不等于自动 repair 闭环；
 - FakeProvider 不等于真实 API；
-- 554 tests 不等于 554 个真实 kernel；
+- 574 tests 不等于 574 个真实 kernel；
 - 单一 Vitis 2023.2 不等于任意版本支持。
 
-# 十一、本对话第一项任务
+# 十一、下一对话第一项任务
 
 请先：
 
-1. 核对 Git 状态；
-2. 阅读上述文档和代码；
-3. 检查是否已有 candidate repair 抽象；
-4. 设计 Stage 2.4.3.1 的最小文件集合、API、不变量、测试和 acceptance；
-5. 然后生成一个可下载实现脚本，不要只给零散代码。
+1. 核对 branch、HEAD、origin、remote 和 worktree；
+2. 确认功能提交 `dc44be344f9bf9bae3eb8e43675fb49f0c017708` 与后续文档提交都存在；
+3. 阅读 Candidate Prompt Policy 代码、测试和验收产物；
+4. 检查是否已有 Candidate Model Adapter / Response Contract；
+5. 设计下一子里程碑的最小文件、API、不变量、测试和 acceptance；
+6. 暂不实现 repair loop 或 orchestrator 模型接入。
 
 第一条回复应明确：
 
 ```text
-我已经理解当前状态：Stage 2.4.1 Prompt Core 和 2.4.2 Testbench Repair 迁移已完成，功能基线是 ec9802c，554 个完整测试通过。下一步只做 Stage 2.4.3 Candidate Compile / CSYNTH / Public CSIM Prompt Policies；暂不启动 CandidateGenerator、repair loop、orchestrator 模型接入或 Stage 3。
+Stage 2.4.3.1 Candidate Compile / CSYNTH / Public CSIM Prompt
+Policies 已完成，功能提交是 dc44be3，完整测试
+574/574 通过。下一步只做 Candidate Model
+Adapter / Response Contract；暂不启动自动 repair loop、
+ValidationOrchestrator 模型接入、Hidden feedback 或 Stage 3。
 ```
 
 # 十二、一句话状态
 
-AgRefactor++ 当前已经建立可信的 Stage 2 验证、反馈、状态和共享 Prompt 基础，并把 Testbench Repair 迁移到共享分层 Prompt；下一步是在不调用模型、不执行 repair loop、不接触 Hidden evidence的前提下，为 Candidate Compile、CSYNTH 和 Public CSIM 建立统一、确定性、可测试的 Prompt Policy 层。
+AgRefactor++ 已完成共享分层 Prompt Core、Testbench Repair 迁移，
+以及 Candidate Compile、CSYNTH、Public CSIM 的确定性 Prompt
+Policy；下一步是在不执行验证工具和不建立自动循环的前提下，
+实现 provider-neutral Candidate Model Adapter 与严格响应契约。
