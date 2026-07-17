@@ -31,6 +31,9 @@ from .preflight_feedback_view import (
 from .test_evaluation_feedback import (
     TestEvaluationFeedbackAdapter,
 )
+from .test_evaluation_feedback_composer import (
+    TestEvaluationFeedbackComposer,
+)
 from .testbench_preflight import (
     TestbenchPreflight,
     classify_compile_failure,
@@ -71,6 +74,7 @@ __all__ = [
     "TestbenchPreflightFeedbackAdapter",
     "TestbenchPreflightFeedbackViewAdapter",
     "TestEvaluationFeedbackAdapter",
+    "TestEvaluationFeedbackComposer",
     "EvaluationRequest",
     "EvaluationResult",
     "EvaluationStatus",
