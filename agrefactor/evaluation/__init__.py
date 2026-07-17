@@ -3,6 +3,11 @@ from .csynth_diagnostics import CsynthDiagnosticParser
 from .csynth_feedback import CsynthFeedbackAdapter
 from .csynth_feedback_composer import CsynthFeedbackComposer
 from .csynth_feedback_view import CsynthFeedbackViewAdapter
+from .feedback_routing import (
+    FeedbackRouteAction,
+    FeedbackRouteDecision,
+    FeedbackRouter,
+)
 from .csim_suite import (
     CsimSuiteEvaluationResult,
     CsimSuiteEvaluator,
@@ -37,6 +42,9 @@ __all__ = [
     "CsynthFeedbackAdapter",
     "CsynthFeedbackComposer",
     "CsynthFeedbackViewAdapter",
+    "FeedbackRouteAction",
+    "FeedbackRouteDecision",
+    "FeedbackRouter",
     "parse_compiler_diagnostics",
     "classify_compile_failure",
     "infer_failure_owner",
