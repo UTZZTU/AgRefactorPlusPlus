@@ -21,6 +21,9 @@ from .csim_suite import (
 from .preflight_feedback import (
     TestbenchPreflightFeedbackAdapter,
 )
+from .preflight_feedback_view import (
+    TestbenchPreflightFeedbackViewAdapter,
+)
 from .test_evaluation_feedback import (
     TestEvaluationFeedbackAdapter,
 )
@@ -60,6 +63,7 @@ __all__ = [
     "infer_failure_owner",
     "TestbenchPreflight",
     "TestbenchPreflightFeedbackAdapter",
+    "TestbenchPreflightFeedbackViewAdapter",
     "TestEvaluationFeedbackAdapter",
     "EvaluationRequest",
     "EvaluationResult",
