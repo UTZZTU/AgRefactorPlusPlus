@@ -3,17 +3,29 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Protocol
 
+from agrefactor.config import TaskSpec
 from agrefactor.evaluation import TestbenchPreflight
 from agrefactor.evidence import (
     TestbenchFailureOwner,
     TestbenchPreflightResult,
 )
 from agrefactor.runtime.budget import BudgetManager
+
+
+
+def _default_testbench_repair_task() -> TaskSpec:
+    """Return a path-neutral compatibility task for direct callers."""
+
+    return TaskSpec(
+        task_id="testbench-repair",
+        kernel_path="candidate.cpp",
+        kernel_name="candidate",
+    )
 
 
 class TestbenchRepairStatus(str, Enum):
@@ -31,12 +43,19 @@ class TestbenchRepairRequest:
     original_code: str
     candidate_code: str
     preflight: TestbenchPreflightResult
+    task: TaskSpec = field(
+        default_factory=_default_testbench_repair_task
+    )
 
     def __post_init__(self) -> None:
         if self.attempt < 1:
             raise ValueError("attempt must be at least 1")
         if self.max_attempts < self.attempt:
             raise ValueError("max_attempts must be >= attempt")
+        if not isinstance(self.task, TaskSpec):
+            raise TypeError(
+                "TestbenchRepairRequest.task must be a TaskSpec"
+            )
         for name in (
             "current_testbench",
             "original_code",
@@ -134,6 +153,7 @@ class TestbenchRepairLoop:
         original_code: str,
         candidate_code: str,
         budget: BudgetManager | None = None,
+        task: TaskSpec | None = None,
     ) -> TestbenchRepairResult:
         root = Path(work_dir)
         root.mkdir(parents=True, exist_ok=True)
@@ -141,6 +161,11 @@ class TestbenchRepairLoop:
         current = self._require_source("testbench_code", testbench_code)
         original = self._require_source("original_code", original_code)
         candidate = self._require_source("candidate_code", candidate_code)
+
+        if task is None:
+            task = _default_testbench_repair_task()
+        elif not isinstance(task, TaskSpec):
+            raise TypeError("task must be a TaskSpec or None")
 
         attempts: list[TestbenchRepairAttempt] = []
         repair_attempts_used = 0
@@ -207,6 +232,7 @@ class TestbenchRepairLoop:
                 original_code=original,
                 candidate_code=candidate,
                 preflight=latest,
+                task=task,
             )
 
             repair_attempts_used += 1

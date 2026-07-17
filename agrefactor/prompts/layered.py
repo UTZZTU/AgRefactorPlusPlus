@@ -391,6 +391,14 @@ class LayeredPromptRequest:
                 "artifacts are not declared in scope: "
                 + ", ".join(sorted(extra))
             )
+        if (
+            self.output_contract.artifact_name
+            not in self.modification_scope.editable_artifacts
+        ):
+            raise ValueError(
+                "output contract artifact must be editable: "
+                + self.output_contract.artifact_name
+            )
         for artifact in artifacts:
             if not artifact.agent_safe:
                 raise ValueError(

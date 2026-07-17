@@ -554,5 +554,38 @@ class SharedLayeredPromptBuilderTests(
         )
 
 
+    def test_output_contract_artifact_must_be_editable(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "output contract artifact must be editable",
+        ):
+            LayeredPromptRequest(
+                purpose=(
+                    PromptPurpose.
+                    CANDIDATE_COMPILE_REPAIR
+                ),
+                task=make_task(),
+                feedback=make_feedback(),
+                objective="repair",
+                artifacts=(
+                    PromptArtifact(
+                        name="candidate",
+                        content=CANDIDATE,
+                    ),
+                    PromptArtifact(
+                        name="original",
+                        content=ORIGINAL,
+                    ),
+                ),
+                modification_scope=ModificationScope(
+                    editable_artifacts=("candidate",),
+                    read_only_artifacts=("original",),
+                ),
+                output_contract=PromptOutputContract(
+                    artifact_name="original",
+                ),
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

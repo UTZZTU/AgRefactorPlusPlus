@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from agrefactor.config import TargetProfile, TaskSpec
 from agrefactor.evaluation import TestbenchPreflight
 from agrefactor.testing import (
     TestbenchRepairLoop,
@@ -318,6 +319,41 @@ class TestbenchRepairLoopTests(unittest.TestCase):
         self.assertEqual(result.status, TestbenchRepairStatus.EXHAUSTED)
         self.assertEqual(result.repair_attempts_used, 2)
         self.assertEqual(len(repairer.requests), 2)
+
+
+    def test_explicit_task_is_forwarded_to_repair_request(
+        self,
+    ) -> None:
+        task = TaskSpec(
+            task_id="repair-task",
+            kernel_path="candidate.cpp",
+            kernel_name="process_top_hls",
+            target=TargetProfile(
+                name="repair-target",
+                toolchain="vitis_hls",
+                toolchain_version="2024.1",
+                device="repair-device",
+                clock_period_ns=3.5,
+            ),
+        )
+        repairer = RecordingRepairer([VALID_TB])
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.make_loop(repairer).run(
+                work_dir=directory,
+                testbench_code=BROKEN_TB,
+                original_code=ORIGINAL,
+                candidate_code=CANDIDATE,
+                task=task,
+            )
+
+        self.assertTrue(result.succeeded)
+        self.assertEqual(len(repairer.requests), 1)
+        self.assertIs(repairer.requests[0].task, task)
+        self.assertEqual(
+            repairer.requests[0].task.target.name,
+            "repair-target",
+        )
 
 
 if __name__ == "__main__":

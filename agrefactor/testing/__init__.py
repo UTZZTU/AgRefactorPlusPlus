@@ -8,6 +8,7 @@ from .model_testbench_repairer import (
     TestbenchRepairContract,
     TestbenchRepairResponseError,
     build_testbench_repair_messages,
+    build_testbench_repair_prompt,
     extract_complete_cpp_block,
 )
 
@@ -27,6 +28,7 @@ __all__ = [
     "build_openai_compatible_testbench_repairer",
     "extract_complete_cpp_block",
     "build_testbench_repair_messages",
+    "build_testbench_repair_prompt",
     "TestbenchRepairResponseError",
     "TestbenchRepairContract",
     "ModelTestbenchRepairer",

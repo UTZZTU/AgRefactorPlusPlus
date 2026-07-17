@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 
+from agrefactor.config import TargetProfile, TaskSpec
 from agrefactor.evaluation import TestbenchPreflight
 from agrefactor.models import (
     ModelProvider,
@@ -15,7 +16,23 @@ from agrefactor.testing.model_testbench_repairer import (
     TestbenchRepairContract,
     TestbenchRepairResponseError,
     build_testbench_repair_messages,
+    build_testbench_repair_prompt,
     extract_complete_cpp_block,
+)
+
+
+TASK = TaskSpec(
+    task_id="model-testbench-repair",
+    kernel_path="/operator/private/candidate.cpp",
+    kernel_name="process_top_hls",
+    target=TargetProfile(
+        name="test-target",
+        toolchain="vitis_hls",
+        toolchain_version="2023.2",
+        device="custom-device",
+        clock_period_ns=4.0,
+        compile_flags=("-D TEST_TARGET",),
+    ),
 )
 
 
@@ -115,6 +132,7 @@ def make_request():
         original_code=ORIGINAL,
         candidate_code=CANDIDATE,
         preflight=make_preflight_result(),
+        task=TASK,
     )
 
 
@@ -154,16 +172,31 @@ class ModelTestbenchRepairerTests(unittest.TestCase):
                 "int main() { return 0; }\n```"
             )
 
-    def test_prompt_contains_evidence_and_read_only_boundaries(self) -> None:
-        messages = build_testbench_repair_messages(
+    def test_prompt_contains_evidence_and_read_only_boundaries(
+        self,
+    ) -> None:
+        prompt = build_testbench_repair_prompt(
             make_request(),
             family_instruction=(
                 "Reason internally, emit only final code."
             ),
         )
+        messages = prompt.messages
 
         self.assertEqual(messages[0].role, "system")
-        self.assertIn("testbench-only", messages[0].content)
+        self.assertIn(
+            "testbench-only repair",
+            messages[1].content,
+        )
+        self.assertIn(
+            "Editable artifacts: testbench",
+            messages[0].content,
+        )
+        self.assertIn(
+            "Read-only artifacts: "
+            "original_program, candidate_kernel",
+            messages[0].content,
+        )
         self.assertIn(
             "Never modify or propose changes to the candidate",
             messages[0].content,
@@ -189,12 +222,46 @@ class ModelTestbenchRepairerTests(unittest.TestCase):
             messages[0].content,
         )
         self.assertIn(
-            '"failure_owner": "testbench"',
+            '"owner": "testbench"',
             messages[1].content,
         )
         self.assertIn(
-            "Read-only original program context",
+            '"toolchain_version": "2023.2"',
             messages[1].content,
+        )
+        self.assertIn(
+            '"device": "custom-device"',
+            messages[1].content,
+        )
+        self.assertIn(
+            "Editable artifact: testbench",
+            messages[1].content,
+        )
+        self.assertIn(
+            "Read-only artifact: original_program",
+            messages[1].content,
+        )
+        self.assertIn(
+            "Read-only artifact: candidate_kernel",
+            messages[1].content,
+        )
+
+        combined = "\n".join(
+            message.content for message in messages
+        )
+        self.assertNotIn("source_evidence", combined)
+        self.assertNotIn("evidence_ref", combined)
+        self.assertNotIn(
+            "/operator/private/candidate.cpp",
+            combined,
+        )
+        self.assertEqual(
+            prompt.manifest["purpose"],
+            "testbench_repair",
+        )
+        self.assertEqual(
+            prompt.manifest["target_profile"],
+            "test-target",
         )
 
     def test_contract_rejects_removed_macro_or_public_call(self) -> None:
@@ -281,6 +348,36 @@ class ModelTestbenchRepairerTests(unittest.TestCase):
         self.assertEqual(
             repairer.last_response.usage.total_tokens,
             150,
+        )
+
+    def test_model_adapter_records_shared_prompt_manifest(
+        self,
+    ) -> None:
+        provider = FakeProvider(
+            f"```cpp\n{FIXED_TB}\n```"
+        )
+        repairer = ModelTestbenchRepairer(
+            registry=make_registry(provider),
+            model_name="repair-model",
+        )
+
+        repairer.repair(make_request())
+
+        self.assertEqual(len(repairer.prompts), 1)
+        self.assertIs(repairer.last_prompt, repairer.prompts[0])
+        self.assertEqual(
+            repairer.last_prompt.manifest["purpose"],
+            "testbench_repair",
+        )
+        self.assertEqual(
+            repairer.last_prompt.manifest[
+                "editable_artifacts"
+            ],
+            ["testbench"],
+        )
+        self.assertEqual(
+            provider.calls[0][1].messages,
+            repairer.last_prompt.messages,
         )
 
     def test_model_adapter_rejects_weakened_response(self) -> None:

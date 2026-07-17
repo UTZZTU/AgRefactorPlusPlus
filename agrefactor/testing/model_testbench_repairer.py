@@ -8,11 +8,26 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from agrefactor.evaluation.preflight_feedback import (
+    TestbenchPreflightFeedbackAdapter,
+)
+from agrefactor.evaluation.preflight_feedback_view import (
+    TestbenchPreflightFeedbackViewAdapter,
+)
 from agrefactor.models import (
     ChatMessage,
     ModelRegistry,
     ModelRequest,
     ModelResponse,
+)
+from agrefactor.prompts import (
+    LayeredPrompt,
+    LayeredPromptRequest,
+    ModificationScope,
+    PromptArtifact,
+    PromptOutputContract,
+    PromptPurpose,
+    SharedLayeredPromptBuilder,
 )
 from agrefactor.testing.testbench_repair import TestbenchRepairRequest
 
@@ -181,96 +196,159 @@ class TestbenchRepairContract:
         return tuple(issues)
 
 
-_BASE_SYSTEM_PROMPT = """You repair C++ HLS testbenches.
+_TESTBENCH_FORBIDDEN_ACTIONS = (
+    "Never modify or propose changes to the original program.",
+    "Never modify or propose changes to the candidate HLS kernel.",
+    (
+        "Never define, stub, wrap, or reimplement an original or "
+        "candidate top-level function inside the testbench."
+    ),
+    "Never copy or redeclare implementation-private types.",
+    (
+        "Never declare, read, write, or reset file-scope variables "
+        "owned by the original or candidate implementation."
+    ),
+    (
+        "Do not access implementation-private helper functions or "
+        "internal data structures."
+    ),
+    "Do not reduce test count or weaken any check.",
+)
 
-Your scope is testbench-only:
-- Return a complete replacement testbench.
-- Never modify or propose changes to the original program.
-- Never modify or propose changes to the candidate HLS kernel.
-- Repair only defects supported by the structured compiler evidence.
-- Preserve all existing test cases, seeds, comparisons, assertions,
-  macros, required top-level calls, and return semantics.
-- Do not reduce test count or weaken any check.
-- Existing testbench declarations are not authoritative. When compiler
-  or linker evidence shows an interface declaration mismatch, correct
-  only the declaration's return type, parameter types, qualifiers, or
-  C/C++ language linkage so it matches the corresponding definition in
-  the read-only original or candidate source.
-- Never define, stub, wrap, or reimplement an original or candidate
-  top-level function inside the testbench.
-- Treat original and candidate implementations as black boxes exposed
-  only through their actual public top-level definitions.
-- Never copy or redeclare implementation-private types. Never declare,
-  read, write, or reset file-scope variables owned by the original or
-  candidate implementation.
-- When the current testbench resets private state between independent
-  cases, preserve the same clean-state semantics without private access.
-  On supported POSIX host simulation, run each independent case in a
-  fresh child process and wait for it (or use an equivalent supported
-  harness-isolation technique). Preserve every seed, call, comparison,
-  assertion, and failure condition.
-- Do not access implementation-private helper functions or internal
-  data structures.
-- The result must remain deterministic and self-contained.
-- Output exactly one ```cpp ... ``` block and no commentary.
-"""
+_TESTBENCH_OUTPUT_REQUIREMENTS = (
+    (
+        "Preserve all existing test cases, seeds, comparisons, "
+        "assertions, macros, required top-level calls, and return "
+        "semantics."
+    ),
+    (
+        "Existing testbench declarations are not authoritative. "
+        "When compiler or linker evidence shows an interface "
+        "declaration mismatch, correct only its return type, "
+        "parameter types, qualifiers, or C/C++ language linkage "
+        "to match the corresponding read-only definition."
+    ),
+    (
+        "Treat original and candidate implementations as black "
+        "boxes exposed only through their actual public top-level "
+        "definitions."
+    ),
+    (
+        "When the current testbench resets private state between "
+        "independent cases, preserve clean-state semantics without "
+        "private access. On supported POSIX host simulation, use a "
+        "fresh child process and wait for it, or an equivalent "
+        "supported harness-isolation technique."
+    ),
+    "The result must remain deterministic and self-contained.",
+    (
+        "Return exactly one complete C++ testbench in one fenced "
+        "code block with no commentary."
+    ),
+)
+
+
+def build_testbench_repair_prompt(
+    request: TestbenchRepairRequest,
+    *,
+    family_instruction: str | None = None,
+    builder: SharedLayeredPromptBuilder | None = None,
+) -> LayeredPrompt:
+    """Build one shared layered prompt from safe preflight evidence."""
+
+    if not isinstance(request, TestbenchRepairRequest):
+        raise TypeError(
+            "request must be a TestbenchRepairRequest"
+        )
+    if builder is None:
+        builder = SharedLayeredPromptBuilder()
+    elif not isinstance(builder, SharedLayeredPromptBuilder):
+        raise TypeError(
+            "builder must be a SharedLayeredPromptBuilder or None"
+        )
+
+    operator_report = (
+        TestbenchPreflightFeedbackAdapter().to_operator_report(
+            request.preflight,
+            report_id=(
+                f"testbench-repair-{request.attempt}.operator"
+            ),
+        )
+    )
+    agent_report = (
+        TestbenchPreflightFeedbackViewAdapter().to_agent_report(
+            operator_report,
+            report_id=(
+                f"testbench-repair-{request.attempt}.agent"
+            ),
+        )
+    )
+
+    layered_request = LayeredPromptRequest(
+        purpose=PromptPurpose.TESTBENCH_REPAIR,
+        task=request.task,
+        feedback=agent_report,
+        objective=(
+            "Perform a testbench-only repair supported by the "
+            "structured preflight evidence."
+        ),
+        artifacts=(
+            PromptArtifact(
+                name="testbench",
+                content=request.current_testbench,
+            ),
+            PromptArtifact(
+                name="original_program",
+                content=request.original_code,
+            ),
+            PromptArtifact(
+                name="candidate_kernel",
+                content=request.candidate_code,
+            ),
+        ),
+        modification_scope=ModificationScope(
+            editable_artifacts=("testbench",),
+            read_only_artifacts=(
+                "original_program",
+                "candidate_kernel",
+            ),
+            forbidden_actions=_TESTBENCH_FORBIDDEN_ACTIONS,
+        ),
+        output_contract=PromptOutputContract(
+            artifact_name="testbench",
+            language="cpp",
+            complete_replacement=True,
+            fenced_code_block=True,
+            commentary_allowed=False,
+            additional_requirements=(
+                _TESTBENCH_OUTPUT_REQUIREMENTS
+            ),
+        ),
+        attempt=request.attempt,
+        max_attempts=request.max_attempts,
+        family_instruction=family_instruction,
+    )
+
+    return builder.build(layered_request)
 
 
 def build_testbench_repair_messages(
     request: TestbenchRepairRequest,
     *,
     family_instruction: str | None = None,
+    builder: SharedLayeredPromptBuilder | None = None,
 ) -> tuple[ChatMessage, ...]:
-    """Build provider-neutral messages from structured evidence."""
+    """Compatibility wrapper returning shared layered messages."""
 
-    system_prompt = _BASE_SYSTEM_PROMPT
-    if family_instruction and family_instruction.strip():
-        system_prompt += (
-            "\nModel-family instruction:\n"
-            + family_instruction.strip()
-            + "\n"
-        )
-
-    evidence = request.preflight.to_dict()
-    user_prompt = (
-        f"Repair attempt {request.attempt} of "
-        f"{request.max_attempts}.\n\n"
-        "Structured preflight evidence:\n"
-        "```json\n"
-        + json.dumps(
-            evidence,
-            indent=2,
-            ensure_ascii=False,
-        )
-        + "\n```\n\n"
-        "Current testbench to repair:\n"
-        "```cpp\n"
-        + request.current_testbench
-        + "\n```\n\n"
-        "Read-only original program context:\n"
-        "```cpp\n"
-        + request.original_code
-        + "\n```\n\n"
-        "Read-only candidate HLS context:\n"
-        "```cpp\n"
-        + request.candidate_code
-        + "\n```\n"
-    )
-
-    return (
-        ChatMessage(
-            role="system",
-            content=system_prompt,
-        ),
-        ChatMessage(
-            role="user",
-            content=user_prompt,
-        ),
-    )
+    return build_testbench_repair_prompt(
+        request,
+        family_instruction=family_instruction,
+        builder=builder,
+    ).messages
 
 
 class ModelTestbenchRepairer:
-    """Use the shared model registry to propose testbench-only repairs."""
+    """Use the shared model registry for testbench-only repair."""
 
     def __init__(
         self,
@@ -279,16 +357,29 @@ class ModelTestbenchRepairer:
         model_name: str,
         parameters: Mapping[str, Any] | None = None,
         family_instructions: Mapping[str, str] | None = None,
+        prompt_builder: SharedLayeredPromptBuilder | None = None,
     ) -> None:
         if not isinstance(registry, ModelRegistry):
             raise TypeError("registry must be a ModelRegistry")
+        if prompt_builder is None:
+            prompt_builder = SharedLayeredPromptBuilder()
+        elif not isinstance(
+            prompt_builder,
+            SharedLayeredPromptBuilder,
+        ):
+            raise TypeError(
+                "prompt_builder must be a "
+                "SharedLayeredPromptBuilder or None"
+            )
 
         self._model, self._provider = registry.resolve(model_name)
         self._parameters = dict(parameters or {})
         self._family_instructions = dict(
             family_instructions or {}
         )
+        self._prompt_builder = prompt_builder
         self._responses: list[ModelResponse] = []
+        self._prompts: list[LayeredPrompt] = []
 
         json.dumps(
             self._parameters,
@@ -308,6 +399,18 @@ class ModelTestbenchRepairer:
 
         return self._responses[-1] if self._responses else None
 
+    @property
+    def prompts(self) -> tuple[LayeredPrompt, ...]:
+        """Return layered prompts built by this adapter."""
+
+        return tuple(self._prompts)
+
+    @property
+    def last_prompt(self) -> LayeredPrompt | None:
+        """Return the most recently built layered prompt."""
+
+        return self._prompts[-1] if self._prompts else None
+
     def repair(self, request: TestbenchRepairRequest) -> str:
         """Generate and validate one complete repaired testbench."""
 
@@ -322,10 +425,12 @@ class ModelTestbenchRepairer:
                 self._model.family
             )
 
-        messages = build_testbench_repair_messages(
+        prompt = build_testbench_repair_prompt(
             request,
             family_instruction=family_instruction,
+            builder=self._prompt_builder,
         )
+        self._prompts.append(prompt)
 
         parameters = dict(self._model.default_parameters)
         parameters.update(self._parameters)
@@ -333,7 +438,7 @@ class ModelTestbenchRepairer:
         response = self._provider.generate(
             self._model,
             ModelRequest(
-                messages=messages,
+                messages=prompt.messages,
                 parameters=parameters,
             ),
         )

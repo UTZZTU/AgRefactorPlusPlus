@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from autogen.agentchat.group import ContextVariables # type: ignore
 import flow.tools as tools
+from agrefactor.config import TaskSpec, resolve_target_profile
 from agrefactor.evaluation import TestbenchPreflight
 from agrefactor.runtime.budget import BudgetManager
 from agrefactor.testing import TestbenchRepairLoop
@@ -219,6 +220,32 @@ def _collect_testbench_repair_usage(
     }
 
 
+
+def _build_testbench_repair_task(
+    cv: ContextVariables,
+) -> TaskSpec:
+    "Build a path-neutral task with the effective legacy target."
+
+    kernel_name = (
+        cv.get("new_kernel_name")
+        or cv.get("kernel_name")
+        or "candidate"
+    )
+    if not isinstance(kernel_name, str) or not kernel_name.strip():
+        raise ValueError(
+            "testbench repair kernel name must not be empty"
+        )
+    kernel_name = kernel_name.strip()
+
+    return TaskSpec(
+        task_id=f"testbench-repair:{kernel_name}",
+        kernel_path="candidate.cpp",
+        kernel_name=kernel_name,
+        target=resolve_target_profile(
+            cv.get("target_profile")
+        ),
+    )
+
 def run_testbench_validation_gate(
     output_dir: str,
     cv: ContextVariables,
@@ -274,6 +301,7 @@ def run_testbench_validation_gate(
         "testbench_code": cv["testbench"],
         "original_code": cv["orig_code"],
         "candidate_code": cv["curr_code"],
+        "task": _build_testbench_repair_task(cv),
     }
     if budget is not None:
         repair_kwargs["budget"] = budget

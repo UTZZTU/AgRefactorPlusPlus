@@ -113,13 +113,20 @@ def make_repairer(provider):
     )
 
 
-def make_context(testbench, candidate=CANDIDATE):
+def make_context(
+    testbench,
+    candidate=CANDIDATE,
+    *,
+    target_profile=None,
+):
     return ContextVariables(
         data={
             "orig_code": ORIGINAL,
             "curr_code": candidate,
             "testbench": testbench,
+            "kernel_name": "process_top",
             "new_kernel_name": "process_top_hls",
+            "target_profile": dict(target_profile or {}),
             "code_for_hetero": "",
         }
     )
@@ -283,6 +290,74 @@ class LegacyTestbenchRepairIntegrationTests(unittest.TestCase):
                 15,
             )
             self.assertEqual(len(provider.calls), invocation + 1)
+
+
+    def test_effective_target_enters_layered_repair_prompt(
+        self,
+    ) -> None:
+        provider = FakeRepairProvider(FIXED_TB)
+        repairer = make_repairer(provider)
+        context = make_context(
+            BROKEN_TB,
+            target_profile={
+                "name": "legacy-custom-target",
+                "toolchain_version": "2024.1",
+                "device": "legacy-device",
+                "clock_period_ns": 6.25,
+                "compile_flags": ["-D LEGACY_TARGET"],
+            },
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(
+                general.tools.csynth,
+                "run_csynth",
+                return_value=("succeeded", ""),
+            ):
+                with patch.object(
+                    general.tools.csim,
+                    "run_csim",
+                    return_value=("succeeded", ""),
+                ):
+                    result = general.csynth_and_csim(
+                        directory,
+                        context,
+                        True,
+                        testbench_repairer=repairer,
+                        max_testbench_repair_attempts=1,
+                    )
+
+        self.assertFalse(result[0])
+        self.assertEqual(len(provider.calls), 1)
+        user_prompt = (
+            provider.calls[0][1].messages[1].content
+        )
+        self.assertIn(
+            '"name": "legacy-custom-target"',
+            user_prompt,
+        )
+        self.assertIn(
+            '"toolchain_version": "2024.1"',
+            user_prompt,
+        )
+        self.assertIn(
+            '"device": "legacy-device"',
+            user_prompt,
+        )
+        self.assertIn(
+            '"clock_period_ns": 6.25',
+            user_prompt,
+        )
+        self.assertEqual(
+            repairer.last_prompt.manifest[
+                "target_profile"
+            ],
+            "legacy-custom-target",
+        )
+        self.assertEqual(
+            repairer.last_prompt.manifest["kernel_name"],
+            "process_top_hls",
+        )
 
 
 if __name__ == "__main__":
