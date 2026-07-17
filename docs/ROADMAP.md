@@ -446,107 +446,151 @@ Stage 2 public/hidden test roles and evidence
 
 ## 6. Stage 2 — 结构化证据闭环
 
-### 6.1 原始目标
+### 6.1 完整范围
 
 Stage 2 不等于 testbench repair。完整范围是：
 
 ```text
-General VitisFeedbackParser
-+
-Evidence-driven State Machine
-+
-Stage Prompt Builder
-+
-Testbench Reliability
-+
-Multi-type Kernel Smoke
+2.1 Public/Hidden Test Roles and Evidence
+2.2 General Feedback and Validation Strategy
+2.3 Runtime Evidence-loop Integration
+2.4 Shared Layered Prompt Builder
+2.5 Multi-type Kernel Smoke Matrix
+2.6 Final Documentation and Closure
 ```
 
-### 6.2 已完成核心子项目：Testbench Reliability
+### 6.2 Stage 2.1：Public/Hidden 评测角色与证据 — 核心完成
 
-- testbench preflight；
-- failure stage/kind/owner/next-action；
-- testbench-owned 与 candidate-owned 分离；
-- 保守的实现私有 file-scope global 依赖门禁；
-- ABI/linkage 分类；
-- bounded testbench-only repair；
-- repair output contract；
-- 空回复、未修改、provider error 使用剩余预算；
-- public-interface-only 原则；
-- 当前状态型 kernel 的 POSIX process isolation；
-- repair artifact；
-- combined usage accounting；
-- 110 个确定性测试；
-- 一个真实统一 CLI + DeepSeek + Vitis HLS 状态型 kernel 验收。
+已经完成：
 
-### 6.3 Stage 2 仍必须完成
+- `TestSuiteSpec`、suite identity、version、case count 与 split；
+- Public feedback 可见、Hidden feedback 不可见；
+- `TaskSpec` 携带多个 Public/Hidden suites；
+- operator-full 与 agent-safe 测试证据；
+- Hidden 证据默认脱敏；
+- split-aware trace；
+- CSIM legacy result → suite evidence；
+- Public/Hidden 多 suite feedback composition；
+- Hidden operator-only composition；
+- Public candidate failure 可进入 candidate repair 路由。
 
-#### 1. 通用 VitisFeedbackParser
+Public/Hidden 是评测角色，不新增伪造的
+`public_test_calls/hidden_test_calls`。物理执行继续由
+`tool_calls/compile_calls/csim_calls` 表示。
 
-至少结构化解析：
+### 6.3 Stage 2.2：通用反馈与验证策略 — 核心完成
+
+已经完成：
+
+- 通用 Feedback Schema；
+- Preflight / CSYNTH / Test Evaluation adapters；
+- CSYNTH invocation 与 artifact 证据；
+- 确定性 CSYNTH diagnostic parser；
+- operator-full / agent-safe feedback views；
+- CSYNTH 与测试 feedback composers；
+- deterministic Feedback Router；
+- Validation State Machine；
+- Validation Feedback Coordinator；
+- budget、toolchain、configuration、task input、testbench、candidate、
+  original、unknown 与 mixed 路由；
+- Hidden candidate/testbench/original failure 终止且不向 agent 暴露；
+- Unknown 不被猜测为 candidate repair。
+
+### 6.4 Stage 2.3：真实运行时证据链接入 — 核心完成
+
+已经完成：
 
 ```text
-input/config error
-compile error
-public-test failure
-csim mismatch
-csim crash
-csim timeout
-unsupported construct
-unknown loop bound
-dependency / II bottleneck
-memory port conflict
-timing failure
-resource overflow
-report parser failure
-tool internal error
+ValidationOrchestrator
+→ real Preflight handler
+→ real CSYNTH handler
+→ real Public CSIM handler
+→ real Hidden CSIM handler
 ```
 
-证据字段至少包括：
+运行时属性：
+
+- 所有 handler 共享同一个 `RunContext`；
+- 共享同一个 `BudgetManager` 和 `TraceRecorder`；
+- Public suites 按声明顺序执行并收集非终止反馈；
+- Hidden suites 在首个 blocking result 处 fail-fast；
+- Public agent feedback 去除路径、命令和 operator artifact；
+- Hidden operator report 在协调与 trace 边界整体抑制；
+- 预算不足在真实工具启动前阻断；
+- runtime 高层 integration 使用 lazy exports，避免 package import cycle；
+- `ValidationOrchestrator` 保持 handler-agnostic；
+- `UnifiedRunner`、CLI、repair 和 model prompt 尚未与新链路耦合。
+
+确定性验收：
 
 ```text
-stage
-status
-failure_class
-owner
-evidence
-locations
-metrics
-resources
-recommended_next_action
+531/531 passed
 ```
 
-#### 2. Evidence State Machine
-
-至少覆盖：
+真实 Vitis HLS 2023.2 验收：
 
 ```text
-INPUT_CHECK
-COMPILE_CHECK
-PUBLIC_TEST
-CSIM
-CSYNTH
-READY_FOR_OPTIMIZATION
-STOP
+real g++ Preflight
+→ real Vitis CSYNTH
+→ real Public CSIM
+→ real Hidden CSIM
+→ accepted
 ```
 
-状态机决定合法下一步，不让模型自由改写整个流程。
-
-#### 3. Shared Layered Prompt Builder
-
-最终 Prompt：
+精确物理预算：
 
 ```text
-公共任务契约
-+ 当前阶段
+tool_calls=6
+compile_calls=3
+csynth_calls=1
+csim_calls=2
+```
+
+还验证了：
+
+- Public 通过、Hidden-only mismatch → `rejected`；
+- Hidden diagnostic 不进入普通 result/trace；
+- `max_csim_calls=0` 在 compile 前阻断；
+- zero-budget usage 为 0/0/0；
+- 不创建 fake Public/Hidden 计数器。
+
+验收目录：
+
+```text
+/data/agrefactor_runs/
+stage2_real_csim_handler_resume5_20260717_184240
+```
+
+详细记录：
+[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)。
+
+### 6.5 Stage 2.4：Shared Layered Prompt Builder — 下一主线
+
+最终 Prompt 必须由共享层构建：
+
+```text
+公共系统不变量
++ TaskSpec/任务契约
++ 当前验证阶段
 + effective TargetProfile
 + 模型家族适配
-+ 当前工具证据
++ agent-safe 当前证据
++ 允许修改范围
++ 历史尝试摘要
 + gated Memory
-+ 输出格式/禁止事项
++ 输出格式与禁止事项
 ```
 
-#### 4. 多类型 kernel smoke matrix
+首批消费者：
+
+- testbench repair；
+- candidate compile repair；
+- CSYNTH candidate repair；
+- Public CSIM mismatch repair。
+
+Hidden evidence 不得进入模型 Prompt。
+
+### 6.6 Stage 2.5：多类型 kernel smoke matrix — 未开始
 
 最低覆盖：
 
@@ -558,7 +602,7 @@ STOP
 - `hls::stream`；
 - stateful kernel。
 
-重点不是要求全部成功，而是验证：
+重点验证：
 
 ```text
 不崩溃
@@ -569,32 +613,33 @@ STOP
 成功时真实通过 csim/csynth
 ```
 
-#### 5. 文档与复现同步
+### 6.7 Stage 2.6：最终文档、复现和关闭 — 部分同步
 
-README、USAGE、REPRODUCTION_STATUS、CHANGELOG、ROADMAP、acceptance 与 smoke 结果必须同步。
+Stage 2.3 代码、真实验收与演进记录已同步到 Stage 2 文档。Stage 2
+最终关闭前仍需在完成 2.4 和 2.5 后再次同步 README、USAGE、
+REPRODUCTION_STATUS、CHANGELOG、ROADMAP、acceptance 与 smoke 结果。
 
-### 6.4 Stage 2 完成标准
+### 6.8 Stage 2 完成标准
 
 ```text
 Testbench Reliability 完成
-+
-General Feedback Parser 完成
-+
-Evidence State Machine 完成
-+
-Layered Prompt Builder 接入
-+
-Multi-type Smoke 完成
-+
-文档同步完成
++ Public/Hidden roles and evidence 完成
++ General feedback/state strategy 完成
++ Runtime evidence-loop integration 完成
++ Shared Layered Prompt Builder 接入
++ Multi-type Smoke 完成
++ 最终文档同步完成
 ```
 
-当前只能说：**Stage 2 Testbench Reliability 核心完成；整个 Stage 2 尚未关闭。**
+当前准确表述：
+
+> **Stage 2.1、2.2 和 2.3 的核心已完成；整个 Stage 2 尚未关闭。**
 
 详细文档：
 
-- [`STAGE2_EVIDENCE_LOOP.md`](STAGE2_EVIDENCE_LOOP.md)
-- [`stage2_acceptance.md`](stage2_acceptance.md)
+- [`STAGE2_EVIDENCE_LOOP.md`](STAGE2_EVIDENCE_LOOP.md)；
+- [`stage2_acceptance.md`](stage2_acceptance.md)；
+- [`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)。
 
 ## 7. Stage 3 — 安全的三级优化器
 

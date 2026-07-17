@@ -54,14 +54,36 @@
 - per-field provenance；
 - 更多版本、器件和 kernel 验证。
 
-### Stage 2 Testbench Reliability 核心
+### Stage 2 结构化证据闭环
+
+早期 Testbench Reliability：
 
 - 新增 testbench preflight、failure stage/kind/owner/next-action。
 - 新增 testbench-only bounded repair、ABI/linkage evidence 与 private-global gate。
-- provider 异常、空/未修改回复会消耗 repair budget。
+- provider 异常、空/未修改回复消耗 repair budget。
 - 新增 repair artifact、统一 usage 与真实 unified CLI + DeepSeek + Vitis 验收。
-- Stage 2 仍缺 general parser、完整 state machine、Shared Prompt Builder 与多类型 smoke。
-<!-- AGREFPP_STAGE1_STAGE2_CHANGELOG:END -->
+
+Public/Hidden 与通用反馈：
+
+- 新增 TestSuiteSpec、Public/Hidden split、agent-safe/operator-full evidence 与 trace。
+- 新增通用 Feedback Schema、Preflight/CSYNTH/Test adapters。
+- 新增确定性 CSYNTH parser、feedback views/composers、router、state machine 与 coordinator。
+- 新增 Public/Hidden 多 suite feedback composition 和 Hidden suppression。
+
+真实运行时证据链：
+
+- 新增 generic ValidationOrchestrator。
+- 新增 real Preflight、CSYNTH、Public CSIM 与 Hidden CSIM handlers。
+- 所有阶段共享同一 RunContext/BudgetManager/TraceRecorder。
+- Public 收集非终止反馈；Hidden 首个 blocking result fail-fast。
+- 新增 runtime lazy integration exports，消除 evaluation/runtime package cycle。
+- 新增 suite work-directory executor contract 与回归测试。
+- 确定性测试达到 531/531。
+- 真实 Vitis 2023.2 全链通过：
+  `/data/agrefactor_runs/stage2_real_csim_handler_resume5_20260717_184240`。
+- 精确预算：`6 tool / 3 compile / 1 csynth / 2 csim`。
+- Hidden-only mismatch 终止且不泄漏；zero CSIM budget 在 compile 前阻断。
+- Stage 2 仍缺 Shared Layered Prompt Builder、多类型 smoke 与最终 closure。<!-- AGREFPP_STAGE1_STAGE2_CHANGELOG:END -->
 
 ### 文档
 

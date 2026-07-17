@@ -51,7 +51,40 @@ AgRefactor++ 是一个基于原始 AgRefactor 扩展的 **Vitis HLS 智能体实
 - [`docs/STAGE5_VERSION_MIGRATION.md`](docs/STAGE5_VERSION_MIGRATION.md)：真实版本迁移；
 - [`docs/STAGE6_EVALUATION.md`](docs/STAGE6_EVALUATION.md)：系统评测与最终交付；
 - [`docs/stage2_acceptance.md`](docs/stage2_acceptance.md)：Testbench Reliability 验收。
+- [`docs/stage2_runtime_evidence_acceptance.md`](docs/stage2_runtime_evidence_acceptance.md)：Stage 2.3 真实验证链验收。
 <!-- AGREFPP_DETAILED_DOCS:END -->
+
+<!-- AGREFPP_STAGE2_RUNTIME_STATUS:START -->
+## Stage 2 结构化证据闭环当前状态
+
+Stage 2.1–2.3 核心已经完成：
+
+```text
+Public/Hidden suite evidence
+→ general feedback and state strategy
+→ real Preflight
+→ real Vitis CSYNTH
+→ real Public CSIM
+→ real Hidden CSIM
+```
+
+最新验收：
+
+- `531/531` 确定性测试；
+- Vitis HLS `2023.2`；
+- shared exact usage：`6 tool / 3 compile / 1 csynth / 2 csim`；
+- Public pass + Hidden-only mismatch → terminal rejection；
+- Hidden diagnostic 不进入普通 result/trace；
+- zero CSIM budget 在 compile 前阻断；
+- commit `a354eb0`。
+
+该里程碑没有调用模型 repair，也没有把 validation handlers 接入稳定
+CLI。整个 Stage 2 仍需 Shared Layered Prompt Builder、多类型 kernel smoke
+和最终 closure。
+
+详细证据见
+[`docs/stage2_runtime_evidence_acceptance.md`](docs/stage2_runtime_evidence_acceptance.md)。
+<!-- AGREFPP_STAGE2_RUNTIME_STATUS:END -->
 
 <!-- AGREFPP_STAGE1_TARGET_PROFILE_STATUS:START -->
 ## Stage 1 TargetProfile 最新状态

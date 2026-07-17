@@ -89,3 +89,23 @@ This acceptance record supports a Stage 2 milestone, not a claim of general corr
 
 权威完成标准见 [`ROADMAP.md`](ROADMAP.md)，当前阶段细节见 [`STAGE2_EVIDENCE_LOOP.md`](STAGE2_EVIDENCE_LOOP.md)。
 <!-- AGREFPP_STAGE2_CLOSURE_SCOPE:END -->
+
+
+<!-- AGREFPP_STAGE2_RUNTIME_RELATION:START -->
+## Relationship to the later Stage 2 runtime milestone
+
+This document remains the acceptance record for the early
+**Testbench Reliability** milestone. It is intentionally not rewritten as if
+the later general feedback and runtime orchestration already existed at that
+time.
+
+The subsequent Stage 2.1–2.3 evolution is recorded in:
+
+- [`STAGE2_EVIDENCE_LOOP.md`](STAGE2_EVIDENCE_LOOP.md);
+- [`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md).
+
+The later milestone adds Public/Hidden suite evidence, generic feedback and
+state strategy, real Preflight/CSYNTH/Public-CSIM/Hidden-CSIM handlers, shared
+physical budgets, safe traces, and a real Vitis 2023.2 full validation-chain
+acceptance.
+<!-- AGREFPP_STAGE2_RUNTIME_RELATION:END -->

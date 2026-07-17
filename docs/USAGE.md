@@ -384,3 +384,29 @@ csynth_invocation.json
 - tool hard budget 尚未完成；
 - repair cost 缺失时 `cost_complete=false`，未知不能解释为零。
 <!-- AGREFPP_UNIFIED_CLI:END -->
+
+
+<!-- AGREFPP_STAGE2_RUNTIME_API_STATUS:START -->
+## Stage 2 Runtime Validation API 状态
+
+当前已经存在并真实验收的 programmatic handlers：
+
+```text
+PreflightValidationStageHandler
+CsynthValidationStageHandler
+CsimValidationStageHandler(split=public)
+CsimValidationStageHandler(split=hidden)
+ValidationOrchestrator
+```
+
+它们共享一个 `RunContext` 和物理工具预算，并完成过真实
+Preflight→CSYNTH→Public CSIM→Hidden CSIM 验收。
+
+当前**没有**发布一个新的稳定 CLI 命令来自动构造这条链，也没有从该
+orchestrator 执行模型 candidate repair。因此不要把内部 acceptance 脚本
+当成用户 API，也不要手工复制其中的测试 secret 或临时路径。
+
+当前用户入口仍以本文档前面的 `flow.new` 和 `agrefactor.cli` 已记录能力
+为准。正式 runtime validation CLI 将在其配置、输入来源和 repair policy
+稳定后再加入。
+<!-- AGREFPP_STAGE2_RUNTIME_API_STATUS:END -->

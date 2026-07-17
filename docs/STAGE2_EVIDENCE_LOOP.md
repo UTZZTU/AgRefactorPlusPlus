@@ -1,42 +1,218 @@
 # Stage 2 — Structured Evidence Loop
 
-## 原始范围
+## 1. Purpose
 
-通用 VitisFeedbackParser、证据状态机、阶段 Prompt、Testbench Reliability 与多类型 kernel smoke。
+Stage 2 builds a correctness-first, evidence-driven validation and repair
+control plane. It is broader than testbench repair.
 
-## 已完成：Testbench Reliability 核心
+The full Stage 2 scope is:
 
-- compile/link preflight 与结构化 evidence；
-- testbench/candidate ownership；
-- 私有 file-scope global 依赖门禁；
-- ABI/linkage diagnosis；
-- bounded testbench-only model repair；
-- 保护公共调用、宏、测试与检查的 contract；
-- 空/未修改/provider error 使用剩余 repair budget；
-- repair JSON artifact 与统一 usage；
-- 接受样例中的 public-interface process isolation；
-- 110 个确定性测试；
-- 一个统一 CLI + DeepSeek + Vitis 的真实状态型 kernel 验收。
+```text
+Testbench Reliability
++ Public/Hidden Test Roles
++ General Feedback
++ Evidence-driven State Strategy
++ Runtime Evidence-loop Integration
++ Shared Layered Prompt Builder
++ Multi-type Kernel Smoke Matrix
++ Final Documentation and Closure
+```
 
-详见 [`stage2_acceptance.md`](stage2_acceptance.md)。该验收不代表所有 kernel/interface 的普适支持。
+## 2. Milestone map
 
-## 已知局限
+| Milestone | Status | Accepted meaning |
+|---|---|---|
+| 2.1 Public/Hidden test roles and evidence | Core complete | Suite identity, split, feedback visibility, redaction, tracing, and multi-suite composition |
+| 2.2 General feedback and validation strategy | Core complete | Generic feedback schema, adapters, parser, views, composers, router, states, transitions, and coordinator |
+| 2.3 Runtime evidence-loop integration | Core complete | Real Preflight, CSYNTH, Public CSIM, Hidden CSIM, shared budget, safe trace, and orchestration |
+| 2.4 Shared Layered Prompt Builder | Not started | Shared contract, stage, TargetProfile, model family, safe evidence, Memory gate input, and output contract |
+| 2.5 Multi-type Kernel Smoke Matrix | Not started | Diverse real kernels and failure-path validation |
+| 2.6 Final documentation and closure | Partially updated | Final README/usage/reproduction/acceptance synchronization and Stage 2 closure review |
 
-- 私有依赖门禁是保守检测，不是完整证明；
-- process isolation 目前由 prompt/model 生成，尚非确定性策略；
-- POSIX fork 有 host 限制；
-- test semantic preservation 尚无形式证明；
-- 真实 kernel 多样性不足；
-- 工具调用与 AutoGen 调用统计仍不完整。
+Stage 2 is not closed until 2.4, 2.5, and the final 2.6 closure review are
+complete.
 
-## 剩余工作
+## 3. Early foundation: Testbench Reliability
 
-1. general feedback classes：input/config、compile、public test、csim mismatch/crash/timeout、csynth unsupported、unknown bound、II/dependency、memory-port、timing、resource、tool failure；
-2. 状态机：INPUT_CHECK、COMPILE_CHECK、PUBLIC_TEST、CSIM、CSYNTH、READY_FOR_OPTIMIZATION、STOP；
-3. Prompt builder：shared contract + stage + effective TargetProfile + model family + evidence + gated Memory + output contract；
-4. smoke matrix：array map、reduction、stencil、multi-output、`ap_int`/struct、`hls::stream`、stateful；
-5. 文档与复现命令同步。
+The first Stage 2 implementation was a deep but narrow Testbench Reliability
+path:
 
-## 完成标准
+- compile/link preflight;
+- structured failure stage, kind, owner, and next action;
+- testbench/candidate/original ownership;
+- conservative implementation-private dependency gate;
+- ABI/linkage classification;
+- bounded testbench-only model repair;
+- output and preservation contracts;
+- repair artifacts and known usage;
+- one real unified CLI + DeepSeek + Vitis stateful-kernel validation.
 
-只有 general parser、状态机、layered Prompt、多类型 smoke 与文档全部完成后，整个 Stage 2 才能关闭。
+This work remains active and is not discarded. It now serves as:
+
+- the Testbench Reliability branch of the full validation system;
+- the first ownership/routing prototype;
+- the first stage-specific prompt and constrained repair prototype.
+
+Acceptance:
+[`stage2_acceptance.md`](stage2_acceptance.md).
+
+## 4. Stage 2.1: Public/Hidden test roles and evidence
+
+Completed capabilities include:
+
+- `TestSuiteSpec` and `EvaluationSplit`;
+- Public feedback visibility and Hidden non-visibility;
+- suite metadata in `TaskSpec`;
+- full operator evidence and redacted agent evidence;
+- split-aware test evaluation tracing;
+- CSIM result adaptation to suite evidence;
+- Public/Hidden multi-suite feedback composition;
+- Hidden operator-only composition;
+- deterministic suite ordering and duplicate checks.
+
+Public and Hidden are roles, not separate physical budget counters.
+
+## 5. Stage 2.2: General feedback and validation strategy
+
+Completed core components include:
+
+- generic `FeedbackCategory`, `FeedbackOwner`, `FeedbackStage`, and severity;
+- `FeedbackItem` and `FeedbackReport`;
+- Preflight feedback adapter and agent-safe view;
+- CSYNTH invocation adapter, diagnostic parser, composer, artifact evaluator,
+  and agent-safe view;
+- Test Evaluation feedback adapter and split-aware composer;
+- deterministic feedback router;
+- validation states and transition policy;
+- validation feedback coordinator.
+
+Key routing principles:
+
+```text
+budget exhausted → blocked
+toolchain/config/task input → external remediation
+testbench-owned public failure → repair_testbench
+candidate-owned public failure → repair_candidate
+original-owned failure → repair_original
+unknown or mixed ownership → review_required
+hidden blocking candidate/testbench/original failure → rejected
+```
+
+Unknown failures are not guessed into candidate repair.
+
+## 6. Stage 2.3: Runtime evidence-loop integration
+
+The runtime chain now supports:
+
+```text
+PreflightValidationStageHandler
+→ CsynthValidationStageHandler
+→ CsimValidationStageHandler(PUBLIC)
+→ CsimValidationStageHandler(HIDDEN)
+```
+
+All handlers share one `RunContext`.
+
+### Preflight
+
+- executes real local compile/link preflight;
+- consumes exact shared compile/tool budget;
+- maps structured ownership and diagnostics;
+- produces an agent-safe report;
+- blocks before launch when budget is zero.
+
+### CSYNTH
+
+- executes the existing real Vitis CSYNTH path;
+- reuses invocation and log artifacts;
+- verifies requested/actual Vitis version;
+- parses deterministic known diagnostics;
+- preserves unknown failures as unknown;
+- produces an agent-safe report.
+
+### Public CSIM
+
+- executes all declared Public suites in declaration order;
+- collects candidate/testbench failures until a terminal budget,
+  infrastructure, configuration, or timeout blocker;
+- maps deterministic `csim_failed` to candidate-owned functional mismatch;
+- removes absolute host paths and operator artifacts from agent feedback.
+
+### Hidden CSIM
+
+- executes declared Hidden suites in order;
+- fails fast at the first blocking Hidden result;
+- returns operator-full evidence to the coordinator;
+- suppresses Hidden source identifiers and selected feedback from normal
+  orchestration output and trace;
+- never provides Hidden diagnostics to iterative model feedback.
+
+### Runtime package boundary
+
+High-level runtime integrations are lazy-loaded. Low-level budget, runner, and
+trace services remain eager. This prevents package initialization cycles when
+evaluation modules depend on low-level runtime services.
+
+### Acceptance
+
+- deterministic regression: `531/531 passed`;
+- real Vitis HLS 2023.2;
+- real Preflight → CSYNTH → Public CSIM → Hidden CSIM;
+- exact shared physical usage: `6 tool / 3 compile / 1 csynth / 2 csim`;
+- real Hidden-only mismatch rejection;
+- zero CSIM budget blocked before compilation;
+- safe Public and Hidden trace boundaries.
+
+Detailed record:
+[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md).
+
+## 7. Current limitations
+
+- the runtime acceptance kernel is deterministic and small;
+- multi-type kernel diversity is not yet established;
+- `UnifiedRunner` and CLI do not yet construct the new validation handlers;
+- candidate and testbench repair are not yet executed from the new runtime
+  orchestrator;
+- Shared Layered Prompt Builder is not implemented;
+- Hidden details remain operator evidence and never enter model prompts;
+- semantic preservation is not formally proved;
+- one Vitis version and one host environment do not imply general support.
+
+## 8. Next milestone: Stage 2.4
+
+Build a Shared Layered Prompt Builder with explicit layers:
+
+```text
+system invariants
++ task contract
++ current validation stage
++ effective TargetProfile
++ model-family adaptation
++ agent-safe structured evidence
++ permitted modification scope
++ prior-attempt summary
++ optional gated Memory
++ output contract
+```
+
+The first consumers should be:
+
+- testbench repair;
+- candidate compile repair;
+- CSYNTH candidate repair;
+- Public CSIM functional-mismatch repair.
+
+Hidden evidence is excluded from model prompts.
+
+## 9. Stage 2 closure standard
+
+Stage 2 closes only when:
+
+```text
+2.1 Public/Hidden roles and evidence complete
++ 2.2 General feedback/state strategy complete
++ 2.3 Runtime evidence-loop integration complete
++ 2.4 Shared Layered Prompt Builder integrated
++ 2.5 Multi-type real-kernel smoke completed
++ 2.6 Final documentation and acceptance synchronized
+```

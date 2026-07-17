@@ -4,17 +4,14 @@
 
 ## 1. 当前快照
 
-- 当前开发分支：`stage1-csim-compile-hard-budget`
-- 当前代码基线：`6d6f608e402d13827faa837de7e1e8674ecf12b6`
-- 最新确定性测试：**204/204 passed**
-- 最新真实工具验收：**real DFS → Preflight g++ → Vitis 2023.2 csynth → csim g++ → real executable，shared exact budget 4/2/1/1**
-- TargetProfile 验收记录：[`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md)
-- csynth hard budget 验收记录：[`stage1_csynth_budget_acceptance.md`](stage1_csynth_budget_acceptance.md)
-- compile/csim hard budget 验收记录：[`stage1_compile_csim_budget_acceptance.md`](stage1_compile_csim_budget_acceptance.md)
-- Stage 1 Core 总验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
-- Testbench Reliability 验收记录：[`stage2_acceptance.md`](stage2_acceptance.md)
-- 当前关键任务：**Stage 1 Core 已关闭；下一步在 Stage 2 固定 public/hidden test 角色与证据，然后进入 Stage 3 受控 API 重构闭环**
-
+- 当前开发分支：`stage2-general-feedback`
+- 当前代码基线：`a354eb085700e2240dd4ace0d53fdb394d3e0e1a`
+- 最新确定性测试：**531/531 passed**
+- 最新真实工具验收：**Preflight g++ → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 6/3/1/2**
+- Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
+- Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
+- Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
+- 当前关键任务：**Stage 2.1–2.3 核心完成；下一步 Stage 2.4 Shared Layered Prompt Builder**
 ## 2. 已完成
 
 ### Stage 0
@@ -172,15 +169,30 @@ REAL_DFS_FULL_CHAIN_BUDGET_READY=1
 
 详见 [`stage1_core_acceptance.md`](stage1_core_acceptance.md)。
 
-### Stage 2 Testbench Reliability 核心
+### Stage 2.1–2.3 核心
+
+早期 Testbench Reliability：
 
 - structured preflight；
 - failure stage/kind/owner/next-action；
 - bounded testbench-only repair；
-- ABI/linkage 约束；
+- ABI/linkage 与 preservation contract；
 - private global gate；
 - repair artifacts 与 usage 合并；
 - 一个真实状态型 kernel 的 unified CLI → DeepSeek → Vitis E2E。
+
+后续通用化与运行时接入：
+
+- Public/Hidden suite schema、evidence、redaction、trace 与 composition；
+- 通用 Feedback Schema、adapters、parser、views、composers；
+- deterministic router、state machine、transition 与 coordinator；
+- generic `ValidationOrchestrator`；
+- real Preflight / CSYNTH / Public CSIM / Hidden CSIM handlers；
+- shared exact physical budget；
+- Hidden result/trace suppression；
+- runtime lazy integration exports；
+- 531 个确定性测试；
+- 真实 Vitis 2023.2 全验证链，预算 `6 tool / 3 compile / 1 csynth / 2 csim`。
 
 ## 3. 未完成
 
@@ -196,12 +208,15 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ### Stage 2 剩余项
 
-1. General VitisFeedbackParser；
-2. Evidence-driven State Machine；
-3. Shared Layered Prompt Builder；
-4. 多类型真实 kernel smoke；
-5. 文档与验收同步。
+1. Stage 2.4 Shared Layered Prompt Builder；
+2. Stage 2.5 多类型真实 kernel smoke matrix；
+3. Stage 2.6 最终文档、复现和关闭审查。
 
+当前还没有：
+
+- 新 runtime orchestrator 驱动的真实模型 candidate repair；
+- CLI/UnifiedRunner 对 validation handlers 的正式构造；
+- 多类型 kernel 的普适性证据。
 ### 后续 Stage
 
 - Stage 3 Safe Three-Level Optimizer：未开始；
@@ -211,18 +226,18 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ## 4. 当前下一任务
 
-Stage 1 Core 已关闭。下一步：
+Stage 2.1、2.2、2.3 核心已完成。下一步：
 
 ```text
-A. Stage 2 定义 public/hidden test split、suite identity、feedback visibility 与 evidence
-B. 完善 general feedback parser/state transitions
-C. Stage 3 运行受控 DFS API 重构 smoke
-D. 真实 Preflight/csynth/csim 反馈驱动至少一次候选修复
-E. 实现 bounded retries、checkpoint 与 best_correct
+A. Stage 2.4 Shared Layered Prompt Builder
+B. 将早期 testbench repair prompt 迁移到共享分层构造器
+C. 接入 candidate compile / CSYNTH / Public CSIM repair prompts
+D. 保证 Hidden evidence 永不进入模型 Prompt
+E. Stage 2.5 多类型真实 kernel smoke matrix
+F. Stage 2.6 最终文档与关闭审查
 ```
 
-public test 不新增 `public_test_calls`；cosim 后续作为可选 RTL 能力独立建设。
-
+当前不提前进入 Stage 3，也不把 handler 存在表述为模型修复闭环已经完成。
 ## 5. 多 Vitis 版本的当前显式用法
 
 多版本机器必须同时指定：
