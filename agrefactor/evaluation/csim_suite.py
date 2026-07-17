@@ -13,7 +13,8 @@ from agrefactor.evidence import (
     TestEvaluationEvidence,
     TestEvaluationStatus,
 )
-from agrefactor.runtime import BudgetManager, TraceRecorder
+from agrefactor.runtime.budget import BudgetManager
+from agrefactor.runtime.trace import TraceRecorder
 
 
 LegacyCsimExecutor = Callable[..., tuple[str, str]]

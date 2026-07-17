@@ -16,6 +16,11 @@ from .runner import (
     RunStatus,
     UnifiedRunner,
 )
+from .preflight_stage import (
+    PreflightStageInputs,
+    PreflightValidationStageHandler,
+    read_preflight_invocation_summary,
+)
 from .trace import (
     TraceEvent,
     TraceEvidenceView,
@@ -36,6 +41,8 @@ __all__ = [
     "PhaseHandler",
     "PhaseResult",
     "PhaseStatus",
+    "PreflightStageInputs",
+    "PreflightValidationStageHandler",
     "RunContext",
     "RunPhase",
     "RunResult",
@@ -43,6 +50,7 @@ __all__ = [
     "TraceEvent",
     "TraceEvidenceView",
     "TraceRecorder",
+    "read_preflight_invocation_summary",
     "UnifiedRunner",
     "ValidationOrchestrationResult",
     "ValidationOrchestrator",
