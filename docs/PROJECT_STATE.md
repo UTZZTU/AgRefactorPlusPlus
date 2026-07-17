@@ -5,13 +5,13 @@
 ## 1. 当前快照
 
 - 当前开发分支：`stage2-general-feedback`
-- 当前代码基线：`a354eb085700e2240dd4ace0d53fdb394d3e0e1a`
-- 最新确定性测试：**531/531 passed**
+- 当前代码基线：`ec9802c12c9612ad8652ec35afd664a82c9d726f`
+- 最新确定性测试：**554/554 passed**
 - 最新真实工具验收：**Preflight g++ → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 6/3/1/2**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.1–2.3 核心完成；下一步 Stage 2.4 Shared Layered Prompt Builder**
+- 当前关键任务：**Stage 2.4.1 和 2.4.2 已完成；下一步 Stage 2.4.3 Candidate Repair Prompt Policies**
 ## 2. 已完成
 
 ### Stage 0
@@ -208,9 +208,10 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ### Stage 2 剩余项
 
-1. Stage 2.4 Shared Layered Prompt Builder；
-2. Stage 2.5 多类型真实 kernel smoke matrix；
-3. Stage 2.6 最终文档、复现和关闭审查。
+1. Stage 2.4.3 Candidate Compile / CSYNTH / Public CSIM Prompt Policies；
+2. 后续 Candidate Model Adapter、Response Contract、bounded repair loop 与 orchestrator 接入；
+3. Stage 2.5 多类型真实 kernel smoke matrix；
+4. Stage 2.6 最终文档、复现和关闭审查。
 
 当前还没有：
 
@@ -226,15 +227,16 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ## 4. 当前下一任务
 
-Stage 2.1、2.2、2.3 核心已完成。下一步：
+Stage 2.1–2.3、Stage 2.4.1 和 Stage 2.4.2 已完成。下一步：
 
 ```text
-A. Stage 2.4 Shared Layered Prompt Builder
-B. 将早期 testbench repair prompt 迁移到共享分层构造器
-C. 接入 candidate compile / CSYNTH / Public CSIM repair prompts
-D. 保证 Hidden evidence 永不进入模型 Prompt
-E. Stage 2.5 多类型真实 kernel smoke matrix
-F. Stage 2.6 最终文档与关闭审查
+A. Stage 2.4.3 Candidate Compile / CSYNTH / Public CSIM Prompt Policies
+B. 暂不调用模型、暂不执行 candidate repair loop
+C. 保证 Hidden evidence 永不进入模型 Prompt
+D. 后续单独设计 Candidate Model Adapter / Response Contract
+E. 后续单独设计 bounded Candidate Repair Loop 与 orchestrator 接入
+F. Stage 2.5 多类型真实 kernel smoke matrix
+G. Stage 2.6 最终文档与关闭审查
 ```
 
 当前不提前进入 Stage 3，也不把 handler 存在表述为模型修复闭环已经完成。
