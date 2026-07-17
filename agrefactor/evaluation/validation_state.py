@@ -523,6 +523,7 @@ class ValidationStateMachine:
                 is not FeedbackRouteAction.CONTINUE_VALIDATION
             ),
         }
+        safe_metadata.pop("source_report_id", None)
 
         if (
             action

@@ -21,6 +21,12 @@ from .trace import (
     TraceEvidenceView,
     TraceRecorder,
 )
+from .validation_orchestrator import (
+    ValidationOrchestrationResult,
+    ValidationOrchestrator,
+    ValidationStageHandler,
+    ValidationStepRecord,
+)
 
 __all__ = [
     "BudgetExceededError",
@@ -38,4 +44,8 @@ __all__ = [
     "TraceEvidenceView",
     "TraceRecorder",
     "UnifiedRunner",
+    "ValidationOrchestrationResult",
+    "ValidationOrchestrator",
+    "ValidationStageHandler",
+    "ValidationStepRecord",
 ]

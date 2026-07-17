@@ -308,9 +308,17 @@ class ValidationFeedbackCoordinator:
                     "transition selected an unknown feedback ID"
                 ) from exc
 
+        hidden = (
+            state is ValidationState.HIDDEN_EVALUATION
+        )
+
         return ValidationFeedbackResult(
             coordination_id=cid,
-            source_report_id=report.report_id,
+            source_report_id=(
+                "hidden-redacted"
+                if hidden
+                else report.report_id
+            ),
             evidence_view=expected_view,
             route_action=decision.action,
             transition=transition,
@@ -323,6 +331,7 @@ class ValidationFeedbackCoordinator:
                 "current_state": state.value,
                 "source_item_count": len(report.items),
                 "source_blocking": report.blocking,
+                "source_report_redacted": hidden,
                 "selected_feedback_count": len(
                     selected_items
                 ),

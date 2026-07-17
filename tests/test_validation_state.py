@@ -47,6 +47,7 @@ def make_decision(
     *,
     view="agent_safe",
     selected=("safe.item.1",),
+    source_report_id="report",
 ):
     ids = (
         ()
@@ -58,7 +59,7 @@ def make_decision(
         decision_id=f"decision-{action.value}",
         action=action,
         reason=action.value,
-        source_report_id="report",
+        source_report_id=source_report_id,
         blocking_feedback_ids=ids,
         selected_feedback_ids=ids,
         metadata={"evidence_view": view},
@@ -228,6 +229,9 @@ class ValidationStateMachineTests(unittest.TestCase):
             ValidationState.HIDDEN_EVALUATION,
             FeedbackRouteAction.REPAIR_CANDIDATE,
             view="operator_full",
+            source_report_id=(
+                "HIDDEN_STATE_REPORT_ID_SECRET"
+            ),
         )
         payload = json.dumps(
             result.to_dict(),
@@ -246,6 +250,14 @@ class ValidationStateMachineTests(unittest.TestCase):
             (),
         )
         self.assertNotIn("safe.item.1", payload)
+        self.assertNotIn(
+            "HIDDEN_STATE_REPORT_ID_SECRET",
+            payload,
+        )
+        self.assertNotIn(
+            "source_report_id",
+            result.metadata,
+        )
 
     def test_hidden_unknown_requires_review(self):
         result = self.go(

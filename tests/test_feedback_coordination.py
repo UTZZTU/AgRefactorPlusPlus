@@ -51,6 +51,7 @@ def report(
     severity=FeedbackSeverity.INFO,
     feedback_id="safe.item.1",
     detail="safe detail",
+    report_id=None,
 ):
     items = ()
     if owner is not FeedbackOwner.NONE:
@@ -72,7 +73,11 @@ def report(
             ),
         )
     return FeedbackReport(
-        report_id=f"{view}-report",
+        report_id=(
+            report_id
+            if report_id is not None
+            else f"{view}-report"
+        ),
         source=source,
         items=items,
         source_evidence=(
@@ -174,6 +179,7 @@ class ValidationFeedbackCoordinatorTests(
             severity=FeedbackSeverity.ERROR,
             feedback_id="hidden.secret.item",
             detail=SECRET,
+            report_id="HIDDEN_COORDINATION_REPORT_ID_SECRET",
         )
         result = self.coordinate(
             source,
@@ -204,6 +210,21 @@ class ValidationFeedbackCoordinatorTests(
         self.assertNotIn(
             "/private/operator",
             payload,
+        )
+        self.assertNotIn(
+            "HIDDEN_COORDINATION_REPORT_ID_SECRET",
+            payload,
+        )
+        self.assertEqual(
+            result.source_report_id,
+            "hidden-redacted",
+        )
+        self.assertTrue(
+            result.metadata["source_report_redacted"]
+        )
+        self.assertNotIn(
+            "source_report_id",
+            result.transition.metadata,
         )
 
     def test_hidden_unknown_requires_review(self):
