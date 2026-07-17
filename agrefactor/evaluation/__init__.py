@@ -8,6 +8,12 @@ from .feedback_routing import (
     FeedbackRouteDecision,
     FeedbackRouter,
 )
+from .validation_state import (
+    ValidationState,
+    ValidationStateMachine,
+    ValidationTransition,
+    ValidationTransitionKind,
+)
 from .csim_suite import (
     CsimSuiteEvaluationResult,
     CsimSuiteEvaluator,
@@ -45,6 +51,10 @@ __all__ = [
     "FeedbackRouteAction",
     "FeedbackRouteDecision",
     "FeedbackRouter",
+    "ValidationState",
+    "ValidationStateMachine",
+    "ValidationTransition",
+    "ValidationTransitionKind",
     "parse_compiler_diagnostics",
     "classify_compile_failure",
     "infer_failure_owner",
