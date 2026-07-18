@@ -65,6 +65,38 @@ _LAZY_EXPORTS = {
         ".csim_stage",
         "read_csim_invocation_summary",
     ),
+    "CandidateRepairOrchestrationRequest": (
+        ".candidate_repair_integration",
+        "CandidateRepairOrchestrationRequest",
+    ),
+    "CandidateRepairOrchestrationResult": (
+        ".candidate_repair_integration",
+        "CandidateRepairOrchestrationResult",
+    ),
+    "CandidateRepairOrchestrationStatus": (
+        ".candidate_repair_integration",
+        "CandidateRepairOrchestrationStatus",
+    ),
+    "CandidateRepairValidationOrchestrator": (
+        ".candidate_repair_integration",
+        "CandidateRepairValidationOrchestrator",
+    ),
+    "CandidateValidationHandlerFactory": (
+        ".candidate_repair_integration",
+        "CandidateValidationHandlerFactory",
+    ),
+    "CandidateValidationPlanRequest": (
+        ".candidate_repair_integration",
+        "CandidateValidationPlanRequest",
+    ),
+    "LocalCandidateValidationHandlerFactory": (
+        ".candidate_repair_integration",
+        "LocalCandidateValidationHandlerFactory",
+    ),
+    "ValidationExecutionOutcome": (
+        ".validation_orchestrator",
+        "ValidationExecutionOutcome",
+    ),
     "ValidationOrchestrationResult": (
         ".validation_orchestrator",
         "ValidationOrchestrationResult",
@@ -89,6 +121,13 @@ __all__ = [
     "BudgetLimits",
     "BudgetManager",
     "BudgetUsage",
+    "CandidateRepairOrchestrationRequest",
+    "CandidateRepairOrchestrationResult",
+    "CandidateRepairOrchestrationStatus",
+    "CandidateRepairValidationOrchestrator",
+    "CandidateValidationHandlerFactory",
+    "CandidateValidationPlanRequest",
+    "LocalCandidateValidationHandlerFactory",
     "CsimStageInputs",
     "CsimValidationStageHandler",
     "CsynthStageInputs",
@@ -109,6 +148,7 @@ __all__ = [
     "read_csynth_invocation_summary",
     "read_preflight_invocation_summary",
     "UnifiedRunner",
+    "ValidationExecutionOutcome",
     "ValidationOrchestrationResult",
     "ValidationOrchestrator",
     "ValidationStageHandler",

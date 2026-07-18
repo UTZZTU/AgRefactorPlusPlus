@@ -13,6 +13,7 @@ from agrefactor.evaluation.feedback_coordination import (
 )
 from agrefactor.evaluation.feedback_routing import (
     FeedbackRouteAction,
+    FeedbackRouteDecision,
 )
 from agrefactor.evaluation.validation_state import (
     ValidationState,
@@ -348,6 +349,122 @@ class ValidationOrchestrationResult:
         )
 
 
+
+@dataclass(frozen=True, slots=True)
+class ValidationExecutionOutcome:
+    """Internal-capable outcome with a safe serialized projection.
+
+    ``terminal_report`` and ``terminal_decision`` are retained only in memory
+    for a legal repair handoff. They are intentionally omitted from ``to_dict``.
+    """
+
+    result: ValidationOrchestrationResult
+    terminal_report: FeedbackReport | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+    terminal_decision: FeedbackRouteDecision | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+
+    schema_version = 1
+
+    def __post_init__(self) -> None:
+        if not isinstance(
+            self.result,
+            ValidationOrchestrationResult,
+        ):
+            raise TypeError(
+                "result must be ValidationOrchestrationResult"
+            )
+
+        if self.result.accepted:
+            if (
+                self.terminal_report is not None
+                or self.terminal_decision is not None
+            ):
+                raise ValueError(
+                    "accepted validation must not retain "
+                    "terminal feedback"
+                )
+            return
+
+        if not isinstance(
+            self.terminal_report,
+            FeedbackReport,
+        ):
+            raise TypeError(
+                "non-accepted validation requires "
+                "terminal_report"
+            )
+        if not isinstance(
+            self.terminal_decision,
+            FeedbackRouteDecision,
+        ):
+            raise TypeError(
+                "non-accepted validation requires "
+                "terminal_decision"
+            )
+        if (
+            self.terminal_decision.source_report_id
+            != self.terminal_report.report_id
+        ):
+            raise ValueError(
+                "terminal decision must reference "
+                "terminal report"
+            )
+        terminal_step = self.result.steps[-1]
+        if (
+            self.terminal_decision.action
+            is not terminal_step.route_action
+        ):
+            raise ValueError(
+                "terminal decision action must match "
+                "the final validation step"
+            )
+        expected_view = (
+            "operator_full"
+            if terminal_step.state
+            is ValidationState.HIDDEN_EVALUATION
+            else "agent_safe"
+        )
+        if (
+            self.terminal_report.metadata.get(
+                "evidence_view"
+            )
+            != expected_view
+        ):
+            raise ValueError(
+                "terminal feedback evidence view does "
+                "not match the terminal state"
+            )
+
+    @property
+    def terminal_state(self) -> ValidationState:
+        return self.result.steps[-1].state
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "result": self.result.to_dict(),
+            "terminal_state": self.terminal_state.value,
+            "terminal_feedback_available": (
+                self.terminal_report is not None
+            ),
+            "terminal_evidence_view": (
+                None
+                if self.terminal_report is None
+                else self.terminal_report.metadata.get(
+                    "evidence_view"
+                )
+            ),
+            "terminal_feedback_serialized": False,
+        }
+
+
 class ValidationOrchestrator:
     '''Execute an acyclic validation plan with shared services.
 
@@ -392,6 +509,17 @@ class ValidationOrchestrator:
         *,
         validation_id: str,
     ) -> ValidationOrchestrationResult:
+        return self.run_detailed(
+            context,
+            validation_id=validation_id,
+        ).result
+
+    def run_detailed(
+        self,
+        context: RunContext,
+        *,
+        validation_id: str,
+    ) -> ValidationExecutionOutcome:
         if not isinstance(context, RunContext):
             raise TypeError(
                 "context must be a RunContext"
@@ -418,6 +546,8 @@ class ValidationOrchestrator:
         )
         current_state = ValidationState.PREFLIGHT
         steps: list[ValidationStepRecord] = []
+        terminal_report: FeedbackReport | None = None
+        terminal_decision: FeedbackRouteDecision | None = None
 
         context.trace.record(
             "validation.started",
@@ -472,11 +602,15 @@ class ValidationOrchestrator:
                     f"{type(report).__name__}, expected FeedbackReport"
                 )
 
-            coordination = coordinator.coordinate(
-                report,
-                current_state,
-                coordination_id=step_id,
+            coordination, decision = (
+                coordinator.coordinate_with_decision(
+                    report,
+                    current_state,
+                    coordination_id=step_id,
+                )
             )
+            terminal_report = report
+            terminal_decision = decision
             hidden = (
                 current_state
                 is ValidationState.HIDDEN_EVALUATION
@@ -550,7 +684,15 @@ class ValidationOrchestrator:
                 "step_count": len(steps),
             },
         )
-        return result
+        return ValidationExecutionOutcome(
+            result=result,
+            terminal_report=(
+                None if result.accepted else terminal_report
+            ),
+            terminal_decision=(
+                None if result.accepted else terminal_decision
+            ),
+        )
 
     @staticmethod
     def _required_states(

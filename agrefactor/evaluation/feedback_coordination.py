@@ -12,6 +12,7 @@ from agrefactor.evidence import FeedbackItem, FeedbackReport
 
 from .feedback_routing import (
     FeedbackRouteAction,
+    FeedbackRouteDecision,
     FeedbackRouter,
 )
 from .validation_state import (
@@ -236,6 +237,24 @@ class ValidationFeedbackCoordinator:
         decision_id: str | None = None,
         transition_id: str | None = None,
     ) -> ValidationFeedbackResult:
+        result, _ = self.coordinate_with_decision(
+            report,
+            current_state,
+            coordination_id=coordination_id,
+            decision_id=decision_id,
+            transition_id=transition_id,
+        )
+        return result
+
+    def coordinate_with_decision(
+        self,
+        report: FeedbackReport,
+        current_state: ValidationState | str,
+        *,
+        coordination_id: str,
+        decision_id: str | None = None,
+        transition_id: str | None = None,
+    ) -> tuple[ValidationFeedbackResult, FeedbackRouteDecision]:
         if not isinstance(report, FeedbackReport):
             raise TypeError(
                 "report must be a FeedbackReport"
@@ -312,7 +331,7 @@ class ValidationFeedbackCoordinator:
             state is ValidationState.HIDDEN_EVALUATION
         )
 
-        return ValidationFeedbackResult(
+        result = ValidationFeedbackResult(
             coordination_id=cid,
             source_report_id=(
                 "hidden-redacted"
@@ -343,6 +362,7 @@ class ValidationFeedbackCoordinator:
                 ),
             },
         )
+        return result, decision
 
 
 def _required(
