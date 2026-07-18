@@ -5,13 +5,13 @@
 ## 1. 当前快照
 
 - 当前开发分支：`stage2-general-feedback`
-- 当前功能代码基线：`37a3577a59cf823def82591ae285a9d85f7fbe67`
-- 最新确定性测试：**598/598 passed**
+- 当前功能代码基线：`b7010fc1969e53432bb95a35b519cd8c118347ff`
+- 最新确定性测试：**630/630 passed**
 - 最新真实工具验收：**Preflight g++ → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 6/3/1/2**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.4.1、2.4.2、2.4.3.1 和 2.4.3.2 已完成；下一步 Bounded Candidate Repair Loop**
+- 当前关键任务：**Stage 2.4.1–2.4.3.3 已完成；下一步安全接入 ValidationOrchestrator**
 ## 2. 已完成
 
 ### Stage 0
@@ -281,6 +281,49 @@ feat: add candidate model adapter
 该验收证明 Model Registry 调用边界、响应解析、接口保护和 usage 审计可工作；
 它不是真实网络模型 API、真实 candidate 修复循环或真实工具链验收。
 
+### Stage 2.4.3.3 Bounded Candidate Repair Loop
+
+已经完成。
+
+功能提交：
+
+```text
+b7010fc1969e53432bb95a35b519cd8c118347ff
+feat: add bounded candidate repair loop
+```
+
+测试：
+
+```text
+32/32 targeted passed
+71/71 related regression passed
+630/630 full passed
+```
+
+完成：
+
+- 新增独立 `agrefactor.repair` 控制层，不修改 Validation Handler 或 Orchestrator；
+- 每轮只生成一个 candidate，并使用显式 `max_attempts` 限制尝试；
+- 入口要求 blocking、agent-safe、`route=repair_candidate` 和 candidate ownership；
+- Public CSIM 额外要求 public split、agent-visible feedback 和 Public testbench；
+- Hidden、operator-full、mixed、unknown、toolchain、configuration、evaluator、task input、testbench 和 original failure 不启动循环；
+- Compile、CSYNTH、Public CSIM proposal 分别强制从合法 Preflight 前缀重新验证；
+- 具体后续验证计划由注入 validator 决定，validator 复用同一个 BudgetManager；
+- Provider 启动前 prospective check，紧邻启动 exact-once 计 `llm_calls`；
+- Provider exception 计调用但不伪造 token/cost；非法响应保留真实 response usage；
+- 新增 `BudgetManager.record_observed(...)` 记录调用后才能获知的 token/cost；
+- 维护 `initial_candidate`、`current_candidate`、`last_validated_candidate` 和 `last_proposal`；
+- 未验证或验证失败 proposal 不覆盖 `last_validated_candidate`；
+- 暂未引入 `best_correct`、`best_ppa`、candidate tree、PPA 排序或 Stage 3 优化。
+
+确定性 FakeProvider/FakeValidator 验收目录：
+
+```text
+/data/agrefactor_runs/stage2_bounded_candidate_repair_loop_20260718_174524/acceptance
+```
+
+该验收验证有界控制、合法验证前缀、预算语义和状态保留；它不是真实网络模型、真实工具链修复或 ValidationOrchestrator 集成验收。
+
 ## 3. 未完成
 
 ### Stage 1 Hardening（不阻塞 Core 关闭）
@@ -295,10 +338,9 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ### Stage 2 剩余项
 
-1. bounded Candidate Repair Loop；
-2. Candidate Repair 安全接入 ValidationOrchestrator；
-3. Stage 2.5 多类型真实 kernel smoke matrix；
-4. Stage 2.6 最终文档、复现和关闭审查。
+1. Candidate Repair 安全接入 ValidationOrchestrator；
+2. Stage 2.5 多类型真实 kernel smoke matrix；
+3. Stage 2.6 最终文档、复现和关闭审查。
 
 当前还没有：
 
@@ -314,19 +356,18 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ## 4. 当前下一任务
 
-Stage 2.1–2.3、Stage 2.4.1、2.4.2 和 2.4.3.1 已完成。
+Stage 2.1–2.3、Stage 2.4.1–2.4.3.3 已完成。
 下一步：
 
 ```text
-A. Bounded Candidate Repair Loop
-B. 每轮只生成一个可追踪 candidate，并重新进入真实验证
-C. provider exception、非法响应、未改变代码也计入尝试
-D. Unknown、toolchain、configuration 和 Hidden failure 不触发 candidate repair
-E. 预算不足时停止新候选，失败不能覆盖上一正确候选
-F. 暂不把模型调用硬编码进 Validation Handler
-G. 后续单独接入 ValidationOrchestrator
-H. Stage 2.5 多类型真实 kernel smoke matrix
-I. Stage 2.6 最终文档与关闭审查
+A. 安全接入 ValidationOrchestrator
+B. Handler 继续只负责验证，不直接调用模型
+C. Coordinator / State Machine 继续只做路由和状态决策
+D. Repair Controller 只控制有界尝试，不成为第二套 Orchestrator
+E. 每个 changed candidate 从 Preflight 合法前缀重新进入验证
+F. Hidden failure 仍是 operator-only terminal result
+G. Stage 2.5 多类型真实 kernel smoke matrix
+H. Stage 2.6 最终文档与关闭审查
 ```
 
 当前不提前进入 Stage 3，也不把 Candidate Model Adapter 表述为

@@ -30,9 +30,9 @@ GitHub：UTZZTU/AgRefactorPlusPlus
 origin：git@github.com:UTZZTU/AgRefactorPlusPlus.git
 开发分支：stage2-general-feedback
 最新功能提交：
-37a3577a59cf823def82591ae285a9d85f7fbe67
+b7010fc1969e53432bb95a35b519cd8c118347ff
 提交信息：
-feat: add candidate model adapter
+feat: add bounded candidate repair loop
 ```
 
 环境：
@@ -64,8 +64,8 @@ git log -15 --oneline
 - branch 必须是 `stage2-general-feedback`；
 - local 与 remote 应一致；
 - worktree 应干净；
-- Git 历史中必须存在 `ec9802c`、`dc44be3` 和 `37a3577`；
-- 如果 HEAD 是后续纯文档提交，功能父提交应为 `37a3577`；
+- Git 历史中必须存在 `ec9802c`、`dc44be3`、`37a3577` 和 `b7010fc`；
+- 如果 HEAD 是后续纯文档提交，功能父提交应为 `b7010fc`；
 - 如状态不一致，先停止修改并解释差异。
 
 # 三、不可改变的工程原则
@@ -433,42 +433,63 @@ feat: add candidate model adapter
 
 该验收不是实际网络模型 API、真实 candidate repair loop 或真实工具链验收。
 
-# 七、当前唯一主任务：Bounded Candidate Repair Loop
+# 七、Stage 2.4.3.3 Bounded Candidate Repair Loop 已完成
 
-当前只做：
+功能提交：
 
 ```text
-one candidate per attempt
-bounded repair attempts
-real validation re-entry
-attempt and usage accounting
-preserve previous correct candidate
-legal repair routing only
+b7010fc1969e53432bb95a35b519cd8c118347ff
+feat: add bounded candidate repair loop
 ```
 
-当前绝对不要做：
+测试：
 
-- 不把模型调用硬编码进 Validation Handler；
-- 不直接完成 ValidationOrchestrator 模型接入；
-- 不使用 Hidden diagnostic 继续修复；
-- 不对 toolchain、configuration、evaluator 或 unknown failure 修 candidate；
-- 不开始 Stage 3 optimizer；
-- 不实现 Memory Applicability Gate；
-- 不开始 multi-kernel smoke；
-- 不声称 Stage 2 已关闭。
+```text
+32/32 targeted passed
+71/71 related regression passed
+630/630 full passed
+```
 
-下一里程碑应复用 Candidate Prompt Policy、Candidate Model Adapter、
-FeedbackReport、BudgetManager 和现有验证入口，建立一个独立、可测试、
-有明确最大尝试次数的 Candidate Repair Controller。每轮生成一个 candidate，
-并把它重新送回合法的真实验证阶段；失败候选不得覆盖已有正确候选。
+关键边界：
+
+- Repair Controller 独立于 Handler、Coordinator、State Machine 和 Orchestrator；
+- 每轮一个 candidate，明确 `max_attempts`；
+- changed candidate 必须从 Preflight 合法前缀重新验证；
+- validator 决定后续合法计划并复用同一 BudgetManager；
+- Provider 调用启动时 `llm_calls` exact-once；
+- Provider exception 不伪造 usage，非法 response 保留真实 usage；
+- 失败 proposal 不覆盖 `last_validated_candidate`；
+- Hidden、operator-full 和非 candidate repair route 不进入下一轮 Prompt；
+- 未实现 Orchestrator 集成、真实模型 API、真实工具链 candidate repair 或 Stage 3。
+
+确定性验收目录：
+
+```text
+/data/agrefactor_runs/stage2_bounded_candidate_repair_loop_20260718_174524/acceptance
+```
+
+## 当前唯一主任务：Stage 2.4.3.4 Safe ValidationOrchestrator Integration
+
+继续保持：
+
+```text
+Handler 只验证
+Coordinator / State Machine 只路由和决策
+Prompt Policy 只构造 Prompt
+Model Adapter 只调用和校验响应
+Repair Controller 只控制有界尝试
+Orchestrator 只组织执行
+```
+
+不得把模型调用塞入 CSYNTH/Public CSIM Handler，也不得让 Repair Controller 成为第二套 Orchestrator。Hidden failure 保持 operator-only terminal，不进入模型 Prompt 或继续修复。
 
 # 八、后续路线
 
 ```text
 Stage 2.4.3.1 Candidate Prompt Policies（已完成）
 → Stage 2.4.3.2 Candidate Model Adapter / Response Contract（已完成）
-→ Stage 2.4.3.3 Bounded Candidate Repair Loop
-→ ValidationOrchestrator 接入
+→ Stage 2.4.3.3 Bounded Candidate Repair Loop（已完成）
+→ Stage 2.4.3.4 Safe ValidationOrchestrator Integration
 → Stage 2.5 Multi-type Kernel Smoke Matrix
 → Stage 2.6 Final Documentation and Stage 2 Closure
 → Stage 3 Safe Three-Level Optimizer
@@ -497,10 +518,13 @@ Stage 2 未关闭前，不进入 Stage 3。
 11. agrefactor/models/__init__.py
 12. tests/test_candidate_repair_prompts.py
 13. tests/test_candidate_model_adapter.py
-14. agrefactor/testing/model_testbench_repairer.py
-15. agrefactor/testing/testbench_repair.py
-16. Feedback、Budget、Validation 相关代码和 tests
-17. git log -15 --oneline
+14. agrefactor/repair/candidate_loop.py
+15. agrefactor/repair/__init__.py
+16. tests/test_candidate_repair_loop.py
+17. agrefactor/testing/model_testbench_repairer.py
+18. agrefactor/testing/testbench_repair.py
+19. Feedback、Budget、Validation 相关代码和 tests
+20. git log -15 --oneline
 ```
 
 事实由以下共同决定：
@@ -565,7 +589,7 @@ Git history
 - Prompt policy 不等于 CandidateGenerator；
 - handler 不等于自动 repair 闭环；
 - FakeProvider 不等于真实 API；
-- 598 tests 不等于 598 个真实 kernel；
+- 630 tests 不等于 630 个真实 kernel；
 - 单一 Vitis 2023.2 不等于任意版本支持。
 
 # 十一、下一对话第一项任务
@@ -573,20 +597,20 @@ Git history
 请先：
 
 1. 核对 branch、HEAD、origin、remote 和 worktree；
-2. 确认功能提交 `37a3577a59cf823def82591ae285a9d85f7fbe67` 与后续文档提交都存在；
-3. 阅读 Candidate Prompt Policy、Candidate Model Adapter、测试和验收产物；
-4. 检查现有 BudgetManager、Feedback routing、ValidationOrchestrator 和 Testbench Repair Loop；
-5. 设计 Stage 2.4.3.3 Bounded Candidate Repair Loop 的最小文件、API、不变量、测试和 acceptance；
-6. 暂不把模型调用接入 Validation Handler 或完成 Orchestrator 集成。
+2. 确认功能提交 `b7010fc1969e53432bb95a35b519cd8c118347ff` 与后续文档提交都存在；
+3. 阅读 Candidate Prompt Policy、Model Adapter、Bounded Repair Loop、测试和验收产物；
+4. 检查 ValidationOrchestrator、Coordinator、State Machine 与各 Handler 的职责边界；
+5. 设计 Stage 2.4.3.4 的最小安全接入，不把模型调用塞入 Handler；
+6. 保持 Hidden operator-only terminal，并强制 changed candidate 从 Preflight 前缀重新验证。
 
 第一条回复应明确：
 
 ```text
-Stage 2.4.3.1 Candidate Prompt Policies 和 Stage 2.4.3.2
-Candidate Model Adapter / Response Contract 已完成，最新功能提交是
-37a3577，完整测试 598/598 通过。下一步只做 Stage 2.4.3.3
-Bounded Candidate Repair Loop；暂不完成 ValidationOrchestrator 模型接入、
-Hidden feedback 修复、Stage 3 或 Memory Applicability Gate。
+Stage 2.4.3.1–2.4.3.3 已完成，最新功能提交是
+b7010fc，完整测试 630/630 通过。下一步只做 Stage 2.4.3.4
+Safe ValidationOrchestrator Integration；保持 Handler、Coordinator、Prompt
+Policy、Model Adapter、Repair Controller 和 Orchestrator 的职责分离，
+暂不进入 Stage 3、Memory 或版本迁移。
 ```
 
 # 十二、一句话状态
