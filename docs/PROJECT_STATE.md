@@ -11,7 +11,7 @@
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.4.1–2.4.3.4 已完成；下一步 Stage 2.5 Multi-type Kernel Smoke Matrix**
+- 当前关键任务：**Stage 2.4 已完成；下一步 Stage 2.5。随后按 2.6 Audit → 2.7 Hardening → 2.8 Closure 推进**
 ## 2. 已完成
 
 ### Stage 0
@@ -395,24 +395,39 @@ cost_usd=0.02
 
 ### Stage 1 Hardening（不阻塞 Core 关闭）
 
-1. TargetProfile stable named profiles；
+Batch A 在 Stage 2.7 中、进入 Stage 3 前完成：
+
+1. stable named TargetProfile；
 2. per-profile executable/settings；
-3. platform、resource limits、report parser profile；
+3. report parser profile；
 4. effective profile 每字段 provenance；
-5. 更多 Vitis 版本、器件和真实 kernel。
+5. basic resource-limit schema；
+6. 无 secret 的稳定 target/model 配置模板。
+
+Batch B 在进入 Stage 5 前完成：
+
+1. 更多真实 Vitis 版本；
+2. 更多器件和 platform；
+3. 版本特定 parser 与 source/target profile 扩展；
+4. 多版本、多器件、更多真实 kernel 交叉验证。
 
 Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ### Stage 2 剩余项
 
-1. Stage 2.5 多类型真实 kernel smoke matrix；
-2. Stage 2.6 最终文档、复现和关闭审查。
+1. Stage 2.5 多类型真实 kernel smoke matrix + independent ground truth；
+2. Stage 2.6 Closure-readiness Audit；
+3. Stage 2.7 Cross-stage Validation and Repair Hardening；
+4. Stage 2.8 Final Documentation and Stage 2 Closure。
 
 当前还没有：
 
-- 新 runtime orchestrator 驱动的真实模型 candidate repair；
+- 新 runtime orchestrator 驱动的真实网络模型 candidate repair；
 - CLI/UnifiedRunner 对 validation handlers 的正式构造；
-- 多类型 kernel 的普适性证据。
+- 多类型 kernel 的普适性证据；
+- Testbench/Candidate repair 统一的审计 Protocol / artifact schema；
+- 最小 Model Family Profile；
+- 基于多类型 corpus 加强后的 Response Contract 与 CSYNTH parser。
 ### 后续 Stage
 
 - Stage 3 Safe Three-Level Optimizer：未开始；
@@ -430,12 +445,16 @@ A. Stage 2.5 Multi-type Kernel Smoke Matrix
 B. 至少覆盖 array map、reduction、nested loop / stencil、multi-output、ap_int / struct、hls::stream 和 stateful kernel
 C. 每类检查真实 Preflight、CSYNTH、Public CSIM 与 Hidden 最终评测角色
 D. 包含 Hidden pass、Hidden fail 和无信息泄漏案例
-E. 继续使用同一 BudgetManager，并区分真实模型与 FakeProvider
-F. 不把有限类型覆盖表述为任意 HLS 程序支持
-G. Stage 2.6 最终文档、复现与关闭审查
+E. 每个 injected fault 提供独立 owner/stage/route/terminal/visibility ground truth
+F. 继续使用同一 BudgetManager，并区分真实模型与 FakeProvider
+G. 不把有限类型覆盖表述为任意 HLS 程序支持
+H. 2.5 后执行 2.6 Audit，再根据证据完成 2.7 Hardening
+I. 只有 2.8 才执行最终文档、复现同步和 Stage 2 Closure
 ```
 
-当前不提前进入 Stage 3，也不把一次真实小型 kernel + FakeProvider 验收表述为真实网络模型或多类型普适性已经完成。
+当前不提前进入 Stage 3，也不把一次真实小型 kernel + FakeProvider 验收表述为真实网络模型或多类型普适性已经完成。Stage 2.7 的类别已记录在
+[`STAGE2_HARDENING_PLAN.md`](STAGE2_HARDENING_PLAN.md)，但具体代码任务必须
+由 2.5 和 2.6 的证据确定。
 
 ## 5. 多 Vitis 版本的当前显式用法
 
@@ -470,7 +489,7 @@ requested 与 actual 不一致时，系统会在 csynth 前阻断。完整命令
 - 已支持任意器件或任意 kernel；
 - Stage 1 Core 之外的 Hardening 已全部完成；
 - Stage 1 Core 关闭等于智能体已经通过 API 自动重构 DFS；
-- 204 个测试等于 204 个真实 kernel。
+- 662 个测试等于 662 个真实 kernel。
 
 ## 7. 新对话阅读顺序
 
@@ -484,8 +503,9 @@ requested 与 actual 不一致时，系统会在 csynth 前阻断。完整命令
 7. docs/stage1_compile_csim_budget_acceptance.md
 8. docs/stage1_core_acceptance.md
 9. docs/STAGE2_EVIDENCE_LOOP.md
-10. docs/stage2_acceptance.md
-11. docs/REPRODUCTION_STATUS.md
-12. docs/USAGE.md
-13. git log
+10. docs/STAGE2_HARDENING_PLAN.md
+11. docs/stage2_acceptance.md
+12. docs/REPRODUCTION_STATUS.md
+13. docs/USAGE.md
+14. git log
 ```

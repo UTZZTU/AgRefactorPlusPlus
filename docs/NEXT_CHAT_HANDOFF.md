@@ -528,7 +528,9 @@ Stage 2.4.3.1 Candidate Prompt Policies（已完成）
 → Stage 2.4.3.3 Bounded Candidate Repair Loop（已完成）
 → Stage 2.4.3.4 Safe ValidationOrchestrator Integration（已完成）
 → Stage 2.5 Multi-type Kernel Smoke Matrix
-→ Stage 2.6 Final Documentation and Stage 2 Closure
+→ Stage 2.6 Closure-readiness Audit
+→ Stage 2.7 Cross-stage Validation and Repair Hardening
+→ Stage 2.8 Final Documentation and Stage 2 Closure
 → Stage 3 Safe Three-Level Optimizer
 → Stage 4 Memory Applicability Gate
 → Stage 5 Target Version Extension / Migration
@@ -547,8 +549,9 @@ Stage 2 未关闭前，不进入 Stage 3。
 3. docs/ROADMAP.md
 4. docs/GOAL_TRACEABILITY.md
 5. docs/STAGE2_EVIDENCE_LOOP.md
-6. docs/stage2_acceptance.md
-7. docs/stage2_runtime_evidence_acceptance.md
+6. docs/STAGE2_HARDENING_PLAN.md
+7. docs/stage2_acceptance.md
+8. docs/stage2_runtime_evidence_acceptance.md
 8. agrefactor/prompts/layered.py
 9. agrefactor/prompts/candidate_repair.py
 10. agrefactor/models/candidate_adapter.py
@@ -637,8 +640,10 @@ Git history
 2. 确认功能提交 `dd0ee927a5dac6691180c0772661cd90befe64ea` 与后续文档提交都存在；
 3. 阅读 Candidate Prompt Policy、Model Adapter、Bounded Repair Loop、repair-aware Orchestrator、测试和真实验收产物；
 4. 设计 Stage 2.5 的 kernel 类型矩阵、错误注入、Public / Hidden 用例和预算；
-5. 优先选择可真实运行且能覆盖不同接口 / 状态特征的最小 kernel；
-6. 暂不进入 Stage 3、Memory 或版本迁移。
+5. 每个案例同时设计独立 ground truth：owner、stage、route、terminal 和 Hidden visibility；
+6. 优先选择可真实运行且能覆盖不同接口 / 状态特征的最小 kernel；
+7. 暂不实现 2.7；先让 2.5 和 2.6 产生证据；
+8. 暂不进入 Stage 3、Memory 或版本迁移。
 
 第一条回复应明确：
 
@@ -646,8 +651,9 @@ Git history
 Stage 2.4.3.1–2.4.3.4 已完成，最新功能提交是
 dd0ee92，完整测试 662/662 通过，并完成一次真实 g++ / Vitis /
 Public CSIM / Hidden CSIM + 本地 FakeProvider 修复验收。下一步只做
-Stage 2.5 Multi-type Kernel Smoke Matrix；暂不进入 Stage 3、Memory
-或版本迁移，也不把 FakeProvider 表述为真实网络模型。
+Stage 2.5 Multi-type Kernel Smoke Matrix 和独立 ground truth；之后按
+2.6 Audit → 2.7 Hardening → 2.8 Closure 推进。暂不进入 Stage 3、
+Memory 或版本迁移，也不把 FakeProvider 表述为真实网络模型。
 ```
 
 # 十二、一句话状态
@@ -655,4 +661,5 @@ Stage 2.5 Multi-type Kernel Smoke Matrix；暂不进入 Stage 3、Memory
 AgRefactor++ 已完成 Stage 2.4 的共享分层 Prompt、testbench/candidate
 消费者、provider-neutral Model Adapter、严格响应契约、bounded Candidate
 Repair Loop 和 Safe ValidationOrchestrator Integration；下一步是 Stage 2.5
-多类型真实 kernel smoke matrix，随后进行 Stage 2.6 最终文档与关闭审查。
+多类型真实 kernel smoke matrix，随后依次进行 Stage 2.6 readiness audit、
+Stage 2.7 evidence-backed hardening 和 Stage 2.8 最终关闭。

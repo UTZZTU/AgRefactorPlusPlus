@@ -26,12 +26,13 @@ Testbench Reliability
 | 2.2 General feedback and validation strategy | Core complete | Generic feedback schema, adapters, parser, views, composers, router, states, transitions, and coordinator |
 | 2.3 Runtime evidence-loop integration | Core complete | Real Preflight, CSYNTH, Public CSIM, Hidden CSIM, shared budget, safe trace, and orchestration |
 | 2.4 Shared Layered Prompt Builder | Complete | Shared contract and consumers, provider-neutral candidate adapter, strict response contract, bounded repair, and safe validation re-entry |
-| 2.5 Multi-type Kernel Smoke Matrix | Not started | Diverse real kernels and failure-path validation |
-| 2.6 Final documentation and closure | Partially updated | Final README/usage/reproduction/acceptance synchronization and Stage 2 closure review |
+| 2.5 Multi-type Kernel Smoke Matrix | Not started | Diverse real kernels, failure paths, Hidden roles, and independent ground truth |
+| 2.6 Closure-readiness Audit | Not started | Evidence-based gap classification without premature closure |
+| 2.7 Cross-stage Validation and Repair Hardening | Not started | Resolve proven Stage 3 blockers and complete Stage 1 Hardening Batch A |
+| 2.8 Final documentation and closure | Not started | Final reproducibility synchronization and formal Stage 2 closure |
 
-Stage 2 is not closed until 2.5 and the final 2.6 closure review are
-complete. Stage 2.4 is complete; no separate 2.4.4 or 2.4.4.1 milestone is
-defined by the authoritative roadmap.
+Stage 2 is not closed until 2.5–2.8 are complete. Stage 2.4 is complete; no
+separate 2.4.4 or 2.4.4.1 milestone is defined by the authoritative roadmap.
 
 ## 3. Early foundation: Testbench Reliability
 
@@ -242,7 +243,22 @@ This is not a real network-model acceptance or a multi-type kernel proof.
 
 Build the multi-type real-kernel smoke matrix, including Public/Hidden pass,
 Hidden failure as an operator-only terminal result, leakage checks, ownership
-checks, and exact shared-budget evidence.
+checks, exact shared-budget evidence, and independent ground truth. The
+system's own classification must not be reused as its label.
+
+## 8.2 Stage 2.6–2.8 decision
+
+```text
+2.5 Multi-type Kernel Smoke Matrix
+→ 2.6 Closure-readiness Audit
+→ 2.7 Cross-stage Validation and Repair Hardening
+→ 2.8 Final Documentation and Closure
+→ Stage 3 Safe Optimizer
+```
+
+Stage 2.6 audits first. Stage 2.7 fixes only evidence-backed blockers. Stage
+2.8 is the only milestone allowed to declare Stage 2 closed. See
+[`STAGE2_HARDENING_PLAN.md`](STAGE2_HARDENING_PLAN.md).
 
 ## 9. Stage 2 closure standard
 
@@ -253,6 +269,8 @@ Stage 2 closes only when:
 + 2.2 General feedback/state strategy complete
 + 2.3 Runtime evidence-loop integration complete
 + 2.4 Shared Layered Prompt Builder integrated
-+ 2.5 Multi-type real-kernel smoke completed
-+ 2.6 Final documentation and acceptance synchronized
++ 2.5 Multi-type real-kernel smoke and independent ground truth completed
++ 2.6 Closure-readiness Audit completed
++ 2.7 Evidence-backed hardening completed
++ 2.8 Final documentation and acceptance synchronized
 ```

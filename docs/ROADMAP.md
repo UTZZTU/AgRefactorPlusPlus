@@ -455,7 +455,9 @@ Stage 2 不等于 testbench repair。完整范围是：
 2.3 Runtime Evidence-loop Integration
 2.4 Shared Layered Prompt Builder
 2.5 Multi-type Kernel Smoke Matrix
-2.6 Final Documentation and Closure
+2.6 Closure-readiness Audit
+2.7 Cross-stage Validation and Repair Hardening
+2.8 Final Documentation and Closure
 ```
 
 ### 6.2 Stage 2.1：Public/Hidden 评测角色与证据 — 核心完成
@@ -669,13 +671,49 @@ Hidden evidence 不进入模型 Prompt、普通结果或普通 trace。该验收
 成功时真实通过 csim/csynth
 ```
 
-### 6.7 Stage 2.6：最终文档、复现和关闭 — 部分同步
+Stage 2.5 同时建立独立 ground-truth manifest。每个案例至少记录：
 
-Stage 2.1–2.4 的代码、真实验收与演进记录已经形成。Stage 2
-最终关闭前仍需完成 2.5，并在 2.6 再次同步 README、USAGE、
-REPRODUCTION_STATUS、CHANGELOG、ROADMAP、acceptance 与 smoke 结果。
+```text
+case_id
+kernel_type
+injected_fault
+ground_truth_owner
+ground_truth_stage
+expected_route
+expected_terminal_state
+hidden_visibility_expectation
+```
 
-### 6.8 Stage 2 完成标准
+系统自己的 owner、route 或 terminal 判断不得作为 ground truth。
+
+### 6.7 Stage 2.6：Closure-readiness Audit — 待执行
+
+Stage 2.6 不宣布关闭，也不进行无边界重构。它根据 Stage 0–2.5 的代码、
+测试、真实工具产物和 ground truth，输出阻塞项清单，并区分进入 Stage 3
+前必须修复、可推迟到后续 Stage、以及远期研究或外部依赖。
+
+### 6.8 Stage 2.7：Cross-stage Validation and Repair Hardening — 待执行
+
+Stage 2.7 只修复 2.5 和 2.6 证明真实存在、且阻塞 Stage 3 可信性的缺口：
+
+1. UnifiedRunner / CLI 正式构造 repair-aware validation；
+2. 至少一次用户指定真实网络模型 candidate-repair 闭环；
+3. Testbench/Candidate repair 的 Protocol 与 artifact schema 对齐；
+4. 最小 Model Family Profile / capability tags；
+5. 根据 2.5 corpus 加强接口契约和 CSYNTH parser；
+6. 固化 ground-truth corpus；
+7. 完成 Stage 1 Hardening Batch A。
+
+不得提前实现 Stage 3 optimizer、Stage 4 Memory Gate 或 Stage 5 migration。
+详细边界见 [`STAGE2_HARDENING_PLAN.md`](STAGE2_HARDENING_PLAN.md)。
+
+### 6.9 Stage 2.8：最终文档、复现和关闭 — 待执行
+
+只有 2.5、2.6 和 2.7 全部验收后，才同步 README、USAGE、
+REPRODUCTION_STATUS、CHANGELOG、ROADMAP、acceptance、smoke 和 handoff，
+并正式关闭 Stage 2。
+
+### 6.10 Stage 2 完成标准
 
 ```text
 Testbench Reliability 完成
@@ -683,18 +721,21 @@ Testbench Reliability 完成
 + General feedback/state strategy 完成
 + Runtime evidence-loop integration 完成
 + Shared Layered Prompt Builder 接入
-+ Multi-type Smoke 完成
-+ 最终文档同步完成
++ Multi-type Smoke 与独立 ground truth 完成
++ Closure-readiness Audit 完成
++ 阻塞 Stage 3 的 Hardening 完成
++ 最终文档与复现同步完成
 ```
 
 当前准确表述：
 
-> **Stage 2.1–2.4 已完成；整个 Stage 2 仍因 2.5 多类型真实
-> kernel smoke 与 2.6 最终关闭审查尚未完成而保持开放。**
+> **Stage 2.1–2.4 已完成；下一步是 2.5。Stage 2 必须经过
+> 2.6 审计、2.7 补强和 2.8 最终同步后才能关闭。**
 
 详细文档：
 
 - [`STAGE2_EVIDENCE_LOOP.md`](STAGE2_EVIDENCE_LOOP.md)；
+- [`STAGE2_HARDENING_PLAN.md`](STAGE2_HARDENING_PLAN.md)；
 - [`stage2_acceptance.md`](stage2_acceptance.md)；
 - [`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)。
 

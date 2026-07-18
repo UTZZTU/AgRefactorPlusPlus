@@ -62,10 +62,14 @@ Stage 2.1–2.4 已形成结构化反馈、共享 Prompt、bounded repair 和
 当前下一任务：
 
 ```text
-Stage 2.5 multi-type real-kernel smoke
-→ Stage 2.6 final documentation and closure
+Stage 2.5 multi-type real-kernel smoke + independent ground truth
+→ Stage 2.6 closure-readiness audit
+→ Stage 2.7 cross-stage validation and repair hardening
+→ Stage 2.8 final documentation and closure
 → Stage 3 safe optimizer
 ```
 
 当前不把本地 FakeProvider 表述为真实网络模型，也不把单一小型 kernel
-验收表述为任意 HLS 程序支持。
+验收表述为任意 HLS 程序支持。Stage 2.7 的类别已经锁定，但具体修复项必须
+由 Stage 2.5 的真实 smoke 和 Stage 2.6 的独立审计提供证据。详细计划见
+[`STAGE2_HARDENING_PLAN.md`](STAGE2_HARDENING_PLAN.md)。

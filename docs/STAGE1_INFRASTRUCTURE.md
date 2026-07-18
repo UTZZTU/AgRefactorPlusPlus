@@ -146,31 +146,40 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ### 5.2 TargetProfile Hardening
 
-仍需：
+Stage 1 Hardening 分两批推进，不重新打开已经关闭的 Stage 1 Core。
+
+#### Batch A：Stage 2.7 中完成，进入 Stage 3 前必须具备
 
 - stable named target profiles；
 - per-profile executable；
 - per-profile settings script；
-- platform；
-- resource limits；
 - report parser profile；
 - effective value provenance；
-- 更多真实 Vitis 版本、器件和 kernel 验证。
+- basic resource-limit schema；
+- target/model/`.env.example` 无 secret 稳定模板。
+
+#### Batch B：进入 Stage 5 前完成
+
+- 更多真实 Vitis 版本；
+- 更多器件与 platform；
+- 版本特定 parser 差异；
+- source/target profile 扩展；
+- 多版本、多器件、更多真实 kernel 交叉验证。
 
 ### 5.3 稳定配置模板
 
-- target profile examples；
-- model registry examples；
-- 不含 secret 的 `.env.example`；
-- 多版本显式选择说明。
+稳定配置模板属于 Batch A，并必须显式说明逻辑模型、provider、family
+profile、fixed policy、profile executable/settings、版本探测和 provenance。
 
 ## 6. 下一实现步骤
 
 ```text
-1. Stage 2 固定 public/hidden test split 与 evidence
-2. general feedback parser/state transitions
-3. Stage 3 受控 DFS API 候选生成
-4. 真实工具反馈驱动修复
-5. bounded retry/checkpoint/best_correct
-6. 并行推进 TargetProfile Hardening
+Stage 2.5 multi-type smoke
+→ Stage 2.6 closure-readiness audit
+→ Stage 2.7 validation/repair hardening + Stage 1 Hardening Batch A
+→ Stage 2.8 Stage 2 closure
+→ Stage 3 safe optimizer
+→ Stage 5 前完成 Stage 1 Hardening Batch B
 ```
+
+详细边界见 [`STAGE2_HARDENING_PLAN.md`](STAGE2_HARDENING_PLAN.md)。
