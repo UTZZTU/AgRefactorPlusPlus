@@ -30,9 +30,9 @@ GitHub：UTZZTU/AgRefactorPlusPlus
 origin：git@github.com:UTZZTU/AgRefactorPlusPlus.git
 开发分支：stage2-general-feedback
 最新功能提交：
-dd0ee927a5dac6691180c0772661cd90befe64ea
+ca991c372f9f40f7e592136b12af774dd985c0fa
 提交信息：
-feat: integrate candidate repair orchestration
+feat: add Stage 2 smoke corpus
 ```
 
 环境：
@@ -64,8 +64,8 @@ git log -15 --oneline
 - branch 必须是 `stage2-general-feedback`；
 - local 与 remote 应一致；
 - worktree 应干净；
-- Git 历史中必须存在 `ec9802c`、`dc44be3`、`37a3577`、`b7010fc` 和 `dd0ee92`；
-- 如果 HEAD 是后续纯文档提交，功能父提交应为 `dd0ee92`；
+- Git 历史中必须存在 `ec9802c`、`dc44be3`、`37a3577`、`b7010fc`、`dd0ee92` 和 `ca991c3`；
+- 如果 HEAD 是 Stage 2.5.1 后续纯文档提交，功能父提交应为 `ca991c3`；
 - 如状态不一致，先停止修改并解释差异。
 
 # 三、不可改变的工程原则
@@ -516,9 +516,49 @@ cost_usd=0.02
 
 该验收不是网络模型 API 或多类型 kernel 证明。
 
-## 当前唯一主任务：Stage 2.5 Multi-type Kernel Smoke Matrix
+## Stage 2.5.1 Smoke Corpus / Ground Truth 已完成
 
-至少覆盖多种计算与接口形态，并为每类保留真实工具证据、Public / Hidden 行为和无泄漏检查。Stage 2.5 不进入 Stage 3 optimizer，不建立 Memory Applicability Gate，也不开始版本迁移。
+功能提交：
+
+```text
+ca991c372f9f40f7e592136b12af774dd985c0fa
+feat: add Stage 2 smoke corpus
+```
+
+稳定七类：
+
+```text
+array-map
+reduction
+nested-stencil
+multi-output
+struct-record
+hls-stream
+stateful
+```
+
+验证：
+
+```text
+24/24 targeted
+48/48 related
+686/686 full unittest
+7/7 real g++ Preflight
+exact budget 7/7/0/0/0
+```
+
+验收目录：
+
+```text
+/data/agrefactor_runs/stage2_5_1_smoke_corpus_20260718_232154/acceptance
+```
+
+该里程碑没有执行 Vitis CSYNTH、Public/Hidden CSIM、FakeProvider 或
+真实网络模型。operator ground truth 与 agent-safe manifest 已分离。
+
+## 当前唯一主任务：Stage 2.5.2 Real Full-chain Pass Matrix
+
+必须复用仓库中的 `agrefactor.smoke.STAGE2_SMOKE_CASES`，对七类逐一执行 real Preflight、Vitis CSYNTH、Public CSIM 和 Hidden CSIM，并核对 accepted、阶段顺序、invocation evidence 与 exact shared budget。暂不执行故障注入修复、Stage 2.7 Hardening、Stage 3 optimizer、Memory Gate 或版本迁移。
 
 # 八、后续路线
 
@@ -527,7 +567,10 @@ Stage 2.4.3.1 Candidate Prompt Policies（已完成）
 → Stage 2.4.3.2 Candidate Model Adapter / Response Contract（已完成）
 → Stage 2.4.3.3 Bounded Candidate Repair Loop（已完成）
 → Stage 2.4.3.4 Safe ValidationOrchestrator Integration（已完成）
-→ Stage 2.5 Multi-type Kernel Smoke Matrix
+→ Stage 2.5.1 Smoke Corpus / Ground Truth（已完成）
+→ Stage 2.5.2 Real Full-chain Pass Matrix
+→ Stage 2.5.3 Fault / Ownership / Hidden Matrix
+→ Stage 2.5.4 Evidence Summary
 → Stage 2.6 Closure-readiness Audit
 → Stage 2.7 Cross-stage Validation and Repair Hardening
 → Stage 2.8 Final Documentation and Stage 2 Closure
@@ -550,16 +593,16 @@ Stage 2 未关闭前，不进入 Stage 3。
 4. docs/GOAL_TRACEABILITY.md
 5. docs/STAGE2_EVIDENCE_LOOP.md
 6. docs/STAGE2_HARDENING_PLAN.md
-7. docs/stage2_acceptance.md
-8. docs/stage2_runtime_evidence_acceptance.md
-9. agrefactor/prompts/layered.py
-10. agrefactor/prompts/candidate_repair.py
-11. agrefactor/models/candidate_adapter.py
-12. agrefactor/models/__init__.py
-13. tests/test_candidate_repair_prompts.py
-14. tests/test_candidate_model_adapter.py
-15. agrefactor/repair/candidate_loop.py
-16. agrefactor/repair/__init__.py
+7. docs/stage2_smoke_corpus_acceptance.md
+8. docs/stage2_acceptance.md
+9. docs/stage2_runtime_evidence_acceptance.md
+10. agrefactor/smoke/stage2_matrix.py
+11. agrefactor/smoke/stage2_corpus.py
+12. tests/test_stage2_smoke_matrix.py
+13. agrefactor/prompts/layered.py
+14. agrefactor/prompts/candidate_repair.py
+15. agrefactor/models/candidate_adapter.py
+16. agrefactor/repair/candidate_loop.py
 17. tests/test_candidate_repair_loop.py
 18. agrefactor/testing/model_testbench_repairer.py
 19. agrefactor/testing/testbench_repair.py
@@ -629,7 +672,7 @@ Git history
 - Prompt policy 不等于 CandidateGenerator；
 - handler 不等于自动 repair 闭环；
 - FakeProvider 不等于真实 API；
-- 662 tests 不等于 662 个真实 kernel；
+- 686 tests 不等于 686 个真实 kernel；
 - 单一 Vitis 2023.2 不等于任意版本支持。
 
 # 十一、下一对话第一项任务
@@ -637,29 +680,28 @@ Git history
 请先：
 
 1. 核对 branch、HEAD、origin、remote 和 worktree；
-2. 确认功能提交 `dd0ee927a5dac6691180c0772661cd90befe64ea` 与后续文档提交都存在；
-3. 阅读 Candidate Prompt Policy、Model Adapter、Bounded Repair Loop、repair-aware Orchestrator、测试和真实验收产物；
-4. 设计 Stage 2.5 的 kernel 类型矩阵、错误注入、Public / Hidden 用例和预算；
-5. 每个案例同时设计独立 ground truth：owner、stage、route、terminal 和 Hidden visibility；
-6. 优先选择可真实运行且能覆盖不同接口 / 状态特征的最小 kernel；
-7. 暂不实现 2.7；先让 2.5 和 2.6 产生证据；
+2. 确认功能提交 `ca991c372f9f40f7e592136b12af774dd985c0fa` 与后续文档提交都存在；
+3. 阅读 `agrefactor.smoke`、Stage 2.5.1 tests 和验收产物；
+4. 设计 Stage 2.5.2 七类真实完整通过链及总预算；
+5. 必须复用已提交 corpus，不在临时脚本复制或改写 source；
+6. 每类核对 accepted、四阶段顺序、invocation evidence 与 budget；
+7. 暂不执行 2.5.3 fault injection 或 2.7 Hardening；
 8. 暂不进入 Stage 3、Memory 或版本迁移。
 
 第一条回复应明确：
 
 ```text
-Stage 2.4.3.1–2.4.3.4 已完成，最新功能提交是
-dd0ee92，完整测试 662/662 通过，并完成一次真实 g++ / Vitis /
-Public CSIM / Hidden CSIM + 本地 FakeProvider 修复验收。下一步只做
-Stage 2.5 Multi-type Kernel Smoke Matrix 和独立 ground truth；之后按
-2.6 Audit → 2.7 Hardening → 2.8 Closure 推进。暂不进入 Stage 3、
-Memory 或版本迁移，也不把 FakeProvider 表述为真实网络模型。
+Stage 2.5.1 已完成，最新功能提交是 `ca991c372f9f40f7e592136b12af774dd985c0fa`，
+24/24 targeted、48/48 related、686/686 full unittest 通过，
+七类 committed corpus 已完成 7/7 real g++ Preflight，预算
+7/7/0/0/0。下一步只做 Stage 2.5.2 七类 real
+Preflight/CSYNTH/Public/Hidden 通过链；之后再做 2.5.3 fault matrix、
+2.5.4 汇总和 2.6 Audit。暂不进入 Stage 3、Memory 或版本迁移。
 ```
 
 # 十二、一句话状态
 
-AgRefactor++ 已完成 Stage 2.4 的共享分层 Prompt、testbench/candidate
-消费者、provider-neutral Model Adapter、严格响应契约、bounded Candidate
-Repair Loop 和 Safe ValidationOrchestrator Integration；下一步是 Stage 2.5
-多类型真实 kernel smoke matrix，随后依次进行 Stage 2.6 readiness audit、
-Stage 2.7 evidence-backed hardening 和 Stage 2.8 最终关闭。
+AgRefactor++ 已完成 Stage 2.5.1 七类 immutable smoke corpus、
+独立 ground truth、安全 manifest、686/686 回归和 7/7 real g++
+Preflight；下一步是 Stage 2.5.2 七类真实完整通过链，之后才进入
+fault matrix、evidence summary、Stage 2.6 audit 和 Stage 2.7 hardening。

@@ -26,7 +26,7 @@ Testbench Reliability
 | 2.2 General feedback and validation strategy | Core complete | Generic feedback schema, adapters, parser, views, composers, router, states, transitions, and coordinator |
 | 2.3 Runtime evidence-loop integration | Core complete | Real Preflight, CSYNTH, Public CSIM, Hidden CSIM, shared budget, safe trace, and orchestration |
 | 2.4 Shared Layered Prompt Builder | Complete | Shared contract and consumers, provider-neutral candidate adapter, strict response contract, bounded repair, and safe validation re-entry |
-| 2.5 Multi-type Kernel Smoke Matrix | Not started | Diverse real kernels, failure paths, Hidden roles, and independent ground truth |
+| 2.5 Multi-type Kernel Smoke Matrix | In progress | 2.5.1 corpus/ground truth and 7/7 real g++ Preflight complete; full Vitis/Public/Hidden matrix remains |
 | 2.6 Closure-readiness Audit | Not started | Evidence-based gap classification without premature closure |
 | 2.7 Cross-stage Validation and Repair Hardening | Not started | Resolve proven Stage 3 blockers and complete Stage 1 Hardening Batch A |
 | 2.8 Final documentation and closure | Not started | Final reproducibility synchronization and formal Stage 2 closure |
@@ -171,7 +171,7 @@ Detailed record:
 ## 7. Current limitations
 
 - the repair-aware runtime acceptance kernel is deterministic and small;
-- multi-type kernel diversity is not yet established;
+- seven-type corpus and real g++ Preflight exist, but full Vitis/Public/Hidden diversity is not yet established;
 - `UnifiedRunner` and CLI do not yet construct the new validation handlers;
 - candidate repair is integrated with real local handlers, but its model-side
   acceptance still uses a deterministic local FakeProvider rather than a real
@@ -239,12 +239,61 @@ Acceptance:
 
 This is not a real network-model acceptance or a multi-type kernel proof.
 
-## 8.1 Next milestone: Stage 2.5
+## 8.1 Stage 2.5 progress
 
-Build the multi-type real-kernel smoke matrix, including Public/Hidden pass,
-Hidden failure as an operator-only terminal result, leakage checks, ownership
-checks, exact shared-budget evidence, and independent ground truth. The
-system's own classification must not be reused as its label.
+Internal sequence:
+
+```text
+2.5.1 Smoke Corpus / Ground Truth Contract
+→ 2.5.2 Real Full-chain Pass Matrix
+→ 2.5.3 Fault / Ownership / Hidden Matrix
+→ 2.5.4 Evidence Summary
+```
+
+### 8.1.1 Stage 2.5.1 completed
+
+Feature commit:
+
+```text
+ca991c372f9f40f7e592136b12af774dd985c0fa
+feat: add Stage 2 smoke corpus
+```
+
+The repository now contains seven immutable baseline cases:
+
+```text
+array map
+reduction
+nested stencil
+multi-output
+struct record
+hls::stream
+stateful
+```
+
+Ground truth is manually authored and independent from runtime owner, route,
+or terminal output.
+
+Validation:
+
+- `24/24` targeted tests;
+- `48/48` smoke/response-contract regression tests;
+- `686/686` full unittest;
+- real g++ Preflight compile/link: `7/7 passed`;
+- exact usage: `7 tool / 7 compile / 0 csynth / 0 csim / 0 LLM`;
+- agent-safe manifests contain neither ground truth nor Hidden identity/secret.
+
+Acceptance directory:
+
+```text
+/data/agrefactor_runs/stage2_5_1_smoke_corpus_20260718_232154/acceptance
+```
+
+This milestone does not prove seven-type Vitis synthesis, Public/Hidden CSIM,
+fault ownership accuracy, or model repair. Stage 2.5.2 is next.
+
+Detailed record:
+[`stage2_smoke_corpus_acceptance.md`](stage2_smoke_corpus_acceptance.md).
 
 ## 8.2 Stage 2.6–2.8 decision
 
