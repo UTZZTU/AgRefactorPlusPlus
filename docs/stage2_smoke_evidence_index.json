@@ -1,0 +1,235 @@
+{
+  "budgets": {
+    "aggregation_semantics": "sum of three independent acceptance runs; not one shared BudgetManager run",
+    "cumulative_separate_acceptance_usage": {
+      "compile_calls": 36,
+      "csim_calls": 17,
+      "csynth_calls": 9,
+      "llm_calls": 0,
+      "tool_calls": 62
+    },
+    "milestone_acceptance_usage": {
+      "2.5.1": {
+        "compile_calls": 7,
+        "csim_calls": 0,
+        "csynth_calls": 0,
+        "llm_calls": 0,
+        "tool_calls": 7
+      },
+      "2.5.2": {
+        "compile_calls": 21,
+        "csim_calls": 14,
+        "csynth_calls": 7,
+        "llm_calls": 0,
+        "tool_calls": 42
+      },
+      "2.5.3": {
+        "compile_calls": 8,
+        "csim_calls": 3,
+        "csynth_calls": 2,
+        "llm_calls": 0,
+        "tool_calls": 13
+      }
+    }
+  },
+  "coverage": {
+    "acceptance_scenario_executions": 23,
+    "accepted_real_full_chains": 7,
+    "baseline_case_count": 7,
+    "deterministic_route_scenario_executions": 4,
+    "failure_stages": [
+      "compile",
+      "csynth",
+      "public_evaluation",
+      "hidden_evaluation"
+    ],
+    "fault_scenario_count": 9,
+    "hidden_failure_scenarios": 2,
+    "independent_ground_truth_count": 16,
+    "kernel_types": [
+      "array_map",
+      "reduction",
+      "nested_stencil",
+      "multi_output",
+      "struct_record",
+      "hls_stream",
+      "stateful"
+    ],
+    "owners": [
+      "candidate",
+      "testbench",
+      "original",
+      "toolchain",
+      "unknown",
+      "mixed"
+    ],
+    "real_acceptance_scenario_executions": 19,
+    "real_fault_scenarios": 5,
+    "route_actions": [
+      "repair_candidate",
+      "repair_testbench",
+      "repair_original",
+      "fix_toolchain",
+      "review_unknown",
+      "review_mixed"
+    ],
+    "terminal_states": [
+      "accepted",
+      "repair_pending",
+      "rejected",
+      "blocked",
+      "review_required"
+    ]
+  },
+  "evidence_classes": {
+    "deterministic_reports": {
+      "hidden_unknown_review": true,
+      "mixed_owner_review": true,
+      "toolchain_block": true,
+      "unknown_review": true
+    },
+    "model_calls": {
+      "fake_provider": false,
+      "real_network_model": false,
+      "repair_execution": false
+    },
+    "real_tools": {
+      "gxx_preflight": true,
+      "hidden_csim": true,
+      "public_csim": true,
+      "vitis_hls_2023_2_csynth": true
+    }
+  },
+  "hidden_boundary": {
+    "agent_safe_manifest_omits_hidden_identity_and_source": true,
+    "hidden_candidate_failure_is_terminal_rejected": true,
+    "hidden_feedback_enters_iterative_repair": false,
+    "hidden_unknown_failure_is_operator_review_required": true,
+    "operator_ground_truth_separate": true,
+    "safe_results_omit_hidden_testbench_and_markers": true
+  },
+  "next_stage": "Stage 2.6 Closure-readiness Audit",
+  "not_proved": [
+    "arbitrary HLS program support",
+    "statistical attribution accuracy beyond committed scenarios",
+    "real network-model repair behavior",
+    "formal UnifiedRunner or CLI construction of repair-aware validation",
+    "stable shared Testbench and Candidate repair protocol or artifact schema",
+    "model-family capability profiles",
+    "cross-version, cross-device, or cross-host support",
+    "real toolchain failure or real ambiguous-CSYNTH routing in this matrix",
+    "Stage 3 optimizer, Memory Gate, or migration capability"
+  ],
+  "proved": [
+    "seven stable multi-type baseline cases with manual labels",
+    "seven real complete validation chains accepted on current Vitis 2023.2 host",
+    "exact per-case and matrix physical budgets",
+    "nine labeled fault scenarios match stage, route, terminal, and budget",
+    "Public failures create safe repair handoffs",
+    "Hidden failures terminate without agent feedback",
+    "safe artifacts exclude Hidden source, markers, and ground truth"
+  ],
+  "repository_head_before_summary_commit": "318c58f55e1cedc394bba98dc906afac6f67ceb4",
+  "schema_version": 1,
+  "source_artifacts": {
+    "2.5.1": {
+      "acceptance_root": "/data/agrefactor_runs/stage2_5_1_smoke_corpus_20260718_232154/acceptance",
+      "artifacts": [
+        {
+          "path": "/data/agrefactor_runs/stage2_5_1_smoke_corpus_20260718_232154/acceptance/stage2_smoke_corpus_preflight.json",
+          "sha256": "7facae1d56c2826eba5411bdee9f163e31139008e0bd02861444025de68c88b2",
+          "size_bytes": 14923
+        },
+        {
+          "path": "/data/agrefactor_runs/stage2_5_1_smoke_corpus_20260718_232154/acceptance/ground_truth_manifest.json",
+          "sha256": "196ae86d7aa722b40471e49b0376ca236a15691ab2f069a6aee7081e6e3f2fee",
+          "size_bytes": 9967
+        },
+        {
+          "path": "/data/agrefactor_runs/stage2_5_1_smoke_corpus_20260718_232154/acceptance/agent_safe_manifest.json",
+          "sha256": "cc2fd4d01c1fe4f77b055d7e9efdc9883e30e3c08b63b5a4a62e3034a9811f4d",
+          "size_bytes": 5120
+        }
+      ]
+    },
+    "2.5.2": {
+      "acceptance_root": "/data/agrefactor_runs/stage2_5_2_real_full_chain_pass_matrix_20260719_001400/acceptance",
+      "artifacts": [
+        {
+          "path": "/data/agrefactor_runs/stage2_5_2_real_full_chain_pass_matrix_20260719_001400/acceptance/stage2_smoke_pass_matrix.json",
+          "sha256": "b8037e4bbe0d1b69dde20468961a162ac17c24fff312a8144e56ee5cf57eaf0c",
+          "size_bytes": 64662
+        },
+        {
+          "path": "/data/agrefactor_runs/stage2_5_2_real_full_chain_pass_matrix_20260719_001400/acceptance/stage2_smoke_pass_matrix_artifacts.json",
+          "sha256": "b00e240a02b5e5f6779b6a18139bd522003a91792388951d9fa35ae927256e76",
+          "size_bytes": 8753
+        },
+        {
+          "path": "/data/agrefactor_runs/stage2_5_2_real_full_chain_pass_matrix_20260719_001400/acceptance/stage2_smoke_pass_matrix_summary.json",
+          "sha256": "8e3c2b0673bb1b92b83baa351ca0f8da7d71214334a205362163b994458a5eda",
+          "size_bytes": 1266
+        }
+      ]
+    },
+    "2.5.3": {
+      "acceptance_root": "/data/agrefactor_runs/stage2_5_3_fault_ownership_hidden_matrix_20260719_003933/acceptance",
+      "artifacts": [
+        {
+          "path": "/data/agrefactor_runs/stage2_5_3_fault_ownership_hidden_matrix_20260719_003933/acceptance/stage2_smoke_fault_matrix.json",
+          "sha256": "1fbb7839defa859771a680aa63508f66308fc7ea1834de4c2bf491d9a3d1b256",
+          "size_bytes": 58627
+        },
+        {
+          "path": "/data/agrefactor_runs/stage2_5_3_fault_ownership_hidden_matrix_20260719_003933/acceptance/stage2_smoke_fault_ground_truth.json",
+          "sha256": "79d60c86bc118f6f15602417f22caec7afddc8ff0581cfb05ba2931fa4d80d62",
+          "size_bytes": 13000
+        },
+        {
+          "path": "/data/agrefactor_runs/stage2_5_3_fault_ownership_hidden_matrix_20260719_003933/acceptance/stage2_smoke_fault_matrix_summary.json",
+          "sha256": "7e64aa4a16d79f6e22f183e117507202de543c7d93f092a22e6c35359752920a",
+          "size_bytes": 454
+        }
+      ]
+    }
+  },
+  "source_commits": {
+    "2.5.1_documentation": "d3f06f49d80ed4725e31c777e9dbfb500c50985c",
+    "2.5.1_feature": "ca991c372f9f40f7e592136b12af774dd985c0fa",
+    "2.5.2_documentation": "b06e10f6711656707fabef9955b67df391724e29",
+    "2.5.2_feature": "71f317b85227604a3959db725ae33b074d66824e",
+    "2.5.3_documentation": "318c58f55e1cedc394bba98dc906afac6f67ceb4",
+    "2.5.3_feature": "a09915878aca4012a01b258d1f196ba0f18b4be5"
+  },
+  "stage": "2.5",
+  "stage2_6_audit_inputs": [
+    "UnifiedRunner and CLI formal construction",
+    "real network-model candidate repair smoke",
+    "Testbench and Candidate repair protocol and artifact schema drift",
+    "minimal Model Family Profile",
+    "Response Contract and CSYNTH parser evidence",
+    "ground-truth corpus finalization",
+    "Stage 1 Hardening Batch A"
+  ],
+  "stage2_closed": false,
+  "status": "completed",
+  "tests": {
+    "2.5.1": {
+      "full": 686,
+      "related": 48,
+      "targeted": 24
+    },
+    "2.5.2": {
+      "full": 707,
+      "related": 77,
+      "targeted": 21
+    },
+    "2.5.3": {
+      "full": 727,
+      "related": 65,
+      "targeted": 20
+    },
+    "aggregation_rule": "snapshots are not summed",
+    "current_full_regression": 727
+  }
+}

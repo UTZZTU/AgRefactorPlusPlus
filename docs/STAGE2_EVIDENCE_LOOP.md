@@ -26,7 +26,7 @@ Testbench Reliability
 | 2.2 General feedback and validation strategy | Core complete | Generic feedback schema, adapters, parser, views, composers, router, states, transitions, and coordinator |
 | 2.3 Runtime evidence-loop integration | Core complete | Real Preflight, CSYNTH, Public CSIM, Hidden CSIM, shared budget, safe trace, and orchestration |
 | 2.4 Shared Layered Prompt Builder | Complete | Shared contract and consumers, provider-neutral candidate adapter, strict response contract, bounded repair, and safe validation re-entry |
-| 2.5 Multi-type Kernel Smoke Matrix | In progress | 2.5.1 corpus, 2.5.2 pass matrix, and 2.5.3 fault/ownership/Hidden matrix complete; evidence summary remains |
+| 2.5 Multi-type Kernel Smoke Matrix | Complete | Seven types, 7/7 real full chains, nine faults, 16 labels, unified evidence index |
 | 2.6 Closure-readiness Audit | Not started | Evidence-based gap classification without premature closure |
 | 2.7 Cross-stage Validation and Repair Hardening | Not started | Resolve proven Stage 3 blockers and complete Stage 1 Hardening Batch A |
 | 2.8 Final documentation and closure | Not started | Final reproducibility synchronization and formal Stage 2 closure |
@@ -352,6 +352,29 @@ Acceptance:
 
 Detailed record:
 [`stage2_smoke_fault_matrix_acceptance.md`](stage2_smoke_fault_matrix_acceptance.md).
+
+### 8.1.4 Stage 2.5.4 completed
+
+Evidence entry points:
+
+- [`stage2_smoke_evidence_summary.md`](stage2_smoke_evidence_summary.md);
+- [`stage2_smoke_evidence_index.json`](stage2_smoke_evidence_index.json).
+
+```text
+7 baseline + 9 fault = 16 independent labels
+23 executions = 19 real + 4 deterministic
+727/727 current regression
+62/36/9/17/0 cumulative usage across separate acceptance runs
+```
+
+The cumulative usage is not one shared budget. 2.5.4 itself launched no Vitis,
+model, or repair work.
+
+```text
+/data/agrefactor_runs/stage2_5_4_evidence_summary_20260719_015045/acceptance
+```
+
+Stage 2.5 is complete. Stage 2 remains open and advances to Stage 2.6.
 
 ## 8.2 Stage 2.6–2.8 decision
 

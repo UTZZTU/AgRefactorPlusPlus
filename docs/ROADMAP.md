@@ -435,9 +435,10 @@ BudgetManager 真正控制所需活跃本地工具调用
 下一主线：
 
 ```text
-Stage 2.5 multi-type real-kernel smoke
-→ Stage 2.6 final documentation and closure
-→ Stage 3 safe three-level optimizer
+Stage 2.6 Closure-readiness Audit
+→ Stage 2.7 Cross-stage Validation and Repair Hardening
+→ Stage 2.8 Final Documentation and Stage 2 Closure
+→ Stage 3 Safe Three-Level Optimizer
 ```
 
 详细验收文档：
@@ -648,43 +649,40 @@ cost_usd=0.02
 Hidden evidence 不进入模型 Prompt、普通结果或普通 trace。该验收使用
 本地 FakeProvider，不等于真实网络模型 API，也不证明任意 kernel 支持。
 
-### 6.6 Stage 2.5：多类型 kernel smoke matrix — 未开始
+### 6.6 Stage 2.5：多类型 kernel smoke matrix — 已完成
 
-最低覆盖：
-
-- array map；
-- reduction；
-- stencil/嵌套循环；
-- multi-output；
-- `ap_int` 或 struct；
-- `hls::stream`；
-- stateful kernel。
-
-重点验证：
+Stage 2.5 已完成：
 
 ```text
-不崩溃
-不误归因
-不假成功
-不越权修改
-失败证据有用
-成功时真实通过 csim/csynth
+2.5.1 Smoke Corpus / Ground Truth Contract
+→ 2.5.2 Real Full-chain Pass Matrix
+→ 2.5.3 Fault / Ownership / Hidden Matrix
+→ 2.5.4 Evidence Summary
 ```
 
-Stage 2.5 同时建立独立 ground-truth manifest。每个案例至少记录：
+证据：
+
+- 七类 committed baseline；
+- 7 条 baseline ground truth；
+- 7/7 real Preflight；
+- 7/7 real Preflight → Vitis 2023.2 CSYNTH → Public → Hidden；
+- 9 条 fault ground truth；
+- 16 条独立标签；
+- 23 次验收场景执行，其中 19 次真实工具、4 次确定性路由；
+- 当前 `727/727` full unittest。
+
+跨三个独立验收运行的累计物理使用：
 
 ```text
-case_id
-kernel_type
-injected_fault
-ground_truth_owner
-ground_truth_stage
-expected_route
-expected_terminal_state
-hidden_visibility_expectation
+62 tool / 36 compile / 9 csynth / 17 csim / 0 LLM
 ```
 
-系统自己的 owner、route 或 terminal 判断不得作为 ground truth。
+该累计值不是一次共享预算。统一证据：
+
+- [`stage2_smoke_evidence_summary.md`](stage2_smoke_evidence_summary.md)；
+- [`stage2_smoke_evidence_index.json`](stage2_smoke_evidence_index.json)。
+
+Stage 2.5 不证明任意 HLS、统计归属准确率、真实网络模型修复或跨版本支持。
 
 ### 6.7 Stage 2.6：Closure-readiness Audit — 待执行
 
@@ -729,8 +727,8 @@ Testbench Reliability 完成
 
 当前准确表述：
 
-> **Stage 2.1–2.4 已完成；下一步是 2.5。Stage 2 必须经过
-> 2.6 审计、2.7 补强和 2.8 最终同步后才能关闭。**
+> **Stage 2.1–2.5 已完成；下一步是 2.6 Closure-readiness Audit。
+> Stage 2 必须经过 2.6 审计、2.7 补强和 2.8 最终同步后才能关闭。**
 
 详细文档：
 

@@ -596,13 +596,26 @@ Preflight → CSYNTH → Public CSIM → Hidden CSIM
 该里程碑证明七类 committed baseline 在本机 Vitis 2023.2 上完整通过，
 但不证明任意 HLS kernel 支持，也不包含故障归属矩阵或模型修复。
 
-## Stage 2.5.3 Fault / Ownership / Hidden Matrix 已完成
+## Stage 2.5.4 Evidence Summary 已完成
 
-`a09915878aca4012a01b258d1f196ba0f18b4be5`；20/20 targeted、65/65 related、727/727 full、9/9 ground-truth matches，真实预算 13/8/2/3/0。
+```text
+7 baseline + 9 fault = 16 independent labels
+23 executions = 19 real + 4 deterministic
+727/727 current regression
+62/36/9/17/0 cumulative separate usage
+```
 
-## 当前唯一主任务：Stage 2.5.4 Evidence Summary
+累计预算不是一次共享预算，测试数也不相加。9 个来源产物已重新校验和哈希。
+本阶段没有运行 Vitis、模型或 repair。
 
-基于 committed corpus 建立人工标注的 fault scenarios，验证 candidate/testbench/original/toolchain/unknown 归属、Public 合法 repair handoff、Hidden rejected terminal 和 Hidden 无泄漏。系统预测不能作为 ground truth；不调用模型，不自动修复，不提前进入 Stage 2.7、Stage 3、Memory 或迁移。
+```text
+/data/agrefactor_runs/stage2_5_4_evidence_summary_20260719_015045/acceptance
+```
+
+## 当前唯一主任务：Stage 2.6 Closure-readiness Audit
+
+只做 blocker/defer/future 分类，输出 evidence、impact、scope、acceptance
+criteria，并冻结 2.7 文件级计划；不在 2.6 直接进行无边界修复。
 
 # 八、后续路线
 
@@ -614,7 +627,7 @@ Stage 2.4.3.1 Candidate Prompt Policies（已完成）
 → Stage 2.5.1 Smoke Corpus / Ground Truth（已完成）
 → Stage 2.5.2 Real Full-chain Pass Matrix（已完成）
 → Stage 2.5.3 Fault / Ownership / Hidden Matrix（已完成）
-→ Stage 2.5.4 Evidence Summary
+→ Stage 2.5.4 Evidence Summary（已完成）
 → Stage 2.6 Closure-readiness Audit
 → Stage 2.7 Cross-stage Validation and Repair Hardening
 → Stage 2.8 Final Documentation and Stage 2 Closure
@@ -637,24 +650,29 @@ Stage 2 未关闭前，不进入 Stage 3。
 4. docs/GOAL_TRACEABILITY.md
 5. docs/STAGE2_EVIDENCE_LOOP.md
 6. docs/STAGE2_HARDENING_PLAN.md
-7. docs/stage2_smoke_corpus_acceptance.md
-8. docs/stage2_smoke_pass_matrix_acceptance.md
-9. docs/stage2_acceptance.md
-10. docs/stage2_runtime_evidence_acceptance.md
-11. agrefactor/smoke/stage2_matrix.py
-12. agrefactor/smoke/stage2_corpus.py
-13. agrefactor/smoke/stage2_pass_matrix.py
-14. tests/test_stage2_smoke_matrix.py
-15. tests/test_stage2_smoke_pass_matrix.py
-16. agrefactor/prompts/layered.py
-17. agrefactor/prompts/candidate_repair.py
-18. agrefactor/models/candidate_adapter.py
-19. agrefactor/repair/candidate_loop.py
-20. tests/test_candidate_repair_loop.py
-21. agrefactor/testing/model_testbench_repairer.py
-22. agrefactor/testing/testbench_repair.py
-23. Feedback、Budget、Validation 相关代码和 tests
-24. git log -15 --oneline
+7. docs/stage2_smoke_evidence_summary.md
+8. docs/stage2_smoke_evidence_index.json
+9. docs/stage2_smoke_corpus_acceptance.md
+10. docs/stage2_smoke_pass_matrix_acceptance.md
+11. docs/stage2_smoke_fault_matrix_acceptance.md
+12. docs/stage2_acceptance.md
+13. docs/stage2_runtime_evidence_acceptance.md
+14. agrefactor/smoke/stage2_matrix.py
+15. agrefactor/smoke/stage2_corpus.py
+16. agrefactor/smoke/stage2_pass_matrix.py
+17. agrefactor/smoke/stage2_fault_matrix.py
+18. tests/test_stage2_smoke_matrix.py
+19. tests/test_stage2_smoke_pass_matrix.py
+20. tests/test_stage2_smoke_fault_matrix.py
+21. agrefactor/prompts/layered.py
+22. agrefactor/prompts/candidate_repair.py
+23. agrefactor/models/candidate_adapter.py
+24. agrefactor/repair/candidate_loop.py
+25. tests/test_candidate_repair_loop.py
+26. agrefactor/testing/model_testbench_repairer.py
+27. agrefactor/testing/testbench_repair.py
+28. Feedback、Budget、Validation 相关代码和 tests
+29. git log -15 --oneline
 ```
 
 事实由以下共同决定：
@@ -727,28 +745,25 @@ Git history
 请先：
 
 1. 核对 branch、HEAD、origin、remote 和 worktree；
-2. 确认功能提交 `71f317b85227604a3959db725ae33b074d66824e` 与后续文档提交都存在；
-3. 阅读 Stage 2.5.1/2.5.2 corpus、runner、tests 和真实验收；
-4. 设计 Stage 2.5.3 人工标注 fault scenario schema；
-5. 覆盖 owner、stage、route、terminal 与 Hidden visibility；
-6. 优先使用 deterministic injected faults，必要时保留真实工具证据；
-7. 不调用模型、不自动 repair、不提前执行 2.7 Hardening；
-8. 暂不进入 Stage 3、Memory 或版本迁移。
+2. 确认功能基线 `a09915878aca4012a01b258d1f196ba0f18b4be5` 与最新文档提交；
+3. 阅读 Stage 2.5 summary 和 machine-readable index；
+4. 分类 Stage 0–2.5 缺口；
+5. 每项记录 evidence、impact、scope、acceptance criteria；
+6. 冻结 Stage 2.7 文件级计划；
+7. 2.6 不直接修复，也不宣布 Stage 2 closed；
+8. 暂不进入 Stage 3、Memory 或 migration。
 
 第一条回复应明确：
 
 ```text
-Stage 2.5.2 已完成，最新功能提交是 `71f317b85227604a3959db725ae33b074d66824e`，
-21/21 targeted、77/77 related、707/707 full unittest 通过，
-七类 committed corpus 已完成 7/7 real Preflight/CSYNTH/Public/Hidden
-完整通过链；每类预算 6/3/1/2，总预算 42/21/7/14，0 LLM。
-下一步只做 Stage 2.5.4 Evidence Summary；不新增验证机制，
-不进入 Stage 2.7、Stage 3、Memory 或版本迁移。
+Stage 2.5 已完成：7 baseline、7/7 real full chains、9 faults、
+16 independent labels、23 executions（19 real + 4 deterministic），
+当前 727/727。跨三次独立验收累计 62/36/9/17/0，但不是一次共享预算。
+下一步只做 Stage 2.6 Closure-readiness Audit。
 ```
 
 # 十二、一句话状态
 
-AgRefactor++ 已完成 Stage 2.5.2 七类 real
-Preflight/CSYNTH/Public/Hidden 完整通过链、共享精确预算和安全 trace；
-下一步只做 Stage 2.5.4 evidence summary，之后进入
-2.5.4 evidence summary、Stage 2.6 audit 和 Stage 2.7 hardening。
+AgRefactor++ 已完成 Stage 2.5 多类型 baseline、真实完整通过链、独立 fault
+ground truth、Hidden 安全边界和统一 evidence index；下一步是 Stage 2.6
+Closure-readiness Audit，之后才进行 2.7 hardening 和 2.8 formal closure。

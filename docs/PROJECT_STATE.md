@@ -7,12 +7,12 @@
 - 当前开发分支：`stage2-general-feedback`
 - 当前功能代码基线：`a09915878aca4012a01b258d1f196ba0f18b4be5`
 - 最新确定性测试：**727/727 passed**
-- 最新 Stage 2.5.2 真实验收：**七类 committed corpus 全部通过 real Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM；per case 6/3/1/2，matrix total 42/21/7/14，0 LLM**
+- 最新 Stage 2.5 总结：**7 baseline、7/7 real full chains、9 faults、16 labels、23 scenario executions；跨三次独立验收累计 62/36/9/17/0，0 LLM**
 - 最新完整验证链验收仍为：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.5.3 Fault / Ownership / Hidden Matrix 已完成；下一步 Stage 2.5.4 Evidence Summary**
+- 当前关键任务：**Stage 2.5 已完成；下一步 Stage 2.6 Closure-readiness Audit**
 ## 2. 已完成
 
 ### Stage 0
@@ -564,6 +564,29 @@ Hidden rejected/review terminal 与无泄漏。
 详见
 [`stage2_smoke_fault_matrix_acceptance.md`](stage2_smoke_fault_matrix_acceptance.md)。
 
+### Stage 2.5.4 Evidence Summary
+
+已经完成。
+
+```text
+7 baseline + 9 fault = 16 independent labels
+23 executions = 19 real + 4 deterministic
+727/727 current full regression
+62/36/9/17/0 cumulative separate acceptance usage
+```
+
+累计值不是一次共享预算；测试数也不相加。9 个来源产物已重新解析并记录
+SHA-256。
+
+- [`stage2_smoke_evidence_summary.md`](stage2_smoke_evidence_summary.md)；
+- [`stage2_smoke_evidence_index.json`](stage2_smoke_evidence_index.json)。
+
+本阶段没有重新运行 Vitis、调用模型或执行 repair。
+
+```text
+/data/agrefactor_runs/stage2_5_4_evidence_summary_20260719_015045/acceptance
+```
+
 ## 3. 未完成
 
 ### Stage 1 Hardening（不阻塞 Core 关闭）
@@ -588,16 +611,15 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ### Stage 2 剩余项
 
-1. Stage 2.5.4 Stage 2.5 证据汇总；
-3. Stage 2.6 Closure-readiness Audit；
-4. Stage 2.7 Cross-stage Validation and Repair Hardening；
-5. Stage 2.8 Final Documentation and Stage 2 Closure。
+1. Stage 2.6 Closure-readiness Audit；
+2. Stage 2.7 Cross-stage Validation and Repair Hardening；
+3. Stage 2.8 Final Documentation and Stage 2 Closure。
 
 当前还没有：
 
 - 新 runtime orchestrator 驱动的真实网络模型 candidate repair；
 - CLI/UnifiedRunner 对 validation handlers 的正式构造；
-- 多类型成功链已有七类证据，但故障归属与 Hidden-failure 矩阵尚未完成；
+- 多类型 pass/fault evidence 已完成，但 2.6 尚未完成 blocker/defer/future 分类；
 - Testbench/Candidate repair 统一的审计 Protocol / artifact schema；
 - 最小 Model Family Profile；
 - 基于多类型 corpus 加强后的 Response Contract 与 CSYNTH parser。
@@ -610,22 +632,19 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ## 4. 当前下一任务
 
-Stage 2.1–2.4 与 Stage 2.5.1–2.5.3 已完成。下一步只做 Stage 2.5.4 Evidence Summary：
+Stage 2.1–2.5 已完成。下一步只做 Stage 2.6 Closure-readiness Audit：
 
 ```text
-A. 汇总 2.5.1 corpus、2.5.2 pass matrix、2.5.3 fault matrix
-B. 基于 committed corpus 新增人工标注 injected-fault scenarios
-C. 覆盖 candidate、testbench、original、toolchain/unknown 的安全归属
-D. 覆盖 Public repair handoff、Hidden rejected terminal 和无泄漏
-E. 系统预测不得作为 ground truth
-F. 使用 deterministic faults 与必要的真实工具失败证据
-G. 不调用真实网络模型，不自动修复故障案例
-H. 完成后执行 2.5.4 Evidence Summary
-I. 不提前进入 Stage 2.7 或 Stage 3
+A. 读取 Stage 0–2.5 证据与 machine-readable index
+B. 每个缺口记录 evidence、impact、scope、acceptance criteria
+C. 分类 blocker before Stage 3 / defer / future or external
+D. 冻结 Stage 2.7 最终文件级任务
+E. 审计 CLI、真实模型、repair protocol/schema、family profile
+F. 审计 contract/parser、Hidden、budget、Stage 1 Batch A
+G. 2.6 不直接实施无边界修复
 ```
 
-当前不执行真实网络模型 repair、Stage 2.7 Hardening、Stage 3 optimizer、
-Memory Gate 或版本迁移。
+Stage 2.6 不宣布关闭；2.7 只修证据证明的 blocker；2.8 才允许正式关闭。
 
 ## 5. 多 Vitis 版本的当前显式用法
 
@@ -675,10 +694,13 @@ requested 与 actual 不一致时，系统会在 csynth 前阻断。完整命令
 8. docs/stage1_core_acceptance.md
 9. docs/STAGE2_EVIDENCE_LOOP.md
 10. docs/STAGE2_HARDENING_PLAN.md
-11. docs/stage2_smoke_corpus_acceptance.md
-12. docs/stage2_smoke_pass_matrix_acceptance.md
-13. docs/stage2_acceptance.md
-14. docs/REPRODUCTION_STATUS.md
-15. docs/USAGE.md
-16. git log
+11. docs/stage2_smoke_evidence_summary.md
+12. docs/stage2_smoke_evidence_index.json
+13. docs/stage2_smoke_corpus_acceptance.md
+14. docs/stage2_smoke_pass_matrix_acceptance.md
+15. docs/stage2_smoke_fault_matrix_acceptance.md
+16. docs/stage2_acceptance.md
+17. docs/REPRODUCTION_STATUS.md
+18. docs/USAGE.md
+19. git log
 ```

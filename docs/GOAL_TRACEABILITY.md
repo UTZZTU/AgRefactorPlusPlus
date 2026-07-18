@@ -9,8 +9,9 @@
 | TargetProfile | Stage 1/5 | default/override、legacy propagation、actual command、version gate、part、clock、flags、Tcl、effective profile、invocation evidence | named profiles、settings/executable 自包含、platform/resources/parser、provenance、多版本/多 kernel | [`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md) |
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
 | Model API Registry | Stage 1 | Registry、OpenAI-compatible Provider、DeepSeek 验证 | 更多 provider profiles、用户授权模型池 | 不改主流程即可接入授权模型 |
-| 分层 Prompt | Stage 2 | SharedLayeredPromptBuilder、TaskSpec/TargetProfile/stage/family/evidence/scope/history/approved-memory/output layers；testbench 与 candidate compile/CSYNTH/Public-CSIM consumers；provider-neutral adapter、bounded loop 与 safe Orchestrator integration | 真实网络模型闭环 smoke、UnifiedRunner/CLI 正式构造、多类型 kernel 与 Stage 2.6 最终同步 | [`PROJECT_STATE.md`](PROJECT_STATE.md) |
-| 结构化反馈/状态机 | Stage 2 | Public/Hidden evidence、通用 Feedback Schema、adapters/parser/views/composers、router、state machine、coordinator、real handlers、ValidationOrchestrator 与 bounded candidate-repair orchestration | 多类型 kernel smoke、UnifiedRunner/CLI 正式构造、真实网络模型 smoke、最终 Stage 2 closure | [`PROJECT_STATE.md`](PROJECT_STATE.md) |
+| 分层 Prompt | Stage 2 | Shared builder、testbench/candidate consumers、provider-neutral adapter、bounded loop、safe Orchestrator；Stage 2.5 多类型 pass/fault evidence 已完成 | 真实网络模型、UnifiedRunner/CLI、Protocol/schema、2.6–2.8 | [`stage2_smoke_evidence_summary.md`](stage2_smoke_evidence_summary.md) |
+| 结构化反馈/状态机 | Stage 2 | Public/Hidden evidence、router/state/coordinator、real handlers、bounded candidate orchestration；7/7 full chains 与 9/9 fault ground truth 完成 | UnifiedRunner/CLI、真实网络模型、Protocol/schema、Batch A、最终 closure | [`stage2_smoke_evidence_summary.md`](stage2_smoke_evidence_summary.md) |
+| Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、7/7 real full chains、9 faults、16 labels、统一 index | 2.6 audit、2.7 hardening、2.8 closure | [`stage2_smoke_evidence_summary.md`](stage2_smoke_evidence_summary.md) |
 | 安全三级优化器 | Stage 3 | legacy `simple_iter` baseline | hypothesis、3 levels、checkpoint、rollback、cache、best_correct | 多 kernel 与 baseline 对照 |
 | Memory Applicability Gate | Stage 4 | legacy RAG 正负 trial | schema、score、abstention、off/gated/always | 负迁移与弃权实验 |
 | BudgetManager | Stage 1/3 | token/cost、LLM/tool/compile/csynth/csim hard limits、pre-call block、real launch exact-once accounting、UnifiedRunner/legacy propagation；真实 DFS 工具链与 Stage 2 repair-aware validation 共享预算通过 | Stage 3 budget exhaustion 停止新候选并返回 best_correct | [`PROJECT_STATE.md`](PROJECT_STATE.md) |
@@ -36,7 +37,7 @@ TargetProfile 一次真实运行成功 ≠ 任意版本支持
 TaskSpec 有 version 字段 ≠ 版本迁移
 RAG 检索存在 ≠ Memory Applicability Gate
 simple_iter 能循环 ≠ 安全三级优化器
-662 个确定性测试 ≠ 662 个真实 kernel
+727 个确定性测试 ≠ 727 个真实 kernel
 一次 PPA 改善 ≠ 稳定优化收益
 Stage 1 Core 已关闭 ≠ Stage 1 Hardening 已完成，也 ≠ API 智能体已自动重构 DFS
 ```
@@ -56,20 +57,16 @@ Stage 1 Core 已关闭 ≠ Stage 1 Hardening 已完成，也 ≠ API 智能体�
 
 ## 5. 当前下一任务
 
-Stage 2.1–2.4 已形成结构化反馈、共享 Prompt、bounded repair 和
-真实本地工具链重验证闭环。Stage 2 尚未关闭。
-
-当前下一任务：
+Stage 2.1–2.5 已完成结构化证据、多类型真实链、独立 ground truth、
+故障矩阵与统一 evidence index。Stage 2 尚未关闭。
 
 ```text
-Stage 2.5 multi-type real-kernel smoke + independent ground truth
-→ Stage 2.6 closure-readiness audit
+Stage 2.6 closure-readiness audit
 → Stage 2.7 cross-stage validation and repair hardening
 → Stage 2.8 final documentation and closure
 → Stage 3 safe optimizer
 ```
 
-当前不把本地 FakeProvider 表述为真实网络模型，也不把单一小型 kernel
-验收表述为任意 HLS 程序支持。Stage 2.7 的类别已经锁定，但具体修复项必须
-由 Stage 2.5 的真实 smoke 和 Stage 2.6 的独立审计提供证据。详细计划见
-[`STAGE2_HARDENING_PLAN.md`](STAGE2_HARDENING_PLAN.md)。
+2.6 必须分类 blocker、defer、future/external，不直接进行无边界修复。
+证据入口见
+[`stage2_smoke_evidence_summary.md`](stage2_smoke_evidence_summary.md)。
