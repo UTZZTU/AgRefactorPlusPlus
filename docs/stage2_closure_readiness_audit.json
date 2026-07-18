@@ -1,0 +1,321 @@
+{
+  "baseline_commit": "44ae3fc56e34cbf415108ce42c64569a0ff1cd98",
+  "classifications": {
+    "blocking_before_stage3": [
+      {
+        "acceptance_criteria": [
+          "TaskSpec -> CLI/UnifiedRunner -> repair-aware phase -> local handler factory -> validation/repair orchestration",
+          "one exact BudgetManager and TraceRecorder are shared",
+          "complete safe run result and artifact manifest are written",
+          "legacy mode remains explicit and cannot masquerade as the new path"
+        ],
+        "decision": "Blocker.",
+        "evidence": [
+          "UnifiedRunner only dispatches refactor/optimize PhaseHandler values",
+          "CLI exposes only --dry-run and --legacy",
+          "CandidateRepairValidationOrchestrator exists but is not constructed by the formal entry point"
+        ],
+        "id": "B-01",
+        "impact": "Stage 3 cannot rely on a single non-bypassable correctness gate while the formal entry point can only use the legacy refactor adapter.",
+        "topic": "Formal repair-aware UnifiedRunner / CLI construction"
+      },
+      {
+        "acceptance_criteria": [
+          "shared attempt_id, proposal_id, artifact role, prompt manifest, model response, observed usage, validation summary, stop reason, terminal status, and artifact manifest",
+          "executors remain separate; only protocol and artifact schema are aligned",
+          "operator-only and agent-safe fields are explicit",
+          "atomic manifest writing and deterministic JSON schema tests"
+        ],
+        "decision": "Blocker.",
+        "evidence": [
+          "Candidate attempts retain model response/result, validation result, and before/after budget in memory serialization",
+          "Testbench attempts retain action/changed/preflight/error and write one testbench_repair.json",
+          "Testbench model prompts/responses are held by the adapter but are absent from the repair artifact"
+        ],
+        "id": "B-02",
+        "impact": "Stage 3 candidate lineage and later audit cannot depend on two incompatible attempt identities and incomplete artifacts.",
+        "topic": "Shared Testbench/Candidate repair protocol and artifact schema"
+      },
+      {
+        "acceptance_criteria": [
+          "typed capability tags: reasoning_model, code_specialized, strict_instruction, thinking_tag_possible, strict_completion",
+          "safe default parameters and family instruction rendering",
+          "no automatic model routing and no vendor-name branching in core control flow",
+          "fixed user-selected model remains the default policy"
+        ],
+        "decision": "Blocker.",
+        "evidence": [
+          "ModelSpec.family is a free optional string",
+          "Testbench repair maps family strings to free-form instructions",
+          "Candidate repair receives a raw family_instruction",
+          "no typed capability profile exists"
+        ],
+        "id": "B-03",
+        "impact": "The first real-model smoke cannot document why thinking tags, strict completion, or code-specialized defaults are handled safely.",
+        "topic": "Minimal ModelFamilyProfile and capability tags"
+      },
+      {
+        "acceptance_criteria": [
+          "stable named target profiles",
+          "per-profile executable and settings path",
+          "parser profile identity",
+          "effective-value provenance per field",
+          "basic resource-limit schema",
+          "no-secret target/model configuration templates",
+          "existing Vitis 2023.2 behavior remains backward compatible"
+        ],
+        "decision": "Blocker.",
+        "evidence": [
+          "TargetProfile contains name/toolchain/version/device/clock/compile_flags only",
+          "only one built-in named alias is resolved",
+          "vitis executable is selected through one global AGREFACTOR_VITIS_RUN environment variable",
+          "settings, parser profile, resource limits, and per-field provenance are not profile fields"
+        ],
+        "id": "B-04",
+        "impact": "Stage 3 would otherwise generate and compare candidates without a stable, self-describing target execution contract.",
+        "topic": "Stage 1 Hardening Batch A"
+      },
+      {
+        "acceptance_criteria": [
+          "user explicitly selects an OpenAI-compatible logical model and supplies the API key via environment variable",
+          "real candidate-owned failure -> real request -> strict contract -> bounded repair -> real local validation",
+          "accepted or trustworthy terminal failure is allowed; successful repair is not fabricated",
+          "prompt, response, usage, exception/contract status, validation, and Hidden boundary are recorded",
+          "no secret value is written to repository or artifacts"
+        ],
+        "decision": "Blocker with an explicit user-credential dependency.",
+        "evidence": [
+          "Stage 2.5 evidence records fake_provider=false, real_network_model=false, repair_execution=false",
+          "the accepted repair-aware local chain used a deterministic local FakeProvider",
+          "Stage 2 closure conditions require at least one real network-model repair attempt"
+        ],
+        "id": "B-05",
+        "impact": "Provider behavior, real token usage, invalid output, exceptions, and model-family handling remain unverified on the new candidate-repair path.",
+        "topic": "One real network-model candidate-repair closed-loop smoke"
+      }
+    ],
+    "defer": [
+      {
+        "decision": "Defer. Apply only a minimal delta if B-05 exposes a reproducible contract failure.",
+        "id": "D-01",
+        "target_stage": "Stage 2.7 evidence-gated delta or later",
+        "topic": "Broad CandidateResponseContract grammar expansion"
+      },
+      {
+        "decision": "Defer. Parser-profile wiring belongs to B-04, but new semantic rules require new real logs.",
+        "id": "D-02",
+        "target_stage": "Stage 2.7 evidence-gated delta or Stage 6",
+        "topic": "New CSYNTH diagnostic classification rules"
+      },
+      {
+        "decision": "Defer. Align protocol/artifacts under B-02; do not create a second orchestrator or force executor unification.",
+        "id": "D-03",
+        "target_stage": "Not required for Stage 2 closure",
+        "topic": "Merging Testbench and Candidate repair executors"
+      },
+      {
+        "decision": "Defer.",
+        "id": "D-04",
+        "target_stage": "Before Stage 5 migration",
+        "topic": "Stage 1 Hardening Batch B: more Vitis versions, devices, platforms, and cross-product validation"
+      }
+    ],
+    "future_or_external": [
+      {
+        "decision": "External/evidence-dependent. Deterministic routing coverage is sufficient for Stage 2; retain new real logs when naturally observed.",
+        "id": "F-01",
+        "topic": "Natural reproduction of a real toolchain outage and real ambiguous CSYNTH diagnostics"
+      },
+      {
+        "decision": "Future research.",
+        "id": "F-02",
+        "target_stage": "Stage 6",
+        "topic": "Statistical owner/route accuracy over a large benchmark"
+      },
+      {
+        "decision": "Outside the Stage 2 critical path.",
+        "id": "F-03",
+        "target_stage": "Stage 5/6 or external dependency",
+        "topic": "Cross-version migration, repository migration, ROSE/EDG restoration, and XRT-to-AVED platform migration"
+      },
+      {
+        "decision": "Future research; do not add to Stage 2.7.",
+        "id": "F-04",
+        "topic": "Automatic model routing, arbitrary-program support, and formal semantic equivalence"
+      }
+    ],
+    "satisfied": [
+      {
+        "decision": "Satisfied for Stage 2 closure readiness.",
+        "evidence": [
+          "docs/stage2_smoke_evidence_index.json",
+          "7 baseline cases; 7/7 real full chains; 9 fault scenarios; 16 independent labels",
+          "Hidden feedback never enters iterative repair"
+        ],
+        "id": "S-01",
+        "topic": "Multi-type real validation, independent ground truth, Hidden isolation, and exact budget evidence"
+      },
+      {
+        "decision": "No evidence-proven blocker. Preserve current strict contract and change it only if the real-model smoke exposes a concrete failure.",
+        "evidence": [
+          "agrefactor/models/candidate_adapter.py",
+          "tests/test_candidate_model_adapter.py",
+          "all seven committed interfaces passed the existing response-contract regression"
+        ],
+        "id": "S-02",
+        "topic": "Candidate Response Contract for the committed Stage 2.5 corpus"
+      },
+      {
+        "decision": "No evidence-proven rule-expansion blocker. Unknown diagnostics already remain blocking UNKNOWN rather than being guessed.",
+        "evidence": [
+          "agrefactor/evaluation/csynth_diagnostics.py",
+          "tests/test_csynth_diagnostic_parser.py",
+          "unknown_fallback -> review_required policy remains available"
+        ],
+        "id": "S-03",
+        "topic": "Conservative CSYNTH diagnostic behavior"
+      },
+      {
+        "decision": "The 16-label corpus and machine-readable evidence index satisfy the Stage 2 independent-label requirement. Stage 2.7 must revalidate, not invent new labels.",
+        "evidence": [
+          "agrefactor/smoke/stage2_matrix.py",
+          "agrefactor/smoke/stage2_fault_matrix.py",
+          "docs/stage2_smoke_evidence_index.json"
+        ],
+        "id": "S-04",
+        "topic": "Ground-truth corpus finalization for Stage 2"
+      }
+    ]
+  },
+  "current_full_regression": 727,
+  "guardrails": [
+    "Stage 2.6 changes documentation only.",
+    "Stage 2 remains open.",
+    "Stage 2.7 implements evidence-proven blockers and verification-only items.",
+    "No Stage 3 optimizer, Memory Gate, migration, or automatic model routing.",
+    "FakeProvider, deterministic reports, real network model, and real tools remain distinct."
+  ],
+  "next_stage": "Stage 2.7.1 Repair Protocol and Artifact Schema",
+  "schema_version": 1,
+  "stage": "2.6",
+  "stage2_7_frozen_plan": [
+    {
+      "acceptance": "Both repair paths emit the same versioned attempt/proposal/artifact vocabulary without merging executors.",
+      "classification": "blocker",
+      "milestone": "2.7.1",
+      "name": "Repair Protocol and Artifact Schema",
+      "primary_files": [
+        "agrefactor/repair/protocol.py (new)",
+        "agrefactor/repair/artifacts.py (new)",
+        "agrefactor/repair/candidate_loop.py",
+        "agrefactor/runtime/candidate_repair_integration.py",
+        "agrefactor/testing/testbench_repair.py",
+        "agrefactor/testing/model_testbench_repairer.py",
+        "agrefactor/repair/__init__.py",
+        "agrefactor/testing/__init__.py",
+        "tests/test_repair_protocol.py (new)",
+        "tests/test_candidate_repair_loop.py",
+        "tests/test_candidate_repair_integration.py",
+        "tests/test_testbench_repair.py",
+        "tests/test_model_testbench_repairer.py"
+      ]
+    },
+    {
+      "acceptance": "Typed capability tags influence only safe defaults/instructions; fixed user model selection remains authoritative.",
+      "classification": "blocker",
+      "milestone": "2.7.2",
+      "name": "Minimal ModelFamilyProfile",
+      "primary_files": [
+        "agrefactor/models/family.py (new)",
+        "agrefactor/models/base.py",
+        "agrefactor/models/registry.py",
+        "agrefactor/models/candidate_adapter.py",
+        "agrefactor/testing/model_testbench_repairer.py",
+        "agrefactor/prompts/layered.py",
+        "agrefactor/models/__init__.py",
+        "tests/test_model_family_profile.py (new)",
+        "tests/test_candidate_model_adapter.py",
+        "tests/test_model_testbench_repairer.py",
+        "tests/test_layered_prompt_builder.py"
+      ]
+    },
+    {
+      "acceptance": "Named profile controls executable/settings/parser/resources and records effective provenance while preserving the existing 2023.2 default.",
+      "classification": "blocker",
+      "milestone": "2.7.3",
+      "name": "Stage 1 Hardening Batch A",
+      "primary_files": [
+        "agrefactor/config/target.py",
+        "agrefactor/config/target_profiles.py (new)",
+        "configs/targets/vitis-2023.2-default.json (new)",
+        "flow/tools/csynth.py",
+        "agrefactor/runtime/csynth_stage.py",
+        ".env.example",
+        "tests/test_target_profile.py",
+        "tests/test_csynth_execution_evidence.py",
+        "tests/test_csynth_tcl.py",
+        "tests/test_csynth_version_verification.py"
+      ]
+    },
+    {
+      "acceptance": "The formal CLI constructs the real local validation/repair chain with one budget, one trace, and complete versioned artifacts.",
+      "classification": "blocker",
+      "milestone": "2.7.4",
+      "name": "Formal Repair-aware UnifiedRunner / CLI",
+      "primary_files": [
+        "agrefactor/runtime/repair_phase.py (new)",
+        "agrefactor/runtime/runner.py",
+        "agrefactor/runtime/candidate_repair_integration.py",
+        "agrefactor/runtime/__init__.py",
+        "agrefactor/cli.py",
+        "tests/test_unified_candidate_repair_phase.py (new)",
+        "tests/test_candidate_repair_integration.py",
+        "tests/test_cli.py"
+      ]
+    },
+    {
+      "acceptance": "One user-selected OpenAI-compatible network call is recorded and followed by real local validation; success or trustworthy terminal failure is accepted.",
+      "classification": "blocker_acceptance",
+      "milestone": "2.7.5",
+      "name": "Real Network-model Candidate Repair Smoke",
+      "primary_files": [
+        "scripts/acceptance/stage2_real_candidate_repair_smoke.py (new)",
+        "docs/stage2_real_model_repair_acceptance.md (new after execution)"
+      ]
+    },
+    {
+      "acceptance": "No speculative rules; the 16 labels remain independent and all existing smoke contracts pass.",
+      "classification": "conditional_or_verification",
+      "milestone": "2.7.6",
+      "name": "Evidence-gated Contract/Parser Delta and Ground-truth Revalidation",
+      "primary_files": [
+        "agrefactor/models/candidate_adapter.py (only if 2.7.5 proves a contract defect)",
+        "agrefactor/evaluation/csynth_diagnostics.py (only if new real logs prove a parser defect)",
+        "tests/test_candidate_model_adapter.py",
+        "tests/test_csynth_diagnostic_parser.py",
+        "tests/test_stage2_smoke_matrix.py",
+        "tests/test_stage2_smoke_fault_matrix.py"
+      ]
+    },
+    {
+      "acceptance": "All blocker criteria pass, real/deterministic evidence remains distinguished, and Stage 2.8 receives a frozen closure checklist.",
+      "classification": "verification",
+      "milestone": "2.7.7",
+      "name": "Cross-stage Regression and Stage 2.8 Handoff",
+      "primary_files": [
+        "docs/PROJECT_STATE.md",
+        "docs/NEXT_CHAT_HANDOFF.md",
+        "docs/STAGE2_HARDENING_PLAN.md",
+        "docs/stage2_hardening_acceptance.md (new)"
+      ]
+    }
+  ],
+  "stage2_closed": false,
+  "status": "completed",
+  "summary": {
+    "blocking_before_stage3": 5,
+    "defer": 4,
+    "future_or_external": 4,
+    "satisfied": 4
+  }
+}

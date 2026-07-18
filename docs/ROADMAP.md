@@ -684,26 +684,55 @@ Stage 2.5 已完成：
 
 Stage 2.5 不证明任意 HLS、统计归属准确率、真实网络模型修复或跨版本支持。
 
-### 6.7 Stage 2.6：Closure-readiness Audit — 待执行
+### 6.7 Stage 2.6：Closure-readiness Audit — 已完成
 
-Stage 2.6 不宣布关闭，也不进行无边界重构。它根据 Stage 0–2.5 的代码、
-测试、真实工具产物和 ground truth，输出阻塞项清单，并区分进入 Stage 3
-前必须修复、可推迟到后续 Stage、以及远期研究或外部依赖。
+审计结论：
+
+```text
+satisfied=4
+blocking_before_stage3=5
+defer=4
+future_or_external=4
+```
+
+进入 Stage 3 前的五个 blocker：
+
+1. 正式 repair-aware UnifiedRunner / CLI 构造；
+2. Testbench/Candidate 统一 repair Protocol 与 artifact schema；
+3. 最小 ModelFamilyProfile / capability tags；
+4. Stage 1 Hardening Batch A；
+5. 一次用户指定真实网络模型 candidate-repair 闭环。
+
+CandidateResponseContract 新语法与 CSYNTH parser 新规则没有被 Stage 2.5
+证据证明有缺陷，因此保持 evidence-gated；Ground-truth corpus 已满足 Stage 2
+独立标签要求，只在 2.7 重验证。
+
+详见：
+
+- [`STAGE2_CLOSURE_READINESS_AUDIT.md`](STAGE2_CLOSURE_READINESS_AUDIT.md)；
+- [`stage2_closure_readiness_audit.json`](stage2_closure_readiness_audit.json)。
 
 ### 6.8 Stage 2.7：Cross-stage Validation and Repair Hardening — 待执行
 
-Stage 2.7 只修复 2.5 和 2.6 证明真实存在、且阻塞 Stage 3 可信性的缺口：
+Stage 2.7 的文件级顺序已经由 2.6 冻结：
 
-1. UnifiedRunner / CLI 正式构造 repair-aware validation；
-2. 至少一次用户指定真实网络模型 candidate-repair 闭环；
-3. Testbench/Candidate repair 的 Protocol 与 artifact schema 对齐；
-4. 最小 Model Family Profile / capability tags；
-5. 根据 2.5 corpus 加强接口契约和 CSYNTH parser；
-6. 固化 ground-truth corpus；
-7. 完成 Stage 1 Hardening Batch A。
+```text
+2.7.1 Repair Protocol and Artifact Schema
+→ 2.7.2 Minimal ModelFamilyProfile
+→ 2.7.3 Stage 1 Hardening Batch A
+→ 2.7.4 Formal Repair-aware UnifiedRunner / CLI
+→ 2.7.5 Real Network-model Candidate Repair Smoke
+→ 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
+→ 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
+```
+
+2.7 不强行合并 Testbench/Candidate executors，不做自动模型路由，也不扩张
+没有真实证据支持的 Contract/Parser 规则。
 
 不得提前实现 Stage 3 optimizer、Stage 4 Memory Gate 或 Stage 5 migration。
-详细边界见 [`STAGE2_HARDENING_PLAN.md`](STAGE2_HARDENING_PLAN.md)。
+详细边界见
+[`STAGE2_CLOSURE_READINESS_AUDIT.md`](STAGE2_CLOSURE_READINESS_AUDIT.md)
+和 [`STAGE2_HARDENING_PLAN.md`](STAGE2_HARDENING_PLAN.md)。
 
 ### 6.9 Stage 2.8：最终文档、复现和关闭 — 待执行
 
@@ -727,8 +756,8 @@ Testbench Reliability 完成
 
 当前准确表述：
 
-> **Stage 2.1–2.5 已完成；下一步是 2.6 Closure-readiness Audit。
-> Stage 2 必须经过 2.6 审计、2.7 补强和 2.8 最终同步后才能关闭。**
+> **Stage 2.1–2.6 已完成；下一步是 2.7.1 Repair Protocol and Artifact Schema。
+> Stage 2 必须经过 2.7 补强和 2.8 最终同步后才能关闭。**
 
 详细文档：
 

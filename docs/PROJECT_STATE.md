@@ -12,7 +12,7 @@
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.5 已完成；下一步 Stage 2.6 Closure-readiness Audit**
+- 当前关键任务：**Stage 2.6 Audit 已完成；下一步 Stage 2.7.1 Repair Protocol and Artifact Schema**
 ## 2. 已完成
 
 ### Stage 0
@@ -587,6 +587,35 @@ SHA-256。
 /data/agrefactor_runs/stage2_5_4_evidence_summary_20260719_015045/acceptance
 ```
 
+### Stage 2.6 Closure-readiness Audit
+
+已经完成。
+
+```text
+satisfied=4
+blocking_before_stage3=5
+defer=4
+future_or_external=4
+```
+
+五个 blocker：
+
+1. formal repair-aware UnifiedRunner / CLI；
+2. shared repair Protocol / artifact schema；
+3. minimal ModelFamilyProfile；
+4. Stage 1 Hardening Batch A；
+5. one real network-model candidate-repair smoke。
+
+Contract 新语法与 Parser 新规则没有 2.5 失败证据，不做无依据扩张。
+Ground-truth corpus 已满足 Stage 2 要求，2.7 只重验证。
+
+- [`STAGE2_CLOSURE_READINESS_AUDIT.md`](STAGE2_CLOSURE_READINESS_AUDIT.md)；
+- [`stage2_closure_readiness_audit.json`](stage2_closure_readiness_audit.json)。
+
+```text
+/data/agrefactor_runs/stage2_6_closure_readiness_audit_20260719_022645/acceptance
+```
+
 ## 3. 未完成
 
 ### Stage 1 Hardening（不阻塞 Core 关闭）
@@ -611,18 +640,22 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ### Stage 2 剩余项
 
-1. Stage 2.6 Closure-readiness Audit；
-2. Stage 2.7 Cross-stage Validation and Repair Hardening；
-3. Stage 2.8 Final Documentation and Stage 2 Closure。
+1. Stage 2.7 Cross-stage Validation and Repair Hardening；
+2. Stage 2.8 Final Documentation and Stage 2 Closure。
 
-当前还没有：
+当前五个 blocker：
 
-- 新 runtime orchestrator 驱动的真实网络模型 candidate repair；
-- CLI/UnifiedRunner 对 validation handlers 的正式构造；
-- 多类型 pass/fault evidence 已完成，但 2.6 尚未完成 blocker/defer/future 分类；
-- Testbench/Candidate repair 统一的审计 Protocol / artifact schema；
-- 最小 Model Family Profile；
-- 基于多类型 corpus 加强后的 Response Contract 与 CSYNTH parser。
+- B-01：CLI/UnifiedRunner 尚未正式构造 repair-aware validation；
+- B-02：Testbench/Candidate 尚无统一 Protocol / artifact schema；
+- B-03：尚无 typed minimal ModelFamilyProfile；
+- B-04：Stage 1 Hardening Batch A 尚未完成；
+- B-05：新 candidate-repair path 尚无真实网络模型闭环。
+
+当前不是 blocker：
+
+- CandidateResponseContract 在七类 committed interface 上没有失败证据；
+- CSYNTH parser 对未知诊断保持 UNKNOWN，不需无依据扩张；
+- 16-label ground-truth corpus 已满足 Stage 2 独立标签要求。
 ### 后续 Stage
 
 - Stage 3 Safe Three-Level Optimizer：未开始；
@@ -632,19 +665,25 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ## 4. 当前下一任务
 
-Stage 2.1–2.5 已完成。下一步只做 Stage 2.6 Closure-readiness Audit：
+下一步只做：
 
 ```text
-A. 读取 Stage 0–2.5 证据与 machine-readable index
-B. 每个缺口记录 evidence、impact、scope、acceptance criteria
-C. 分类 blocker before Stage 3 / defer / future or external
-D. 冻结 Stage 2.7 最终文件级任务
-E. 审计 CLI、真实模型、repair protocol/schema、family profile
-F. 审计 contract/parser、Hidden、budget、Stage 1 Batch A
-G. 2.6 不直接实施无边界修复
+Stage 2.7.1 Repair Protocol and Artifact Schema
 ```
 
-Stage 2.6 不宣布关闭；2.7 只修证据证明的 blocker；2.8 才允许正式关闭。
+目标：
+
+```text
+A. 定义 versioned shared repair protocol
+B. 统一 attempt_id / proposal_id / prompt manifest / model response
+C. 统一 observed usage / validation summary / stop reason / terminal status
+D. 定义 operator-safe artifact manifest
+E. Testbench 与 Candidate executors 保持分离
+F. 不接 CLI、不运行真实网络模型、不做 ModelFamilyProfile
+G. 完成后进入 2.7.2
+```
+
+2.7.1 只建立基础协议和 artifact 层，不成为第二个 orchestrator。
 
 ## 5. 多 Vitis 版本的当前显式用法
 
@@ -694,13 +733,15 @@ requested 与 actual 不一致时，系统会在 csynth 前阻断。完整命令
 8. docs/stage1_core_acceptance.md
 9. docs/STAGE2_EVIDENCE_LOOP.md
 10. docs/STAGE2_HARDENING_PLAN.md
-11. docs/stage2_smoke_evidence_summary.md
-12. docs/stage2_smoke_evidence_index.json
-13. docs/stage2_smoke_corpus_acceptance.md
-14. docs/stage2_smoke_pass_matrix_acceptance.md
-15. docs/stage2_smoke_fault_matrix_acceptance.md
-16. docs/stage2_acceptance.md
-17. docs/REPRODUCTION_STATUS.md
-18. docs/USAGE.md
-19. git log
+11. docs/STAGE2_CLOSURE_READINESS_AUDIT.md
+12. docs/stage2_closure_readiness_audit.json
+13. docs/stage2_smoke_evidence_summary.md
+14. docs/stage2_smoke_evidence_index.json
+15. docs/stage2_smoke_corpus_acceptance.md
+16. docs/stage2_smoke_pass_matrix_acceptance.md
+17. docs/stage2_smoke_fault_matrix_acceptance.md
+18. docs/stage2_acceptance.md
+19. docs/REPRODUCTION_STATUS.md
+20. docs/USAGE.md
+21. git log
 ```

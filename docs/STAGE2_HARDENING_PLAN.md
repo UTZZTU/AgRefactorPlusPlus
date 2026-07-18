@@ -65,78 +65,70 @@ hidden_visibility_expectation
 
 系统自己的 owner、route 或 terminal 预测不能作为 ground truth。
 
-## 3. Stage 2.6：Closure-readiness Audit
+## 3. Stage 2.6：Closure-readiness Audit — 已完成
 
-Stage 2.6 只做证据审计，不宣布关闭，也不做无边界重构。它必须输出：
-
-1. 进入 Stage 3 前必须修复的阻塞项；
-2. 可推迟到 Stage 4、5、6 的内容；
-3. 远期研究或外部依赖；
-4. 每个阻塞项的证据、影响、修改范围和验收标准；
-5. Stage 2.7 的最终文件级计划。
-
-重点审计：
-
-- UnifiedRunner / CLI 正式主入口；
-- 真实网络模型 candidate repair；
-- run artifact 完整性；
-- Testbench/Candidate repair Protocol 与 schema 漂移；
-- Model Family 薄适配；
-- Candidate Response Contract；
-- CSYNTH diagnostic parser；
-- Hidden 隔离；
-- 模型与工具预算；
-- Stage 1 Hardening Batch A。
-
-## 4. Stage 2.7：固定工作类别
-
-具体代码任务由 2.5/2.6 证据决定，但类别固定。
-
-### 4.1 UnifiedRunner / CLI 正式接入
+审计输出：
 
 ```text
-TaskSpec
-→ UnifiedRunner / CLI
-→ Handler Factory
-→ repair-aware ValidationOrchestrator
-→ complete run artifacts
+satisfied=4
+blocking_before_stage3=5
+defer=4
+future_or_external=4
 ```
 
-### 4.2 真实网络模型闭环
+五个 Stage 3 blocker：
 
-至少一次用户显式指定的 OpenAI-compatible 模型：
+- B-01 formal repair-aware UnifiedRunner / CLI；
+- B-02 shared Testbench/Candidate repair Protocol / artifact schema；
+- B-03 minimal ModelFamilyProfile；
+- B-04 Stage 1 Hardening Batch A；
+- B-05 one real network-model candidate-repair smoke。
+
+审计还确认：
+
+- CandidateResponseContract 在当前七类 interface 上没有失败证据；
+- CSYNTH parser 未识别诊断继续 UNKNOWN，不需猜测式扩张；
+- 16-label ground-truth corpus 已满足 Stage 2，要在 2.7 重验证；
+- executor merge、Batch B、统计 benchmark、migration 均不阻塞 Stage 3。
+
+详细文件级证据见
+[`STAGE2_CLOSURE_READINESS_AUDIT.md`](STAGE2_CLOSURE_READINESS_AUDIT.md)。
+
+## 4. Stage 2.7：冻结执行顺序
 
 ```text
-real candidate-owned failure
-→ real model request
-→ strict response contract
-→ bounded repair
-→ real Preflight / CSYNTH / Public / Hidden validation
-→ accepted or trustworthy terminal failure
+2.7.1 Repair Protocol and Artifact Schema
+→ 2.7.2 Minimal ModelFamilyProfile
+→ 2.7.3 Stage 1 Hardening Batch A
+→ 2.7.4 Formal Repair-aware UnifiedRunner / CLI
+→ 2.7.5 Real Network-model Candidate Repair Smoke
+→ 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
+→ 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
 ```
 
-模型不必必然修好，但模型选择、usage、异常、非法输出、预算、artifact 和
-Hidden 隔离必须真实验收。
+### 4.1 2.7.1 Repair Protocol and Artifact Schema
 
-### 4.3 Repair Protocol 与 Artifact Schema 对齐
-
-Testbench Repair 与 Candidate Repair 不强行合并执行器，但统一：
+先定义 versioned shared vocabulary：
 
 ```text
-attempt identity
-proposal identity
-prompt manifest
-model response
-observed usage
-validation summary
-stop reason
-terminal status
-artifact manifest
+attempt_id
+proposal_id
+artifact_role
+prompt_manifest
+model_response
+observed_usage
+validation_summary
+stop_reason
+terminal_status
+artifact_manifest
 ```
 
-### 4.4 最小 Model Family Profile
+Testbench 与 Candidate executors 保持分离；Protocol 层不调用模型、工具或
+ValidationOrchestrator，也不成为第二个 orchestrator。
 
-使用 capability/profile，不使用厂商硬编码：
+### 4.2 2.7.2 Minimal ModelFamilyProfile
+
+只增加 capability tags 与安全默认参数：
 
 ```text
 reasoning_model
@@ -146,29 +138,39 @@ thinking_tag_possible
 strict_completion
 ```
 
-只做薄适配和安全默认参数，不做自动模型路由。
+不做自动模型路由，用户固定模型仍是默认策略。
 
-### 4.5 Contract 与 Parser Hardening
+### 4.3 2.7.3 Stage 1 Hardening Batch A
 
-只修复 2.5 corpus 证明的问题，包括复杂顶层签名、`typedef`/`using`、
-namespace、attributes、`ap_int`、struct、stream，以及常见 synthesis
-diagnostics。不能确定时继续 `unknown → review_required`。
+完成 named target profile、per-profile executable/settings、parser profile、
+effective provenance、basic resource schema 和无 secret 配置模板。
 
-### 4.6 Ground-truth Corpus 固化
+### 4.4 2.7.4 Formal Repair-aware UnifiedRunner / CLI
 
-把 2.5 案例固化为可重复标注集，为 Stage 6 的 owner、route、Memory
-applicability 和 expected termination 评估提供独立标签。
+正式入口构造：
 
-### 4.7 Stage 1 Hardening Batch A
+```text
+TaskSpec
+→ CLI / UnifiedRunner
+→ repair phase
+→ LocalCandidateValidationHandlerFactory
+→ CandidateRepairValidationOrchestrator
+→ complete safe artifacts
+```
 
-进入 Stage 3 前完成：
+### 4.5 2.7.5 Real Network-model Smoke
 
-- stable named TargetProfile；
-- per-profile executable/settings；
-- report parser profile；
-- effective value provenance；
-- basic resource-limit schema；
-- target/model/`.env.example` 无 secret 稳定模板。
+由用户显式指定 OpenAI-compatible model/API。模型不必修复成功，但请求、
+response、usage、contract、异常、预算、真实验证和 Hidden 边界必须可信。
+
+### 4.6 2.7.6 Evidence-gated Delta
+
+只有 2.7.5 或新真实工具日志证明缺陷时，才修改 CandidateResponseContract
+或 CSYNTH parser。否则只重跑 16-label corpus。
+
+### 4.7 2.7.7 Cross-stage Regression
+
+完成 blocker 验收、文档记录和 Stage 2.8 handoff，不在此阶段关闭 Stage 2。
 
 ## 5. Stage 1 Hardening Batch B
 
@@ -226,9 +228,9 @@ applicability 和 expected termination 评估提供独立标签。
 
 ## 8. 执行原则
 
-- 当前只进入 Stage 2.6 Closure-readiness Audit；
+- 当前只进入 Stage 2.7.1 Repair Protocol and Artifact Schema；
 - 2.5 evidence summary 是 2.6 的主要入口；
-- 2.6 只分类与冻结任务，不直接进行无边界实现；
+- 2.6 已完成分类；2.7.1 只实现 shared protocol/artifacts；
 - 有限矩阵不能外推为任意 HLS 或统计准确率；
 - 2.6 先审计，再冻结文件级任务；
 - 2.7 只修证据证明的阻塞项；

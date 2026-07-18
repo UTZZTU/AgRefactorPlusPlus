@@ -27,7 +27,7 @@ Testbench Reliability
 | 2.3 Runtime evidence-loop integration | Core complete | Real Preflight, CSYNTH, Public CSIM, Hidden CSIM, shared budget, safe trace, and orchestration |
 | 2.4 Shared Layered Prompt Builder | Complete | Shared contract and consumers, provider-neutral candidate adapter, strict response contract, bounded repair, and safe validation re-entry |
 | 2.5 Multi-type Kernel Smoke Matrix | Complete | Seven types, 7/7 real full chains, nine faults, 16 labels, unified evidence index |
-| 2.6 Closure-readiness Audit | Not started | Evidence-based gap classification without premature closure |
+| 2.6 Closure-readiness Audit | Complete | 4 satisfied, 5 Stage 3 blockers, 4 deferred, 4 future/external; Stage 2.7 plan frozen |
 | 2.7 Cross-stage Validation and Repair Hardening | Not started | Resolve proven Stage 3 blockers and complete Stage 1 Hardening Batch A |
 | 2.8 Final documentation and closure | Not started | Final reproducibility synchronization and formal Stage 2 closure |
 
@@ -171,7 +171,7 @@ Detailed record:
 ## 7. Current limitations
 
 - the repair-aware runtime acceptance kernel is deterministic and small;
-- seven-type real full-chain pass diversity is established on one Vitis 2023.2 host, but fault/ownership diversity remains open;
+- seven-type pass diversity and nine-scenario fault/ownership diversity are established on one Vitis 2023.2 host;
 - `UnifiedRunner` and CLI do not yet construct the new validation handlers;
 - candidate repair is integrated with real local handlers, but its model-side
   acceptance still uses a deterministic local FakeProvider rather than a real
@@ -376,19 +376,41 @@ model, or repair work.
 
 Stage 2.5 is complete. Stage 2 remains open and advances to Stage 2.6.
 
-## 8.2 Stage 2.6–2.8 decision
+## 8.2 Stage 2.6 Closure-readiness Audit
+
+Completed.
 
 ```text
-2.5 Multi-type Kernel Smoke Matrix
-→ 2.6 Closure-readiness Audit
-→ 2.7 Cross-stage Validation and Repair Hardening
-→ 2.8 Final Documentation and Closure
-→ Stage 3 Safe Optimizer
+satisfied=4
+blocking_before_stage3=5
+defer=4
+future_or_external=4
 ```
 
-Stage 2.6 audits first. Stage 2.7 fixes only evidence-backed blockers. Stage
-2.8 is the only milestone allowed to declare Stage 2 closed. See
-[`STAGE2_HARDENING_PLAN.md`](STAGE2_HARDENING_PLAN.md).
+The five blockers are:
+
+1. formal repair-aware UnifiedRunner/CLI;
+2. shared repair Protocol/artifact schema;
+3. minimal ModelFamilyProfile;
+4. Stage 1 Hardening Batch A;
+5. one real network-model candidate-repair smoke.
+
+The audit explicitly rejects speculative Contract/Parser expansion. Existing
+ground truth and Hidden/budget evidence are satisfied/verification-only.
+
+```text
+/data/agrefactor_runs/stage2_6_closure_readiness_audit_20260719_022645/acceptance
+```
+
+Detailed audit:
+
+- [`STAGE2_CLOSURE_READINESS_AUDIT.md`](STAGE2_CLOSURE_READINESS_AUDIT.md);
+- [`stage2_closure_readiness_audit.json`](stage2_closure_readiness_audit.json).
+
+
+## 8.3 Stage 2.7–2.8 decision
+
+Stage 2.7 follows the seven frozen milestones in the audit. Stage 2.8 remains the sole formal closure milestone.
 
 ## 9. Stage 2 closure standard
 

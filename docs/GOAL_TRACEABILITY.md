@@ -9,8 +9,8 @@
 | TargetProfile | Stage 1/5 | default/override、legacy propagation、actual command、version gate、part、clock、flags、Tcl、effective profile、invocation evidence | named profiles、settings/executable 自包含、platform/resources/parser、provenance、多版本/多 kernel | [`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md) |
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
 | Model API Registry | Stage 1 | Registry、OpenAI-compatible Provider、DeepSeek 验证 | 更多 provider profiles、用户授权模型池 | 不改主流程即可接入授权模型 |
-| 分层 Prompt | Stage 2 | Shared builder、testbench/candidate consumers、provider-neutral adapter、bounded loop、safe Orchestrator；Stage 2.5 多类型 pass/fault evidence 已完成 | 真实网络模型、UnifiedRunner/CLI、Protocol/schema、2.6–2.8 | [`stage2_smoke_evidence_summary.md`](stage2_smoke_evidence_summary.md) |
-| 结构化反馈/状态机 | Stage 2 | Public/Hidden evidence、router/state/coordinator、real handlers、bounded candidate orchestration；7/7 full chains 与 9/9 fault ground truth 完成 | UnifiedRunner/CLI、真实网络模型、Protocol/schema、Batch A、最终 closure | [`stage2_smoke_evidence_summary.md`](stage2_smoke_evidence_summary.md) |
+| 分层 Prompt | Stage 2 | Shared builder、testbench/candidate consumers、provider-neutral adapter、bounded loop、safe Orchestrator；Stage 2.6 已完成 blocker 分类 | Protocol/artifacts、ModelFamilyProfile、正式 CLI、真实网络模型、2.8 | [`STAGE2_CLOSURE_READINESS_AUDIT.md`](STAGE2_CLOSURE_READINESS_AUDIT.md) |
+| 结构化反馈/状态机 | Stage 2 | Public/Hidden、router/state/coordinator、real handlers、7/7 full chains、9/9 fault labels；2.6 审计完成 | B-01～B-05、2.7 regression、2.8 closure | [`stage2_closure_readiness_audit.json`](stage2_closure_readiness_audit.json) |
 | Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、7/7 real full chains、9 faults、16 labels、统一 index | 2.6 audit、2.7 hardening、2.8 closure | [`stage2_smoke_evidence_summary.md`](stage2_smoke_evidence_summary.md) |
 | 安全三级优化器 | Stage 3 | legacy `simple_iter` baseline | hypothesis、3 levels、checkpoint、rollback、cache、best_correct | 多 kernel 与 baseline 对照 |
 | Memory Applicability Gate | Stage 4 | legacy RAG 正负 trial | schema、score、abstention、off/gated/always | 负迁移与弃权实验 |
@@ -57,16 +57,19 @@ Stage 1 Core 已关闭 ≠ Stage 1 Hardening 已完成，也 ≠ API 智能体�
 
 ## 5. 当前下一任务
 
-Stage 2.1–2.5 已完成结构化证据、多类型真实链、独立 ground truth、
-故障矩阵与统一 evidence index。Stage 2 尚未关闭。
+Stage 2.1–2.6 已完成。Stage 2.6 确认五个进入 Stage 3 前 blocker，并冻结
+Stage 2.7 的七步顺序。
 
 ```text
-Stage 2.6 closure-readiness audit
-→ Stage 2.7 cross-stage validation and repair hardening
-→ Stage 2.8 final documentation and closure
-→ Stage 3 safe optimizer
+Stage 2.7.1 Repair Protocol and Artifact Schema
+→ 2.7.2 Minimal ModelFamilyProfile
+→ 2.7.3 Stage 1 Hardening Batch A
+→ 2.7.4 Formal Repair-aware UnifiedRunner / CLI
+→ 2.7.5 Real Network-model Candidate Repair Smoke
+→ 2.7.6 Evidence-gated Contract/Parser Delta
+→ 2.7.7 Cross-stage Regression
+→ Stage 2.8 closure
 ```
 
-2.6 必须分类 blocker、defer、future/external，不直接进行无边界修复。
-证据入口见
-[`stage2_smoke_evidence_summary.md`](stage2_smoke_evidence_summary.md)。
+当前只进入 2.7.1。不得把 executor 合并、自动模型路由、Stage 3 optimizer、
+Memory 或 migration 混入该里程碑。
