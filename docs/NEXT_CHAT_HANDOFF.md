@@ -652,7 +652,7 @@ Stage 2.5 Multi-type Kernel Smoke Matrix；暂不进入 Stage 3、Memory
 
 # 十二、一句话状态
 
-AgRefactor++ 已完成共享 Candidate Prompt Policy 和 provider-neutral Candidate
-Model Adapter，并建立严格的完整 replacement 与顶层接口保护契约；下一步是在
-不把模型调用揉进 Validation Handler 的前提下，建立有界、可计数、失败不覆盖
-正确候选且能够重新进入真实验证的 Candidate Repair Loop。
+AgRefactor++ 已完成 Stage 2.4 的共享分层 Prompt、testbench/candidate
+消费者、provider-neutral Model Adapter、严格响应契约、bounded Candidate
+Repair Loop 和 Safe ValidationOrchestrator Integration；下一步是 Stage 2.5
+多类型真实 kernel smoke matrix，随后进行 Stage 2.6 最终文档与关闭审查。

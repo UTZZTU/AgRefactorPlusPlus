@@ -25,12 +25,13 @@ Testbench Reliability
 | 2.1 Public/Hidden test roles and evidence | Core complete | Suite identity, split, feedback visibility, redaction, tracing, and multi-suite composition |
 | 2.2 General feedback and validation strategy | Core complete | Generic feedback schema, adapters, parser, views, composers, router, states, transitions, and coordinator |
 | 2.3 Runtime evidence-loop integration | Core complete | Real Preflight, CSYNTH, Public CSIM, Hidden CSIM, shared budget, safe trace, and orchestration |
-| 2.4 Shared Layered Prompt Builder | Not started | Shared contract, stage, TargetProfile, model family, safe evidence, Memory gate input, and output contract |
+| 2.4 Shared Layered Prompt Builder | Complete | Shared contract and consumers, provider-neutral candidate adapter, strict response contract, bounded repair, and safe validation re-entry |
 | 2.5 Multi-type Kernel Smoke Matrix | Not started | Diverse real kernels and failure-path validation |
 | 2.6 Final documentation and closure | Partially updated | Final README/usage/reproduction/acceptance synchronization and Stage 2 closure review |
 
-Stage 2 is not closed until 2.4, 2.5, and the final 2.6 closure review are
-complete.
+Stage 2 is not closed until 2.5 and the final 2.6 closure review are
+complete. Stage 2.4 is complete; no separate 2.4.4 or 2.4.4.1 milestone is
+defined by the authoritative roadmap.
 
 ## 3. Early foundation: Testbench Reliability
 
@@ -168,41 +169,80 @@ Detailed record:
 
 ## 7. Current limitations
 
-- the runtime acceptance kernel is deterministic and small;
+- the repair-aware runtime acceptance kernel is deterministic and small;
 - multi-type kernel diversity is not yet established;
 - `UnifiedRunner` and CLI do not yet construct the new validation handlers;
-- candidate and testbench repair are not yet executed from the new runtime
-  orchestrator;
-- Shared Layered Prompt Builder is not implemented;
+- candidate repair is integrated with real local handlers, but its model-side
+  acceptance still uses a deterministic local FakeProvider rather than a real
+  network model API;
+- testbench repair remains on its existing bounded repair path rather than
+  being merged into the candidate repair controller;
 - Hidden details remain operator evidence and never enter model prompts;
 - semantic preservation is not formally proved;
 - one Vitis version and one host environment do not imply general support.
 
-## 8. Next milestone: Stage 2.4
+## 8. Stage 2.4 completion record
 
-Build a Shared Layered Prompt Builder with explicit layers:
+Stage 2.4 is complete. Its implementation was intentionally decomposed into:
+
+```text
+2.4.1 Shared Layered Prompt Core
+2.4.2 Testbench Repair Migration
+2.4.3.1 Candidate Repair Prompt Policies
+2.4.3.2 Candidate Model Adapter / Response Contract
+2.4.3.3 Bounded Candidate Repair Loop
+2.4.3.4 Safe ValidationOrchestrator Integration
+```
+
+The shared prompt contains:
 
 ```text
 system invariants
 + task contract
 + current validation stage
 + effective TargetProfile
-+ model-family adaptation
++ model-family adaptation input
 + agent-safe structured evidence
 + permitted modification scope
 + prior-attempt summary
-+ optional gated Memory
++ caller-approved Memory snippets
 + output contract
 ```
 
-The first consumers should be:
+Completed consumers:
 
 - testbench repair;
 - candidate compile repair;
 - CSYNTH candidate repair;
 - Public CSIM functional-mismatch repair.
 
-Hidden evidence is excluded from model prompts.
+Changed candidates re-enter validation from Preflight. Hidden evidence is
+excluded from model prompts, normal results, and normal traces.
+
+Latest feature commit:
+
+```text
+dd0ee927a5dac6691180c0772661cd90befe64ea
+feat: integrate candidate repair orchestration
+```
+
+Acceptance:
+
+- deterministic regression: `662/662 passed`;
+- real broken-candidate g++ Preflight;
+- deterministic local FakeProvider repair;
+- real repaired g++ Preflight;
+- real Vitis HLS 2023.2 CSYNTH;
+- real Public CSIM and Hidden CSIM;
+- exact usage: `7 tool / 4 compile / 1 csynth / 2 csim / 1 LLM`.
+
+This is not a real network-model acceptance or a multi-type kernel proof.
+
+## 8.1 Next milestone: Stage 2.5
+
+Build the multi-type real-kernel smoke matrix, including Public/Hidden pass,
+Hidden failure as an operator-only terminal result, leakage checks, ownership
+checks, and exact shared-budget evidence.
 
 ## 9. Stage 2 closure standard
 

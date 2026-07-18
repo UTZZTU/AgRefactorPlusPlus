@@ -9,11 +9,11 @@
 | TargetProfile | Stage 1/5 | default/override、legacy propagation、actual command、version gate、part、clock、flags、Tcl、effective profile、invocation evidence | named profiles、settings/executable 自包含、platform/resources/parser、provenance、多版本/多 kernel | [`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md) |
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
 | Model API Registry | Stage 1 | Registry、OpenAI-compatible Provider、DeepSeek 验证 | 更多 provider profiles、用户授权模型池 | 不改主流程即可接入授权模型 |
-| 分层 Prompt | Stage 2 | testbench repair prompt 与 evidence injection 的专用原型 | Shared Layered Prompt Builder、TargetProfile/stage/family layers、candidate repair consumers | Stage 2.4 多阶段 prompt snapshot 与真实 repair |
-| 结构化反馈/状态机 | Stage 2 | Public/Hidden evidence、通用 Feedback Schema、Preflight/CSYNTH/Test adapters、CSYNTH parser、views/composers、router、state machine、coordinator、real Preflight/CSYNTH/Public/Hidden handlers 与 orchestrator | Shared Prompt Builder 接入、多类型 kernel smoke、最终 Stage 2 closure | [`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md) |
+| 分层 Prompt | Stage 2 | SharedLayeredPromptBuilder、TaskSpec/TargetProfile/stage/family/evidence/scope/history/approved-memory/output layers；testbench 与 candidate compile/CSYNTH/Public-CSIM consumers；provider-neutral adapter、bounded loop 与 safe Orchestrator integration | 真实网络模型闭环 smoke、UnifiedRunner/CLI 正式构造、多类型 kernel 与 Stage 2.6 最终同步 | [`PROJECT_STATE.md`](PROJECT_STATE.md) |
+| 结构化反馈/状态机 | Stage 2 | Public/Hidden evidence、通用 Feedback Schema、adapters/parser/views/composers、router、state machine、coordinator、real handlers、ValidationOrchestrator 与 bounded candidate-repair orchestration | 多类型 kernel smoke、UnifiedRunner/CLI 正式构造、真实网络模型 smoke、最终 Stage 2 closure | [`PROJECT_STATE.md`](PROJECT_STATE.md) |
 | 安全三级优化器 | Stage 3 | legacy `simple_iter` baseline | hypothesis、3 levels、checkpoint、rollback、cache、best_correct | 多 kernel 与 baseline 对照 |
 | Memory Applicability Gate | Stage 4 | legacy RAG 正负 trial | schema、score、abstention、off/gated/always | 负迁移与弃权实验 |
-| BudgetManager | Stage 1/3 | token/cost core、repair calls、wall-time core；compile/csynth/csim hard limits、pre-call block、exact-once accounting、UnifiedRunner/legacy propagation；真实 DFS Preflight→Vitis→csim 共享预算全链路通过 | Stage 3 budget exhaustion 停止新候选并返回 best_correct | [`stage1_core_acceptance.md`](stage1_core_acceptance.md) |
+| BudgetManager | Stage 1/3 | token/cost、LLM/tool/compile/csynth/csim hard limits、pre-call block、real launch exact-once accounting、UnifiedRunner/legacy propagation；真实 DFS 工具链与 Stage 2 repair-aware validation 共享预算通过 | Stage 3 budget exhaustion 停止新候选并返回 best_correct | [`PROJECT_STATE.md`](PROJECT_STATE.md) |
 
 ## 2. TargetProfile 当前边界
 
@@ -36,7 +36,7 @@ TargetProfile 一次真实运行成功 ≠ 任意版本支持
 TaskSpec 有 version 字段 ≠ 版本迁移
 RAG 检索存在 ≠ Memory Applicability Gate
 simple_iter 能循环 ≠ 安全三级优化器
-204 个确定性测试 ≠ 204 个真实 kernel
+662 个确定性测试 ≠ 662 个真实 kernel
 一次 PPA 改善 ≠ 稳定优化收益
 Stage 1 Core 已关闭 ≠ Stage 1 Hardening 已完成，也 ≠ API 智能体已自动重构 DFS
 ```
@@ -56,14 +56,16 @@ Stage 1 Core 已关闭 ≠ Stage 1 Hardening 已完成，也 ≠ API 智能体�
 
 ## 5. 当前下一任务
 
-Stage 2.1–2.3 核心已经形成真实共享预算验证链。
+Stage 2.1–2.4 已形成结构化反馈、共享 Prompt、bounded repair 和
+真实本地工具链重验证闭环。Stage 2 尚未关闭。
 
 当前下一任务：
 
 ```text
-Stage 2.4 Shared Layered Prompt Builder
-→ testbench/candidate/CSYNTH/Public-CSIM prompt consumers
-→ Stage 2.5 multi-type kernel smoke
-→ Stage 2.6 final closure
+Stage 2.5 multi-type real-kernel smoke
+→ Stage 2.6 final documentation and closure
 → Stage 3 safe optimizer
 ```
+
+当前不把本地 FakeProvider 表述为真实网络模型，也不把单一小型 kernel
+验收表述为任意 HLS 程序支持。

@@ -435,10 +435,9 @@ BudgetManager 真正控制所需活跃本地工具调用
 下一主线：
 
 ```text
-Stage 2 public/hidden test roles and evidence
-→ general feedback parser and state transitions
-→ Stage 3 controlled real DFS API refactor loop
-→ bounded repair, checkpoint and best_correct
+Stage 2.5 multi-type real-kernel smoke
+→ Stage 2.6 final documentation and closure
+→ Stage 3 safe three-level optimizer
 ```
 
 详细验收文档：
@@ -564,31 +563,88 @@ stage2_real_csim_handler_resume5_20260717_184240
 详细记录：
 [`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)。
 
-### 6.5 Stage 2.4：Shared Layered Prompt Builder — 下一主线
+### 6.5 Stage 2.4：Shared Layered Prompt Builder — 已完成
 
-最终 Prompt 必须由共享层构建：
+Stage 2.4 的正式范围已经完成，没有额外规划的 `2.4.4` 或
+`2.4.4.1`。为了控制实现规模，内部拆分为：
+
+```text
+2.4.1 Shared Layered Prompt Core
+2.4.2 Testbench Repair Migration
+2.4.3.1 Candidate Repair Prompt Policies
+2.4.3.2 Candidate Model Adapter / Response Contract
+2.4.3.3 Bounded Candidate Repair Loop
+2.4.3.4 Safe ValidationOrchestrator Integration
+```
+
+共享 Prompt 已包含：
 
 ```text
 公共系统不变量
 + TaskSpec/任务契约
 + 当前验证阶段
 + effective TargetProfile
-+ 模型家族适配
++ 模型家族适配入口
 + agent-safe 当前证据
 + 允许修改范围
 + 历史尝试摘要
-+ gated Memory
++ caller-approved Memory snippets
 + 输出格式与禁止事项
 ```
 
-首批消费者：
+首批消费者已经接入：
 
 - testbench repair；
 - candidate compile repair；
 - CSYNTH candidate repair；
 - Public CSIM mismatch repair。
 
-Hidden evidence 不得进入模型 Prompt。
+Candidate repair 链已经形成：
+
+```text
+agent-safe repair handoff
+→ shared layered Prompt
+→ provider-neutral CandidateModelAdapter
+→ strict complete-replacement contract
+→ bounded repair loop
+→ changed candidate 从 Preflight 重新验证
+→ real CSYNTH / Public CSIM / Hidden CSIM
+```
+
+最新功能提交：
+
+```text
+dd0ee927a5dac6691180c0772661cd90befe64ea
+feat: integrate candidate repair orchestration
+```
+
+最新确定性测试为 `662/662 passed`。真实本地验收完成：
+
+```text
+broken Candidate
+→ real g++ Preflight
+→ local deterministic FakeProvider
+→ repaired g++ Preflight
+→ real Vitis HLS 2023.2 CSYNTH
+→ real Public CSIM
+→ real Hidden CSIM
+→ accepted
+```
+
+精确预算为：
+
+```text
+tool_calls=7
+compile_calls=4
+csynth_calls=1
+csim_calls=2
+llm_calls=1
+tokens=60
+cost_usd=0.02
+```
+
+Hidden evidence 不进入模型 Prompt、普通结果或普通 trace。该验收使用
+本地 FakeProvider，不等于真实网络模型 API，也不证明任意 kernel 支持。
 
 ### 6.6 Stage 2.5：多类型 kernel smoke matrix — 未开始
 
@@ -615,8 +671,8 @@ Hidden evidence 不得进入模型 Prompt。
 
 ### 6.7 Stage 2.6：最终文档、复现和关闭 — 部分同步
 
-Stage 2.3 代码、真实验收与演进记录已同步到 Stage 2 文档。Stage 2
-最终关闭前仍需在完成 2.4 和 2.5 后再次同步 README、USAGE、
+Stage 2.1–2.4 的代码、真实验收与演进记录已经形成。Stage 2
+最终关闭前仍需完成 2.5，并在 2.6 再次同步 README、USAGE、
 REPRODUCTION_STATUS、CHANGELOG、ROADMAP、acceptance 与 smoke 结果。
 
 ### 6.8 Stage 2 完成标准
@@ -633,7 +689,8 @@ Testbench Reliability 完成
 
 当前准确表述：
 
-> **Stage 2.1、2.2 和 2.3 的核心已完成；整个 Stage 2 尚未关闭。**
+> **Stage 2.1–2.4 已完成；整个 Stage 2 仍因 2.5 多类型真实
+> kernel smoke 与 2.6 最终关闭审查尚未完成而保持开放。**
 
 详细文档：
 
