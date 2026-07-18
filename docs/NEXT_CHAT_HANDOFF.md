@@ -30,9 +30,9 @@ GitHub：UTZZTU/AgRefactorPlusPlus
 origin：git@github.com:UTZZTU/AgRefactorPlusPlus.git
 开发分支：stage2-general-feedback
 最新功能提交：
-71f317b85227604a3959db725ae33b074d66824e
+a09915878aca4012a01b258d1f196ba0f18b4be5
 提交信息：
-feat: add Stage 2 smoke pass matrix runner
+feat: add Stage 2 fault ownership matrix
 ```
 
 环境：
@@ -596,7 +596,11 @@ Preflight → CSYNTH → Public CSIM → Hidden CSIM
 该里程碑证明七类 committed baseline 在本机 Vitis 2023.2 上完整通过，
 但不证明任意 HLS kernel 支持，也不包含故障归属矩阵或模型修复。
 
-## 当前唯一主任务：Stage 2.5.3 Fault / Ownership / Hidden Matrix
+## Stage 2.5.3 Fault / Ownership / Hidden Matrix 已完成
+
+`a09915878aca4012a01b258d1f196ba0f18b4be5`；20/20 targeted、65/65 related、727/727 full、9/9 ground-truth matches，真实预算 13/8/2/3/0。
+
+## 当前唯一主任务：Stage 2.5.4 Evidence Summary
 
 基于 committed corpus 建立人工标注的 fault scenarios，验证 candidate/testbench/original/toolchain/unknown 归属、Public 合法 repair handoff、Hidden rejected terminal 和 Hidden 无泄漏。系统预测不能作为 ground truth；不调用模型，不自动修复，不提前进入 Stage 2.7、Stage 3、Memory 或迁移。
 
@@ -609,7 +613,7 @@ Stage 2.4.3.1 Candidate Prompt Policies（已完成）
 → Stage 2.4.3.4 Safe ValidationOrchestrator Integration（已完成）
 → Stage 2.5.1 Smoke Corpus / Ground Truth（已完成）
 → Stage 2.5.2 Real Full-chain Pass Matrix（已完成）
-→ Stage 2.5.3 Fault / Ownership / Hidden Matrix
+→ Stage 2.5.3 Fault / Ownership / Hidden Matrix（已完成）
 → Stage 2.5.4 Evidence Summary
 → Stage 2.6 Closure-readiness Audit
 → Stage 2.7 Cross-stage Validation and Repair Hardening
@@ -715,7 +719,7 @@ Git history
 - Prompt policy 不等于 CandidateGenerator；
 - handler 不等于自动 repair 闭环；
 - FakeProvider 不等于真实 API；
-- 707 tests 不等于 707 个真实 kernel；
+- 727 tests 不等于 727 个真实 kernel；
 - 单一 Vitis 2023.2 不等于任意版本支持。
 
 # 十一、下一对话第一项任务
@@ -738,7 +742,7 @@ Stage 2.5.2 已完成，最新功能提交是 `71f317b85227604a3959db725ae33b074
 21/21 targeted、77/77 related、707/707 full unittest 通过，
 七类 committed corpus 已完成 7/7 real Preflight/CSYNTH/Public/Hidden
 完整通过链；每类预算 6/3/1/2，总预算 42/21/7/14，0 LLM。
-下一步只做 Stage 2.5.3 fault/ownership/Hidden matrix；暂不调用模型，
+下一步只做 Stage 2.5.4 Evidence Summary；不新增验证机制，
 不进入 Stage 2.7、Stage 3、Memory 或版本迁移。
 ```
 
@@ -746,5 +750,5 @@ Stage 2.5.2 已完成，最新功能提交是 `71f317b85227604a3959db725ae33b074
 
 AgRefactor++ 已完成 Stage 2.5.2 七类 real
 Preflight/CSYNTH/Public/Hidden 完整通过链、共享精确预算和安全 trace；
-下一步是 Stage 2.5.3 fault/ownership/Hidden matrix，之后才进行
+下一步只做 Stage 2.5.4 evidence summary，之后进入
 2.5.4 evidence summary、Stage 2.6 audit 和 Stage 2.7 hardening。

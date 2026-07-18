@@ -24,7 +24,7 @@ Stage 2 不在 2.5 后立即关闭。先用真实多类型案例暴露问题，�
 ```text
 2.5.1 Smoke Corpus / Ground Truth Contract（已完成）
 → 2.5.2 Real Full-chain Pass Matrix（已完成）
-→ 2.5.3 Fault / Ownership / Hidden Matrix
+→ 2.5.3 Fault / Ownership / Hidden Matrix（已完成）
 → 2.5.4 Evidence Summary
 ```
 
@@ -226,7 +226,7 @@ applicability 和 expected termination 评估提供独立标签。
 
 ## 8. 执行原则
 
-- 当前只进入 Stage 2.5.3；
+- 当前只进入 Stage 2.5.4；
 - 2.5.3 必须复用 2.5.1 corpus 和独立 ground-truth contract；
 - 2.5.2 的七类成功链作为 passing baseline，不被故障案例覆盖；
 - 2.5 记录问题，不提前大修 2.7；

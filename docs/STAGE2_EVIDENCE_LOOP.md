@@ -26,7 +26,7 @@ Testbench Reliability
 | 2.2 General feedback and validation strategy | Core complete | Generic feedback schema, adapters, parser, views, composers, router, states, transitions, and coordinator |
 | 2.3 Runtime evidence-loop integration | Core complete | Real Preflight, CSYNTH, Public CSIM, Hidden CSIM, shared budget, safe trace, and orchestration |
 | 2.4 Shared Layered Prompt Builder | Complete | Shared contract and consumers, provider-neutral candidate adapter, strict response contract, bounded repair, and safe validation re-entry |
-| 2.5 Multi-type Kernel Smoke Matrix | In progress | 2.5.1 corpus and 2.5.2 seven-type real full-chain pass matrix complete; fault/ownership/Hidden matrix remains |
+| 2.5 Multi-type Kernel Smoke Matrix | In progress | 2.5.1 corpus, 2.5.2 pass matrix, and 2.5.3 fault/ownership/Hidden matrix complete; evidence summary remains |
 | 2.6 Closure-readiness Audit | Not started | Evidence-based gap classification without premature closure |
 | 2.7 Cross-stage Validation and Repair Hardening | Not started | Resolve proven Stage 3 blockers and complete Stage 1 Hardening Batch A |
 | 2.8 Final documentation and closure | Not started | Final reproducibility synchronization and formal Stage 2 closure |
@@ -331,6 +331,27 @@ behavior, or model repair.
 
 Detailed record:
 [`stage2_smoke_pass_matrix_acceptance.md`](stage2_smoke_pass_matrix_acceptance.md).
+
+### 8.1.3 Stage 2.5.3 completed
+
+```text
+a09915878aca4012a01b258d1f196ba0f18b4be5
+feat: add Stage 2 fault ownership matrix
+```
+
+`20/20` targeted、`65/65` related、`727/727` full unittest 与 `9/9`
+ground-truth matches 通过。5 个真实故障与 4 个确定性路由故障覆盖 Public
+repair handoff、Hidden rejected/review terminal 和无泄漏；真实预算
+`13/8/2/3/0`，未调用模型或 repair。
+
+Acceptance:
+
+```text
+/data/agrefactor_runs/stage2_5_3_fault_ownership_hidden_matrix_20260719_003933/acceptance
+```
+
+Detailed record:
+[`stage2_smoke_fault_matrix_acceptance.md`](stage2_smoke_fault_matrix_acceptance.md).
 
 ## 8.2 Stage 2.6–2.8 decision
 

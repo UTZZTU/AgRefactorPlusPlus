@@ -5,14 +5,14 @@
 ## 1. 当前快照
 
 - 当前开发分支：`stage2-general-feedback`
-- 当前功能代码基线：`71f317b85227604a3959db725ae33b074d66824e`
-- 最新确定性测试：**707/707 passed**
+- 当前功能代码基线：`a09915878aca4012a01b258d1f196ba0f18b4be5`
+- 最新确定性测试：**727/727 passed**
 - 最新 Stage 2.5.2 真实验收：**七类 committed corpus 全部通过 real Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM；per case 6/3/1/2，matrix total 42/21/7/14，0 LLM**
 - 最新完整验证链验收仍为：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.5.2 Real Full-chain Pass Matrix 已完成；下一步 Stage 2.5.3 Fault / Ownership / Hidden Matrix**
+- 当前关键任务：**Stage 2.5.3 Fault / Ownership / Hidden Matrix 已完成；下一步 Stage 2.5.4 Evidence Summary**
 ## 2. 已完成
 
 ### Stage 0
@@ -534,6 +534,36 @@ result 或 trace。未调用 FakeProvider 或真实网络模型。
 详见
 [`stage2_smoke_pass_matrix_acceptance.md`](stage2_smoke_pass_matrix_acceptance.md)。
 
+### Stage 2.5.3 Fault / Ownership / Hidden Matrix
+
+已经完成。
+
+```text
+a09915878aca4012a01b258d1f196ba0f18b4be5
+feat: add Stage 2 fault ownership matrix
+```
+
+矩阵包含 5 个真实工具故障和 4 个确定性规范化路由故障，覆盖 candidate、
+testbench、original、toolchain、unknown、mixed、Public repair handoff、
+Hidden rejected/review terminal 与无泄漏。
+
+```text
+20/20 targeted
+65/65 related
+727/727 full unittest
+9/9 ground-truth matches
+13 tool / 8 compile / 2 csynth / 3 csim / 0 LLM
+```
+
+未调用模型，也未执行 repair。验收目录：
+
+```text
+/data/agrefactor_runs/stage2_5_3_fault_ownership_hidden_matrix_20260719_003933/acceptance
+```
+
+详见
+[`stage2_smoke_fault_matrix_acceptance.md`](stage2_smoke_fault_matrix_acceptance.md)。
+
 ## 3. 未完成
 
 ### Stage 1 Hardening（不阻塞 Core 关闭）
@@ -558,8 +588,7 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ### Stage 2 剩余项
 
-1. Stage 2.5.3 故障归属、Public/Hidden 终止与无泄漏矩阵；
-2. Stage 2.5.4 Stage 2.5 证据汇总；
+1. Stage 2.5.4 Stage 2.5 证据汇总；
 3. Stage 2.6 Closure-readiness Audit；
 4. Stage 2.7 Cross-stage Validation and Repair Hardening；
 5. Stage 2.8 Final Documentation and Stage 2 Closure。
@@ -581,10 +610,10 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ## 4. 当前下一任务
 
-Stage 2.1–2.4、Stage 2.5.1 和 Stage 2.5.2 已完成。下一步：
+Stage 2.1–2.4 与 Stage 2.5.1–2.5.3 已完成。下一步只做 Stage 2.5.4 Evidence Summary：
 
 ```text
-A. Stage 2.5.3 Fault / Ownership / Hidden Matrix
+A. 汇总 2.5.1 corpus、2.5.2 pass matrix、2.5.3 fault matrix
 B. 基于 committed corpus 新增人工标注 injected-fault scenarios
 C. 覆盖 candidate、testbench、original、toolchain/unknown 的安全归属
 D. 覆盖 Public repair handoff、Hidden rejected terminal 和无泄漏
@@ -631,7 +660,7 @@ requested 与 actual 不一致时，系统会在 csynth 前阻断。完整命令
 - 已支持任意器件或任意 kernel；
 - Stage 1 Core 之外的 Hardening 已全部完成；
 - Stage 1 Core 关闭等于智能体已经通过 API 自动重构 DFS；
-- 707 个测试等于 707 个真实 kernel。
+- 727 个测试等于 727 个真实 kernel。
 
 ## 7. 新对话阅读顺序
 
