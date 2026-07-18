@@ -30,9 +30,9 @@ GitHub：UTZZTU/AgRefactorPlusPlus
 origin：git@github.com:UTZZTU/AgRefactorPlusPlus.git
 开发分支：stage2-general-feedback
 最新功能提交：
-b7010fc1969e53432bb95a35b519cd8c118347ff
+dd0ee927a5dac6691180c0772661cd90befe64ea
 提交信息：
-feat: add bounded candidate repair loop
+feat: integrate candidate repair orchestration
 ```
 
 环境：
@@ -64,8 +64,8 @@ git log -15 --oneline
 - branch 必须是 `stage2-general-feedback`；
 - local 与 remote 应一致；
 - worktree 应干净；
-- Git 历史中必须存在 `ec9802c`、`dc44be3`、`37a3577` 和 `b7010fc`；
-- 如果 HEAD 是后续纯文档提交，功能父提交应为 `b7010fc`；
+- Git 历史中必须存在 `ec9802c`、`dc44be3`、`37a3577`、`b7010fc` 和 `dd0ee92`；
+- 如果 HEAD 是后续纯文档提交，功能父提交应为 `dd0ee92`；
 - 如状态不一致，先停止修改并解释差异。
 
 # 三、不可改变的工程原则
@@ -468,20 +468,57 @@ feat: add bounded candidate repair loop
 /data/agrefactor_runs/stage2_bounded_candidate_repair_loop_20260718_174524/acceptance
 ```
 
-## 当前唯一主任务：Stage 2.4.3.4 Safe ValidationOrchestrator Integration
+## Stage 2.4.3.4 Safe ValidationOrchestrator Integration 已完成
 
-继续保持：
+功能提交：
 
 ```text
-Handler 只验证
-Coordinator / State Machine 只路由和决策
-Prompt Policy 只构造 Prompt
-Model Adapter 只调用和校验响应
-Repair Controller 只控制有界尝试
-Orchestrator 只组织执行
+dd0ee927a5dac6691180c0772661cd90befe64ea
+feat: integrate candidate repair orchestration
 ```
 
-不得把模型调用塞入 CSYNTH/Public CSIM Handler，也不得让 Repair Controller 成为第二套 Orchestrator。Hidden failure 保持 operator-only terminal，不进入模型 Prompt 或继续修复。
+测试：
+
+```text
+32/32 targeted passed
+107/107 related regression passed
+662/662 full passed
+```
+
+关键边界：
+
+- 既有 ValidationOrchestrator 继续执行单次状态链；
+- 新的 repair-aware Orchestrator 只负责组织初始验证、合法 handoff、bounded repair 和 proposal 重验证；
+- Handler 不调用模型，Coordinator / State Machine 不生成 candidate；
+- changed candidate 每次都从 Preflight 开始创建新 Handler 并重入；
+- Hidden operator-full 报告只在进程内供终止判断，普通结果和 trace 不序列化；
+- 非 candidate route、Hidden、unknown、mixed、toolchain 和 configuration 均不继续模型修复；
+- 失败 proposal 不成为最终 candidate；
+- 未接入 UnifiedRunner / CLI，未开始 Stage 3。
+
+真实工具链 + FakeProvider 验收：
+
+```text
+/data/agrefactor_runs/stage2_candidate_repair_orchestration_recovery_20260718_190537/real_acceptance
+```
+
+预算：
+
+```text
+tool_calls=7
+compile_calls=4
+csynth_calls=1
+csim_calls=2
+llm_calls=1
+tokens=60
+cost_usd=0.02
+```
+
+该验收不是网络模型 API 或多类型 kernel 证明。
+
+## 当前唯一主任务：Stage 2.5 Multi-type Kernel Smoke Matrix
+
+至少覆盖多种计算与接口形态，并为每类保留真实工具证据、Public / Hidden 行为和无泄漏检查。Stage 2.5 不进入 Stage 3 optimizer，不建立 Memory Applicability Gate，也不开始版本迁移。
 
 # 八、后续路线
 
@@ -489,7 +526,7 @@ Orchestrator 只组织执行
 Stage 2.4.3.1 Candidate Prompt Policies（已完成）
 → Stage 2.4.3.2 Candidate Model Adapter / Response Contract（已完成）
 → Stage 2.4.3.3 Bounded Candidate Repair Loop（已完成）
-→ Stage 2.4.3.4 Safe ValidationOrchestrator Integration
+→ Stage 2.4.3.4 Safe ValidationOrchestrator Integration（已完成）
 → Stage 2.5 Multi-type Kernel Smoke Matrix
 → Stage 2.6 Final Documentation and Stage 2 Closure
 → Stage 3 Safe Three-Level Optimizer
@@ -589,7 +626,7 @@ Git history
 - Prompt policy 不等于 CandidateGenerator；
 - handler 不等于自动 repair 闭环；
 - FakeProvider 不等于真实 API；
-- 630 tests 不等于 630 个真实 kernel；
+- 662 tests 不等于 662 个真实 kernel；
 - 单一 Vitis 2023.2 不等于任意版本支持。
 
 # 十一、下一对话第一项任务
@@ -597,20 +634,20 @@ Git history
 请先：
 
 1. 核对 branch、HEAD、origin、remote 和 worktree；
-2. 确认功能提交 `b7010fc1969e53432bb95a35b519cd8c118347ff` 与后续文档提交都存在；
-3. 阅读 Candidate Prompt Policy、Model Adapter、Bounded Repair Loop、测试和验收产物；
-4. 检查 ValidationOrchestrator、Coordinator、State Machine 与各 Handler 的职责边界；
-5. 设计 Stage 2.4.3.4 的最小安全接入，不把模型调用塞入 Handler；
-6. 保持 Hidden operator-only terminal，并强制 changed candidate 从 Preflight 前缀重新验证。
+2. 确认功能提交 `dd0ee927a5dac6691180c0772661cd90befe64ea` 与后续文档提交都存在；
+3. 阅读 Candidate Prompt Policy、Model Adapter、Bounded Repair Loop、repair-aware Orchestrator、测试和真实验收产物；
+4. 设计 Stage 2.5 的 kernel 类型矩阵、错误注入、Public / Hidden 用例和预算；
+5. 优先选择可真实运行且能覆盖不同接口 / 状态特征的最小 kernel；
+6. 暂不进入 Stage 3、Memory 或版本迁移。
 
 第一条回复应明确：
 
 ```text
-Stage 2.4.3.1–2.4.3.3 已完成，最新功能提交是
-b7010fc，完整测试 630/630 通过。下一步只做 Stage 2.4.3.4
-Safe ValidationOrchestrator Integration；保持 Handler、Coordinator、Prompt
-Policy、Model Adapter、Repair Controller 和 Orchestrator 的职责分离，
-暂不进入 Stage 3、Memory 或版本迁移。
+Stage 2.4.3.1–2.4.3.4 已完成，最新功能提交是
+dd0ee92，完整测试 662/662 通过，并完成一次真实 g++ / Vitis /
+Public CSIM / Hidden CSIM + 本地 FakeProvider 修复验收。下一步只做
+Stage 2.5 Multi-type Kernel Smoke Matrix；暂不进入 Stage 3、Memory
+或版本迁移，也不把 FakeProvider 表述为真实网络模型。
 ```
 
 # 十二、一句话状态

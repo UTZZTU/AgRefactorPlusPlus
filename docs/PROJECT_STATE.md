@@ -5,13 +5,13 @@
 ## 1. 当前快照
 
 - 当前开发分支：`stage2-general-feedback`
-- 当前功能代码基线：`b7010fc1969e53432bb95a35b519cd8c118347ff`
-- 最新确定性测试：**630/630 passed**
-- 最新真实工具验收：**Preflight g++ → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 6/3/1/2**
+- 当前功能代码基线：`dd0ee927a5dac6691180c0772661cd90befe64ea`
+- 最新确定性测试：**662/662 passed**
+- 最新真实工具验收：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.4.1–2.4.3.3 已完成；下一步安全接入 ValidationOrchestrator**
+- 当前关键任务：**Stage 2.4.1–2.4.3.4 已完成；下一步 Stage 2.5 Multi-type Kernel Smoke Matrix**
 ## 2. 已完成
 
 ### Stage 0
@@ -324,6 +324,73 @@ feat: add bounded candidate repair loop
 
 该验收验证有界控制、合法验证前缀、预算语义和状态保留；它不是真实网络模型、真实工具链修复或 ValidationOrchestrator 集成验收。
 
+### Stage 2.4.3.4 Safe ValidationOrchestrator Integration
+
+已经完成。
+
+功能提交：
+
+```text
+dd0ee927a5dac6691180c0772661cd90befe64ea
+feat: integrate candidate repair orchestration
+```
+
+测试：
+
+```text
+32/32 targeted passed
+107/107 related regression passed
+662/662 full passed
+```
+
+完成：
+
+- 保留既有 `ValidationOrchestrator.run(...)` 兼容接口，并新增仅供内部合法 handoff 使用的 `run_detailed(...)`；
+- 普通 `ValidationOrchestrationResult` 和 trace 继续不包含 Hidden 原始报告；
+- 新增 `CandidateRepairValidationOrchestrator`，组合既有 ValidationOrchestrator、Coordinator / State Machine 和 BoundedCandidateRepairLoop；
+- 初始 candidate 与每个 proposal 都由 handler factory 构造全新的验证 Handler；
+- changed candidate 始终从 Preflight 开始完整重入，不复用旧 candidate 的前置证据；
+- Handler 继续只验证，不导入 CandidateModelAdapter 或 BoundedCandidateRepairLoop；
+- Candidate repair 只在 agent-safe、blocking、`repair_candidate` handoff 下启动；
+- testbench、original、unknown、mixed、toolchain、configuration 和 Hidden failure 不进入模型修复；
+- Hidden failure 保持 operator-only terminal，内部原始报告不进入普通结果、trace 或下一轮 Prompt；
+- repair 失败或耗尽时，对外 `final_candidate` 回退到初始 candidate，不采用未验证 proposal；
+- 新增本地真实 Handler factory，复用同一 `BudgetManager` 和 `TraceRecorder`；
+- 未修改 UnifiedRunner / CLI，也未进入 Stage 3、Memory 或版本迁移。
+
+真实工具链 + 本地 FakeProvider 验收目录：
+
+```text
+/data/agrefactor_runs/stage2_candidate_repair_orchestration_recovery_20260718_190537/real_acceptance
+```
+
+真实执行链：
+
+```text
+broken Candidate
+→ real g++ Preflight（candidate-owned compile failure）
+→ local deterministic FakeProvider
+→ real repaired g++ Preflight
+→ real Vitis HLS 2023.2 CSYNTH
+→ real Public CSIM
+→ real Hidden CSIM
+→ accepted
+```
+
+精确预算：
+
+```text
+tool_calls=7
+compile_calls=4
+csynth_calls=1
+csim_calls=2
+llm_calls=1
+tokens=60
+cost_usd=0.02
+```
+
+该验收证明 ValidationOrchestrator 与 bounded Candidate Repair Loop 已在真实本地工具链上完成一次安全接入；模型仍是本地 FakeProvider，不是真实网络模型 API，也不证明任意 kernel 的修复能力。
+
 ## 3. 未完成
 
 ### Stage 1 Hardening（不阻塞 Core 关闭）
@@ -338,9 +405,8 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ### Stage 2 剩余项
 
-1. Candidate Repair 安全接入 ValidationOrchestrator；
-2. Stage 2.5 多类型真实 kernel smoke matrix；
-3. Stage 2.6 最终文档、复现和关闭审查。
+1. Stage 2.5 多类型真实 kernel smoke matrix；
+2. Stage 2.6 最终文档、复现和关闭审查。
 
 当前还没有：
 
@@ -356,22 +422,20 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ## 4. 当前下一任务
 
-Stage 2.1–2.3、Stage 2.4.1–2.4.3.3 已完成。
+Stage 2.1–2.3、Stage 2.4.1–2.4.3.4 已完成。
 下一步：
 
 ```text
-A. 安全接入 ValidationOrchestrator
-B. Handler 继续只负责验证，不直接调用模型
-C. Coordinator / State Machine 继续只做路由和状态决策
-D. Repair Controller 只控制有界尝试，不成为第二套 Orchestrator
-E. 每个 changed candidate 从 Preflight 合法前缀重新进入验证
-F. Hidden failure 仍是 operator-only terminal result
-G. Stage 2.5 多类型真实 kernel smoke matrix
-H. Stage 2.6 最终文档与关闭审查
+A. Stage 2.5 Multi-type Kernel Smoke Matrix
+B. 至少覆盖 array map、reduction、nested loop / stencil、multi-output、ap_int / struct、hls::stream 和 stateful kernel
+C. 每类检查真实 Preflight、CSYNTH、Public CSIM 与 Hidden 最终评测角色
+D. 包含 Hidden pass、Hidden fail 和无信息泄漏案例
+E. 继续使用同一 BudgetManager，并区分真实模型与 FakeProvider
+F. 不把有限类型覆盖表述为任意 HLS 程序支持
+G. Stage 2.6 最终文档、复现与关闭审查
 ```
 
-当前不提前进入 Stage 3，也不把 Candidate Model Adapter 表述为
-自动 repair loop、ValidationOrchestrator 模型接入或真实模型修复已经完成。
+当前不提前进入 Stage 3，也不把一次真实小型 kernel + FakeProvider 验收表述为真实网络模型或多类型普适性已经完成。
 
 ## 5. 多 Vitis 版本的当前显式用法
 
