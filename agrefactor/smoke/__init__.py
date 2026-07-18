@@ -1,6 +1,13 @@
 """Reusable smoke corpora and independent ground-truth schemas."""
 
 from .stage2_corpus import STAGE2_SMOKE_CASES
+from .stage2_pass_matrix import (
+    Stage2SmokePassCaseResult,
+    Stage2SmokePassMatrixError,
+    Stage2SmokePassMatrixResult,
+    Stage2SmokePassMatrixRunner,
+    expected_stage2_smoke_pass_budget,
+)
 from .stage2_matrix import (
     Stage2SmokeBudgetExpectation,
     Stage2SmokeCase,
@@ -18,6 +25,11 @@ from .stage2_matrix import (
 
 __all__ = [
     "STAGE2_SMOKE_CASES",
+    "Stage2SmokePassCaseResult",
+    "Stage2SmokePassMatrixError",
+    "Stage2SmokePassMatrixResult",
+    "Stage2SmokePassMatrixRunner",
+    "expected_stage2_smoke_pass_budget",
     "Stage2SmokeBudgetExpectation",
     "Stage2SmokeCase",
     "Stage2SmokeExpectedRoute",
