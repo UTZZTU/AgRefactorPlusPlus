@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 import hashlib
 import json
@@ -385,11 +385,26 @@ class CandidateModelAdapter:
     def generate(
         self,
         request: CandidateModelRequest,
+        *,
+        before_provider_call: Callable[[], None] | None = None,
+        after_provider_response: (
+            Callable[[ModelResponse], None] | None
+        ) = None,
     ) -> CandidateModelResult:
         """Make one provider call and return one validated replacement."""
 
         if not isinstance(request, CandidateModelRequest):
             raise TypeError("request must be a CandidateModelRequest")
+        if (
+            before_provider_call is not None
+            and not callable(before_provider_call)
+        ):
+            raise TypeError("before_provider_call must be callable or None")
+        if (
+            after_provider_response is not None
+            and not callable(after_provider_response)
+        ):
+            raise TypeError("after_provider_response must be callable or None")
 
         contract = CandidateResponseContract.from_candidate(
             request.task,
@@ -399,6 +414,8 @@ class CandidateModelAdapter:
         parameters.update(self._parameters)
 
         self._prompts.append(request.prompt)
+        if before_provider_call is not None:
+            before_provider_call()
         response = self._provider.generate(
             self._model,
             ModelRequest(
@@ -411,6 +428,8 @@ class CandidateModelAdapter:
                 "model provider must return a ModelResponse"
             )
         self._responses.append(response)
+        if after_provider_response is not None:
+            after_provider_response(response)
 
         candidate_code = contract.extract_and_validate(response.text)
         result = CandidateModelResult(

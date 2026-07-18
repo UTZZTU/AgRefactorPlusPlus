@@ -221,6 +221,36 @@ class BudgetManager:
         self._cost_usd += cost_usd
         return self.snapshot()
 
+    def record_observed(
+        self,
+        *,
+        tokens: int = 0,
+        cost_usd: float = 0.0,
+    ) -> BudgetUsage:
+        """Record usage known only after an external call completed.
+
+        LLM token and cost totals are not known before provider execution.
+        This method records the observed values without pretending they could
+        have blocked an already-completed call. Callers must still perform
+        prospective launch checks and consume ``llm_calls`` immediately before
+        the provider starts.
+        """
+
+        self._validate_increment("tokens", tokens)
+        self._validate_cost_increment(cost_usd)
+        self._tokens += tokens
+        self._cost_usd += cost_usd
+        return BudgetUsage(
+            llm_calls=self._llm_calls,
+            tool_calls=self._tool_calls,
+            compile_calls=self._compile_calls,
+            csim_calls=self._csim_calls,
+            csynth_calls=self._csynth_calls,
+            tokens=self._tokens,
+            cost_usd=self._cost_usd,
+            elapsed_s=self._elapsed_s(),
+        )
+
     def exhausted(self) -> bool:
         "Return whether current usage reached any configured limit."
 
