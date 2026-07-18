@@ -552,19 +552,19 @@ Stage 2 未关闭前，不进入 Stage 3。
 6. docs/STAGE2_HARDENING_PLAN.md
 7. docs/stage2_acceptance.md
 8. docs/stage2_runtime_evidence_acceptance.md
-8. agrefactor/prompts/layered.py
-9. agrefactor/prompts/candidate_repair.py
-10. agrefactor/models/candidate_adapter.py
-11. agrefactor/models/__init__.py
-12. tests/test_candidate_repair_prompts.py
-13. tests/test_candidate_model_adapter.py
-14. agrefactor/repair/candidate_loop.py
-15. agrefactor/repair/__init__.py
-16. tests/test_candidate_repair_loop.py
-17. agrefactor/testing/model_testbench_repairer.py
-18. agrefactor/testing/testbench_repair.py
-19. Feedback、Budget、Validation 相关代码和 tests
-20. git log -15 --oneline
+9. agrefactor/prompts/layered.py
+10. agrefactor/prompts/candidate_repair.py
+11. agrefactor/models/candidate_adapter.py
+12. agrefactor/models/__init__.py
+13. tests/test_candidate_repair_prompts.py
+14. tests/test_candidate_model_adapter.py
+15. agrefactor/repair/candidate_loop.py
+16. agrefactor/repair/__init__.py
+17. tests/test_candidate_repair_loop.py
+18. agrefactor/testing/model_testbench_repairer.py
+19. agrefactor/testing/testbench_repair.py
+20. Feedback、Budget、Validation 相关代码和 tests
+21. git log -15 --oneline
 ```
 
 事实由以下共同决定：
