@@ -5,14 +5,14 @@
 ## 1. 当前快照
 
 - 当前开发分支：`stage2-general-feedback`
-- 当前功能代码基线：`ca991c372f9f40f7e592136b12af774dd985c0fa`
-- 最新确定性测试：**686/686 passed**
-- 最新 Stage 2.5.1 真实验收：**七类 committed corpus real g++ Preflight 7/7 passed，exact budget 7 tool / 7 compile / 0 csynth / 0 csim / 0 LLM**
+- 当前功能代码基线：`71f317b85227604a3959db725ae33b074d66824e`
+- 最新确定性测试：**707/707 passed**
+- 最新 Stage 2.5.2 真实验收：**七类 committed corpus 全部通过 real Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM；per case 6/3/1/2，matrix total 42/21/7/14，0 LLM**
 - 最新完整验证链验收仍为：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.5.1 Smoke Corpus / Ground Truth 已完成；下一步 Stage 2.5.2 Real Full-chain Pass Matrix**
+- 当前关键任务：**Stage 2.5.2 Real Full-chain Pass Matrix 已完成；下一步 Stage 2.5.3 Fault / Ownership / Hidden Matrix**
 ## 2. 已完成
 
 ### Stage 0
@@ -458,6 +458,82 @@ cost_usd=0.0
 详见
 [`stage2_smoke_corpus_acceptance.md`](stage2_smoke_corpus_acceptance.md)。
 
+### Stage 2.5.2 Real Full-chain Pass Matrix
+
+已经完成。
+
+功能提交：
+
+```text
+71f317b85227604a3959db725ae33b074d66824e
+feat: add Stage 2 smoke pass matrix runner
+```
+
+新增：
+
+- `Stage2SmokePassMatrixRunner`；
+- `Stage2SmokePassCaseResult`；
+- `Stage2SmokePassMatrixResult`；
+- `Stage2SmokePassMatrixError`；
+- `expected_stage2_smoke_pass_budget(...)`。
+
+矩阵使用一份共享 `BudgetManager`，按 committed corpus 顺序验证：
+
+```text
+array-map
+reduction
+nested-stencil
+multi-output
+struct-record
+hls-stream
+stateful
+```
+
+确定性验证：
+
+```text
+21/21 targeted
+77/77 related
+707/707 full unittest
+```
+
+真实本地矩阵：
+
+```text
+7 × (
+  real g++ Preflight
+  → real Vitis HLS 2023.2 CSYNTH
+  → real Public CSIM
+  → real Hidden CSIM
+  → accepted
+)
+```
+
+每类精确预算：
+
+```text
+6 tool / 3 compile / 1 csynth / 2 csim / 0 LLM
+```
+
+矩阵总预算：
+
+```text
+42 tool / 21 compile / 7 csynth / 14 csim / 0 LLM
+```
+
+所有 case 的阶段顺序均为 Preflight、CSYNTH、Public、Hidden；
+前三阶段为 agent-safe evidence，Hidden 为 operator-full 且不进入普通
+result 或 trace。未调用 FakeProvider 或真实网络模型。
+
+验收目录：
+
+```text
+/data/agrefactor_runs/stage2_5_2_real_full_chain_pass_matrix_20260719_001400/acceptance
+```
+
+详见
+[`stage2_smoke_pass_matrix_acceptance.md`](stage2_smoke_pass_matrix_acceptance.md)。
+
 ## 3. 未完成
 
 ### Stage 1 Hardening（不阻塞 Core 关闭）
@@ -482,18 +558,17 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ### Stage 2 剩余项
 
-1. Stage 2.5.2 七类真实 Preflight / CSYNTH / Public / Hidden 通过链；
-2. Stage 2.5.3 故障归属、Public/Hidden 终止与无泄漏矩阵；
-3. Stage 2.5.4 Stage 2.5 证据汇总；
-4. Stage 2.6 Closure-readiness Audit；
-5. Stage 2.7 Cross-stage Validation and Repair Hardening；
-6. Stage 2.8 Final Documentation and Stage 2 Closure。
+1. Stage 2.5.3 故障归属、Public/Hidden 终止与无泄漏矩阵；
+2. Stage 2.5.4 Stage 2.5 证据汇总；
+3. Stage 2.6 Closure-readiness Audit；
+4. Stage 2.7 Cross-stage Validation and Repair Hardening；
+5. Stage 2.8 Final Documentation and Stage 2 Closure。
 
 当前还没有：
 
 - 新 runtime orchestrator 驱动的真实网络模型 candidate repair；
 - CLI/UnifiedRunner 对 validation handlers 的正式构造；
-- 多类型 kernel 的普适性证据；
+- 多类型成功链已有七类证据，但故障归属与 Hidden-failure 矩阵尚未完成；
 - Testbench/Candidate repair 统一的审计 Protocol / artifact schema；
 - 最小 Model Family Profile；
 - 基于多类型 corpus 加强后的 Response Contract 与 CSYNTH parser。
@@ -506,22 +581,22 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ## 4. 当前下一任务
 
-Stage 2.1–2.4 与 Stage 2.5.1 已完成。下一步：
+Stage 2.1–2.4、Stage 2.5.1 和 Stage 2.5.2 已完成。下一步：
 
 ```text
-A. Stage 2.5.2 Real Full-chain Pass Matrix
-B. 复用 agrefactor.smoke.STAGE2_SMOKE_CASES
-C. 七类逐一执行 real Preflight、Vitis CSYNTH、Public CSIM、Hidden CSIM
-D. 核对 accepted、四阶段顺序、invocation evidence 和精确预算
-E. 不在临时验收脚本中复制或改写 corpus source
-F. 记录类型特定失败，但不提前在 2.5.2 大修 2.7
-G. 之后执行 2.5.3 fault/ownership/Hidden matrix
-H. 2.5.4 汇总后进入 2.6 Audit
-I. 不把有限类型覆盖表述为任意 HLS 程序支持
+A. Stage 2.5.3 Fault / Ownership / Hidden Matrix
+B. 基于 committed corpus 新增人工标注 injected-fault scenarios
+C. 覆盖 candidate、testbench、original、toolchain/unknown 的安全归属
+D. 覆盖 Public repair handoff、Hidden rejected terminal 和无泄漏
+E. 系统预测不得作为 ground truth
+F. 使用 deterministic faults 与必要的真实工具失败证据
+G. 不调用真实网络模型，不自动修复故障案例
+H. 完成后执行 2.5.4 Evidence Summary
+I. 不提前进入 Stage 2.7 或 Stage 3
 ```
 
-当前不执行故障注入修复、真实网络模型 repair、Stage 2.7 Hardening、
-Stage 3 optimizer、Memory Gate 或版本迁移。
+当前不执行真实网络模型 repair、Stage 2.7 Hardening、Stage 3 optimizer、
+Memory Gate 或版本迁移。
 
 ## 5. 多 Vitis 版本的当前显式用法
 
@@ -556,7 +631,7 @@ requested 与 actual 不一致时，系统会在 csynth 前阻断。完整命令
 - 已支持任意器件或任意 kernel；
 - Stage 1 Core 之外的 Hardening 已全部完成；
 - Stage 1 Core 关闭等于智能体已经通过 API 自动重构 DFS；
-- 686 个测试等于 686 个真实 kernel。
+- 707 个测试等于 707 个真实 kernel。
 
 ## 7. 新对话阅读顺序
 
@@ -572,8 +647,9 @@ requested 与 actual 不一致时，系统会在 csynth 前阻断。完整命令
 9. docs/STAGE2_EVIDENCE_LOOP.md
 10. docs/STAGE2_HARDENING_PLAN.md
 11. docs/stage2_smoke_corpus_acceptance.md
-12. docs/stage2_acceptance.md
-13. docs/REPRODUCTION_STATUS.md
-14. docs/USAGE.md
-15. git log
+12. docs/stage2_smoke_pass_matrix_acceptance.md
+13. docs/stage2_acceptance.md
+14. docs/REPRODUCTION_STATUS.md
+15. docs/USAGE.md
+16. git log
 ```

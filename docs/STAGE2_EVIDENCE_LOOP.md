@@ -26,7 +26,7 @@ Testbench Reliability
 | 2.2 General feedback and validation strategy | Core complete | Generic feedback schema, adapters, parser, views, composers, router, states, transitions, and coordinator |
 | 2.3 Runtime evidence-loop integration | Core complete | Real Preflight, CSYNTH, Public CSIM, Hidden CSIM, shared budget, safe trace, and orchestration |
 | 2.4 Shared Layered Prompt Builder | Complete | Shared contract and consumers, provider-neutral candidate adapter, strict response contract, bounded repair, and safe validation re-entry |
-| 2.5 Multi-type Kernel Smoke Matrix | In progress | 2.5.1 corpus/ground truth and 7/7 real g++ Preflight complete; full Vitis/Public/Hidden matrix remains |
+| 2.5 Multi-type Kernel Smoke Matrix | In progress | 2.5.1 corpus and 2.5.2 seven-type real full-chain pass matrix complete; fault/ownership/Hidden matrix remains |
 | 2.6 Closure-readiness Audit | Not started | Evidence-based gap classification without premature closure |
 | 2.7 Cross-stage Validation and Repair Hardening | Not started | Resolve proven Stage 3 blockers and complete Stage 1 Hardening Batch A |
 | 2.8 Final documentation and closure | Not started | Final reproducibility synchronization and formal Stage 2 closure |
@@ -171,7 +171,7 @@ Detailed record:
 ## 7. Current limitations
 
 - the repair-aware runtime acceptance kernel is deterministic and small;
-- seven-type corpus and real g++ Preflight exist, but full Vitis/Public/Hidden diversity is not yet established;
+- seven-type real full-chain pass diversity is established on one Vitis 2023.2 host, but fault/ownership diversity remains open;
 - `UnifiedRunner` and CLI do not yet construct the new validation handlers;
 - candidate repair is integrated with real local handlers, but its model-side
   acceptance still uses a deterministic local FakeProvider rather than a real
@@ -294,6 +294,43 @@ fault ownership accuracy, or model repair. Stage 2.5.2 is next.
 
 Detailed record:
 [`stage2_smoke_corpus_acceptance.md`](stage2_smoke_corpus_acceptance.md).
+
+### 8.1.2 Stage 2.5.2 completed
+
+Feature commit:
+
+```text
+71f317b85227604a3959db725ae33b074d66824e
+feat: add Stage 2 smoke pass matrix runner
+```
+
+The reusable runner executes the committed corpus through one shared physical
+budget and refuses non-accepted results, stage-order drift, budget drift, or
+Hidden content in safe results/traces.
+
+Validation:
+
+- `21/21` targeted tests;
+- `77/77` related smoke/orchestration tests;
+- `707/707` full unittest;
+- seven real Vitis HLS 2023.2 full chains accepted;
+- per case: `6 tool / 3 compile / 1 csynth / 2 csim / 0 LLM`;
+- total: `42 tool / 21 compile / 7 csynth / 14 csim / 0 LLM`;
+- exact stage order: Preflight → CSYNTH → Public → Hidden;
+- Hidden steps remain operator-full and suppressed from safe result/trace.
+
+Acceptance directory:
+
+```text
+/data/agrefactor_runs/stage2_5_2_real_full_chain_pass_matrix_20260719_001400/acceptance
+```
+
+This proves seven committed baseline shapes pass on the current host. It does
+not prove arbitrary HLS support, fault ownership accuracy, Hidden-failure
+behavior, or model repair.
+
+Detailed record:
+[`stage2_smoke_pass_matrix_acceptance.md`](stage2_smoke_pass_matrix_acceptance.md).
 
 ## 8.2 Stage 2.6–2.8 decision
 

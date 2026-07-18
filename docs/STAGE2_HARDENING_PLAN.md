@@ -23,7 +23,7 @@ Stage 2 不在 2.5 后立即关闭。先用真实多类型案例暴露问题，�
 
 ```text
 2.5.1 Smoke Corpus / Ground Truth Contract（已完成）
-→ 2.5.2 Real Full-chain Pass Matrix
+→ 2.5.2 Real Full-chain Pass Matrix（已完成）
 → 2.5.3 Fault / Ownership / Hidden Matrix
 → 2.5.4 Evidence Summary
 ```
@@ -35,9 +35,10 @@ ca991c372f9f40f7e592136b12af774dd985c0fa
 feat: add Stage 2 smoke corpus
 ```
 
-2.5.1 已固定七类 immutable source bundle、独立 baseline labels、
-operator/agent-safe manifests，并完成 `7/7` real g++ Preflight。
-下一步只执行 2.5.2，不提前执行 2.7 Hardening。
+2.5.1 已固定七类 immutable source bundle、独立 baseline labels
+和安全 manifest。2.5.2 功能提交 `71f317b85227604a3959db725ae33b074d66824e` 已完成七类 real
+Preflight/CSYNTH/Public/Hidden 完整通过链，总预算 `42/21/7/14/0`。
+下一步只执行 2.5.3，不提前执行 2.7 Hardening。
 
 最低类型：
 
@@ -225,8 +226,9 @@ applicability 和 expected termination 评估提供独立标签。
 
 ## 8. 执行原则
 
-- 当前只进入 Stage 2.5.2；
-- 2.5.2 必须复用 2.5.1 已提交 corpus；
+- 当前只进入 Stage 2.5.3；
+- 2.5.3 必须复用 2.5.1 corpus 和独立 ground-truth contract；
+- 2.5.2 的七类成功链作为 passing baseline，不被故障案例覆盖；
 - 2.5 记录问题，不提前大修 2.7；
 - 2.6 先审计，再冻结文件级任务；
 - 2.7 只修证据证明的阻塞项；

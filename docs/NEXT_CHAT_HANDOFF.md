@@ -30,9 +30,9 @@ GitHub：UTZZTU/AgRefactorPlusPlus
 origin：git@github.com:UTZZTU/AgRefactorPlusPlus.git
 开发分支：stage2-general-feedback
 最新功能提交：
-ca991c372f9f40f7e592136b12af774dd985c0fa
+71f317b85227604a3959db725ae33b074d66824e
 提交信息：
-feat: add Stage 2 smoke corpus
+feat: add Stage 2 smoke pass matrix runner
 ```
 
 环境：
@@ -64,8 +64,8 @@ git log -15 --oneline
 - branch 必须是 `stage2-general-feedback`；
 - local 与 remote 应一致；
 - worktree 应干净；
-- Git 历史中必须存在 `ec9802c`、`dc44be3`、`37a3577`、`b7010fc`、`dd0ee92` 和 `ca991c3`；
-- 如果 HEAD 是 Stage 2.5.1 后续纯文档提交，功能父提交应为 `ca991c3`；
+- Git 历史中必须存在 `ec9802c`、`dc44be3`、`37a3577`、`b7010fc`、`dd0ee92`、`ca991c3` 和 `71f317b`；
+- 如果 HEAD 是 Stage 2.5.2 后续纯文档提交，功能父提交应为 `71f317b`；
 - 如状态不一致，先停止修改并解释差异。
 
 # 三、不可改变的工程原则
@@ -556,9 +556,49 @@ exact budget 7/7/0/0/0
 该里程碑没有执行 Vitis CSYNTH、Public/Hidden CSIM、FakeProvider 或
 真实网络模型。operator ground truth 与 agent-safe manifest 已分离。
 
-## 当前唯一主任务：Stage 2.5.2 Real Full-chain Pass Matrix
+## Stage 2.5.2 Real Full-chain Pass Matrix 已完成
 
-必须复用仓库中的 `agrefactor.smoke.STAGE2_SMOKE_CASES`，对七类逐一执行 real Preflight、Vitis CSYNTH、Public CSIM 和 Hidden CSIM，并核对 accepted、阶段顺序、invocation evidence 与 exact shared budget。暂不执行故障注入修复、Stage 2.7 Hardening、Stage 3 optimizer、Memory Gate 或版本迁移。
+功能提交：
+
+```text
+71f317b85227604a3959db725ae33b074d66824e
+feat: add Stage 2 smoke pass matrix runner
+```
+
+验证：
+
+```text
+21/21 targeted
+77/77 related
+707/707 full unittest
+7/7 real full validation chains accepted
+```
+
+每类：
+
+```text
+Preflight → CSYNTH → Public CSIM → Hidden CSIM
+6 tool / 3 compile / 1 csynth / 2 csim
+```
+
+总计：
+
+```text
+42 tool / 21 compile / 7 csynth / 14 csim / 0 LLM
+```
+
+验收目录：
+
+```text
+/data/agrefactor_runs/stage2_5_2_real_full_chain_pass_matrix_20260719_001400/acceptance
+```
+
+该里程碑证明七类 committed baseline 在本机 Vitis 2023.2 上完整通过，
+但不证明任意 HLS kernel 支持，也不包含故障归属矩阵或模型修复。
+
+## 当前唯一主任务：Stage 2.5.3 Fault / Ownership / Hidden Matrix
+
+基于 committed corpus 建立人工标注的 fault scenarios，验证 candidate/testbench/original/toolchain/unknown 归属、Public 合法 repair handoff、Hidden rejected terminal 和 Hidden 无泄漏。系统预测不能作为 ground truth；不调用模型，不自动修复，不提前进入 Stage 2.7、Stage 3、Memory 或迁移。
 
 # 八、后续路线
 
@@ -568,7 +608,7 @@ Stage 2.4.3.1 Candidate Prompt Policies（已完成）
 → Stage 2.4.3.3 Bounded Candidate Repair Loop（已完成）
 → Stage 2.4.3.4 Safe ValidationOrchestrator Integration（已完成）
 → Stage 2.5.1 Smoke Corpus / Ground Truth（已完成）
-→ Stage 2.5.2 Real Full-chain Pass Matrix
+→ Stage 2.5.2 Real Full-chain Pass Matrix（已完成）
 → Stage 2.5.3 Fault / Ownership / Hidden Matrix
 → Stage 2.5.4 Evidence Summary
 → Stage 2.6 Closure-readiness Audit
@@ -594,20 +634,23 @@ Stage 2 未关闭前，不进入 Stage 3。
 5. docs/STAGE2_EVIDENCE_LOOP.md
 6. docs/STAGE2_HARDENING_PLAN.md
 7. docs/stage2_smoke_corpus_acceptance.md
-8. docs/stage2_acceptance.md
-9. docs/stage2_runtime_evidence_acceptance.md
-10. agrefactor/smoke/stage2_matrix.py
-11. agrefactor/smoke/stage2_corpus.py
-12. tests/test_stage2_smoke_matrix.py
-13. agrefactor/prompts/layered.py
-14. agrefactor/prompts/candidate_repair.py
-15. agrefactor/models/candidate_adapter.py
-16. agrefactor/repair/candidate_loop.py
-17. tests/test_candidate_repair_loop.py
-18. agrefactor/testing/model_testbench_repairer.py
-19. agrefactor/testing/testbench_repair.py
-20. Feedback、Budget、Validation 相关代码和 tests
-21. git log -15 --oneline
+8. docs/stage2_smoke_pass_matrix_acceptance.md
+9. docs/stage2_acceptance.md
+10. docs/stage2_runtime_evidence_acceptance.md
+11. agrefactor/smoke/stage2_matrix.py
+12. agrefactor/smoke/stage2_corpus.py
+13. agrefactor/smoke/stage2_pass_matrix.py
+14. tests/test_stage2_smoke_matrix.py
+15. tests/test_stage2_smoke_pass_matrix.py
+16. agrefactor/prompts/layered.py
+17. agrefactor/prompts/candidate_repair.py
+18. agrefactor/models/candidate_adapter.py
+19. agrefactor/repair/candidate_loop.py
+20. tests/test_candidate_repair_loop.py
+21. agrefactor/testing/model_testbench_repairer.py
+22. agrefactor/testing/testbench_repair.py
+23. Feedback、Budget、Validation 相关代码和 tests
+24. git log -15 --oneline
 ```
 
 事实由以下共同决定：
@@ -672,7 +715,7 @@ Git history
 - Prompt policy 不等于 CandidateGenerator；
 - handler 不等于自动 repair 闭环；
 - FakeProvider 不等于真实 API；
-- 686 tests 不等于 686 个真实 kernel；
+- 707 tests 不等于 707 个真实 kernel；
 - 单一 Vitis 2023.2 不等于任意版本支持。
 
 # 十一、下一对话第一项任务
@@ -680,28 +723,28 @@ Git history
 请先：
 
 1. 核对 branch、HEAD、origin、remote 和 worktree；
-2. 确认功能提交 `ca991c372f9f40f7e592136b12af774dd985c0fa` 与后续文档提交都存在；
-3. 阅读 `agrefactor.smoke`、Stage 2.5.1 tests 和验收产物；
-4. 设计 Stage 2.5.2 七类真实完整通过链及总预算；
-5. 必须复用已提交 corpus，不在临时脚本复制或改写 source；
-6. 每类核对 accepted、四阶段顺序、invocation evidence 与 budget；
-7. 暂不执行 2.5.3 fault injection 或 2.7 Hardening；
+2. 确认功能提交 `71f317b85227604a3959db725ae33b074d66824e` 与后续文档提交都存在；
+3. 阅读 Stage 2.5.1/2.5.2 corpus、runner、tests 和真实验收；
+4. 设计 Stage 2.5.3 人工标注 fault scenario schema；
+5. 覆盖 owner、stage、route、terminal 与 Hidden visibility；
+6. 优先使用 deterministic injected faults，必要时保留真实工具证据；
+7. 不调用模型、不自动 repair、不提前执行 2.7 Hardening；
 8. 暂不进入 Stage 3、Memory 或版本迁移。
 
 第一条回复应明确：
 
 ```text
-Stage 2.5.1 已完成，最新功能提交是 `ca991c372f9f40f7e592136b12af774dd985c0fa`，
-24/24 targeted、48/48 related、686/686 full unittest 通过，
-七类 committed corpus 已完成 7/7 real g++ Preflight，预算
-7/7/0/0/0。下一步只做 Stage 2.5.2 七类 real
-Preflight/CSYNTH/Public/Hidden 通过链；之后再做 2.5.3 fault matrix、
-2.5.4 汇总和 2.6 Audit。暂不进入 Stage 3、Memory 或版本迁移。
+Stage 2.5.2 已完成，最新功能提交是 `71f317b85227604a3959db725ae33b074d66824e`，
+21/21 targeted、77/77 related、707/707 full unittest 通过，
+七类 committed corpus 已完成 7/7 real Preflight/CSYNTH/Public/Hidden
+完整通过链；每类预算 6/3/1/2，总预算 42/21/7/14，0 LLM。
+下一步只做 Stage 2.5.3 fault/ownership/Hidden matrix；暂不调用模型，
+不进入 Stage 2.7、Stage 3、Memory 或版本迁移。
 ```
 
 # 十二、一句话状态
 
-AgRefactor++ 已完成 Stage 2.5.1 七类 immutable smoke corpus、
-独立 ground truth、安全 manifest、686/686 回归和 7/7 real g++
-Preflight；下一步是 Stage 2.5.2 七类真实完整通过链，之后才进入
-fault matrix、evidence summary、Stage 2.6 audit 和 Stage 2.7 hardening。
+AgRefactor++ 已完成 Stage 2.5.2 七类 real
+Preflight/CSYNTH/Public/Hidden 完整通过链、共享精确预算和安全 trace；
+下一步是 Stage 2.5.3 fault/ownership/Hidden matrix，之后才进行
+2.5.4 evidence summary、Stage 2.6 audit 和 Stage 2.7 hardening。
