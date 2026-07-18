@@ -5,13 +5,13 @@
 ## 1. 当前快照
 
 - 当前开发分支：`stage2-general-feedback`
-- 当前功能代码基线：`dc44be344f9bf9bae3eb8e43675fb49f0c017708`
-- 最新确定性测试：**574/574 passed**
+- 当前功能代码基线：`37a3577a59cf823def82591ae285a9d85f7fbe67`
+- 最新确定性测试：**598/598 passed**
 - 最新真实工具验收：**Preflight g++ → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 6/3/1/2**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.4.1、2.4.2 和 2.4.3.1 已完成；下一步 Candidate Model Adapter / Response Contract**
+- 当前关键任务：**Stage 2.4.1、2.4.2、2.4.3.1 和 2.4.3.2 已完成；下一步 Bounded Candidate Repair Loop**
 ## 2. 已完成
 
 ### Stage 0
@@ -239,6 +239,48 @@ feat: add candidate repair prompt policies
 本验收证明 Prompt Policy 的确定性、安全边界和结构契约，
 不是真实模型或真实工具链 candidate repair 验收。
 
+### Stage 2.4.3.2 Candidate Model Adapter / Response Contract
+
+已经完成。
+
+功能提交：
+
+```text
+37a3577a59cf823def82591ae285a9d85f7fbe67
+feat: add candidate model adapter
+```
+
+测试：
+
+```text
+24/24 targeted passed
+56/56 related regression passed
+598/598 full passed
+```
+
+完成：
+
+- 新增 provider-neutral `CandidateModelAdapter`；
+- 通过既有 `ModelRegistry` 解析一个用户指定的固定逻辑模型；
+- 消费已经构建好的 candidate `LayeredPrompt`，不重复建设 Prompt renderer；
+- 合并 `ModelSpec.default_parameters` 与调用方显式参数；
+- 保存 prompt、normalized `ModelResponse`、token、cost 和结果审计记录；
+- 只接受一个带 C++ 语言标记的完整 fenced replacement；
+- 拒绝空响应、commentary、多代码块、错误语言、patch/diff 和空代码块；
+- 拒绝缺失、重命名、重复或改变顶层接口的 candidate；
+- 拒绝新增 `main` 和语义未变化的 candidate；
+- 使用 lazy package export，保持 `agrefactor.prompts` / `agrefactor.models` 任意导入顺序；
+- 不执行 compile、CSIM、CSYNTH、Vitis、repair loop 或 orchestrator 状态转移。
+
+确定性 FakeProvider 验收目录：
+
+```text
+/data/agrefactor_runs/stage2_candidate_model_adapter_20260718_161157
+```
+
+该验收证明 Model Registry 调用边界、响应解析、接口保护和 usage 审计可工作；
+它不是真实网络模型 API、真实 candidate 修复循环或真实工具链验收。
+
 ## 3. 未完成
 
 ### Stage 1 Hardening（不阻塞 Core 关闭）
@@ -253,8 +295,8 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ### Stage 2 剩余项
 
-1. Candidate Model Adapter / Response Contract；
-2. bounded Candidate Repair Loop 与 ValidationOrchestrator 接入；
+1. bounded Candidate Repair Loop；
+2. Candidate Repair 安全接入 ValidationOrchestrator；
 3. Stage 2.5 多类型真实 kernel smoke matrix；
 4. Stage 2.6 最终文档、复现和关闭审查。
 
@@ -276,18 +318,19 @@ Stage 2.1–2.3、Stage 2.4.1、2.4.2 和 2.4.3.1 已完成。
 下一步：
 
 ```text
-A. Candidate Model Adapter / Response Contract
-B. 保持 provider-neutral，不启动自动 repair loop
-C. 定义完整 candidate C++ replacement 的响应解析与拒绝契约
-D. 保持 Hidden evidence 永不进入模型 Prompt
-E. 后续单独实现 bounded Candidate Repair Loop
-F. 后续再接入 ValidationOrchestrator
-G. Stage 2.5 多类型真实 kernel smoke matrix
-H. Stage 2.6 最终文档与关闭审查
+A. Bounded Candidate Repair Loop
+B. 每轮只生成一个可追踪 candidate，并重新进入真实验证
+C. provider exception、非法响应、未改变代码也计入尝试
+D. Unknown、toolchain、configuration 和 Hidden failure 不触发 candidate repair
+E. 预算不足时停止新候选，失败不能覆盖上一正确候选
+F. 暂不把模型调用硬编码进 Validation Handler
+G. 后续单独接入 ValidationOrchestrator
+H. Stage 2.5 多类型真实 kernel smoke matrix
+I. Stage 2.6 最终文档与关闭审查
 ```
 
-当前不提前进入 Stage 3，也不把 Prompt Policy 表述为
-CandidateGenerator、模型修复闭环或真实模型验收已经完成。
+当前不提前进入 Stage 3，也不把 Candidate Model Adapter 表述为
+自动 repair loop、ValidationOrchestrator 模型接入或真实模型修复已经完成。
 
 ## 5. 多 Vitis 版本的当前显式用法
 

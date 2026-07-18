@@ -30,9 +30,9 @@ GitHub：UTZZTU/AgRefactorPlusPlus
 origin：git@github.com:UTZZTU/AgRefactorPlusPlus.git
 开发分支：stage2-general-feedback
 最新功能提交：
-dc44be344f9bf9bae3eb8e43675fb49f0c017708
+37a3577a59cf823def82591ae285a9d85f7fbe67
 提交信息：
-feat: add candidate repair prompt policies
+feat: add candidate model adapter
 ```
 
 环境：
@@ -64,8 +64,8 @@ git log -15 --oneline
 - branch 必须是 `stage2-general-feedback`；
 - local 与 remote 应一致；
 - worktree 应干净；
-- Git 历史中必须存在 `ec9802c` 和 `dc44be3`；
-- 如果 HEAD 是后续纯文档提交，功能父提交应为 `dc44be3`；
+- Git 历史中必须存在 `ec9802c`、`dc44be3` 和 `37a3577`；
+- 如果 HEAD 是后续纯文档提交，功能父提交应为 `37a3577`；
 - 如状态不一致，先停止修改并解释差异。
 
 # 三、不可改变的工程原则
@@ -396,46 +396,78 @@ feat: add candidate repair prompt policies
 该验收不是 CandidateGenerator、真实模型 API、自动 repair loop、
 ValidationOrchestrator 模型接入或真实 Vitis candidate repair。
 
-# 六、当前唯一主任务：Candidate Model Adapter / Response Contract
+# 六、Stage 2.4.3.2 Candidate Model Adapter / Response Contract 已完成
+
+功能提交：
+
+```text
+37a3577a59cf823def82591ae285a9d85f7fbe67
+feat: add candidate model adapter
+```
+
+测试：
+
+```text
+24/24 targeted passed
+56/56 related regression passed
+598/598 full passed
+```
+
+实现边界：
+
+- `CandidateModelAdapter` 只执行一次固定模型调用；
+- 通过既有 Model Registry / provider，不绑定单一模型厂商；
+- 输入必须是 Stage 2.4.3.1 已构造的 candidate `LayeredPrompt`；
+- 完整保存 prompt manifest、normalized response、token、cost 和结果；
+- 只接受一个完整 fenced C++ candidate replacement；
+- 拒绝 commentary、空输出、多代码块、patch/diff、错误语言和空代码块；
+- 拒绝顶层函数缺失、重命名、重复、接口变化、新增 main 和语义未变化；
+- 不调用编译器、CSIM、CSYNTH、Vitis 或 ValidationOrchestrator；
+- 不实现自动 repair loop、Memory 检索或模型自动切换。
+
+确定性 FakeProvider 验收目录：
+
+```text
+/data/agrefactor_runs/stage2_candidate_model_adapter_20260718_161157
+```
+
+该验收不是实际网络模型 API、真实 candidate repair loop 或真实工具链验收。
+
+# 七、当前唯一主任务：Bounded Candidate Repair Loop
 
 当前只做：
 
 ```text
-provider-neutral Candidate Model Adapter
-complete candidate C++ response extraction
-response rejection contract
-model usage / prompt manifest audit boundary
+one candidate per attempt
+bounded repair attempts
+real validation re-entry
+attempt and usage accounting
+preserve previous correct candidate
+legal repair routing only
 ```
 
 当前绝对不要做：
 
-- 不创建自动 candidate repair loop；
-- 不把模型 repair 接入 ValidationOrchestrator；
-- 不修改状态机自动调用模型；
-- 不接入 Hidden feedback；
+- 不把模型调用硬编码进 Validation Handler；
+- 不直接完成 ValidationOrchestrator 模型接入；
+- 不使用 Hidden diagnostic 继续修复；
+- 不对 toolchain、configuration、evaluator 或 unknown failure 修 candidate；
 - 不开始 Stage 3 optimizer；
-- 不实现 Memory retrieval 或 applicability scoring；
+- 不实现 Memory Applicability Gate；
 - 不开始 multi-kernel smoke；
-- 不声称 Candidate Repair 闭环已完成。
+- 不声称 Stage 2 已关闭。
 
-# 七、下一任务设计边界
-
-下一里程碑应消费已经构建好的 `LayeredPrompt`，负责：
-
-- 通过既有 Model Registry / provider 进行一次受控调用；
-- 解析且只接受一个完整 candidate C++ replacement；
-- 拒绝 commentary、空输出、多代码块、patch/diff 和非法格式；
-- 保存 prompt manifest、normalized response 和 usage；
-- 不执行 compile、CSIM、CSYNTH；
-- 不负责 repair loop、预算迭代或状态机转移；
-- 不接触 Hidden evidence。
+下一里程碑应复用 Candidate Prompt Policy、Candidate Model Adapter、
+FeedbackReport、BudgetManager 和现有验证入口，建立一个独立、可测试、
+有明确最大尝试次数的 Candidate Repair Controller。每轮生成一个 candidate，
+并把它重新送回合法的真实验证阶段；失败候选不得覆盖已有正确候选。
 
 # 八、后续路线
 
 ```text
 Stage 2.4.3.1 Candidate Prompt Policies（已完成）
-→ Candidate Model Adapter / Response Contract
-→ bounded Candidate Repair Loop
+→ Stage 2.4.3.2 Candidate Model Adapter / Response Contract（已完成）
+→ Stage 2.4.3.3 Bounded Candidate Repair Loop
 → ValidationOrchestrator 接入
 → Stage 2.5 Multi-type Kernel Smoke Matrix
 → Stage 2.6 Final Documentation and Stage 2 Closure
@@ -461,13 +493,14 @@ Stage 2 未关闭前，不进入 Stage 3。
 7. docs/stage2_runtime_evidence_acceptance.md
 8. agrefactor/prompts/layered.py
 9. agrefactor/prompts/candidate_repair.py
-10. agrefactor/prompts/__init__.py
-11. tests/test_candidate_repair_prompts.py
-12. agrefactor/testing/model_testbench_repairer.py
-13. agrefactor/testing/testbench_repair.py
-14. Preflight / CSYNTH / Test Evaluation feedback adapters 和 views
-15. 相关 tests
-16. git log -15 --oneline
+10. agrefactor/models/candidate_adapter.py
+11. agrefactor/models/__init__.py
+12. tests/test_candidate_repair_prompts.py
+13. tests/test_candidate_model_adapter.py
+14. agrefactor/testing/model_testbench_repairer.py
+15. agrefactor/testing/testbench_repair.py
+16. Feedback、Budget、Validation 相关代码和 tests
+17. git log -15 --oneline
 ```
 
 事实由以下共同决定：
@@ -532,7 +565,7 @@ Git history
 - Prompt policy 不等于 CandidateGenerator；
 - handler 不等于自动 repair 闭环；
 - FakeProvider 不等于真实 API；
-- 574 tests 不等于 574 个真实 kernel；
+- 598 tests 不等于 598 个真实 kernel；
 - 单一 Vitis 2023.2 不等于任意版本支持。
 
 # 十一、下一对话第一项任务
@@ -540,25 +573,25 @@ Git history
 请先：
 
 1. 核对 branch、HEAD、origin、remote 和 worktree；
-2. 确认功能提交 `dc44be344f9bf9bae3eb8e43675fb49f0c017708` 与后续文档提交都存在；
-3. 阅读 Candidate Prompt Policy 代码、测试和验收产物；
-4. 检查是否已有 Candidate Model Adapter / Response Contract；
-5. 设计下一子里程碑的最小文件、API、不变量、测试和 acceptance；
-6. 暂不实现 repair loop 或 orchestrator 模型接入。
+2. 确认功能提交 `37a3577a59cf823def82591ae285a9d85f7fbe67` 与后续文档提交都存在；
+3. 阅读 Candidate Prompt Policy、Candidate Model Adapter、测试和验收产物；
+4. 检查现有 BudgetManager、Feedback routing、ValidationOrchestrator 和 Testbench Repair Loop；
+5. 设计 Stage 2.4.3.3 Bounded Candidate Repair Loop 的最小文件、API、不变量、测试和 acceptance；
+6. 暂不把模型调用接入 Validation Handler 或完成 Orchestrator 集成。
 
 第一条回复应明确：
 
 ```text
-Stage 2.4.3.1 Candidate Compile / CSYNTH / Public CSIM Prompt
-Policies 已完成，功能提交是 dc44be3，完整测试
-574/574 通过。下一步只做 Candidate Model
-Adapter / Response Contract；暂不启动自动 repair loop、
-ValidationOrchestrator 模型接入、Hidden feedback 或 Stage 3。
+Stage 2.4.3.1 Candidate Prompt Policies 和 Stage 2.4.3.2
+Candidate Model Adapter / Response Contract 已完成，最新功能提交是
+37a3577，完整测试 598/598 通过。下一步只做 Stage 2.4.3.3
+Bounded Candidate Repair Loop；暂不完成 ValidationOrchestrator 模型接入、
+Hidden feedback 修复、Stage 3 或 Memory Applicability Gate。
 ```
 
 # 十二、一句话状态
 
-AgRefactor++ 已完成共享分层 Prompt Core、Testbench Repair 迁移，
-以及 Candidate Compile、CSYNTH、Public CSIM 的确定性 Prompt
-Policy；下一步是在不执行验证工具和不建立自动循环的前提下，
-实现 provider-neutral Candidate Model Adapter 与严格响应契约。
+AgRefactor++ 已完成共享 Candidate Prompt Policy 和 provider-neutral Candidate
+Model Adapter，并建立严格的完整 replacement 与顶层接口保护契约；下一步是在
+不把模型调用揉进 Validation Handler 的前提下，建立有界、可计数、失败不覆盖
+正确候选且能够重新进入真实验证的 Candidate Repair Loop。
