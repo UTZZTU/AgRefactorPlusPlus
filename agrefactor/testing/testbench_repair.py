@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from agrefactor.config import TaskSpec
 from agrefactor.evaluation import TestbenchPreflight
@@ -14,7 +15,22 @@ from agrefactor.evidence import (
     TestbenchFailureOwner,
     TestbenchPreflightResult,
 )
-from agrefactor.runtime.budget import BudgetManager
+from agrefactor.repair import (
+    RepairArtifactRole,
+    RepairArtifactWriter,
+    RepairAttemptRecord,
+    RepairModelObservation,
+    RepairObservedUsage,
+    RepairRunRecord,
+    RepairTerminalStatus,
+    TestbenchRepairPayload,
+    repair_attempt_id,
+    repair_proposal_id,
+)
+from agrefactor.runtime.budget import (
+    BudgetManager,
+    BudgetUsage,
+)
 
 
 
@@ -78,6 +94,89 @@ class TestbenchRepairAttempt:
     changed: bool
     preflight: TestbenchPreflightResult
     error: str | None = None
+    model_observation: RepairModelObservation = field(
+        default_factory=RepairModelObservation
+    )
+    observed_usage: RepairObservedUsage = field(
+        default_factory=RepairObservedUsage
+    )
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.index, bool)
+            or not isinstance(self.index, int)
+            or self.index < 0
+        ):
+            raise ValueError(
+                "index must be a non-negative integer"
+            )
+        if not isinstance(
+            self.model_observation,
+            RepairModelObservation,
+        ):
+            raise TypeError(
+                "model_observation must be RepairModelObservation"
+            )
+        if not isinstance(
+            self.observed_usage,
+            RepairObservedUsage,
+        ):
+            raise TypeError(
+                "observed_usage must be RepairObservedUsage"
+            )
+
+    def to_protocol_record(
+        self,
+        run_id: str,
+    ) -> RepairAttemptRecord:
+        attempt_id = repair_attempt_id(
+            run_id,
+            self.index,
+        )
+        terminal = None
+        if self.preflight.succeeded:
+            terminal = RepairTerminalStatus.SUCCEEDED
+        elif self.preflight.status.value == "error":
+            terminal = RepairTerminalStatus.ERROR
+        validation_summary = {
+            "status": self.preflight.status.value,
+            "stage": self.preflight.stage.value,
+            "failure_kind": (
+                self.preflight.failure_kind.value
+            ),
+            "failure_owner": (
+                self.preflight.failure_owner.value
+            ),
+            "return_code": self.preflight.return_code,
+            "next_action": self.preflight.next_action,
+        }
+        error_type = None
+        if self.error:
+            error_type = "repair_error"
+        return RepairAttemptRecord(
+            attempt_id=attempt_id,
+            proposal_id=(
+                repair_proposal_id(attempt_id)
+                if self.changed
+                else None
+            ),
+            artifact_role=RepairArtifactRole.TESTBENCH,
+            sequence_index=self.index,
+            action=self.action,
+            status=self.action,
+            changed=self.changed,
+            model_observation=self.model_observation,
+            observed_usage=self.observed_usage,
+            payload=TestbenchRepairPayload(
+                preflight_summary=validation_summary,
+                legacy_preflight_artifact_available=True,
+            ),
+            terminal_status=terminal,
+            evidence_view="agent_safe",
+            operator_artifact_available=True,
+            error_type=error_type,
+            error_message=self.error,
+        )
 
     def to_dict(self) -> dict:
         return {
@@ -98,6 +197,10 @@ class TestbenchRepairResult:
     reason: str
     repair_attempts_used: int
     artifact_path: str
+    repair_run: RepairRunRecord
+    repair_run_path: str
+    repair_attempt_paths: tuple[str, ...]
+    repair_artifact_manifest_path: str
 
     def __post_init__(self) -> None:
         if (
@@ -107,6 +210,13 @@ class TestbenchRepairResult:
         ):
             raise ValueError(
                 "repair_attempts_used must be a non-negative integer"
+            )
+        if not isinstance(
+            self.repair_run,
+            RepairRunRecord,
+        ):
+            raise TypeError(
+                "repair_run must be RepairRunRecord"
             )
 
     @property
@@ -167,9 +277,11 @@ class TestbenchRepairLoop:
         elif not isinstance(task, TaskSpec):
             raise TypeError("task must be a TaskSpec or None")
 
+        run_id = f"{task.task_id}.testbench-repair"
         attempts: list[TestbenchRepairAttempt] = []
         repair_attempts_used = 0
 
+        initial_before = self._budget_snapshot(budget)
         initial = self._run_preflight(
             root=root,
             index=0,
@@ -178,18 +290,26 @@ class TestbenchRepairLoop:
             candidate_code=candidate,
             budget=budget,
         )
+        initial_after = self._budget_snapshot(budget)
         attempts.append(
             TestbenchRepairAttempt(
                 index=0,
                 action="initial_preflight",
                 changed=False,
                 preflight=initial,
+                observed_usage=(
+                    RepairObservedUsage.from_observations(
+                        initial_before,
+                        initial_after,
+                    )
+                ),
             )
         )
 
         if initial.succeeded:
             return self._finish(
                 root=root,
+                run_id=run_id,
                 status=TestbenchRepairStatus.PASSED,
                 testbench_code=current,
                 attempts=attempts,
@@ -201,6 +321,7 @@ class TestbenchRepairLoop:
         if stop_reason:
             return self._finish(
                 root=root,
+                run_id=run_id,
                 status=TestbenchRepairStatus.FAILED,
                 testbench_code=current,
                 attempts=attempts,
@@ -211,6 +332,7 @@ class TestbenchRepairLoop:
         if self._max_repair_attempts == 0:
             return self._finish(
                 root=root,
+                run_id=run_id,
                 status=TestbenchRepairStatus.EXHAUSTED,
                 testbench_code=current,
                 attempts=attempts,
@@ -236,12 +358,17 @@ class TestbenchRepairLoop:
             )
 
             repair_attempts_used += 1
+            attempt_before = self._budget_snapshot(budget)
+            audit_count_before = self._audit_event_count()
             try:
                 proposed = self._repairer.repair(request)
             except Exception as exc:
                 last_repair_error = (
                     "testbench repair provider raised "
                     f"{type(exc).__name__}: {exc}"
+                )
+                observation = self._new_model_observation(
+                    audit_count_before
                 )
                 attempts.append(
                     TestbenchRepairAttempt(
@@ -250,6 +377,14 @@ class TestbenchRepairLoop:
                         changed=False,
                         preflight=latest,
                         error=last_repair_error,
+                        model_observation=observation,
+                        observed_usage=(
+                            RepairObservedUsage.from_observations(
+                                attempt_before,
+                                self._budget_snapshot(budget),
+                                observation,
+                            )
+                        ),
                     )
                 )
                 continue
@@ -258,6 +393,9 @@ class TestbenchRepairLoop:
                 last_repair_error = (
                     "testbench repair provider returned empty source"
                 )
+                observation = self._new_model_observation(
+                    audit_count_before
+                )
                 attempts.append(
                     TestbenchRepairAttempt(
                         index=attempt_number,
@@ -265,6 +403,14 @@ class TestbenchRepairLoop:
                         changed=False,
                         preflight=latest,
                         error=last_repair_error,
+                        model_observation=observation,
+                        observed_usage=(
+                            RepairObservedUsage.from_observations(
+                                attempt_before,
+                                self._budget_snapshot(budget),
+                                observation,
+                            )
+                        ),
                     )
                 )
                 continue
@@ -274,6 +420,9 @@ class TestbenchRepairLoop:
                 last_repair_error = (
                     "testbench repair provider returned unchanged source"
                 )
+                observation = self._new_model_observation(
+                    audit_count_before
+                )
                 attempts.append(
                     TestbenchRepairAttempt(
                         index=attempt_number,
@@ -281,6 +430,14 @@ class TestbenchRepairLoop:
                         changed=False,
                         preflight=latest,
                         error=last_repair_error,
+                        model_observation=observation,
+                        observed_usage=(
+                            RepairObservedUsage.from_observations(
+                                attempt_before,
+                                self._budget_snapshot(budget),
+                                observation,
+                            )
+                        ),
                     )
                 )
                 continue
@@ -294,12 +451,23 @@ class TestbenchRepairLoop:
                 candidate_code=candidate,
                 budget=budget,
             )
+            observation = self._new_model_observation(
+                audit_count_before
+            )
             attempts.append(
                 TestbenchRepairAttempt(
                     index=attempt_number,
                     action="repair_and_preflight",
                     changed=True,
                     preflight=latest,
+                    model_observation=observation,
+                    observed_usage=(
+                        RepairObservedUsage.from_observations(
+                            attempt_before,
+                            self._budget_snapshot(budget),
+                            observation,
+                        )
+                    ),
                 )
             )
             current = proposed
@@ -307,6 +475,7 @@ class TestbenchRepairLoop:
             if latest.succeeded:
                 return self._finish(
                     root=root,
+                    run_id=run_id,
                     status=TestbenchRepairStatus.PASSED,
                     testbench_code=current,
                     attempts=attempts,
@@ -322,6 +491,7 @@ class TestbenchRepairLoop:
             if stop_reason:
                 return self._finish(
                     root=root,
+                    run_id=run_id,
                     status=TestbenchRepairStatus.FAILED,
                     testbench_code=current,
                     attempts=attempts,
@@ -343,6 +513,7 @@ class TestbenchRepairLoop:
 
         return self._finish(
             root=root,
+            run_id=run_id,
             status=TestbenchRepairStatus.EXHAUSTED,
             testbench_code=current,
             attempts=attempts,
@@ -391,9 +562,50 @@ class TestbenchRepairLoop:
         return value
 
     @staticmethod
+    def _budget_snapshot(
+        budget: BudgetManager | None,
+    ) -> BudgetUsage | None:
+        return None if budget is None else budget.snapshot()
+
+    def _audit_event_count(self) -> int:
+        events = getattr(
+            self._repairer,
+            "audit_events",
+            (),
+        )
+        try:
+            return len(tuple(events))
+        except TypeError:
+            return 0
+
+    def _new_model_observation(
+        self,
+        previous_count: int,
+    ) -> RepairModelObservation:
+        events = getattr(
+            self._repairer,
+            "audit_events",
+            (),
+        )
+        try:
+            normalized = tuple(events)
+        except TypeError:
+            return RepairModelObservation()
+        if (
+            len(normalized) == previous_count + 1
+            and isinstance(
+                normalized[-1],
+                RepairModelObservation,
+            )
+        ):
+            return normalized[-1]
+        return RepairModelObservation()
+
+    @staticmethod
     def _finish(
         *,
         root: Path,
+        run_id: str,
         status: TestbenchRepairStatus,
         testbench_code: str,
         attempts: list[TestbenchRepairAttempt],
@@ -401,6 +613,38 @@ class TestbenchRepairLoop:
         reason: str,
         repair_attempts_used: int = 0,
     ) -> TestbenchRepairResult:
+        terminal = {
+            TestbenchRepairStatus.PASSED: (
+                RepairTerminalStatus.SUCCEEDED
+            ),
+            TestbenchRepairStatus.FAILED: (
+                RepairTerminalStatus.FAILED
+            ),
+            TestbenchRepairStatus.EXHAUSTED: (
+                RepairTerminalStatus.EXHAUSTED
+            ),
+            TestbenchRepairStatus.ERROR: (
+                RepairTerminalStatus.ERROR
+            ),
+        }[status]
+        run_record = RepairRunRecord(
+            run_id=run_id,
+            artifact_role=RepairArtifactRole.TESTBENCH,
+            terminal_status=terminal,
+            stop_reason=reason,
+            attempts=tuple(
+                item.to_protocol_record(run_id)
+                for item in attempts
+            ),
+            metadata={
+                "repair_attempts_used": repair_attempts_used,
+                "legacy_artifact_available": True,
+            },
+        )
+        shared = RepairArtifactWriter(
+            root / "repair_artifacts"
+        ).write(run_record)
+
         artifact_path = root / "testbench_repair.json"
         result = TestbenchRepairResult(
             status=status,
@@ -410,6 +654,12 @@ class TestbenchRepairLoop:
             reason=reason,
             repair_attempts_used=repair_attempts_used,
             artifact_path=str(artifact_path),
+            repair_run=run_record,
+            repair_run_path=shared.run_record_path,
+            repair_attempt_paths=shared.attempt_paths,
+            repair_artifact_manifest_path=(
+                shared.artifact_manifest_path
+            ),
         )
         artifact_path.write_text(
             json.dumps(

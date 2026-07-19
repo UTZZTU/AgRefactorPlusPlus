@@ -31,6 +31,22 @@ from agrefactor.prompts import (
 )
 from agrefactor.runtime import BudgetExceededError, BudgetManager, BudgetUsage
 
+from .artifacts import (
+    RepairArtifactWriteResult,
+    RepairArtifactWriter,
+)
+from .protocol import (
+    CandidateRepairPayload,
+    RepairArtifactRole,
+    RepairAttemptRecord,
+    RepairModelObservation,
+    RepairObservedUsage,
+    RepairRunRecord,
+    RepairTerminalStatus,
+    repair_attempt_id,
+    repair_proposal_id,
+)
+
 _CANONICAL_VALIDATION_ORDER = (
     ValidationState.PREFLIGHT,
     ValidationState.CSYNTH,
@@ -237,6 +253,9 @@ class CandidateRepairAttempt:
     error_message: str | None
     budget_before: BudgetUsage
     budget_after: BudgetUsage
+    prompt_manifest: Mapping[str, Any] = field(
+        default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         if isinstance(self.attempt, bool) or not isinstance(self.attempt, int):
@@ -270,6 +289,96 @@ class CandidateRepairAttempt:
             raise TypeError("budget_before must be BudgetUsage")
         if not isinstance(self.budget_after, BudgetUsage):
             raise TypeError("budget_after must be BudgetUsage")
+        object.__setattr__(
+            self,
+            "prompt_manifest",
+            _json_mapping(
+                self.prompt_manifest,
+                "prompt_manifest",
+            ),
+        )
+
+    def to_protocol_record(
+        self,
+        run_id: str,
+    ) -> RepairAttemptRecord:
+        attempt_id = repair_attempt_id(
+            run_id,
+            self.attempt,
+        )
+        observation = RepairModelObservation.from_response(
+            prompt_manifest=self.prompt_manifest,
+            response=self.model_response,
+            model_call_observed=(
+                self.status
+                is not CandidateRepairAttemptStatus.BUDGET_BLOCKED
+            ),
+        )
+        terminal = {
+            CandidateRepairAttemptStatus.BUDGET_BLOCKED: (
+                RepairTerminalStatus.BLOCKED
+            ),
+            CandidateRepairAttemptStatus.PROVIDER_ERROR: (
+                RepairTerminalStatus.ERROR
+            ),
+            CandidateRepairAttemptStatus.RESPONSE_REJECTED: (
+                RepairTerminalStatus.ERROR
+            ),
+            CandidateRepairAttemptStatus.VALIDATOR_ERROR: (
+                RepairTerminalStatus.ERROR
+            ),
+            CandidateRepairAttemptStatus.VALIDATED: (
+                RepairTerminalStatus.SUCCEEDED
+            ),
+        }.get(self.status)
+        validation = (
+            {}
+            if self.validation_result is None
+            else self.validation_result.to_safe_dict()
+        )
+        operator_available = bool(
+            self.validation_result is not None
+            and self.validation_result.feedback is not None
+            and self.validation_result.feedback.metadata.get(
+                "evidence_view"
+            ) == "operator_full"
+        )
+        return RepairAttemptRecord(
+            attempt_id=attempt_id,
+            proposal_id=(
+                None
+                if self.proposal is None
+                else repair_proposal_id(attempt_id)
+            ),
+            artifact_role=RepairArtifactRole.CANDIDATE,
+            sequence_index=self.attempt,
+            action=self.status.value,
+            status=self.status.value,
+            changed=(
+                self.proposal is not None
+                and self.proposal.strip()
+                != self.input_candidate.strip()
+            ),
+            model_observation=observation,
+            observed_usage=(
+                RepairObservedUsage.from_observations(
+                    self.budget_before,
+                    self.budget_after,
+                    observation,
+                )
+            ),
+            payload=CandidateRepairPayload(
+                validation_summary=validation,
+                model_result_available=(
+                    self.model_result is not None
+                ),
+            ),
+            terminal_status=terminal,
+            evidence_view="agent_safe",
+            operator_artifact_available=operator_available,
+            error_type=self.error_type,
+            error_message=self.error_message,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -338,6 +447,52 @@ class CandidateRepairLoopResult:
             "budget_usage": asdict(self.budget_usage),
         }
 
+    def to_repair_run_record(
+        self,
+        run_id: str,
+    ) -> RepairRunRecord:
+        terminal = {
+            CandidateRepairStopReason.VALIDATED: (
+                RepairTerminalStatus.SUCCEEDED
+            ),
+            CandidateRepairStopReason.ATTEMPTS_EXHAUSTED: (
+                RepairTerminalStatus.EXHAUSTED
+            ),
+            CandidateRepairStopReason.BUDGET_EXHAUSTED: (
+                RepairTerminalStatus.BLOCKED
+            ),
+            CandidateRepairStopReason.TERMINAL_FEEDBACK: (
+                RepairTerminalStatus.TERMINAL
+            ),
+            CandidateRepairStopReason.VALIDATOR_ERROR: (
+                RepairTerminalStatus.ERROR
+            ),
+        }[self.stop_reason]
+        return RepairRunRecord(
+            run_id=run_id,
+            artifact_role=RepairArtifactRole.CANDIDATE,
+            terminal_status=terminal,
+            stop_reason=self.stop_reason.value,
+            attempts=tuple(
+                item.to_protocol_record(run_id)
+                for item in self.attempts
+            ),
+            metadata={
+                "succeeded": self.succeeded,
+                "attempt_count": len(self.attempts),
+            },
+        )
+
+    def write_artifacts(
+        self,
+        root,
+        *,
+        run_id: str,
+    ) -> RepairArtifactWriteResult:
+        return RepairArtifactWriter(root).write(
+            self.to_repair_run_record(run_id)
+        )
+
 
 class BoundedCandidateRepairLoop:
     """Generate one candidate per attempt and delegate validation."""
@@ -396,6 +551,7 @@ class BoundedCandidateRepairLoop:
                 )
 
             budget_before = self._safe_snapshot()
+            prompt_manifest: Mapping[str, Any] = {}
             try:
                 self._budget.ensure_available(llm_calls=1)
             except BudgetExceededError as exc:
@@ -412,6 +568,7 @@ class BoundedCandidateRepairLoop:
                         error_message=str(exc),
                         budget_before=budget_before,
                         budget_after=self._safe_snapshot(),
+                    prompt_manifest=prompt_manifest,
                     )
                 )
                 return self._result(
@@ -431,6 +588,7 @@ class BoundedCandidateRepairLoop:
                 attempt=attempt_number,
                 prior_summaries=tuple(prior_summaries),
             )
+            prompt_manifest = prompt.manifest
             model_request = CandidateModelRequest(
                 prompt=prompt,
                 task=request.task,
@@ -461,6 +619,7 @@ class BoundedCandidateRepairLoop:
                         error_message=str(exc),
                         budget_before=budget_before,
                         budget_after=self._safe_snapshot(),
+                    prompt_manifest=prompt_manifest,
                     )
                 )
                 return self._result(
@@ -486,6 +645,7 @@ class BoundedCandidateRepairLoop:
                         error_message=str(exc),
                         budget_before=budget_before,
                         budget_after=self._safe_snapshot(),
+                    prompt_manifest=prompt_manifest,
                     )
                 )
                 prior_summaries.append(
@@ -516,6 +676,7 @@ class BoundedCandidateRepairLoop:
                         error_message=str(exc),
                         budget_before=budget_before,
                         budget_after=self._safe_snapshot(),
+                    prompt_manifest=prompt_manifest,
                     )
                 )
                 prior_summaries.append(
@@ -568,6 +729,7 @@ class BoundedCandidateRepairLoop:
                         error_message=str(exc),
                         budget_before=budget_before,
                         budget_after=self._safe_snapshot(),
+                    prompt_manifest=prompt_manifest,
                     )
                 )
                 return self._result(
@@ -594,6 +756,7 @@ class BoundedCandidateRepairLoop:
                         error_message=None,
                         budget_before=budget_before,
                         budget_after=self._safe_snapshot(),
+                    prompt_manifest=prompt_manifest,
                     )
                 )
                 return self._result(
@@ -618,6 +781,7 @@ class BoundedCandidateRepairLoop:
                     error_message=None,
                     budget_before=budget_before,
                     budget_after=self._safe_snapshot(),
+                prompt_manifest=prompt_manifest,
                 )
             )
             prior_summaries.append(validation_result.summary)

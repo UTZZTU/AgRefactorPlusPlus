@@ -19,6 +19,7 @@ from agrefactor.repair import (
     CandidateRepairLoopRequest,
     CandidateRepairLoopResult,
     CandidateRepairStopReason,
+    RepairArtifactWriteResult,
     CandidateValidationRequest,
     CandidateValidationResult,
 )
@@ -268,6 +269,19 @@ class CandidateRepairOrchestrationResult:
         return (
             self.status
             is CandidateRepairOrchestrationStatus.ACCEPTED
+        )
+
+    def write_repair_artifacts(
+        self,
+        root,
+    ) -> RepairArtifactWriteResult:
+        if self.repair_result is None:
+            raise ValueError(
+                "orchestration result has no repair attempts"
+            )
+        return self.repair_result.write_artifacts(
+            root,
+            run_id=self.validation_id,
         )
 
     def to_dict(self) -> dict[str, Any]:

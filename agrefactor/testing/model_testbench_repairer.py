@@ -20,6 +20,9 @@ from agrefactor.models import (
     ModelRequest,
     ModelResponse,
 )
+from agrefactor.repair.protocol import (
+    RepairModelObservation,
+)
 from agrefactor.prompts import (
     LayeredPrompt,
     LayeredPromptRequest,
@@ -380,6 +383,9 @@ class ModelTestbenchRepairer:
         self._prompt_builder = prompt_builder
         self._responses: list[ModelResponse] = []
         self._prompts: list[LayeredPrompt] = []
+        self._audit_events: list[
+            RepairModelObservation
+        ] = []
 
         json.dumps(
             self._parameters,
@@ -411,6 +417,14 @@ class ModelTestbenchRepairer:
 
         return self._prompts[-1] if self._prompts else None
 
+    @property
+    def audit_events(
+        self,
+    ) -> tuple[RepairModelObservation, ...]:
+        """Return one safe model observation per repair call."""
+
+        return tuple(self._audit_events)
+
     def repair(self, request: TestbenchRepairRequest) -> str:
         """Generate and validate one complete repaired testbench."""
 
@@ -431,6 +445,12 @@ class ModelTestbenchRepairer:
             builder=self._prompt_builder,
         )
         self._prompts.append(prompt)
+        self._audit_events.append(
+            RepairModelObservation(
+                prompt_manifest=prompt.manifest,
+                model_call_observed=True,
+            )
+        )
 
         parameters = dict(self._model.default_parameters)
         parameters.update(self._parameters)
@@ -448,6 +468,13 @@ class ModelTestbenchRepairer:
             )
 
         self._responses.append(response)
+        self._audit_events[-1] = (
+            RepairModelObservation.from_response(
+                prompt_manifest=prompt.manifest,
+                response=response,
+                model_call_observed=True,
+            )
+        )
         proposed = extract_complete_cpp_block(response.text)
 
         contract = TestbenchRepairContract.from_testbench(
