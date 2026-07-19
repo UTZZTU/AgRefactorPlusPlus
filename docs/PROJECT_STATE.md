@@ -12,7 +12,7 @@
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI 已完成；下一步 Stage 2.7.5 Real Network-model Candidate Repair Smoke**
+- 当前关键任务：**Stage 2.7.5 Real Network-model Candidate Repair Smoke 已完成；下一步 Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation**
 ## 2. 已完成
 
 ### Stage 0
@@ -773,6 +773,50 @@ optimizer = false
 详见
 [`stage2_repair_aware_cli_acceptance.md`](stage2_repair_aware_cli_acceptance.md)。
 
+### Stage 2.7.5 Real Network-model Candidate Repair Smoke
+
+已经完成。
+
+```text
+code_baseline=7407da78b9371e853b44a201828ce4b9251fad8f
+model=deepseek-v4-flash
+response_model=deepseek-v4-flash
+base_url=https://api.deepseek.com
+model_calls=1
+total_tokens=1106
+attempt_status=validation_failed
+orchestration_status=validation_terminal
+repair_stop_reason=terminal_feedback
+response_contract=accepted
+outcome=可信 terminal failure（validation_failed）
+```
+
+该运行通过正式 `--repair-aware` CLI，从真实 candidate-owned g++ Preflight
+失败进入一次真实网络模型调用。模型不被要求必须修复成功；本次证据满足
+request、response、非零 usage、strict contract、bounded terminal result、
+真实本地验证和 Hidden agent-safe 无泄漏。
+
+```text
+tool_calls=2
+compile_calls=2
+csynth_calls=0
+csim_calls=0
+preflight_invocations=2
+csynth_invocations=0
+csim_invocations=0
+network model = true
+real tool = true
+hidden leakage = false
+optimizer = false
+```
+
+```text
+/data/agrefactor_runs/stage2_7_5_real_network_candidate_repair_20260719_211334/acceptance
+```
+
+详见
+[`stage2_real_network_candidate_repair_smoke.md`](stage2_real_network_candidate_repair_smoke.md)。
+
 ## 3. 未完成
 
 ### Stage 1 Hardening（不阻塞 Core 关闭）
@@ -806,7 +850,7 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 - B-02：已由 Stage 2.7.1 完成并验收；
 - B-03：已由 Stage 2.7.2 完成并验收；
 - B-04：已由 Stage 2.7.3 完成并验收；
-- B-05：新 candidate-repair path 尚无真实网络模型闭环。
+- B-05：已由 Stage 2.7.5 真实 network-model smoke 完成并验收。
 
 当前不是 blocker：
 
@@ -825,14 +869,14 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 下一步只做：
 
 ```text
-Stage 2.7.5 Real Network-model Candidate Repair Smoke
+Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
 ```
 
-由用户显式提供一个 OpenAI-compatible 模型和环境变量 credential，执行一次
-真实 candidate-owned failure → model call → strict contract → bounded repair →
-real local validation。成功修复不是关闭条件；可信 terminal failure 也可接受。
+先审查 2.7.5 的真实 response/contract/tool evidence。只有真实证据证明
+CandidateResponseContract 或 CSYNTH parser 存在缺口时才做最小 delta；
+否则代码不变，只重跑 16-label ground-truth corpus。
 
-不得提前进入 2.7.6、Stage 3 或 TargetProfile Batch B。
+不得进入 Stage 3、TargetProfile Batch B 或新增模型路由。
 
 ## 5. 多 Vitis 版本的当前显式用法
 

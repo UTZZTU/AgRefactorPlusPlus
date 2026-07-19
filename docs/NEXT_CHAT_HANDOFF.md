@@ -596,27 +596,32 @@ Preflight → CSYNTH → Public CSIM → Hidden CSIM
 该里程碑证明七类 committed baseline 在本机 Vitis 2023.2 上完整通过，
 但不证明任意 HLS kernel 支持，也不包含故障归属矩阵或模型修复。
 
-## Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI 已完成
+## Stage 2.7.5 Real Network-model Candidate Repair Smoke 已完成
 
 ```text
-feature=7e9aef66ba062b25465f6552f9bf346b8ed5eb86
-20/20 targeted
-836/836 full unittest
+code_baseline=7407da78b9371e853b44a201828ce4b9251fad8f
+model=deepseek-v4-flash
+response_model=deepseek-v4-flash
+model_calls=1
+total_tokens=1106
+attempt_status=validation_failed
+orchestration_status=validation_terminal
+response_contract=accepted
+outcome=可信 terminal failure（validation_failed）
 ```
 
-正式 `--repair-aware` 入口已构造既有 Candidate repair/local validation 链，
-一个 run 共享一个 budget 和一个 trace，并写完整 safe run/phase/repair
-artifact manifests。legacy 和 dry-run 保持显式独立。
+正式 `--repair-aware` CLI 已执行一次真实 OpenAI-compatible 模型调用。
+初始 candidate-owned Preflight 由真实 g++ 产生；模型 response 与 usage 被
+shared repair artifacts 记录；Hidden sentinel 未进入 agent-safe artifacts。
 
 ```text
-/data/agrefactor_runs/stage2_7_4_repair_aware_cli_v2_20260719_203354/acceptance
+/data/agrefactor_runs/stage2_7_5_real_network_candidate_repair_20260719_211334/acceptance
 ```
 
-## 当前唯一主任务：Stage 2.7.5 Real Network-model Candidate Repair Smoke
+## 当前唯一主任务：Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
 
-只进行一次用户指定 OpenAI-compatible 模型的真实网络调用和真实本地验证，
-成功或可信 terminal failure 均可；不得伪造 usage、contract 或验证结果。
-
+只根据本次真实 response/contract/tool evidence 决定是否需要最小 delta。
+没有真实缺陷证据时保持代码不变，并重跑 16-label corpus。
 
 # 八、后续路线
 
@@ -634,7 +639,7 @@ Stage 2.4.3.1 Candidate Prompt Policies（已完成）
 → Stage 2.7.2 Minimal ModelFamilyProfile（已完成）
 → Stage 2.7.3 Stage 1 Hardening Batch A（已完成）
 → Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI（已完成）
-→ Stage 2.7.5 Real Network-model Candidate Repair Smoke
+→ Stage 2.7.5 Real Network-model Candidate Repair Smoke（已完成）
 → Stage 2.7.6 Evidence-gated Contract/Parser Delta
 → Stage 2.7.7 Cross-stage Regression
 → Stage 2.8 Final Documentation and Stage 2 Closure
@@ -751,11 +756,11 @@ Git history
 
 # 十一、下一对话第一项任务
 
-先核对 Stage 2.7.4 feature/docs、run bundle 和 acceptance，然后只执行
-Stage 2.7.5 Real Network-model Candidate Repair Smoke。必须由用户显式指定模型、
-base URL（如需）和 credential 环境变量；不得把 FakeProvider 当成真实模型。
+先核对 Stage 2.7.5 real-model summary、repair attempt、usage、contract outcome、
+真实 Preflight/CSYNTH/CSIM artifacts 和 Hidden 扫描。然后只执行 2.7.6：
+有证据才修改 contract/parser；无证据则只重验证 16-label corpus。
 
 # 十二、一句话状态
 
-Stage 2.7.4 已完成正式 repair-aware UnifiedRunner/CLI 和完整安全 artifact
-链；当前只进入 2.7.5 一次真实网络模型 Candidate Repair Smoke。
+Stage 2.7.5 已完成一次可审计的真实 network-model Candidate repair smoke；
+当前只进入 2.7.6 evidence-gated delta 与 ground-truth revalidation。

@@ -101,7 +101,7 @@ future_or_external=4
 → 2.7.2 Minimal ModelFamilyProfile（已完成）
 → 2.7.3 Stage 1 Hardening Batch A（已完成）
 → 2.7.4 Formal Repair-aware UnifiedRunner / CLI（已完成）
-→ 2.7.5 Real Network-model Candidate Repair Smoke
+→ 2.7.5 Real Network-model Candidate Repair Smoke（已完成）
 → 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
 → 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
 ```
@@ -196,10 +196,24 @@ TaskSpec
 一个 UnifiedRunner run 共享一个 budget 和一个 trace。验收见
 [`stage2_repair_aware_cli_acceptance.md`](stage2_repair_aware_cli_acceptance.md)。
 
-### 4.5 2.7.5 Real Network-model Smoke
+### 4.5 2.7.5 Real Network-model Smoke — 已完成
 
-由用户显式指定 OpenAI-compatible model/API。模型不必修复成功，但请求、
-response、usage、contract、异常、预算、真实验证和 Hidden 边界必须可信。
+```text
+code_baseline=7407da78b9371e853b44a201828ce4b9251fad8f
+model=deepseek-v4-flash
+response_model=deepseek-v4-flash
+model_calls=1
+total_tokens=1106
+attempt_status=validation_failed
+orchestration_status=validation_terminal
+response_contract=accepted
+outcome=可信 terminal failure（validation_failed）
+```
+
+用户固定 OpenAI-compatible model/API 已完成一次真实调用。模型不必修复成功；
+本次 request、response、usage、contract、预算、真实 Preflight/后续验证和 Hidden
+边界均有可信 artifacts。验收见
+[`stage2_real_network_candidate_repair_smoke.md`](stage2_real_network_candidate_repair_smoke.md)。
 
 ### 4.6 2.7.6 Evidence-gated Delta
 
@@ -266,7 +280,7 @@ response、usage、contract、异常、预算、真实验证和 Hidden 边界必
 
 ## 8. 执行原则
 
-- 当前只进入 Stage 2.7.5 Real Network-model Candidate Repair Smoke；
+- 当前只进入 Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation；
 - 2.5 evidence summary 是 2.6 的主要入口；
 - 2.6 已完成分类；2.7.1 只实现 shared protocol/artifacts；
 - 有限矩阵不能外推为任意 HLS 或统计准确率；

@@ -8,9 +8,9 @@
 |---|---|---|---|---|
 | TargetProfile | Stage 1/2/5 | 2.7.3 已完成 committed named profile、executable/settings、parser identity、resource schema、per-field provenance；保持 Vitis 2023.2 默认兼容 | Batch B 多版本/设备/platform 与 Stage 5 source/target | [`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md) |
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
-| Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、用户固定模型；2.7.2 typed ModelFamilyProfile 已完成 | 更多 provider 实例与 2.7.5 真实网络 smoke | [`stage2_model_family_profile_acceptance.md`](stage2_model_family_profile_acceptance.md) |
-| 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、2.7.1 artifacts、2.7.2 typed family profile/instruction | 正式 CLI、真实网络模型、2.8 | [`stage2_model_family_profile_acceptance.md`](stage2_model_family_profile_acceptance.md) |
-| 结构化反馈/状态机 | Stage 2 | Public/Hidden、router/state/coordinator、real handlers；B-01 formal repair-aware CLI、B-02 shared artifacts、B-03 profile、B-04 TargetProfile Batch A 已完成 | B-05 真实模型 smoke、2.7 regression、2.8 closure | [`stage2_repair_aware_cli_acceptance.md`](stage2_repair_aware_cli_acceptance.md) |
+| Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、用户固定模型、typed ModelFamilyProfile；2.7.5 一次真实 network-model response/usage 已验收 | 更多 provider 实例与后续统计验证 | [`stage2_real_network_candidate_repair_smoke.md`](stage2_real_network_candidate_repair_smoke.md) |
+| 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、typed family instruction、formal CLI；2.7.5 真实 response 通过 strict contract 路径记录 | 2.7.6 evidence-gated delta、2.8 closure | [`stage2_real_network_candidate_repair_smoke.md`](stage2_real_network_candidate_repair_smoke.md) |
+| 结构化反馈/状态机 | Stage 2 | Public/Hidden、router/state/coordinator、real handlers；B-01～B-05 均已完成真实或确定性验收 | 2.7.6 evidence-gated revalidation、2.7.7 regression、2.8 closure | [`stage2_real_network_candidate_repair_smoke.md`](stage2_real_network_candidate_repair_smoke.md) |
 | Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、7/7 real full chains、9 faults、16 labels、统一 index | 2.6 audit、2.7 hardening、2.8 closure | [`stage2_smoke_evidence_summary.md`](stage2_smoke_evidence_summary.md) |
 | 安全三级优化器 | Stage 3 | legacy `simple_iter` baseline | hypothesis、3 levels、checkpoint、rollback、cache、best_correct | 多 kernel 与 baseline 对照 |
 | Memory Applicability Gate | Stage 4 | legacy RAG 正负 trial | schema、score、abstention、off/gated/always | 负迁移与弃权实验 |
@@ -57,13 +57,13 @@ Stage 1 Core 已关闭 ≠ Stage 1 Hardening 已完成，也 ≠ API 智能体�
 
 ## 5. 当前下一任务
 
-Stage 2.7.1–2.7.4 已完成。下一步：
+Stage 2.7.1–2.7.5 已完成。下一步：
 
 ```text
-Stage 2.7.5 Real Network-model Candidate Repair Smoke
-→ 2.7.6 Evidence-gated Delta
+Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
 → 2.7.7 Regression
 → 2.8 closure
 ```
 
-当前只允许一次用户指定真实网络模型调用与真实本地验证，不进入 Stage 3。
+只有真实证据证明缺口时才修改 contract/parser；否则只重跑 16-label corpus。
+当前不进入 Stage 3。

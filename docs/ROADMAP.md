@@ -721,7 +721,7 @@ CandidateResponseContract 新语法与 CSYNTH parser 新规则没有被 Stage 2.
 → 2.7.2 Minimal ModelFamilyProfile（已完成）
 → 2.7.3 Stage 1 Hardening Batch A（已完成）
 → 2.7.4 Formal Repair-aware UnifiedRunner / CLI（已完成）
-→ 2.7.5 Real Network-model Candidate Repair Smoke
+→ 2.7.5 Real Network-model Candidate Repair Smoke（已完成）
 → 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
 → 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
 ```
@@ -784,8 +784,27 @@ TaskSpec
 legacy、dry-run 与 repair-aware 三种模式显式互斥。验收见
 [`stage2_repair_aware_cli_acceptance.md`](stage2_repair_aware_cli_acceptance.md)。
 
-当前只进入 2.7.5 Real Network-model Candidate Repair Smoke；本阶段未运行
-真实网络模型、真实工具或 Optimizer。
+Stage 2.7.5 已在代码基线 `7407da78b9371e853b44a201828ce4b9251fad8f` 上完成一次真实
+OpenAI-compatible network-model Candidate repair smoke：
+
+```text
+model=deepseek-v4-flash
+response_model=deepseek-v4-flash
+base_url=https://api.deepseek.com
+attempt_status=validation_failed
+orchestration_status=validation_terminal
+repair_stop_reason=terminal_feedback
+response_contract=accepted
+total_tokens=1106
+outcome=可信 terminal failure（validation_failed）
+```
+
+真实初始 g++ Preflight、模型 request/response/usage、strict contract、共享预算、
+bounded terminal result 与 Hidden 无泄漏均有 artifacts。验收见
+[`stage2_real_network_candidate_repair_smoke.md`](stage2_real_network_candidate_repair_smoke.md)。
+
+当前只进入 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth
+Revalidation；不得无证据修改 contract 或 parser。
 
 ### 6.9 Stage 2.8：最终文档、复现和关闭 — 待执行
 
@@ -809,7 +828,7 @@ Testbench Reliability 完成
 
 当前准确表述：
 
-> **Stage 2.1–2.6 与 2.7.1–2.7.4 已完成；下一步是 2.7.5 Real Network-model Candidate Repair Smoke。
+> **Stage 2.1–2.6 与 2.7.1–2.7.5 已完成；下一步是 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation。
 > Stage 2 必须经过其余 2.7 补强和 2.8 最终同步后才能关闭。**
 
 详细文档：

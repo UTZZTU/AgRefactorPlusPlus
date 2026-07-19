@@ -28,7 +28,7 @@ Testbench Reliability
 | 2.4 Shared Layered Prompt Builder | Complete | Shared contract and consumers, provider-neutral candidate adapter, strict response contract, bounded repair, and safe validation re-entry |
 | 2.5 Multi-type Kernel Smoke Matrix | Complete | Seven types, 7/7 real full chains, nine faults, 16 labels, unified evidence index |
 | 2.6 Closure-readiness Audit | Complete | 4 satisfied, 5 Stage 3 blockers, 4 deferred, 4 future/external; Stage 2.7 plan frozen |
-| 2.7 Cross-stage Validation and Repair Hardening | In progress | 2.7.1–2.7.4 complete; real network-model smoke next |
+| 2.7 Cross-stage Validation and Repair Hardening | In progress | 2.7.1–2.7.5 complete; evidence-gated delta and ground-truth revalidation next |
 | 2.8 Final documentation and closure | Not started | Final reproducibility synchronization and formal Stage 2 closure |
 
 Stage 2 is not closed until 2.5–2.8 are complete. Stage 2.4 is complete; no
@@ -172,10 +172,9 @@ Detailed record:
 
 - the repair-aware runtime acceptance kernel is deterministic and small;
 - seven-type pass diversity and nine-scenario fault/ownership diversity are established on one Vitis 2023.2 host;
-- `UnifiedRunner` and CLI do not yet construct the new validation handlers;
-- candidate repair is integrated with real local handlers, but its model-side
-  acceptance still uses a deterministic local FakeProvider rather than a real
-  network model API;
+- `UnifiedRunner` and CLI now construct the formal repair-aware validation path;
+- one real OpenAI-compatible network-model response/usage smoke is complete,
+  but it remains a single model, endpoint, host, and kernel observation;
 - testbench repair remains on its existing bounded repair path rather than
   being merged into the candidate repair controller;
 - Hidden details remain operator evidence and never enter model prompts;
@@ -543,6 +542,57 @@ optimizer: not executed
 ```
 
 Next: Stage 2.7.5 Real Network-model Candidate Repair Smoke.
+
+## 8.8 Stage 2.7.5 Real Network-model Candidate Repair Smoke
+
+Completed on code baseline:
+
+```text
+7407da78b9371e853b44a201828ce4b9251fad8f
+```
+
+Observed real model evidence:
+
+```text
+requested_model=deepseek-v4-flash
+response_model=deepseek-v4-flash
+base_url=https://api.deepseek.com
+model_calls=1
+prompt_tokens=937
+completion_tokens=169
+total_tokens=1106
+attempt_status=validation_failed
+orchestration_status=validation_terminal
+repair_stop_reason=terminal_feedback
+response_contract=accepted
+outcome=可信 terminal failure（validation_failed）
+```
+
+The initial candidate-owned failure came from a real consumed g++ Preflight.
+The formal repair-aware run recorded the real request manifest, model response,
+non-zero usage, strict response-contract outcome, shared budget, bounded terminal
+state and real revalidation artifacts where applicable. The Hidden suite sentinel
+was absent from all agent-safe run, phase, repair and CLI capture artifacts.
+
+```text
+tool_calls=2
+compile_calls=2
+csynth_calls=0
+csim_calls=0
+network model: executed
+real tool: executed
+hidden leakage: false
+optimizer: not executed
+```
+
+```text
+/data/agrefactor_runs/stage2_7_5_real_network_candidate_repair_20260719_211334/acceptance
+```
+
+Detailed record:
+[`stage2_real_network_candidate_repair_smoke.md`](stage2_real_network_candidate_repair_smoke.md).
+
+Next: Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation.
 
 ## 9. Stage 2 closure standard
 
