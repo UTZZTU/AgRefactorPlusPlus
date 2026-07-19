@@ -719,7 +719,7 @@ CandidateResponseContract 新语法与 CSYNTH parser 新规则没有被 Stage 2.
 ```text
 2.7.1 Repair Protocol and Artifact Schema（已完成）
 → 2.7.2 Minimal ModelFamilyProfile（已完成）
-→ 2.7.3 Stage 1 Hardening Batch A
+→ 2.7.3 Stage 1 Hardening Batch A（已完成）
 → 2.7.4 Formal Repair-aware UnifiedRunner / CLI
 → 2.7.5 Real Network-model Candidate Repair Smoke
 → 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
@@ -750,8 +750,20 @@ feat: add minimal model family profiles
 验收见
 [`stage2_model_family_profile_acceptance.md`](stage2_model_family_profile_acceptance.md)。
 
-Stage 2.7 保持有限收尾。当前只进入 2.7.3 Stage 1 Hardening Batch A；
-不接正式 CLI、不运行真实网络模型，也不扩展到 Batch B。
+Stage 2.7.3 功能提交：
+
+```text
+411d1e2b37ae6e620c0b759b98f7e8277cb851c4
+feat: harden target execution profiles
+```
+
+已完成一个稳定 committed named profile、per-profile executable/settings、
+parser identity、resource-limit schema 和逐字段 provenance；保持 Vitis 2023.2
+默认行为，不增加第二版本或设备矩阵。验收见
+[`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md)。
+
+Stage 2.7 保持有限收尾。当前只进入 2.7.4 Formal Repair-aware
+UnifiedRunner / CLI；不运行真实网络模型，也不扩展到 Batch B。
 
 ### 6.9 Stage 2.8：最终文档、复现和关闭 — 待执行
 
@@ -775,7 +787,7 @@ Testbench Reliability 完成
 
 当前准确表述：
 
-> **Stage 2.1–2.6 与 2.7.1–2.7.2 已完成；下一步是 2.7.3 Stage 1 Hardening Batch A。
+> **Stage 2.1–2.6 与 2.7.1–2.7.3 已完成；下一步是 2.7.4 Formal Repair-aware UnifiedRunner / CLI。
 > Stage 2 必须经过其余 2.7 补强和 2.8 最终同步后才能关闭。**
 
 详细文档：

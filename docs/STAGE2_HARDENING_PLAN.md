@@ -99,7 +99,7 @@ future_or_external=4
 ```text
 2.7.1 Repair Protocol and Artifact Schema（已完成）
 → 2.7.2 Minimal ModelFamilyProfile（已完成）
-→ 2.7.3 Stage 1 Hardening Batch A
+→ 2.7.3 Stage 1 Hardening Batch A（已完成）
 → 2.7.4 Formal Repair-aware UnifiedRunner / CLI
 → 2.7.5 Real Network-model Candidate Repair Smoke
 → 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
@@ -162,10 +162,17 @@ strict_completion
 验收见
 [`stage2_model_family_profile_acceptance.md`](stage2_model_family_profile_acceptance.md)。
 
-### 4.3 2.7.3 Stage 1 Hardening Batch A
+### 4.3 2.7.3 Stage 1 Hardening Batch A — 已完成
 
-完成 named target profile、per-profile executable/settings、parser profile、
-effective provenance、basic resource schema 和无 secret 配置模板。
+```text
+411d1e2b37ae6e620c0b759b98f7e8277cb851c4
+feat: harden target execution profiles
+```
+
+已完成 committed named target profile、per-profile executable/settings、
+parser identity、effective provenance、basic resource schema 和无 secret 模板。
+保持现有 Vitis 2023.2 行为，未增加 Batch B 多版本/设备矩阵。验收见
+[`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md)。
 
 ### 4.4 2.7.4 Formal Repair-aware UnifiedRunner / CLI
 
@@ -250,7 +257,7 @@ response、usage、contract、异常、预算、真实验证和 Hidden 边界必
 
 ## 8. 执行原则
 
-- 当前只进入 Stage 2.7.3 Stage 1 Hardening Batch A；
+- 当前只进入 Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI；
 - 2.5 evidence summary 是 2.6 的主要入口；
 - 2.6 已完成分类；2.7.1 只实现 shared protocol/artifacts；
 - 有限矩阵不能外推为任意 HLS 或统计准确率；

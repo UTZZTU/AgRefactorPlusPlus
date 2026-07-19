@@ -6,7 +6,7 @@
 
 | 目标 | 主要 Stage | 当前实现 | 仍缺内容 | 当前证据 |
 |---|---|---|---|---|
-| TargetProfile | Stage 1/5 | default/override、legacy propagation、actual command、version gate、part、clock、flags、Tcl、effective profile、invocation evidence | named profiles、settings/executable 自包含、platform/resources/parser、provenance、多版本/多 kernel | [`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md) |
+| TargetProfile | Stage 1/2/5 | 2.7.3 已完成 committed named profile、executable/settings、parser identity、resource schema、per-field provenance；保持 Vitis 2023.2 默认兼容 | Batch B 多版本/设备/platform 与 Stage 5 source/target | [`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md) |
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
 | Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、用户固定模型；2.7.2 typed ModelFamilyProfile 已完成 | 更多 provider 实例与 2.7.5 真实网络 smoke | [`stage2_model_family_profile_acceptance.md`](stage2_model_family_profile_acceptance.md) |
 | 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、2.7.1 artifacts、2.7.2 typed family profile/instruction | 正式 CLI、真实网络模型、2.8 | [`stage2_model_family_profile_acceptance.md`](stage2_model_family_profile_acceptance.md) |
@@ -57,16 +57,14 @@ Stage 1 Core 已关闭 ≠ Stage 1 Hardening 已完成，也 ≠ API 智能体�
 
 ## 5. 当前下一任务
 
-Stage 2.7.1–2.7.2 已完成。下一步：
+Stage 2.7.1–2.7.3 已完成。下一步：
 
 ```text
-Stage 2.7.3 Stage 1 Hardening Batch A
-→ 2.7.4 Formal Repair-aware CLI
+Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI
 → 2.7.5 Real Network-model Smoke
 → 2.7.6 Evidence-gated Delta
 → 2.7.7 Regression
 → 2.8 closure
 ```
 
-当前只做 TargetProfile Batch A；不扩展多版本矩阵、CLI repair、模型 smoke、
-optimizer、Memory 或 migration。
+当前不运行真实模型，不进入 Stage 3，不扩展 TargetProfile Batch B。

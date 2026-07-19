@@ -28,7 +28,7 @@ Testbench Reliability
 | 2.4 Shared Layered Prompt Builder | Complete | Shared contract and consumers, provider-neutral candidate adapter, strict response contract, bounded repair, and safe validation re-entry |
 | 2.5 Multi-type Kernel Smoke Matrix | Complete | Seven types, 7/7 real full chains, nine faults, 16 labels, unified evidence index |
 | 2.6 Closure-readiness Audit | Complete | 4 satisfied, 5 Stage 3 blockers, 4 deferred, 4 future/external; Stage 2.7 plan frozen |
-| 2.7 Cross-stage Validation and Repair Hardening | In progress | 2.7.1 protocol/artifacts and 2.7.2 ModelFamilyProfile complete; 2.7.3 next |
+| 2.7 Cross-stage Validation and Repair Hardening | In progress | 2.7.1–2.7.3 complete; formal repair-aware CLI next |
 | 2.8 Final documentation and closure | Not started | Final reproducibility synchronization and formal Stage 2 closure |
 
 Stage 2 is not closed until 2.5–2.8 are complete. Stage 2.4 is complete; no
@@ -485,6 +485,33 @@ automatic routing: false
 ```
 
 Next: Stage 2.7.3 Stage 1 Hardening Batch A.
+
+## 8.6 Stage 2.7.3 Stage 1 Hardening Batch A
+
+Completed.
+
+```text
+411d1e2b37ae6e620c0b759b98f7e8277cb851c4
+feat: harden target execution profiles
+```
+
+One committed named profile now controls the Vitis 2023.2 target contract.
+Executable/settings resolution, parser identity, resource ceilings and per-field provenance
+are recorded without adding a second version or device matrix.
+
+```text
+24/24 targeted
+816/816 full unittest
+network model: not executed
+real tools: not executed
+additional Vitis versions: false
+```
+
+```text
+/data/agrefactor_runs/stage2_7_3_stage1_hardening_batch_a_20260719_190809/acceptance
+```
+
+Next: Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI.
 
 ## 9. Stage 2 closure standard
 

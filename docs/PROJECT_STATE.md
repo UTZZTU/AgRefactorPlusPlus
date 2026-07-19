@@ -6,13 +6,13 @@
 
 - 当前开发分支：`stage2-general-feedback`
 - 当前功能代码基线：`a09915878aca4012a01b258d1f196ba0f18b4be5`
-- 最新确定性测试：**792/792 passed**
+- 最新确定性测试：**816/816 passed**
 - 最新 Stage 2.5 总结：**7 baseline、7/7 real full chains、9 faults、16 labels、23 scenario executions；跨三次独立验收累计 62/36/9/17/0，0 LLM**
 - 最新完整验证链验收仍为：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.7.2 Minimal ModelFamilyProfile 已完成；下一步 Stage 2.7.3 Stage 1 Hardening Batch A**
+- 当前关键任务：**Stage 2.7.3 Stage 1 Hardening Batch A 已完成；下一步 Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI**
 ## 2. 已完成
 
 ### Stage 0
@@ -713,6 +713,34 @@ automatic routing = false
 详见
 [`stage2_model_family_profile_acceptance.md`](stage2_model_family_profile_acceptance.md)。
 
+### Stage 2.7.3 Stage 1 Hardening Batch A
+
+已经完成。
+
+```text
+411d1e2b37ae6e620c0b759b98f7e8277cb851c4
+feat: harden target execution profiles
+```
+
+完成一个稳定 committed `vitis-2023.2-default` profile，并将 executable、
+settings path、parser profile、resource limits 和逐字段 effective provenance
+写入执行契约。`.env.example` 不再包含伪 API key 值。
+
+```text
+24/24 targeted
+816/816 full unittest
+network model = false
+real tool = false
+additional Vitis versions = false
+```
+
+```text
+/data/agrefactor_runs/stage2_7_3_stage1_hardening_batch_a_20260719_190809/acceptance
+```
+
+详见
+[`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md)。
+
 ## 3. 未完成
 
 ### Stage 1 Hardening（不阻塞 Core 关闭）
@@ -745,7 +773,7 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 - B-01：CLI/UnifiedRunner 尚未正式构造 repair-aware validation；
 - B-02：已由 Stage 2.7.1 完成并验收；
 - B-03：已由 Stage 2.7.2 完成并验收；
-- B-04：Stage 1 Hardening Batch A 尚未完成；
+- B-04：已由 Stage 2.7.3 完成并验收；
 - B-05：新 candidate-repair path 尚无真实网络模型闭环。
 
 当前不是 blocker：
@@ -765,22 +793,12 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 下一步只做：
 
 ```text
-Stage 2.7.3 Stage 1 Hardening Batch A
+Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI
 ```
 
-范围冻结为：
-
-```text
-A. stable named target profiles
-B. per-profile executable/settings
-C. parser profile identity
-D. effective-value provenance
-E. basic resource-limit schema
-F. no-secret configuration template
-G. 保持当前 Vitis 2023.2 默认行为兼容
-```
-
-不得扩展到多 Vitis 版本、多器件矩阵、migration、CLI repair 接线或真实模型。
+只把已验证的 Candidate repair/validation 链接入正式入口，保持一个
+BudgetManager、一个 TraceRecorder 和完整安全 artifacts。不得运行真实网络模型，
+不得进入 Stage 3，也不得扩展 Batch B。
 
 ## 5. 多 Vitis 版本的当前显式用法
 
