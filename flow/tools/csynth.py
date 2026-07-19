@@ -21,6 +21,7 @@ HLS_SERVER_URL = os.getenv("HLS_SERVER_URL")
 CSYNTH_TIMEOUT = 300
 ERROR_LINES = 15
 CSYNTH_EXECUTABLE_ENV = "AGREFACTOR_VITIS_RUN"
+CSYNTH_SETTINGS_ENV = "AGREFACTOR_VITIS_SETTINGS"
 DEFAULT_CSYNTH_EXECUTABLE = "vitis-run"
 CSYNTH_ARGUMENTS = "--mode hls --tcl --input_file vitis.tcl"
 CSYNTH_CMD = f"{DEFAULT_CSYNTH_EXECUTABLE} {CSYNTH_ARGUMENTS}"
@@ -52,35 +53,184 @@ def _write_json(path: str, payload: dict[str, Any]) -> None:
         stream.write("\n")
 
 
-def resolve_csynth_command() -> dict[str, Any]:
+def _clean_launcher_value(
+    value: str,
+    field_name: str,
+) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{field_name} must be a string")
+    cleaned = value.strip()
+    if not cleaned:
+        raise ValueError(f"{field_name} must not be empty")
+    if any(
+        character in cleaned
+        for character in ("\x00", "\r", "\n")
+    ):
+        raise ValueError(
+            f"{field_name} must not contain NUL or newline characters"
+        )
+    return cleaned
+
+
+def _sourced_shell_command(
+    settings_path: str,
+    executable: str,
+    arguments: str,
+) -> tuple[str, list[str]]:
+    shell_body = (
+        f"source {shlex.quote(settings_path)} && "
+        f"exec {shlex.quote(executable)} {arguments}"
+    )
+    command = f"bash -lc {shlex.quote(shell_body)}"
+    probe_body = (
+        f"source {shlex.quote(settings_path)} && "
+        f"exec {shlex.quote(executable)} --version"
+    )
+    return command, ["bash", "-lc", probe_body]
+
+
+def resolve_csynth_command(
+    target_profile: TargetProfile | Mapping[str, Any] | str | None = None,
+) -> dict[str, Any]:
+    profile = resolve_target_profile(target_profile)
+
     configured = os.getenv(CSYNTH_EXECUTABLE_ENV)
     if configured is None:
-        executable = DEFAULT_CSYNTH_EXECUTABLE
-        source = "builtin_default"
-    else:
-        executable = configured.strip()
-        if not executable:
-            raise ValueError(
-                f"{CSYNTH_EXECUTABLE_ENV} must not be empty"
-            )
-        source = f"environment:{CSYNTH_EXECUTABLE_ENV}"
-
-    if any(character in executable for character in ("\x00", "\r", "\n")):
-        raise ValueError(
-            "Vitis executable must not contain NUL or newline characters"
+        executable = (
+            profile.executable
+            or DEFAULT_CSYNTH_EXECUTABLE
         )
+        if (
+            profile.name == "vitis-2023.2-default"
+            and executable == DEFAULT_CSYNTH_EXECUTABLE
+        ):
+            source = "builtin_default"
+        else:
+            source = f"target_profile:{profile.name}"
+        executable_provenance = (
+            profile.field_provenance.get(
+                "executable",
+                "builtin_default",
+            )
+            if profile.executable is not None
+            else "builtin_default"
+        )
+    else:
+        executable = _clean_launcher_value(
+            configured,
+            CSYNTH_EXECUTABLE_ENV,
+        )
+        source = f"environment:{CSYNTH_EXECUTABLE_ENV}"
+        executable_provenance = source
+
+    executable = _clean_launcher_value(
+        executable,
+        "Vitis executable",
+    )
+
+    configured_settings = os.getenv(
+        CSYNTH_SETTINGS_ENV
+    )
+    if configured_settings is None:
+        settings_path = profile.settings_path
+        settings_source = (
+            f"target_profile:{profile.name}"
+            if settings_path is not None
+            else "not_configured"
+        )
+        settings_provenance = (
+            profile.field_provenance.get(
+                "settings_path",
+                "not_configured",
+            )
+            if settings_path is not None
+            else profile.field_provenance.get(
+                "settings_path",
+                "not_configured",
+            )
+        )
+    else:
+        settings_path = _clean_launcher_value(
+            configured_settings,
+            CSYNTH_SETTINGS_ENV,
+        )
+        settings_source = (
+            f"environment:{CSYNTH_SETTINGS_ENV}"
+        )
+        settings_provenance = settings_source
+
+    resolved_settings_path = None
+    if settings_path is not None:
+        settings_path = _clean_launcher_value(
+            settings_path,
+            "Vitis settings path",
+        )
+        if not os.path.isabs(settings_path):
+            raise ValueError(
+                "Vitis settings path must be absolute"
+            )
+        if os.path.isfile(settings_path):
+            resolved_settings_path = settings_path
 
     resolved_executable = shutil.which(executable)
-    if resolved_executable is None and os.path.isabs(executable):
-        if os.path.isfile(executable):
-            resolved_executable = executable
+    if (
+        resolved_executable is None
+        and os.path.isabs(executable)
+        and os.path.isfile(executable)
+    ):
+        resolved_executable = executable
 
-    command = f"{shlex.quote(executable)} {CSYNTH_ARGUMENTS}"
+    if settings_path is None:
+        command = (
+            f"{shlex.quote(executable)} "
+            f"{CSYNTH_ARGUMENTS}"
+        )
+        probe_executable = (
+            resolved_executable or executable
+        )
+        probe_argv = [
+            str(probe_executable),
+            "--version",
+        ]
+        probe_source = (
+            "resolved_executable"
+            if resolved_executable is not None
+            else "configured_executable"
+        )
+    else:
+        command, probe_argv = _sourced_shell_command(
+            settings_path,
+            executable,
+            CSYNTH_ARGUMENTS,
+        )
+        probe_source = "sourced_settings"
+
+    effective_provenance = dict(
+        profile.field_provenance
+    )
+    effective_provenance["executable"] = (
+        executable_provenance
+    )
+    effective_provenance["settings_path"] = (
+        settings_provenance
+    )
+
     return {
         "command": command,
         "command_source": source,
         "executable": executable,
         "resolved_executable": resolved_executable,
+        "settings_path": settings_path,
+        "settings_source": settings_source,
+        "resolved_settings_path": (
+            resolved_settings_path
+        ),
+        "probe_argv": probe_argv,
+        "probe_source": probe_source,
+        "profile_name": profile.name,
+        "effective_value_provenance": (
+            effective_provenance
+        ),
     }
 
 
@@ -112,26 +262,66 @@ def probe_csynth_version(
     *,
     timeout_seconds: int = CSYNTH_VERSION_PROBE_TIMEOUT,
 ) -> dict[str, Any]:
-    executable = command_resolution.get("resolved_executable")
-    if executable is None:
-        executable = command_resolution.get("executable")
+    raw_probe = command_resolution.get(
+        "probe_argv"
+    )
+    if isinstance(raw_probe, (list, tuple)):
+        probe_command = [
+            str(item) for item in raw_probe
+        ]
+    else:
+        executable = command_resolution.get(
+            "resolved_executable"
+        )
+        if executable is None:
+            executable = command_resolution.get(
+                "executable"
+            )
+        probe_command = [
+            str(executable),
+            "--version",
+        ]
 
-    probe_command = [str(executable), "--version"]
     base = {
         "requested": requested_version,
         "actual": None,
         "probe_command": shlex.join(probe_command),
-        "probe_source": (
-            "resolved_executable"
-            if command_resolution.get("resolved_executable")
-            else "configured_executable"
+        "probe_source": command_resolution.get(
+            "probe_source",
+            (
+                "resolved_executable"
+                if command_resolution.get(
+                    "resolved_executable"
+                )
+                else "configured_executable"
+            ),
         ),
         "returncode": None,
         "stdout": "",
         "stderr": "",
     }
 
-    if command_resolution.get("resolved_executable") is None:
+    if (
+        command_resolution.get("settings_path")
+        is not None
+        and command_resolution.get(
+            "resolved_settings_path"
+        )
+        is None
+    ):
+        return {
+            **base,
+            "status": "settings_not_found",
+        }
+
+    if (
+        command_resolution.get("settings_path")
+        is None
+        and command_resolution.get(
+            "resolved_executable"
+        )
+        is None
+    ):
         return {
             **base,
             "status": "executable_not_found",
@@ -230,6 +420,16 @@ def _build_csynth_invocation(
         ),
         "timeout_seconds": timelimit,
         "target_profile": profile.to_dict(),
+        "target_profile_provenance": dict(
+            command_resolution.get(
+                "effective_value_provenance",
+                profile.field_provenance,
+            )
+        ),
+        "parser_profile": profile.parser_profile,
+        "resource_limits": (
+            profile.resource_limits.to_dict()
+        ),
         "requested_toolchain_version": profile.toolchain_version,
         "toolchain_version_verification": {
             "status": "pending",
@@ -391,7 +591,7 @@ def run_csynth(
         target_profile=profile,
     )
 
-    command_resolution = resolve_csynth_command()
+    command_resolution = resolve_csynth_command(profile)
     invocation = _build_csynth_invocation(
         work_dir=work_dir,
         top_kernel_name=top_kernel_name,
@@ -409,12 +609,21 @@ def run_csynth(
         work_dir,
         "csynth_invocation.json",
     )
+    effective_profile = profile.to_effective_dict()
+    effective_profile["profile"]["executable"] = (
+        command_resolution["executable"]
+    )
+    effective_profile["profile"]["settings_path"] = (
+        command_resolution["settings_path"]
+    )
+    effective_profile["field_provenance"] = dict(
+        command_resolution[
+            "effective_value_provenance"
+        ]
+    )
     _write_json(
         effective_profile_path,
-        {
-            "schema_version": 1,
-            "profile": profile.to_dict(),
-        },
+        effective_profile,
     )
     _write_json(invocation_path, invocation)
 

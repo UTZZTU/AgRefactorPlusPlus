@@ -1,0 +1,21 @@
+{
+  "clock_period_ns": 5.0,
+  "compile_flags": [
+    "-D XILINX"
+  ],
+  "device": "xcu200-fsgd2104-2-e",
+  "executable": "vitis-run",
+  "name": "vitis-2023.2-default",
+  "parser_profile": "vitis-hls-2023.2",
+  "resource_limits": {
+    "max_bram_18k": null,
+    "max_dsp": null,
+    "max_ff": null,
+    "max_lut": null,
+    "max_uram": null
+  },
+  "schema_version": 1,
+  "settings_path": null,
+  "toolchain": "vitis_hls",
+  "toolchain_version": "2023.2"
+}

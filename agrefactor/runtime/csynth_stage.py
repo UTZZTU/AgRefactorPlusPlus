@@ -168,9 +168,7 @@ class CsynthValidationStageHandler:
                 "new_kernel_name": (
                     context.task.kernel_name
                 ),
-                "target_profile": (
-                    context.task.target.to_dict()
-                ),
+                "target_profile": context.task.target,
             }
         )
         executor = (
@@ -249,6 +247,27 @@ class CsynthValidationStageHandler:
                 ),
                 "requested_toolchain_version": (
                     context.task.target.toolchain_version
+                ),
+                "parser_profile": (
+                    None
+                    if summary is None
+                    else summary.get("parser_profile")
+                ),
+                "target_resource_limits": (
+                    {}
+                    if summary is None
+                    else summary.get(
+                        "resource_limits",
+                        {},
+                    )
+                ),
+                "target_profile_provenance": (
+                    {}
+                    if summary is None
+                    else summary.get(
+                        "target_profile_provenance",
+                        {},
+                    )
                 ),
             }
         )
@@ -402,5 +421,30 @@ def read_csynth_invocation_summary(
             target.get("device")
             if isinstance(target, dict)
             else None
+        ),
+        "parser_profile": value.get(
+            "parser_profile"
+        ),
+        "resource_limits": (
+            dict(value.get("resource_limits"))
+            if isinstance(
+                value.get("resource_limits"),
+                dict,
+            )
+            else {}
+        ),
+        "target_profile_provenance": (
+            dict(
+                value.get(
+                    "target_profile_provenance"
+                )
+            )
+            if isinstance(
+                value.get(
+                    "target_profile_provenance"
+                ),
+                dict,
+            )
+            else {}
         ),
     }
