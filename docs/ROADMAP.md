@@ -712,12 +712,12 @@ CandidateResponseContract 新语法与 CSYNTH parser 新规则没有被 Stage 2.
 - [`STAGE2_CLOSURE_READINESS_AUDIT.md`](STAGE2_CLOSURE_READINESS_AUDIT.md)；
 - [`stage2_closure_readiness_audit.json`](stage2_closure_readiness_audit.json)。
 
-### 6.8 Stage 2.7：Cross-stage Validation and Repair Hardening — 待执行
+### 6.8 Stage 2.7：Cross-stage Validation and Repair Hardening — 进行中
 
-Stage 2.7 的文件级顺序已经由 2.6 冻结：
+冻结顺序：
 
 ```text
-2.7.1 Repair Protocol and Artifact Schema
+2.7.1 Repair Protocol and Artifact Schema（已完成）
 → 2.7.2 Minimal ModelFamilyProfile
 → 2.7.3 Stage 1 Hardening Batch A
 → 2.7.4 Formal Repair-aware UnifiedRunner / CLI
@@ -726,13 +726,29 @@ Stage 2.7 的文件级顺序已经由 2.6 冻结：
 → 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
 ```
 
-2.7 不强行合并 Testbench/Candidate executors，不做自动模型路由，也不扩张
-没有真实证据支持的 Contract/Parser 规则。
+2.7.1 功能提交：
 
-不得提前实现 Stage 3 optimizer、Stage 4 Memory Gate 或 Stage 5 migration。
-详细边界见
-[`STAGE2_CLOSURE_READINESS_AUDIT.md`](STAGE2_CLOSURE_READINESS_AUDIT.md)
-和 [`STAGE2_HARDENING_PLAN.md`](STAGE2_HARDENING_PLAN.md)。
+```text
+ae1042fc77efe5c87a85a5f4954a7c0a951f2045
+feat: add shared repair protocol artifacts
+```
+
+已完成：
+
+- versioned shared repair vocabulary；
+- candidate/testbench 共享公共 attempt/run envelope；
+- CandidateRepairPayload / TestbenchRepairPayload 保留各自业务语义；
+- prompt manifest、normalized response、observed usage 与 typed payload；
+- stop reason、terminal status、agent-safe/operator-artifact 显式边界；
+- 原子 `repair_run.json`、attempt JSON 和 `artifact_manifest.json`；
+- Candidate orchestration 写出入口；
+- Testbench 保留 legacy JSON，同时自动写共享 artifacts；
+- executors 仍保持分离。
+
+验收见
+[`stage2_repair_protocol_acceptance.md`](stage2_repair_protocol_acceptance.md)。
+
+Stage 2.7 保持有限收尾：只处理 B-01～B-05，以及 2.7.5 真实 smoke 直接证明的新 blocker；其余问题进入对应 Stage 或 backlog。当前只进入 2.7.2；不接 CLI、不运行真实网络模型，也不提前做 Batch A。
 
 ### 6.9 Stage 2.8：最终文档、复现和关闭 — 待执行
 
@@ -756,8 +772,8 @@ Testbench Reliability 完成
 
 当前准确表述：
 
-> **Stage 2.1–2.6 已完成；下一步是 2.7.1 Repair Protocol and Artifact Schema。
-> Stage 2 必须经过 2.7 补强和 2.8 最终同步后才能关闭。**
+> **Stage 2.1–2.6 与 2.7.1 已完成；下一步是 2.7.2 Minimal ModelFamilyProfile。
+> Stage 2 必须经过其余 2.7 补强和 2.8 最终同步后才能关闭。**
 
 详细文档：
 

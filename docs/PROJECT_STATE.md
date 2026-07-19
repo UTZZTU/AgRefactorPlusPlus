@@ -6,13 +6,13 @@
 
 - 当前开发分支：`stage2-general-feedback`
 - 当前功能代码基线：`a09915878aca4012a01b258d1f196ba0f18b4be5`
-- 最新确定性测试：**727/727 passed**
+- 最新确定性测试：**760/760 passed**
 - 最新 Stage 2.5 总结：**7 baseline、7/7 real full chains、9 faults、16 labels、23 scenario executions；跨三次独立验收累计 62/36/9/17/0，0 LLM**
 - 最新完整验证链验收仍为：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.6 Audit 已完成；下一步 Stage 2.7.1 Repair Protocol and Artifact Schema**
+- 当前关键任务：**Stage 2.7.1 Repair Protocol and Artifact Schema 已完成；下一步 Stage 2.7.2 Minimal ModelFamilyProfile**
 ## 2. 已完成
 
 ### Stage 0
@@ -616,6 +616,50 @@ Ground-truth corpus 已满足 Stage 2 要求，2.7 只重验证。
 /data/agrefactor_runs/stage2_6_closure_readiness_audit_20260719_022645/acceptance
 ```
 
+### Stage 2.7.1 Repair Protocol and Artifact Schema
+
+已经完成。
+
+```text
+ae1042fc77efe5c87a85a5f4954a7c0a951f2045
+feat: add shared repair protocol artifacts
+```
+
+Candidate 与 Testbench 现在共享公共信封：
+
+```text
+attempt_id / proposal_id / artifact_role
+prompt_manifest / model_response / observed_usage
+payload_type / payload
+stop_reason / terminal_status / evidence_view
+operator_artifact_available / artifact_manifest
+```
+
+业务字段不被强行拉平：
+
+```text
+CandidateRepairPayload.validation_summary
+TestbenchRepairPayload.preflight_summary
+```
+
+现有 legacy `to_dict()` 和 `testbench_repair.json` 保持兼容；共享 artifacts
+写入独立目录并采用原子文件替换。协议层不调用模型、工具或 orchestrator，
+两条 executor 没有合并。
+
+```text
+33/33 targeted
+760/760 full unittest
+network model = false
+real tool = false
+```
+
+```text
+/data/agrefactor_runs/stage2_7_1_repair_protocol_artifacts_v5_20260719_172510/acceptance
+```
+
+详见
+[`stage2_repair_protocol_acceptance.md`](stage2_repair_protocol_acceptance.md)。
+
 ## 3. 未完成
 
 ### Stage 1 Hardening（不阻塞 Core 关闭）
@@ -646,7 +690,7 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 当前五个 blocker：
 
 - B-01：CLI/UnifiedRunner 尚未正式构造 repair-aware validation；
-- B-02：Testbench/Candidate 尚无统一 Protocol / artifact schema；
+- B-02：已由 Stage 2.7.1 完成并验收；
 - B-03：尚无 typed minimal ModelFamilyProfile；
 - B-04：Stage 1 Hardening Batch A 尚未完成；
 - B-05：新 candidate-repair path 尚无真实网络模型闭环。
@@ -668,22 +712,22 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 下一步只做：
 
 ```text
-Stage 2.7.1 Repair Protocol and Artifact Schema
+Stage 2.7.2 Minimal ModelFamilyProfile
 ```
 
 目标：
 
 ```text
-A. 定义 versioned shared repair protocol
-B. 统一 attempt_id / proposal_id / prompt manifest / model response
-C. 统一 observed usage / validation summary / stop reason / terminal status
-D. 定义 operator-safe artifact manifest
-E. Testbench 与 Candidate executors 保持分离
-F. 不接 CLI、不运行真实网络模型、不做 ModelFamilyProfile
-G. 完成后进入 2.7.2
+A. typed capability tags
+B. safe default parameters
+C. family instruction rendering
+D. fixed user-selected model remains authoritative
+E. no automatic routing
+F. no vendor-name branches in core control flow
+G. 不接 CLI、不做 TargetProfile Batch A、不运行真实网络模型
 ```
 
-2.7.1 只建立基础协议和 artifact 层，不成为第二个 orchestrator。
+2.7.2 只建立能力描述层，不改变 repair protocol、状态机或工具链。
 
 ## 5. 多 Vitis 版本的当前显式用法
 

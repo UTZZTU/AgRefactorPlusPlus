@@ -97,7 +97,7 @@ future_or_external=4
 ## 4. Stage 2.7：冻结执行顺序
 
 ```text
-2.7.1 Repair Protocol and Artifact Schema
+2.7.1 Repair Protocol and Artifact Schema（已完成）
 → 2.7.2 Minimal ModelFamilyProfile
 → 2.7.3 Stage 1 Hardening Batch A
 → 2.7.4 Formal Repair-aware UnifiedRunner / CLI
@@ -106,9 +106,14 @@ future_or_external=4
 → 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
 ```
 
-### 4.1 2.7.1 Repair Protocol and Artifact Schema
+### 4.1 2.7.1 Repair Protocol and Artifact Schema — 已完成
 
-先定义 versioned shared vocabulary：
+```text
+ae1042fc77efe5c87a85a5f4954a7c0a951f2045
+feat: add shared repair protocol artifacts
+```
+
+已定义 versioned shared vocabulary：
 
 ```text
 attempt_id
@@ -123,8 +128,17 @@ terminal_status
 artifact_manifest
 ```
 
-Testbench 与 Candidate executors 保持分离；Protocol 层不调用模型、工具或
-ValidationOrchestrator，也不成为第二个 orchestrator。
+Testbench 与 Candidate executors 保持分离；共享层只定义公共 envelope，
+并通过 CandidateRepairPayload / TestbenchRepairPayload 保留路径特有字段。
+Protocol 层不调用模型、工具或 ValidationOrchestrator，也不成为第二个
+orchestrator。现有 legacy JSON 保持兼容，共享 artifacts 采用原子写入。
+
+Stage 2.7 是有限收尾阶段：只处理 B-01～B-05，以及 2.7.5 真实 smoke
+直接证明的新 blocker。2.7.7 只做回归与 2.8 handoff，不新增功能；2.8 的
+真实模型关闭条件是“真实调用和可信记录”，不是“必须成功修复”。
+
+验收见
+[`stage2_repair_protocol_acceptance.md`](stage2_repair_protocol_acceptance.md)。
 
 ### 4.2 2.7.2 Minimal ModelFamilyProfile
 
@@ -228,7 +242,7 @@ response、usage、contract、异常、预算、真实验证和 Hidden 边界必
 
 ## 8. 执行原则
 
-- 当前只进入 Stage 2.7.1 Repair Protocol and Artifact Schema；
+- 当前只进入 Stage 2.7.2 Minimal ModelFamilyProfile；
 - 2.5 evidence summary 是 2.6 的主要入口；
 - 2.6 已完成分类；2.7.1 只实现 shared protocol/artifacts；
 - 有限矩阵不能外推为任意 HLS 或统计准确率；

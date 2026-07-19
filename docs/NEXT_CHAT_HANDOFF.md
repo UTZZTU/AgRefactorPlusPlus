@@ -596,29 +596,27 @@ Preflight → CSYNTH → Public CSIM → Hidden CSIM
 该里程碑证明七类 committed baseline 在本机 Vitis 2023.2 上完整通过，
 但不证明任意 HLS kernel 支持，也不包含故障归属矩阵或模型修复。
 
-## Stage 2.6 Closure-readiness Audit 已完成
+## Stage 2.7.1 Repair Protocol and Artifact Schema 已完成
 
 ```text
-satisfied=4
-blocking_before_stage3=5
-defer=4
-future_or_external=4
+feature=ae1042fc77efe5c87a85a5f4954a7c0a951f2045
+33/33 targeted
+760/760 full unittest
 ```
 
-Blocker 已冻结为：formal CLI/Runner、shared repair protocol/artifacts、
-minimal ModelFamilyProfile、Stage 1 Batch A、real network-model smoke。
-
-Contract/Parser 只允许 evidence-gated delta；16-label corpus 只重验证。
+Candidate/Testbench 共享 versioned envelope，但分别使用 typed candidate/testbench
+payload；legacy JSON 保持兼容；共享 artifacts 原子写入；executors 保持分离。未调用网络模型
+或真实工具。
 
 ```text
-/data/agrefactor_runs/stage2_6_closure_readiness_audit_20260719_022645/acceptance
+/data/agrefactor_runs/stage2_7_1_repair_protocol_artifacts_v5_20260719_172510/acceptance
 ```
 
-## 当前唯一主任务：Stage 2.7.1 Repair Protocol and Artifact Schema
+## 当前唯一主任务：Stage 2.7.2 Minimal ModelFamilyProfile
 
-只统一 attempt/proposal/prompt/response/usage/validation/stop/terminal/artifact
-词汇和版本化 schema。Testbench 与 Candidate executors 保持分离；不接 CLI、
-不调用真实模型、不做 ModelFamilyProfile、TargetProfile Batch A 或 optimizer。
+只实现 typed capability tags、安全默认参数和 family instruction rendering。
+固定用户模型仍然权威；不做自动路由、不接 CLI、不做 TargetProfile Batch A、
+不运行真实网络模型。
 
 # 八、后续路线
 
@@ -632,7 +630,7 @@ Stage 2.4.3.1 Candidate Prompt Policies（已完成）
 → Stage 2.5.3 Fault / Ownership / Hidden Matrix（已完成）
 → Stage 2.5.4 Evidence Summary（已完成）
 → Stage 2.6 Closure-readiness Audit（已完成）
-→ Stage 2.7.1 Repair Protocol and Artifact Schema
+→ Stage 2.7.1 Repair Protocol and Artifact Schema（已完成）
 → Stage 2.7.2 Minimal ModelFamilyProfile
 → Stage 2.7.3 Stage 1 Hardening Batch A
 → Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI
@@ -755,23 +753,23 @@ Git history
 
 请先：
 
-1. 核对 branch、HEAD、origin、remote、worktree；
-2. 确认 Stage 2.6 audit 提交和两个 audit 文档；
-3. 阅读 B-02 与 2.7.1 文件级计划；
-4. 只实现 shared repair Protocol / artifact schema；
-5. 保持 Testbench/Candidate executors 分离；
-6. 不接 CLI、不调用真实模型、不做 family/target hardening；
+1. 核对 branch、HEAD、remote、worktree；
+2. 确认 Stage 2.7.1 feature/docs 提交；
+3. 阅读 shared protocol、artifact writer 和 acceptance；
+4. 只实现 Minimal ModelFamilyProfile；
+5. 保持 fixed user-selected model authoritative；
+6. 不接 CLI、不运行网络模型、不做 Batch A；
 7. 运行 targeted、related、full regression；
-8. 完成后进入 2.7.2。
+8. 完成后进入 2.7.3。
 
 第一条回复应明确：
 
 ```text
-Stage 2.6 已完成：4 satisfied、5 blockers、4 defer、4 future/external。
-下一步只做 Stage 2.7.1 Repair Protocol and Artifact Schema。
+Stage 2.7.1 已完成 shared repair Protocol / artifact schema。
+下一步只做 Stage 2.7.2 Minimal ModelFamilyProfile。
 ```
 
 # 十二、一句话状态
 
-Stage 2.6 已把进入 Stage 3 前的五个 blocker 与 Stage 2.7 七步计划冻结；
-当前只进入 2.7.1 shared repair Protocol / artifact schema，Stage 2 仍未关闭。
+Stage 2.7.1 已完成兼容的共享 repair Protocol 与原子 artifact schema；
+当前只进入 2.7.2 Minimal ModelFamilyProfile，Stage 2 仍未关闭。

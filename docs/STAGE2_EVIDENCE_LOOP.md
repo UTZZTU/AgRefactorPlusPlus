@@ -28,7 +28,7 @@ Testbench Reliability
 | 2.4 Shared Layered Prompt Builder | Complete | Shared contract and consumers, provider-neutral candidate adapter, strict response contract, bounded repair, and safe validation re-entry |
 | 2.5 Multi-type Kernel Smoke Matrix | Complete | Seven types, 7/7 real full chains, nine faults, 16 labels, unified evidence index |
 | 2.6 Closure-readiness Audit | Complete | 4 satisfied, 5 Stage 3 blockers, 4 deferred, 4 future/external; Stage 2.7 plan frozen |
-| 2.7 Cross-stage Validation and Repair Hardening | Not started | Resolve proven Stage 3 blockers and complete Stage 1 Hardening Batch A |
+| 2.7 Cross-stage Validation and Repair Hardening | In progress | 2.7.1 shared repair protocol/artifacts complete; 2.7.2 next |
 | 2.8 Final documentation and closure | Not started | Final reproducibility synchronization and formal Stage 2 closure |
 
 Stage 2 is not closed until 2.5–2.8 are complete. Stage 2.4 is complete; no
@@ -411,6 +411,38 @@ Detailed audit:
 ## 8.3 Stage 2.7–2.8 decision
 
 Stage 2.7 follows the seven frozen milestones in the audit. Stage 2.8 remains the sole formal closure milestone.
+
+## 8.4 Stage 2.7.1 Repair Protocol and Artifact Schema
+
+Completed.
+
+```text
+ae1042fc77efe5c87a85a5f4954a7c0a951f2045
+feat: add shared repair protocol artifacts
+```
+
+The Candidate and Testbench paths now expose the same versioned safe envelope
+without merging their executors. CandidateRepairPayload and
+TestbenchRepairPayload preserve path-specific business fields. Shared artifacts
+are written atomically
+as per-attempt JSON, `repair_run.json`, and `artifact_manifest.json`.
+
+Legacy result dictionaries remain unchanged. Testbench keeps
+`testbench_repair.json`; Candidate orchestration exposes an explicit shared
+artifact writer.
+
+```text
+33/33 targeted
+760/760 full unittest
+network model: not executed
+real tools: not executed
+```
+
+```text
+/data/agrefactor_runs/stage2_7_1_repair_protocol_artifacts_v5_20260719_172510/acceptance
+```
+
+Next: Stage 2.7.2 Minimal ModelFamilyProfile.
 
 ## 9. Stage 2 closure standard
 
