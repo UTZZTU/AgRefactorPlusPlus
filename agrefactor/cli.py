@@ -13,13 +13,26 @@ from agrefactor.compat import (
     LegacyRefactorAdapter,
     LegacyRefactorSettings,
 )
-from agrefactor.config import RunMode, TaskSpec
+from agrefactor.config import (
+    EvaluationSplit,
+    RunMode,
+    TaskSpec,
+)
+from agrefactor.models import (
+    CandidateModelAdapter,
+    ModelRegistry,
+    ModelSpec,
+    OpenAICompatibleProvider,
+)
 from agrefactor.runtime import (
+    BudgetLimits,
+    CandidateRepairOrchestrationRequest,
     PhaseResult,
     PhaseStatus,
     RunPhase,
     RunResult,
     UnifiedRunner,
+    build_candidate_repair_phase,
 )
 
 
@@ -64,7 +77,18 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--legacy",
         action="store_true",
-        help="Invoke the existing flow.new refactoring backend.",
+        help=(
+            "Invoke the existing flow.new "
+            "refactoring backend."
+        ),
+    )
+    run_parser.add_argument(
+        "--repair-aware",
+        action="store_true",
+        help=(
+            "Run the formal local validation and "
+            "bounded candidate-repair path."
+        ),
     )
     run_parser.add_argument(
         "--run-id",
@@ -77,7 +101,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument(
         "--model",
-        help="Legacy refactoring model override.",
+        help=(
+            "User-selected model identifier. "
+            "Required for --repair-aware."
+        ),
+    )
+    run_parser.add_argument(
+        "--model-family",
+        help=(
+            "Optional vendor-neutral model-family "
+            "profile name."
+        ),
+    )
+    run_parser.add_argument(
+        "--api-key-env",
+        default="OPENAI_API_KEY",
+        help=(
+            "Environment variable holding the model "
+            "credential. Default: OPENAI_API_KEY."
+        ),
     )
     run_parser.add_argument(
         "--base-url",
@@ -125,7 +167,77 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument(
         "--output-dir",
-        help="Optional isolated working directory for the legacy flow.",
+        help=(
+            "Optional isolated working directory "
+            "for the legacy flow."
+        ),
+    )
+    run_parser.add_argument(
+        "--candidate-file",
+        type=Path,
+        help="Initial candidate source for --repair-aware.",
+    )
+    run_parser.add_argument(
+        "--original-file",
+        type=Path,
+        help=(
+            "Original source for --repair-aware; "
+            "defaults to TaskSpec.kernel_path."
+        ),
+    )
+    run_parser.add_argument(
+        "--preflight-testbench-file",
+        type=Path,
+        help=(
+            "Preflight testbench; defaults to "
+            "TaskSpec.testbench_path."
+        ),
+    )
+    run_parser.add_argument(
+        "--prompt-public-testbench-file",
+        type=Path,
+        help=(
+            "Explicit prompt-facing public "
+            "testbench when multiple public suites "
+            "are declared."
+        ),
+    )
+    run_parser.add_argument(
+        "--repair-work-dir",
+        type=Path,
+        help=(
+            "Isolated local validation work root "
+            "for --repair-aware."
+        ),
+    )
+    run_parser.add_argument(
+        "--artifact-dir",
+        type=Path,
+        help=(
+            "Empty output root for the versioned "
+            "repair-aware run bundle."
+        ),
+    )
+    run_parser.add_argument(
+        "--max-candidate-repair-attempts",
+        type=int,
+        default=2,
+        help=(
+            "Maximum candidate model calls after "
+            "initial validation. Default: 2."
+        ),
+    )
+    run_parser.add_argument(
+        "--csynth-timelimit",
+        type=int,
+        default=300,
+        help="Per-CSYNTH timeout in seconds. Default: 300.",
+    )
+    run_parser.add_argument(
+        "--csim-timelimit",
+        type=int,
+        default=60,
+        help="Per-CSIM timeout in seconds. Default: 60.",
     )
     run_parser.add_argument(
         "--debug",
@@ -235,44 +347,255 @@ def _run_legacy_refactor(
     )
 
 
-def _run_result_to_dict(result: RunResult) -> dict[str, Any]:
-    usage = result.budget_usage
-    return {
-        "run_id": result.run_id,
-        "task_id": result.task_id,
-        "mode": result.mode.value,
-        "status": result.status.value,
-        "succeeded": result.succeeded,
-        "phases": [
-            {
-                "phase": phase.phase.value,
-                "status": phase.status.value,
-                "summary": phase.summary,
-                "metadata": dict(phase.metadata),
-            }
-            for phase in result.phases
-        ],
-        "budget_usage": (
-            None
-            if usage is None
-            else {
-                "llm_calls": usage.llm_calls,
-                "tool_calls": usage.tool_calls,
-                "compile_calls": usage.compile_calls,
-                "csim_calls": usage.csim_calls,
-                "csynth_calls": usage.csynth_calls,
-                "tokens": usage.tokens,
-                "cost_usd": usage.cost_usd,
-                "elapsed_s": usage.elapsed_s,
-            }
+def _read_required_code(
+    path: Path,
+    label: str,
+) -> str:
+    value = path.read_text(encoding="utf-8")
+    if not value.strip():
+        raise ValueError(
+            f"{label} must not be empty: {path}"
+        )
+    return value
+
+
+def _task_relative_path(
+    task_file: Path,
+    value: str,
+) -> Path:
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = task_file.parent / path
+    return path
+
+
+def _load_candidate_repair_request(
+    task: TaskSpec,
+    *,
+    task_file: Path,
+    candidate_file: Path,
+    original_file: Path | None,
+    preflight_testbench_file: Path | None,
+    prompt_public_testbench_file: Path | None,
+    max_attempts: int,
+) -> CandidateRepairOrchestrationRequest:
+    if (
+        isinstance(max_attempts, bool)
+        or not isinstance(max_attempts, int)
+        or max_attempts <= 0
+    ):
+        raise ValueError(
+            "--max-candidate-repair-attempts "
+            "must be positive"
+        )
+
+    candidate_path = candidate_file.expanduser()
+    original_path = (
+        original_file.expanduser()
+        if original_file is not None
+        else _task_relative_path(
+            task_file,
+            task.kernel_path,
+        )
+    )
+    if preflight_testbench_file is not None:
+        preflight_path = (
+            preflight_testbench_file.expanduser()
+        )
+    elif task.testbench_path is not None:
+        preflight_path = _task_relative_path(
+            task_file,
+            task.testbench_path,
+        )
+    else:
+        raise ValueError(
+            "--repair-aware requires "
+            "--preflight-testbench-file or "
+            "TaskSpec.testbench_path"
+        )
+
+    suite_codes: dict[str, str] = {}
+    public_codes: list[str] = []
+    for suite in task.test_suites:
+        if suite.testbench_path is None:
+            raise ValueError(
+                "repair-aware suites require "
+                f"testbench_path: {suite.suite_id}"
+            )
+        suite_path = _task_relative_path(
+            task_file,
+            suite.testbench_path,
+        )
+        code = _read_required_code(
+            suite_path,
+            f"suite testbench {suite.suite_id}",
+        )
+        suite_codes[suite.suite_id] = code
+        if suite.split is EvaluationSplit.PUBLIC:
+            public_codes.append(code)
+
+    if prompt_public_testbench_file is not None:
+        prompt_public_code = _read_required_code(
+            prompt_public_testbench_file.expanduser(),
+            "prompt public testbench",
+        )
+    elif len(public_codes) == 1:
+        prompt_public_code = public_codes[0]
+    elif len(public_codes) > 1:
+        raise ValueError(
+            "multiple public suites require "
+            "--prompt-public-testbench-file"
+        )
+    else:
+        prompt_public_code = None
+
+    return CandidateRepairOrchestrationRequest(
+        initial_candidate=_read_required_code(
+            candidate_path,
+            "candidate source",
         ),
-    }
+        original_code=_read_required_code(
+            original_path,
+            "original source",
+        ),
+        preflight_testbench_code=_read_required_code(
+            preflight_path,
+            "preflight testbench",
+        ),
+        suite_testbench_codes=suite_codes,
+        prompt_public_testbench_code=prompt_public_code,
+        max_attempts=max_attempts,
+    )
 
 
-def _write_run_result(result: RunResult, stdout: TextIO) -> None:
+def _build_cli_candidate_adapter(args) -> CandidateModelAdapter:
+    if not isinstance(args.model, str) or not args.model.strip():
+        raise ValueError(
+            "--model is required for --repair-aware"
+        )
+    if (
+        not isinstance(args.api_key_env, str)
+        or not args.api_key_env.strip()
+    ):
+        raise ValueError(
+            "--api-key-env must not be empty"
+        )
+
+    provider = OpenAICompatibleProvider(
+        default_base_url=args.base_url,
+        default_api_key_env=args.api_key_env,
+    )
+    registry = ModelRegistry()
+    registry.register_provider(provider)
+    logical_name = args.model.strip()
+    registry.register_model(
+        ModelSpec(
+            name=logical_name,
+            provider=provider.name,
+            model=logical_name,
+            family=args.model_family,
+            base_url=args.base_url,
+            api_key_env=args.api_key_env,
+        )
+    )
+    return CandidateModelAdapter(
+        registry=registry,
+        model_name=logical_name,
+    )
+
+
+def _run_repair_aware_refactor(
+    task: TaskSpec,
+    *,
+    task_file: Path,
+    args,
+) -> RunResult:
+    if task.mode is not RunMode.REFACTOR:
+        raise ValueError(
+            "Repair-aware execution currently "
+            "supports only mode='refactor'."
+        )
+    if args.candidate_file is None:
+        raise ValueError(
+            "--candidate-file is required for --repair-aware"
+        )
+    if args.repair_work_dir is None:
+        raise ValueError(
+            "--repair-work-dir is required for --repair-aware"
+        )
+    if args.artifact_dir is None:
+        raise ValueError(
+            "--artifact-dir is required for --repair-aware"
+        )
+
+    request = _load_candidate_repair_request(
+        task,
+        task_file=task_file,
+        candidate_file=args.candidate_file,
+        original_file=args.original_file,
+        preflight_testbench_file=args.preflight_testbench_file,
+        prompt_public_testbench_file=(
+            args.prompt_public_testbench_file
+        ),
+        max_attempts=args.max_candidate_repair_attempts,
+    )
+    adapter = _build_cli_candidate_adapter(args)
+    phase = build_candidate_repair_phase(
+        model_adapter=adapter,
+        request=request,
+        work_root=args.repair_work_dir,
+        artifact_root=args.artifact_dir,
+        csynth_timelimit=args.csynth_timelimit,
+        csim_timelimit=args.csim_timelimit,
+    )
+    runner = UnifiedRunner(
+        {RunPhase.REFACTOR: phase},
+        budget_limits=BudgetLimits(
+            max_llm_calls=args.max_candidate_repair_attempts
+        ),
+    )
+    trace_path = (
+        args.trace
+        if args.trace is not None
+        else args.artifact_dir / "trace.jsonl"
+    )
+    return runner.run(
+        task,
+        run_id=args.run_id,
+        trace_path=trace_path,
+        artifact_root=args.artifact_dir,
+        run_metadata={
+            "execution_mode": "repair_aware",
+            "legacy_mode": False,
+            "model_selection": "user_fixed",
+        },
+    )
+
+
+def _run_result_to_dict(result: RunResult) -> dict[str, Any]:
+    return result.to_dict()
+
+
+def _write_run_result(
+    result: RunResult,
+    stdout: TextIO,
+    *,
+    execution_mode: str,
+    artifact_manifest: Path | None = None,
+) -> None:
+    payload = _run_result_to_dict(result)
+    payload["execution_mode"] = execution_mode
+    payload["legacy_mode"] = (
+        execution_mode == "legacy"
+    )
+    payload["artifact_manifest"] = (
+        None
+        if artifact_manifest is None
+        else str(artifact_manifest)
+    )
     stdout.write(
         json.dumps(
-            _run_result_to_dict(result),
+            payload,
             ensure_ascii=False,
             indent=2,
             sort_keys=True,
@@ -303,21 +626,40 @@ def main(
             return 0
 
         if args.command == "run":
-            if args.dry_run == args.legacy:
+            execution_mode_count = sum(
+                bool(value)
+                for value in (
+                    args.dry_run,
+                    args.legacy,
+                    args.repair_aware,
+                )
+            )
+            if execution_mode_count != 1:
                 stderr.write(
-                    "Choose exactly one execution mode: --dry-run or --legacy.\n"
+                    "Choose exactly one execution mode: "
+                    "--dry-run, --legacy, or "
+                    "--repair-aware.\n"
                 )
                 return 2
 
             task = load_task_file(args.task_file)
 
             if args.dry_run:
+                execution_mode = "dry_run"
                 result = _run_dry_task(
                     task,
                     run_id=args.run_id,
                     trace_path=args.trace,
                 )
+            elif args.repair_aware:
+                execution_mode = "repair_aware"
+                result = _run_repair_aware_refactor(
+                    task,
+                    task_file=args.task_file,
+                    args=args,
+                )
             else:
+                execution_mode = "legacy"
                 settings = LegacyRefactorSettings(
                     model=args.model,
                     base_url=args.base_url,
@@ -345,7 +687,19 @@ def main(
                     settings=settings,
                 )
 
-            _write_run_result(result, stdout)
+            artifact_manifest = (
+                args.artifact_dir
+                / "run_artifact_manifest.json"
+                if args.repair_aware
+                and args.artifact_dir is not None
+                else None
+            )
+            _write_run_result(
+                result,
+                stdout,
+                execution_mode=execution_mode,
+                artifact_manifest=artifact_manifest,
+            )
             return 0 if result.succeeded else 1
 
     except (

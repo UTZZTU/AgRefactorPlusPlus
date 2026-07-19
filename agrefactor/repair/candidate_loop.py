@@ -180,10 +180,7 @@ class CandidateValidationResult:
         stages = tuple(_validation_state(item) for item in self.completed_stages)
         if not stages:
             raise ValueError("completed_stages must not be empty")
-        if stages != _CANONICAL_VALIDATION_ORDER[: len(stages)]:
-            raise ValueError(
-                "completed_stages must be a contiguous prefix starting with preflight"
-            )
+        _validate_completed_stages(stages)
         object.__setattr__(self, "completed_stages", stages)
         object.__setattr__(self, "metadata", _json_mapping(self.metadata, "metadata"))
         if self.passed:
@@ -909,6 +906,35 @@ def _build_prompt(
     if failure_state is ValidationState.PUBLIC_EVALUATION:
         return build_candidate_public_csim_repair_prompt(inputs)
     raise ValueError(f"Unsupported candidate repair state: {failure_state.value}")
+
+
+def _validate_completed_stages(
+    stages: tuple[ValidationState, ...],
+) -> None:
+    if stages[0] is not ValidationState.PREFLIGHT:
+        raise ValueError(
+            "completed_stages must start with preflight"
+        )
+    if len(stages) > 1 and (
+        stages[1] is not ValidationState.CSYNTH
+    ):
+        raise ValueError(
+            "completed_stages must place csynth after preflight"
+        )
+    tail = stages[2:]
+    legal_tails = {
+        (),
+        (ValidationState.PUBLIC_EVALUATION,),
+        (ValidationState.HIDDEN_EVALUATION,),
+        (
+            ValidationState.PUBLIC_EVALUATION,
+            ValidationState.HIDDEN_EVALUATION,
+        ),
+    }
+    if tail not in legal_tails:
+        raise ValueError(
+            "completed_stages must follow a declared validation plan"
+        )
 
 
 def _validate_completed_prefix(

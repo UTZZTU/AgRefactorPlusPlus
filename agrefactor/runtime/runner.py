@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from hashlib import sha256
+import os
+import tempfile
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -95,10 +98,236 @@ class RunResult:
     status: RunStatus
     phases: tuple[PhaseResult, ...]
     budget_usage: BudgetUsage | None
+    metadata: Mapping[str, Any] = field(
+        default_factory=dict
+    )
+
+    schema_version = 1
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "metadata",
+            _copy_json_mapping(
+                "metadata",
+                self.metadata,
+            ),
+        )
 
     @property
     def succeeded(self) -> bool:
         return self.status is RunStatus.SUCCEEDED
+
+    def to_dict(self) -> dict[str, Any]:
+        usage = self.budget_usage
+        return {
+            "schema_version": self.schema_version,
+            "run_id": self.run_id,
+            "task_id": self.task_id,
+            "mode": self.mode.value,
+            "status": self.status.value,
+            "succeeded": self.succeeded,
+            "phases": [
+                {
+                    "phase": phase.phase.value,
+                    "status": phase.status.value,
+                    "summary": phase.summary,
+                    "metadata": dict(
+                        phase.metadata
+                    ),
+                }
+                for phase in self.phases
+            ],
+            "budget_usage": (
+                None
+                if usage is None
+                else {
+                    "llm_calls": usage.llm_calls,
+                    "tool_calls": usage.tool_calls,
+                    "compile_calls": (
+                        usage.compile_calls
+                    ),
+                    "csim_calls": usage.csim_calls,
+                    "csynth_calls": (
+                        usage.csynth_calls
+                    ),
+                    "tokens": usage.tokens,
+                    "cost_usd": usage.cost_usd,
+                    "elapsed_s": usage.elapsed_s,
+                }
+            ),
+            "metadata": dict(self.metadata),
+        }
+
+    def write_artifacts(
+        self,
+        root: str | os.PathLike[str],
+    ) -> "RunArtifactWriteResult":
+        return RunArtifactWriter(root).write(self)
+
+
+@dataclass(frozen=True, slots=True)
+class RunArtifactFile:
+    relative_path: str
+    sha256: str
+    size_bytes: int
+    record_type: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "relative_path": self.relative_path,
+            "sha256": self.sha256,
+            "size_bytes": self.size_bytes,
+            "record_type": self.record_type,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class RunArtifactWriteResult:
+    root: str
+    run_result_path: str
+    artifact_manifest_path: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "root": self.root,
+            "run_result_path": (
+                self.run_result_path
+            ),
+            "artifact_manifest_path": (
+                self.artifact_manifest_path
+            ),
+        }
+
+
+class RunArtifactWriter:
+    "Write the complete safe run bundle with the manifest last."
+
+    schema_version = 1
+
+    def __init__(
+        self,
+        root: str | os.PathLike[str],
+    ) -> None:
+        self._root = _clean_artifact_path(
+            root,
+            "root",
+        )
+
+    @property
+    def root(self) -> Path:
+        return self._root
+
+    def write(
+        self,
+        result: RunResult,
+    ) -> RunArtifactWriteResult:
+        if not isinstance(result, RunResult):
+            raise TypeError(
+                "result must be a RunResult"
+            )
+        self._root.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        result_path = (
+            self._root / "run_result.json"
+        )
+        manifest_path = (
+            self._root
+            / "run_artifact_manifest.json"
+        )
+        for path in (
+            result_path,
+            manifest_path,
+        ):
+            if path.exists():
+                raise FileExistsError(
+                    "run artifact already exists: "
+                    f"{path}"
+                )
+
+        _atomic_json_write(
+            result_path,
+            result.to_dict(),
+        )
+
+        files: list[RunArtifactFile] = []
+        for path in sorted(
+            self._root.rglob("*")
+        ):
+            if not path.is_file():
+                continue
+            if path == manifest_path:
+                continue
+            if path.is_symlink():
+                raise ValueError(
+                    "run artifacts must not "
+                    "contain symbolic links"
+                )
+            data = path.read_bytes()
+            relative = path.relative_to(
+                self._root
+            ).as_posix()
+            files.append(
+                RunArtifactFile(
+                    relative_path=relative,
+                    sha256=sha256(
+                        data
+                    ).hexdigest(),
+                    size_bytes=len(data),
+                    record_type=(
+                        _run_record_type(
+                            relative
+                        )
+                    ),
+                )
+            )
+
+        execution_mode = result.metadata.get(
+            "execution_mode"
+        )
+        legacy_mode = bool(
+            result.metadata.get(
+                "legacy_mode",
+                False,
+            )
+        )
+        _atomic_json_write(
+            manifest_path,
+            {
+                "schema_version": (
+                    self.schema_version
+                ),
+                "run_id": result.run_id,
+                "task_id": result.task_id,
+                "status": result.status.value,
+                "execution_mode": (
+                    execution_mode
+                ),
+                "legacy_mode": legacy_mode,
+                "evidence_view": "agent_safe",
+                "files": [
+                    item.to_dict()
+                    for item in files
+                ],
+            },
+        )
+        if tuple(
+            self._root.rglob("*.tmp")
+        ):
+            raise RuntimeError(
+                "temporary run artifact "
+                "files remain"
+            )
+
+        return RunArtifactWriteResult(
+            root=str(self._root),
+            run_result_path=str(result_path),
+            artifact_manifest_path=str(
+                manifest_path
+            ),
+        )
 
 
 PhaseHandler = Callable[[RunContext], PhaseResult]
@@ -138,6 +367,12 @@ class UnifiedRunner:
         *,
         run_id: str | None = None,
         trace_path: str | Path | None = None,
+        artifact_root: (
+            str | os.PathLike[str] | None
+        ) = None,
+        run_metadata: (
+            Mapping[str, Any] | None
+        ) = None,
     ) -> RunResult:
         """Execute the phases selected by ``task.mode`` in fail-stop order."""
 
@@ -148,6 +383,17 @@ class UnifiedRunner:
             _clean_required("run_id", run_id)
             if run_id is not None
             else uuid4().hex
+        )
+        metadata = _copy_json_mapping(
+            "run_metadata",
+            run_metadata or {},
+        )
+        resolved_artifact_root = (
+            None
+            if artifact_root is None
+            else _prepare_artifact_root(
+                artifact_root
+            )
         )
 
         trace = TraceRecorder(
@@ -166,7 +412,10 @@ class UnifiedRunner:
         trace.record(
             "run.started",
             status="running",
-            metadata={"mode": task.mode.value},
+            metadata={
+                "mode": task.mode.value,
+                "run_metadata": metadata,
+            },
         )
 
         phase_results: list[PhaseResult] = []
@@ -221,14 +470,29 @@ class UnifiedRunner:
             },
         )
 
-        return RunResult(
+        result = RunResult(
             run_id=resolved_run_id,
             task_id=task.task_id,
             mode=task.mode,
             status=run_status,
             phases=tuple(phase_results),
             budget_usage=budget_usage,
+            metadata=metadata,
         )
+        if resolved_artifact_root is not None:
+            trace.record(
+                "run.artifacts.preparing",
+                status="running",
+                metadata={
+                    "artifact_manifest": (
+                        "run_artifact_manifest.json"
+                    )
+                },
+            )
+            result.write_artifacts(
+                resolved_artifact_root
+            )
+        return result
 
     def _execute_phase(
         self,
@@ -291,6 +555,114 @@ class UnifiedRunner:
         if mode is RunMode.FULL:
             return (RunPhase.REFACTOR, RunPhase.OPTIMIZE)
         raise ValueError(f"Unsupported run mode: {mode}")
+
+
+def _prepare_artifact_root(
+    value: str | os.PathLike[str],
+) -> Path:
+    root = _clean_artifact_path(
+        value,
+        "artifact_root",
+    )
+    if root.exists():
+        if not root.is_dir():
+            raise FileExistsError(
+                "artifact_root is not "
+                f"a directory: {root}"
+            )
+        if any(root.iterdir()):
+            raise FileExistsError(
+                "artifact_root is not "
+                f"empty: {root}"
+            )
+    root.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    return root
+
+
+def _clean_artifact_path(
+    value: str | os.PathLike[str],
+    name: str,
+) -> Path:
+    try:
+        raw = os.fspath(value)
+    except TypeError as exc:
+        raise TypeError(
+            f"{name} must be path-like"
+        ) from exc
+    if not isinstance(raw, str):
+        raise TypeError(
+            f"{name} must resolve to a string"
+        )
+    cleaned = raw.strip()
+    if not cleaned:
+        raise ValueError(
+            f"{name} must not be empty"
+        )
+    return Path(cleaned).expanduser()
+
+
+def _atomic_json_write(
+    path: Path,
+    payload: Mapping[str, Any],
+) -> None:
+    copied = _copy_json_mapping(
+        "artifact payload",
+        payload,
+    )
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        temporary = Path(handle.name)
+        try:
+            json.dump(
+                copied,
+                handle,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+                allow_nan=False,
+            )
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        except Exception:
+            temporary.unlink(
+                missing_ok=True
+            )
+            raise
+    try:
+        os.replace(temporary, path)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def _run_record_type(
+    relative: str,
+) -> str:
+    if relative == "run_result.json":
+        return "run_result"
+    if relative == "trace.jsonl":
+        return "trace"
+    if relative.endswith(
+        "artifact_manifest.json"
+    ):
+        return "nested_artifact_manifest"
+    if relative.endswith(".json"):
+        return "supporting_json"
+    return "supporting_artifact"
 
 
 def _clean_required(name: str, value: str) -> str:
