@@ -28,7 +28,7 @@ Testbench Reliability
 | 2.4 Shared Layered Prompt Builder | Complete | Shared contract and consumers, provider-neutral candidate adapter, strict response contract, bounded repair, and safe validation re-entry |
 | 2.5 Multi-type Kernel Smoke Matrix | Complete | Seven types, 7/7 real full chains, nine faults, 16 labels, unified evidence index |
 | 2.6 Closure-readiness Audit | Complete | 4 satisfied, 5 Stage 3 blockers, 4 deferred, 4 future/external; Stage 2.7 plan frozen |
-| 2.7 Cross-stage Validation and Repair Hardening | In progress | 2.7.1–2.7.5 complete; evidence-gated delta and ground-truth revalidation next |
+| 2.7 Cross-stage Validation and Repair Hardening | In progress | 2.7.1–2.7.6 complete; cross-stage regression and Stage 2.8 handoff next |
 | 2.8 Final documentation and closure | Not started | Final reproducibility synchronization and formal Stage 2 closure |
 
 Stage 2 is not closed until 2.5–2.8 are complete. Stage 2.4 is complete; no
@@ -593,6 +593,55 @@ Detailed record:
 [`stage2_real_network_candidate_repair_smoke.md`](stage2_real_network_candidate_repair_smoke.md).
 
 Next: Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation.
+
+## 8.9 Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
+
+Completed on code baseline:
+
+```text
+b1a787ab0e41b382fec25973968e2b162a500f85
+```
+
+Evidence gate:
+
+```text
+replayed_preflight_failure_kind=link_error
+replayed_preflight_failure_owner=unknown
+contract_delta_required=false
+parser_delta_required=false
+code_delta_applied=false
+```
+
+The real Stage 2.7.5 proposal still satisfies every current deterministic response
+obligation. Its repeatable failure belongs to real Preflight compile/semantic
+validation rather than the response-envelope contract. Stage 2.7.5 produced no
+CSYNTH invocation or log, so no parser rule was added.
+
+Ground-truth revalidation:
+
+```text
+16/16 independent labels
+7/7 baseline real full chains
+9/9 fault/ownership/Hidden matches
+12 real scenarios
+4 deterministic scenarios
+55/29/9/17/0 combined physical usage
+network model: not executed
+hidden leakage: false
+optimizer: not executed
+```
+
+The combined usage is arithmetic across the exact pass-matrix and fault-matrix runner
+budgets; it is not presented as one shared budget.
+
+```text
+/data/agrefactor_runs/stage2_7_6_evidence_gated_ground_truth_revalidation_20260719_215820/acceptance
+```
+
+Detailed record:
+[`stage2_evidence_gated_ground_truth_revalidation.md`](stage2_evidence_gated_ground_truth_revalidation.md).
+
+Next: Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff.
 
 ## 9. Stage 2 closure standard
 

@@ -9,9 +9,9 @@
 | TargetProfile | Stage 1/2/5 | 2.7.3 已完成 committed named profile、executable/settings、parser identity、resource schema、per-field provenance；保持 Vitis 2023.2 默认兼容 | Batch B 多版本/设备/platform 与 Stage 5 source/target | [`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md) |
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
 | Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、用户固定模型、typed ModelFamilyProfile；2.7.5 一次真实 network-model response/usage 已验收 | 更多 provider 实例与后续统计验证 | [`stage2_real_network_candidate_repair_smoke.md`](stage2_real_network_candidate_repair_smoke.md) |
-| 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、typed family instruction、formal CLI；2.7.5 真实 response 通过 strict contract 路径记录 | 2.7.6 evidence-gated delta、2.8 closure | [`stage2_real_network_candidate_repair_smoke.md`](stage2_real_network_candidate_repair_smoke.md) |
-| 结构化反馈/状态机 | Stage 2 | Public/Hidden、router/state/coordinator、real handlers；B-01～B-05 均已完成真实或确定性验收 | 2.7.6 evidence-gated revalidation、2.7.7 regression、2.8 closure | [`stage2_real_network_candidate_repair_smoke.md`](stage2_real_network_candidate_repair_smoke.md) |
-| Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、7/7 real full chains、9 faults、16 labels、统一 index | 2.6 audit、2.7 hardening、2.8 closure | [`stage2_smoke_evidence_summary.md`](stage2_smoke_evidence_summary.md) |
+| 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、typed family instruction、formal CLI；2.7.6 真实 proposal 复核未证明 contract 缺口，保持 strict contract 不变 | 2.7.7 regression、2.8 closure | [`stage2_evidence_gated_ground_truth_revalidation.md`](stage2_evidence_gated_ground_truth_revalidation.md) |
+| 结构化反馈/状态机 | Stage 2 | Public/Hidden、router/state/coordinator、real handlers；B-01～B-05 已完成，2.7.6 evidence gate 与 16/16 revalidation 已通过 | 2.7.7 regression、2.8 closure | [`stage2_evidence_gated_ground_truth_revalidation.md`](stage2_evidence_gated_ground_truth_revalidation.md) |
+| Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、9 faults、16 labels；2.7.6 在当前基线重跑 7/7 full chains 与 9/9 fault matrix | 2.7.7 regression、2.8 closure | [`stage2_evidence_gated_ground_truth_revalidation.md`](stage2_evidence_gated_ground_truth_revalidation.md) |
 | 安全三级优化器 | Stage 3 | legacy `simple_iter` baseline | hypothesis、3 levels、checkpoint、rollback、cache、best_correct | 多 kernel 与 baseline 对照 |
 | Memory Applicability Gate | Stage 4 | legacy RAG 正负 trial | schema、score、abstention、off/gated/always | 负迁移与弃权实验 |
 | BudgetManager | Stage 1/3 | token/cost、LLM/tool/compile/csynth/csim hard limits、pre-call block、real launch exact-once accounting、UnifiedRunner/legacy propagation；真实 DFS 工具链与 Stage 2 repair-aware validation 共享预算通过 | Stage 3 budget exhaustion 停止新候选并返回 best_correct | [`PROJECT_STATE.md`](PROJECT_STATE.md) |
@@ -57,13 +57,11 @@ Stage 1 Core 已关闭 ≠ Stage 1 Hardening 已完成，也 ≠ API 智能体�
 
 ## 5. 当前下一任务
 
-Stage 2.7.1–2.7.5 已完成。下一步：
+Stage 2.7.1–2.7.6 已完成。下一步：
 
 ```text
-Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
-→ 2.7.7 Regression
+Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
 → 2.8 closure
 ```
 
-只有真实证据证明缺口时才修改 contract/parser；否则只重跑 16-label corpus。
-当前不进入 Stage 3。
+2.7.7 只做回归和 handoff，不新增功能，也不进入 Stage 3。

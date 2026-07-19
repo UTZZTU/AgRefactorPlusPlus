@@ -12,7 +12,7 @@
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.7.5 Real Network-model Candidate Repair Smoke 已完成；下一步 Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation**
+- 当前关键任务：**Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation 已完成；下一步 Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff**
 ## 2. 已完成
 
 ### Stage 0
@@ -817,6 +817,45 @@ optimizer = false
 详见
 [`stage2_real_network_candidate_repair_smoke.md`](stage2_real_network_candidate_repair_smoke.md)。
 
+### Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
+
+已经完成。
+
+```text
+code_baseline=b1a787ab0e41b382fec25973968e2b162a500f85
+replayed_preflight_failure_kind=link_error
+replayed_preflight_failure_owner=unknown
+contract_delta_required=false
+parser_delta_required=false
+code_delta_applied=false
+```
+
+2.7.5 的真实 proposal 再次通过当前 CandidateResponseContract 的全部结构约束；
+第二次 Preflight 失败可重复，但属于编译/语义验证职责。2.7.5 未执行 CSYNTH，
+因此没有 parser delta 证据。
+
+```text
+16/16 independent labels
+7/7 baseline real full chains
+9/9 fault matrix matches
+12 real scenarios
+4 deterministic scenarios
+55/29/9/17/0 combined physical usage
+network model = false
+hidden leakage = false
+optimizer = false
+```
+
+该 combined usage 来自 pass/fault 两个精确 runner budget 的算术合计，不冒充
+一个共享预算。
+
+```text
+/data/agrefactor_runs/stage2_7_6_evidence_gated_ground_truth_revalidation_20260719_215820/acceptance
+```
+
+详见
+[`stage2_evidence_gated_ground_truth_revalidation.md`](stage2_evidence_gated_ground_truth_revalidation.md)。
+
 ## 3. 未完成
 
 ### Stage 1 Hardening（不阻塞 Core 关闭）
@@ -854,9 +893,9 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 当前不是 blocker：
 
-- CandidateResponseContract 在七类 committed interface 上没有失败证据；
-- CSYNTH parser 对未知诊断保持 UNKNOWN，不需无依据扩张；
-- 16-label ground-truth corpus 已满足 Stage 2 独立标签要求。
+- 2.7.6 真实 evidence replay 未证明 CandidateResponseContract 缺口；
+- 2.7.5 无 CSYNTH evidence，2.7.6 未猜测式扩张 parser；
+- 16-label ground-truth corpus 已在当前基线重验证为 16/16。
 ### 后续 Stage
 
 - Stage 3 Safe Three-Level Optimizer：未开始；
@@ -869,14 +908,11 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 下一步只做：
 
 ```text
-Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
+Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
 ```
 
-先审查 2.7.5 的真实 response/contract/tool evidence。只有真实证据证明
-CandidateResponseContract 或 CSYNTH parser 存在缺口时才做最小 delta；
-否则代码不变，只重跑 16-label ground-truth corpus。
-
-不得进入 Stage 3、TargetProfile Batch B 或新增模型路由。
+执行最终跨阶段回归、blocker/acceptance 索引核对和 2.8 handoff。2.7.7
+不新增功能、不重新调用网络模型、不进入 Stage 3，也不正式关闭 Stage 2。
 
 ## 5. 多 Vitis 版本的当前显式用法
 

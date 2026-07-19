@@ -596,32 +596,33 @@ Preflight → CSYNTH → Public CSIM → Hidden CSIM
 该里程碑证明七类 committed baseline 在本机 Vitis 2023.2 上完整通过，
 但不证明任意 HLS kernel 支持，也不包含故障归属矩阵或模型修复。
 
-## Stage 2.7.5 Real Network-model Candidate Repair Smoke 已完成
+## Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation 已完成
 
 ```text
-code_baseline=7407da78b9371e853b44a201828ce4b9251fad8f
-model=deepseek-v4-flash
-response_model=deepseek-v4-flash
-model_calls=1
-total_tokens=1106
-attempt_status=validation_failed
-orchestration_status=validation_terminal
-response_contract=accepted
-outcome=可信 terminal failure（validation_failed）
+code_baseline=b1a787ab0e41b382fec25973968e2b162a500f85
+replayed_preflight_failure_kind=link_error
+replayed_preflight_failure_owner=unknown
+contract_delta_required=false
+parser_delta_required=false
+code_delta_applied=false
+ground_truth_labels=16/16
+baseline_full_chains=7/7
+fault_matrix=9/9
+combined_usage=55/29/9/17/0
 ```
 
-正式 `--repair-aware` CLI 已执行一次真实 OpenAI-compatible 模型调用。
-初始 candidate-owned Preflight 由真实 g++ 产生；模型 response 与 usage 被
-shared repair artifacts 记录；Hidden sentinel 未进入 agent-safe artifacts。
+真实 proposal 的结构 contract 复核通过；失败属于真实 Preflight 验证域。
+2.7.5 没有 CSYNTH evidence，所以 parser 保持不变。16 条独立标签已在当前
+基线上重新验证。
 
 ```text
-/data/agrefactor_runs/stage2_7_5_real_network_candidate_repair_20260719_211334/acceptance
+/data/agrefactor_runs/stage2_7_6_evidence_gated_ground_truth_revalidation_20260719_215820/acceptance
 ```
 
-## 当前唯一主任务：Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
+## 当前唯一主任务：Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
 
-只根据本次真实 response/contract/tool evidence 决定是否需要最小 delta。
-没有真实缺陷证据时保持代码不变，并重跑 16-label corpus。
+只做最终跨阶段回归、evidence/index 一致性和 2.8 handoff，不新增功能，不关闭
+Stage 2。
 
 # 八、后续路线
 
@@ -640,7 +641,7 @@ Stage 2.4.3.1 Candidate Prompt Policies（已完成）
 → Stage 2.7.3 Stage 1 Hardening Batch A（已完成）
 → Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI（已完成）
 → Stage 2.7.5 Real Network-model Candidate Repair Smoke（已完成）
-→ Stage 2.7.6 Evidence-gated Contract/Parser Delta
+→ Stage 2.7.6 Evidence-gated Contract/Parser Delta（已完成）
 → Stage 2.7.7 Cross-stage Regression
 → Stage 2.8 Final Documentation and Stage 2 Closure
 → Stage 3 Safe Three-Level Optimizer
@@ -756,11 +757,11 @@ Git history
 
 # 十一、下一对话第一项任务
 
-先核对 Stage 2.7.5 real-model summary、repair attempt、usage、contract outcome、
-真实 Preflight/CSYNTH/CSIM artifacts 和 Hidden 扫描。然后只执行 2.7.6：
-有证据才修改 contract/parser；无证据则只重验证 16-label corpus。
+核对 2.7.6 evidence gate、16-label revalidation、Vitis/Hidden/budget artifacts，
+然后只执行 2.7.7 Cross-stage Regression and Stage 2.8 Handoff。不得在
+2.7.7 增加新功能或宣布 Stage 2 closed。
 
 # 十二、一句话状态
 
-Stage 2.7.5 已完成一次可审计的真实 network-model Candidate repair smoke；
-当前只进入 2.7.6 evidence-gated delta 与 ground-truth revalidation。
+Stage 2.7.6 已以无代码 delta 的结论完成真实证据审查和 16/16 ground-truth
+重验证；当前只进入 2.7.7 最终跨阶段回归与 2.8 handoff。

@@ -722,7 +722,7 @@ CandidateResponseContract 新语法与 CSYNTH parser 新规则没有被 Stage 2.
 → 2.7.3 Stage 1 Hardening Batch A（已完成）
 → 2.7.4 Formal Repair-aware UnifiedRunner / CLI（已完成）
 → 2.7.5 Real Network-model Candidate Repair Smoke（已完成）
-→ 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
+→ 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation（已完成）
 → 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
 ```
 
@@ -803,8 +803,35 @@ outcome=可信 terminal failure（validation_failed）
 bounded terminal result 与 Hidden 无泄漏均有 artifacts。验收见
 [`stage2_real_network_candidate_repair_smoke.md`](stage2_real_network_candidate_repair_smoke.md)。
 
-当前只进入 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth
-Revalidation；不得无证据修改 contract 或 parser。
+Stage 2.7.6 已在代码基线 `b1a787ab0e41b382fec25973968e2b162a500f85` 上完成 evidence gate：
+
+```text
+replayed_preflight_failure_kind=link_error
+replayed_preflight_failure_owner=unknown
+contract_delta_required=false
+parser_delta_required=false
+code_delta_applied=false
+```
+
+真实 proposal 仍满足现有 CandidateResponseContract；随后失败属于真实 Preflight
+验证域。2.7.5 没有 CSYNTH invocation，因此不能推出 parser 新规则。
+
+随后重新执行七条 baseline 全链与九条 fault/ownership/Hidden 场景：
+
+```text
+ground_truth_labels=16/16
+baseline_full_chains=7/7
+fault_matrix=9/9
+real_scenarios=12
+deterministic_scenarios=4
+combined_usage=55/29/9/17/0
+```
+
+验收见
+[`stage2_evidence_gated_ground_truth_revalidation.md`](stage2_evidence_gated_ground_truth_revalidation.md)。
+
+当前只进入 2.7.7 Cross-stage Regression and Stage 2.8 Handoff；2.7.7
+不新增功能，也不关闭 Stage 2。
 
 ### 6.9 Stage 2.8：最终文档、复现和关闭 — 待执行
 

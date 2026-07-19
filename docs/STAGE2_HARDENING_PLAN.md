@@ -102,7 +102,7 @@ future_or_external=4
 → 2.7.3 Stage 1 Hardening Batch A（已完成）
 → 2.7.4 Formal Repair-aware UnifiedRunner / CLI（已完成）
 → 2.7.5 Real Network-model Candidate Repair Smoke（已完成）
-→ 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
+→ 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation（已完成）
 → 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
 ```
 
@@ -215,10 +215,22 @@ outcome=可信 terminal failure（validation_failed）
 边界均有可信 artifacts。验收见
 [`stage2_real_network_candidate_repair_smoke.md`](stage2_real_network_candidate_repair_smoke.md)。
 
-### 4.6 2.7.6 Evidence-gated Delta
+### 4.6 2.7.6 Evidence-gated Delta — 已完成
 
-只有 2.7.5 或新真实工具日志证明缺陷时，才修改 CandidateResponseContract
-或 CSYNTH parser。否则只重跑 16-label corpus。
+```text
+code_baseline=b1a787ab0e41b382fec25973968e2b162a500f85
+replayed_preflight_failure_kind=link_error
+replayed_preflight_failure_owner=unknown
+contract_delta_required=false
+parser_delta_required=false
+code_delta_applied=false
+ground_truth_labels=16/16
+```
+
+2.7.5 的真实 response 仍满足当前 CandidateResponseContract；失败由真实
+Preflight 捕获。没有 CSYNTH evidence，因此 parser 未修改。随后重跑 7/7
+baseline full chains 与 9/9 fault matrix。验收见
+[`stage2_evidence_gated_ground_truth_revalidation.md`](stage2_evidence_gated_ground_truth_revalidation.md)。
 
 ### 4.7 2.7.7 Cross-stage Regression
 
@@ -280,7 +292,7 @@ outcome=可信 terminal failure（validation_failed）
 
 ## 8. 执行原则
 
-- 当前只进入 Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation；
+- 当前只进入 Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff；
 - 2.5 evidence summary 是 2.6 的主要入口；
 - 2.6 已完成分类；2.7.1 只实现 shared protocol/artifacts；
 - 有限矩阵不能外推为任意 HLS 或统计准确率；
