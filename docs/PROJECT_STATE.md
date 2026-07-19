@@ -6,13 +6,13 @@
 
 - 当前开发分支：`stage2-general-feedback`
 - 当前功能代码基线：`a09915878aca4012a01b258d1f196ba0f18b4be5`
-- 最新确定性测试：**816/816 passed**
+- 最新确定性测试：**836/836 passed**
 - 最新 Stage 2.5 总结：**7 baseline、7/7 real full chains、9 faults、16 labels、23 scenario executions；跨三次独立验收累计 62/36/9/17/0，0 LLM**
 - 最新完整验证链验收仍为：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.7.3 Stage 1 Hardening Batch A 已完成；下一步 Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI**
+- 当前关键任务：**Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI 已完成；下一步 Stage 2.7.5 Real Network-model Candidate Repair Smoke**
 ## 2. 已完成
 
 ### Stage 0
@@ -741,6 +741,38 @@ additional Vitis versions = false
 详见
 [`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md)。
 
+### Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI
+
+已经完成。
+
+```text
+7e9aef66ba062b25465f6552f9bf346b8ed5eb86
+feat: add formal repair-aware runner phase
+```
+
+新增 `CandidateRepairPhase`，正式 `--repair-aware` CLI 只负责构造已有
+validation/repair 链，不复制 handler、router 或 orchestrator 逻辑。UnifiedRunner
+写入 versioned `run_result.json` 与 manifest，phase bundle 继续包含 shared repair
+artifacts。Deterministic acceptance 同时修正了合法 hidden-only validation plan
+被固定 canonical prefix 误判为 validator error 的跨阶段契约缺口。
+
+```text
+20/20 targeted
+836/836 full unittest
+shared budget instances = 1
+shared trace instances = 1
+network model = false
+real tool = false
+optimizer = false
+```
+
+```text
+/data/agrefactor_runs/stage2_7_4_repair_aware_cli_v2_20260719_203354/acceptance
+```
+
+详见
+[`stage2_repair_aware_cli_acceptance.md`](stage2_repair_aware_cli_acceptance.md)。
+
 ## 3. 未完成
 
 ### Stage 1 Hardening（不阻塞 Core 关闭）
@@ -770,7 +802,7 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 当前五个 blocker：
 
-- B-01：CLI/UnifiedRunner 尚未正式构造 repair-aware validation；
+- B-01：已由 Stage 2.7.4 完成并验收；
 - B-02：已由 Stage 2.7.1 完成并验收；
 - B-03：已由 Stage 2.7.2 完成并验收；
 - B-04：已由 Stage 2.7.3 完成并验收；
@@ -793,12 +825,14 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 下一步只做：
 
 ```text
-Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI
+Stage 2.7.5 Real Network-model Candidate Repair Smoke
 ```
 
-只把已验证的 Candidate repair/validation 链接入正式入口，保持一个
-BudgetManager、一个 TraceRecorder 和完整安全 artifacts。不得运行真实网络模型，
-不得进入 Stage 3，也不得扩展 Batch B。
+由用户显式提供一个 OpenAI-compatible 模型和环境变量 credential，执行一次
+真实 candidate-owned failure → model call → strict contract → bounded repair →
+real local validation。成功修复不是关闭条件；可信 terminal failure 也可接受。
+
+不得提前进入 2.7.6、Stage 3 或 TargetProfile Batch B。
 
 ## 5. 多 Vitis 版本的当前显式用法
 

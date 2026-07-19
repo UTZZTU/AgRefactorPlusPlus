@@ -596,26 +596,26 @@ Preflight → CSYNTH → Public CSIM → Hidden CSIM
 该里程碑证明七类 committed baseline 在本机 Vitis 2023.2 上完整通过，
 但不证明任意 HLS kernel 支持，也不包含故障归属矩阵或模型修复。
 
-## Stage 2.7.3 Stage 1 Hardening Batch A 已完成
+## Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI 已完成
 
 ```text
-feature=411d1e2b37ae6e620c0b759b98f7e8277cb851c4
-24/24 targeted
-816/816 full unittest
+feature=7e9aef66ba062b25465f6552f9bf346b8ed5eb86
+20/20 targeted
+836/836 full unittest
 ```
 
-完成稳定 named target profile、per-profile executable/settings、parser identity、
-resource schema、effective provenance 和无 secret 模板。仅保留 Vitis 2023.2
-默认 profile，没有增加 Batch B 矩阵。
+正式 `--repair-aware` 入口已构造既有 Candidate repair/local validation 链，
+一个 run 共享一个 budget 和一个 trace，并写完整 safe run/phase/repair
+artifact manifests。legacy 和 dry-run 保持显式独立。
 
 ```text
-/data/agrefactor_runs/stage2_7_3_stage1_hardening_batch_a_20260719_190809/acceptance
+/data/agrefactor_runs/stage2_7_4_repair_aware_cli_v2_20260719_203354/acceptance
 ```
 
-## 当前唯一主任务：Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI
+## 当前唯一主任务：Stage 2.7.5 Real Network-model Candidate Repair Smoke
 
-只把正式 TaskSpec/CLI/UnifiedRunner 接到已有 repair-aware local validation 链，
-共享一个 budget、一个 trace，并写完整安全 artifacts。暂不运行真实网络模型。
+只进行一次用户指定 OpenAI-compatible 模型的真实网络调用和真实本地验证，
+成功或可信 terminal failure 均可；不得伪造 usage、contract 或验证结果。
 
 
 # 八、后续路线
@@ -633,7 +633,7 @@ Stage 2.4.3.1 Candidate Prompt Policies（已完成）
 → Stage 2.7.1 Repair Protocol and Artifact Schema（已完成）
 → Stage 2.7.2 Minimal ModelFamilyProfile（已完成）
 → Stage 2.7.3 Stage 1 Hardening Batch A（已完成）
-→ Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI
+→ Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI（已完成）
 → Stage 2.7.5 Real Network-model Candidate Repair Smoke
 → Stage 2.7.6 Evidence-gated Contract/Parser Delta
 → Stage 2.7.7 Cross-stage Regression
@@ -751,11 +751,11 @@ Git history
 
 # 十一、下一对话第一项任务
 
-请先核对 Stage 2.7.3 feature/docs 提交和 acceptance，然后只实现
-Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI。不得运行真实网络模型，
-不得进入 Stage 3，不得重新扩展 TargetProfile Batch A。
+先核对 Stage 2.7.4 feature/docs、run bundle 和 acceptance，然后只执行
+Stage 2.7.5 Real Network-model Candidate Repair Smoke。必须由用户显式指定模型、
+base URL（如需）和 credential 环境变量；不得把 FakeProvider 当成真实模型。
 
 # 十二、一句话状态
 
-Stage 2.7.3 已完成自描述、可追溯且保持 Vitis 2023.2 兼容的 TargetProfile
-Batch A；当前只进入 2.7.4 Formal Repair-aware UnifiedRunner / CLI。
+Stage 2.7.4 已完成正式 repair-aware UnifiedRunner/CLI 和完整安全 artifact
+链；当前只进入 2.7.5 一次真实网络模型 Candidate Repair Smoke。

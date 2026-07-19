@@ -28,7 +28,7 @@ Testbench Reliability
 | 2.4 Shared Layered Prompt Builder | Complete | Shared contract and consumers, provider-neutral candidate adapter, strict response contract, bounded repair, and safe validation re-entry |
 | 2.5 Multi-type Kernel Smoke Matrix | Complete | Seven types, 7/7 real full chains, nine faults, 16 labels, unified evidence index |
 | 2.6 Closure-readiness Audit | Complete | 4 satisfied, 5 Stage 3 blockers, 4 deferred, 4 future/external; Stage 2.7 plan frozen |
-| 2.7 Cross-stage Validation and Repair Hardening | In progress | 2.7.1–2.7.3 complete; formal repair-aware CLI next |
+| 2.7 Cross-stage Validation and Repair Hardening | In progress | 2.7.1–2.7.4 complete; real network-model smoke next |
 | 2.8 Final documentation and closure | Not started | Final reproducibility synchronization and formal Stage 2 closure |
 
 Stage 2 is not closed until 2.5–2.8 are complete. Stage 2.4 is complete; no
@@ -512,6 +512,37 @@ additional Vitis versions: false
 ```
 
 Next: Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI.
+
+## 8.7 Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI
+
+Completed.
+
+```text
+7e9aef66ba062b25465f6552f9bf346b8ed5eb86
+feat: add formal repair-aware runner phase
+```
+
+The formal CLI now selects exactly one of dry-run, legacy, or repair-aware. The
+repair-aware phase delegates to the existing CandidateRepairValidationOrchestrator and
+LocalCandidateValidationHandlerFactory, reusing the exact UnifiedRunner BudgetManager
+and TraceRecorder.
+
+The run bundle contains versioned safe run, phase, and shared repair manifests. Hidden
+suite code is not serialized.
+
+```text
+20/20 targeted
+836/836 full unittest
+network model: not executed
+real tools: not executed
+optimizer: not executed
+```
+
+```text
+/data/agrefactor_runs/stage2_7_4_repair_aware_cli_v2_20260719_203354/acceptance
+```
+
+Next: Stage 2.7.5 Real Network-model Candidate Repair Smoke.
 
 ## 9. Stage 2 closure standard
 

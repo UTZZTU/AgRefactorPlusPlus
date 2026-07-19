@@ -720,7 +720,7 @@ CandidateResponseContract 新语法与 CSYNTH parser 新规则没有被 Stage 2.
 2.7.1 Repair Protocol and Artifact Schema（已完成）
 → 2.7.2 Minimal ModelFamilyProfile（已完成）
 → 2.7.3 Stage 1 Hardening Batch A（已完成）
-→ 2.7.4 Formal Repair-aware UnifiedRunner / CLI
+→ 2.7.4 Formal Repair-aware UnifiedRunner / CLI（已完成）
 → 2.7.5 Real Network-model Candidate Repair Smoke
 → 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation
 → 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
@@ -762,8 +762,30 @@ parser identity、resource-limit schema 和逐字段 provenance；保持 Vitis 2
 默认行为，不增加第二版本或设备矩阵。验收见
 [`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md)。
 
-Stage 2.7 保持有限收尾。当前只进入 2.7.4 Formal Repair-aware
-UnifiedRunner / CLI；不运行真实网络模型，也不扩展到 Batch B。
+Stage 2.7.4 功能提交：
+
+```text
+7e9aef66ba062b25465f6552f9bf346b8ed5eb86
+feat: add formal repair-aware runner phase
+```
+
+正式 CLI 现在通过显式 `--repair-aware` 构造：
+
+```text
+TaskSpec
+→ UnifiedRunner
+→ CandidateRepairPhase
+→ CandidateRepairValidationOrchestrator
+→ LocalCandidateValidationHandlerFactory
+→ versioned safe run/phase/repair artifacts
+```
+
+一个 UnifiedRunner run 只创建一个 BudgetManager 和一个 TraceRecorder；
+legacy、dry-run 与 repair-aware 三种模式显式互斥。验收见
+[`stage2_repair_aware_cli_acceptance.md`](stage2_repair_aware_cli_acceptance.md)。
+
+当前只进入 2.7.5 Real Network-model Candidate Repair Smoke；本阶段未运行
+真实网络模型、真实工具或 Optimizer。
 
 ### 6.9 Stage 2.8：最终文档、复现和关闭 — 待执行
 
@@ -787,7 +809,7 @@ Testbench Reliability 完成
 
 当前准确表述：
 
-> **Stage 2.1–2.6 与 2.7.1–2.7.3 已完成；下一步是 2.7.4 Formal Repair-aware UnifiedRunner / CLI。
+> **Stage 2.1–2.6 与 2.7.1–2.7.4 已完成；下一步是 2.7.5 Real Network-model Candidate Repair Smoke。
 > Stage 2 必须经过其余 2.7 补强和 2.8 最终同步后才能关闭。**
 
 详细文档：
