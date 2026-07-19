@@ -6,13 +6,13 @@
 
 - 当前开发分支：`stage2-general-feedback`
 - 当前功能代码基线：`a09915878aca4012a01b258d1f196ba0f18b4be5`
-- 最新确定性测试：**760/760 passed**
+- 最新确定性测试：**792/792 passed**
 - 最新 Stage 2.5 总结：**7 baseline、7/7 real full chains、9 faults、16 labels、23 scenario executions；跨三次独立验收累计 62/36/9/17/0，0 LLM**
 - 最新完整验证链验收仍为：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.7.1 Repair Protocol and Artifact Schema 已完成；下一步 Stage 2.7.2 Minimal ModelFamilyProfile**
+- 当前关键任务：**Stage 2.7.2 Minimal ModelFamilyProfile 已完成；下一步 Stage 2.7.3 Stage 1 Hardening Batch A**
 ## 2. 已完成
 
 ### Stage 0
@@ -660,6 +660,59 @@ real tool = false
 详见
 [`stage2_repair_protocol_acceptance.md`](stage2_repair_protocol_acceptance.md)。
 
+### Stage 2.7.2 Minimal ModelFamilyProfile
+
+已经完成。
+
+```text
+a9ec856540940f1767fe245a3c662468293fda5b
+feat: add minimal model family profiles
+```
+
+新增 vendor-neutral typed profile：
+
+```text
+ModelCapabilityTag
+ModelFamilyProfile
+```
+
+固定五个 capability tags：
+
+```text
+reasoning_model
+code_specialized
+strict_instruction
+thinking_tag_possible
+strict_completion
+```
+
+Profile 只控制安全默认参数、通用 Prompt instruction 和审计 manifest。
+Registry 仍由调用方给出的逻辑模型名解析模型，不自动选择或切换模型。
+
+```text
+parameter precedence:
+profile safe defaults
+< ModelSpec defaults
+< call overrides
+```
+
+Credential-like 参数被拒绝；Response Contract、Hidden 边界和工具链均未改变。
+
+```text
+32/32 targeted
+792/792 full unittest
+network model = false
+real tool = false
+automatic routing = false
+```
+
+```text
+/data/agrefactor_runs/stage2_7_2_model_family_profile_v3_20260719_183938/acceptance
+```
+
+详见
+[`stage2_model_family_profile_acceptance.md`](stage2_model_family_profile_acceptance.md)。
+
 ## 3. 未完成
 
 ### Stage 1 Hardening（不阻塞 Core 关闭）
@@ -691,7 +744,7 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 - B-01：CLI/UnifiedRunner 尚未正式构造 repair-aware validation；
 - B-02：已由 Stage 2.7.1 完成并验收；
-- B-03：尚无 typed minimal ModelFamilyProfile；
+- B-03：已由 Stage 2.7.2 完成并验收；
 - B-04：Stage 1 Hardening Batch A 尚未完成；
 - B-05：新 candidate-repair path 尚无真实网络模型闭环。
 
@@ -712,22 +765,22 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 下一步只做：
 
 ```text
-Stage 2.7.2 Minimal ModelFamilyProfile
+Stage 2.7.3 Stage 1 Hardening Batch A
 ```
 
-目标：
+范围冻结为：
 
 ```text
-A. typed capability tags
-B. safe default parameters
-C. family instruction rendering
-D. fixed user-selected model remains authoritative
-E. no automatic routing
-F. no vendor-name branches in core control flow
-G. 不接 CLI、不做 TargetProfile Batch A、不运行真实网络模型
+A. stable named target profiles
+B. per-profile executable/settings
+C. parser profile identity
+D. effective-value provenance
+E. basic resource-limit schema
+F. no-secret configuration template
+G. 保持当前 Vitis 2023.2 默认行为兼容
 ```
 
-2.7.2 只建立能力描述层，不改变 repair protocol、状态机或工具链。
+不得扩展到多 Vitis 版本、多器件矩阵、migration、CLI repair 接线或真实模型。
 
 ## 5. 多 Vitis 版本的当前显式用法
 

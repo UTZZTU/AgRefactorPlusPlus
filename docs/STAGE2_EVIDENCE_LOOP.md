@@ -28,7 +28,7 @@ Testbench Reliability
 | 2.4 Shared Layered Prompt Builder | Complete | Shared contract and consumers, provider-neutral candidate adapter, strict response contract, bounded repair, and safe validation re-entry |
 | 2.5 Multi-type Kernel Smoke Matrix | Complete | Seven types, 7/7 real full chains, nine faults, 16 labels, unified evidence index |
 | 2.6 Closure-readiness Audit | Complete | 4 satisfied, 5 Stage 3 blockers, 4 deferred, 4 future/external; Stage 2.7 plan frozen |
-| 2.7 Cross-stage Validation and Repair Hardening | In progress | 2.7.1 shared repair protocol/artifacts complete; 2.7.2 next |
+| 2.7 Cross-stage Validation and Repair Hardening | In progress | 2.7.1 protocol/artifacts and 2.7.2 ModelFamilyProfile complete; 2.7.3 next |
 | 2.8 Final documentation and closure | Not started | Final reproducibility synchronization and formal Stage 2 closure |
 
 Stage 2 is not closed until 2.5–2.8 are complete. Stage 2.4 is complete; no
@@ -443,6 +443,48 @@ real tools: not executed
 ```
 
 Next: Stage 2.7.2 Minimal ModelFamilyProfile.
+
+## 8.5 Stage 2.7.2 Minimal ModelFamilyProfile
+
+Completed.
+
+```text
+a9ec856540940f1767fe245a3c662468293fda5b
+feat: add minimal model family profiles
+```
+
+The fixed logical model selected by the caller is unchanged. Registry resolves
+a typed, vendor-neutral profile for that model and never performs automatic
+selection or fallback to another model.
+
+The profile controls only:
+
+```text
+capability tags
+safe default parameters
+generic family instruction
+non-sensitive manifest identity
+```
+
+Parameter precedence is profile defaults, then ModelSpec defaults, then explicit
+call overrides. Credential-like profile parameters are rejected.
+
+Candidate and Testbench prompts consume the same typed profile. Candidate and
+Testbench response contracts remain authoritative and are not relaxed.
+
+```text
+32/32 targeted
+792/792 full unittest
+network model: not executed
+real tools: not executed
+automatic routing: false
+```
+
+```text
+/data/agrefactor_runs/stage2_7_2_model_family_profile_v3_20260719_183938/acceptance
+```
+
+Next: Stage 2.7.3 Stage 1 Hardening Batch A.
 
 ## 9. Stage 2 closure standard
 

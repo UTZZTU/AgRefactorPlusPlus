@@ -98,7 +98,7 @@ future_or_external=4
 
 ```text
 2.7.1 Repair Protocol and Artifact Schema（已完成）
-→ 2.7.2 Minimal ModelFamilyProfile
+→ 2.7.2 Minimal ModelFamilyProfile（已完成）
 → 2.7.3 Stage 1 Hardening Batch A
 → 2.7.4 Formal Repair-aware UnifiedRunner / CLI
 → 2.7.5 Real Network-model Candidate Repair Smoke
@@ -140,9 +140,14 @@ Stage 2.7 是有限收尾阶段：只处理 B-01～B-05，以及 2.7.5 真实 sm
 验收见
 [`stage2_repair_protocol_acceptance.md`](stage2_repair_protocol_acceptance.md)。
 
-### 4.2 2.7.2 Minimal ModelFamilyProfile
+### 4.2 2.7.2 Minimal ModelFamilyProfile — 已完成
 
-只增加 capability tags 与安全默认参数：
+```text
+a9ec856540940f1767fe245a3c662468293fda5b
+feat: add minimal model family profiles
+```
+
+已增加 capability tags 与安全默认参数：
 
 ```text
 reasoning_model
@@ -152,7 +157,10 @@ thinking_tag_possible
 strict_completion
 ```
 
-不做自动模型路由，用户固定模型仍是默认策略。
+不做自动模型路由，用户固定模型仍是唯一权威选择。Profile 只影响安全默认
+参数、通用 Prompt instruction 和审计 manifest；Response Contract 不可绕过。
+验收见
+[`stage2_model_family_profile_acceptance.md`](stage2_model_family_profile_acceptance.md)。
 
 ### 4.3 2.7.3 Stage 1 Hardening Batch A
 
@@ -242,7 +250,7 @@ response、usage、contract、异常、预算、真实验证和 Hidden 边界必
 
 ## 8. 执行原则
 
-- 当前只进入 Stage 2.7.2 Minimal ModelFamilyProfile；
+- 当前只进入 Stage 2.7.3 Stage 1 Hardening Batch A；
 - 2.5 evidence summary 是 2.6 的主要入口；
 - 2.6 已完成分类；2.7.1 只实现 shared protocol/artifacts；
 - 有限矩阵不能外推为任意 HLS 或统计准确率；

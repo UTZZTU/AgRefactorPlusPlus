@@ -596,27 +596,27 @@ Preflight → CSYNTH → Public CSIM → Hidden CSIM
 该里程碑证明七类 committed baseline 在本机 Vitis 2023.2 上完整通过，
 但不证明任意 HLS kernel 支持，也不包含故障归属矩阵或模型修复。
 
-## Stage 2.7.1 Repair Protocol and Artifact Schema 已完成
+## Stage 2.7.2 Minimal ModelFamilyProfile 已完成
 
 ```text
-feature=ae1042fc77efe5c87a85a5f4954a7c0a951f2045
-33/33 targeted
-760/760 full unittest
+feature=a9ec856540940f1767fe245a3c662468293fda5b
+32/32 targeted
+792/792 full unittest
 ```
 
-Candidate/Testbench 共享 versioned envelope，但分别使用 typed candidate/testbench
-payload；legacy JSON 保持兼容；共享 artifacts 原子写入；executors 保持分离。未调用网络模型
-或真实工具。
+已完成 typed capability tags、safe defaults、固定模型 profile 解析和通用 family
+instruction rendering。不存在自动模型路由、厂商分支、Response Contract 放宽、
+网络模型调用或真实工具执行。
 
 ```text
-/data/agrefactor_runs/stage2_7_1_repair_protocol_artifacts_v5_20260719_172510/acceptance
+/data/agrefactor_runs/stage2_7_2_model_family_profile_v3_20260719_183938/acceptance
 ```
 
-## 当前唯一主任务：Stage 2.7.2 Minimal ModelFamilyProfile
+## 当前唯一主任务：Stage 2.7.3 Stage 1 Hardening Batch A
 
-只实现 typed capability tags、安全默认参数和 family instruction rendering。
-固定用户模型仍然权威；不做自动路由、不接 CLI、不做 TargetProfile Batch A、
-不运行真实网络模型。
+只完成 named target profile、per-profile executable/settings、parser profile
+identity、effective provenance、basic resource schema 和无 secret 配置模板。
+保持 Vitis 2023.2 默认兼容；不做 Batch B、CLI repair 接线或真实模型 smoke。
 
 # 八、后续路线
 
@@ -631,7 +631,7 @@ Stage 2.4.3.1 Candidate Prompt Policies（已完成）
 → Stage 2.5.4 Evidence Summary（已完成）
 → Stage 2.6 Closure-readiness Audit（已完成）
 → Stage 2.7.1 Repair Protocol and Artifact Schema（已完成）
-→ Stage 2.7.2 Minimal ModelFamilyProfile
+→ Stage 2.7.2 Minimal ModelFamilyProfile（已完成）
 → Stage 2.7.3 Stage 1 Hardening Batch A
 → Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI
 → Stage 2.7.5 Real Network-model Candidate Repair Smoke
@@ -754,22 +754,22 @@ Git history
 请先：
 
 1. 核对 branch、HEAD、remote、worktree；
-2. 确认 Stage 2.7.1 feature/docs 提交；
-3. 阅读 shared protocol、artifact writer 和 acceptance；
-4. 只实现 Minimal ModelFamilyProfile；
-5. 保持 fixed user-selected model authoritative；
-6. 不接 CLI、不运行网络模型、不做 Batch A；
+2. 确认 Stage 2.7.2 feature/docs 提交；
+3. 阅读 ModelFamilyProfile 与 acceptance；
+4. 只实现 Stage 1 Hardening Batch A；
+5. 保持 Vitis 2023.2 默认兼容；
+6. 不做 Batch B、CLI repair、网络模型或 optimizer；
 7. 运行 targeted、related、full regression；
-8. 完成后进入 2.7.3。
+8. 完成后进入 2.7.4。
 
 第一条回复应明确：
 
 ```text
-Stage 2.7.1 已完成 shared repair Protocol / artifact schema。
-下一步只做 Stage 2.7.2 Minimal ModelFamilyProfile。
+Stage 2.7.2 已完成 Minimal ModelFamilyProfile。
+下一步只做 Stage 2.7.3 Stage 1 Hardening Batch A。
 ```
 
 # 十二、一句话状态
 
-Stage 2.7.1 已完成兼容的共享 repair Protocol 与原子 artifact schema；
-当前只进入 2.7.2 Minimal ModelFamilyProfile，Stage 2 仍未关闭。
+Stage 2.7.2 已完成薄型、vendor-neutral、fixed-model-authoritative 的
+ModelFamilyProfile；当前只进入 2.7.3 Stage 1 Hardening Batch A。

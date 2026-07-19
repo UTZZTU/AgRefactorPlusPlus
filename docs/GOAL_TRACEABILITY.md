@@ -8,8 +8,8 @@
 |---|---|---|---|---|
 | TargetProfile | Stage 1/5 | default/override、legacy propagation、actual command、version gate、part、clock、flags、Tcl、effective profile、invocation evidence | named profiles、settings/executable 自包含、platform/resources/parser、provenance、多版本/多 kernel | [`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md) |
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
-| Model API Registry | Stage 1 | Registry、OpenAI-compatible Provider、DeepSeek 验证 | 更多 provider profiles、用户授权模型池 | 不改主流程即可接入授权模型 |
-| 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、bounded loop；2.7.1 已统一 prompt/response/usage artifact vocabulary | ModelFamilyProfile、正式 CLI、真实网络模型、2.8 | [`stage2_repair_protocol_acceptance.md`](stage2_repair_protocol_acceptance.md) |
+| Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、用户固定模型；2.7.2 typed ModelFamilyProfile 已完成 | 更多 provider 实例与 2.7.5 真实网络 smoke | [`stage2_model_family_profile_acceptance.md`](stage2_model_family_profile_acceptance.md) |
+| 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、2.7.1 artifacts、2.7.2 typed family profile/instruction | 正式 CLI、真实网络模型、2.8 | [`stage2_model_family_profile_acceptance.md`](stage2_model_family_profile_acceptance.md) |
 | 结构化反馈/状态机 | Stage 2 | Public/Hidden、router/state/coordinator、real handlers；B-02 shared repair protocol/artifacts 已完成 | B-01/B-03/B-04/B-05、2.7 regression、2.8 closure | [`stage2_repair_protocol_acceptance.md`](stage2_repair_protocol_acceptance.md) |
 | Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、7/7 real full chains、9 faults、16 labels、统一 index | 2.6 audit、2.7 hardening、2.8 closure | [`stage2_smoke_evidence_summary.md`](stage2_smoke_evidence_summary.md) |
 | 安全三级优化器 | Stage 3 | legacy `simple_iter` baseline | hypothesis、3 levels、checkpoint、rollback、cache、best_correct | 多 kernel 与 baseline 对照 |
@@ -57,11 +57,10 @@ Stage 1 Core 已关闭 ≠ Stage 1 Hardening 已完成，也 ≠ API 智能体�
 
 ## 5. 当前下一任务
 
-Stage 2.7.1 已完成共享 repair Protocol 与 artifact schema。下一步：
+Stage 2.7.1–2.7.2 已完成。下一步：
 
 ```text
-Stage 2.7.2 Minimal ModelFamilyProfile
-→ 2.7.3 Stage 1 Hardening Batch A
+Stage 2.7.3 Stage 1 Hardening Batch A
 → 2.7.4 Formal Repair-aware CLI
 → 2.7.5 Real Network-model Smoke
 → 2.7.6 Evidence-gated Delta
@@ -69,4 +68,5 @@ Stage 2.7.2 Minimal ModelFamilyProfile
 → 2.8 closure
 ```
 
-当前只实现 capability profile；不做自动模型路由、CLI、工具链或真实 API。
+当前只做 TargetProfile Batch A；不扩展多版本矩阵、CLI repair、模型 smoke、
+optimizer、Memory 或 migration。

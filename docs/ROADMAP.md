@@ -718,7 +718,7 @@ CandidateResponseContract 新语法与 CSYNTH parser 新规则没有被 Stage 2.
 
 ```text
 2.7.1 Repair Protocol and Artifact Schema（已完成）
-→ 2.7.2 Minimal ModelFamilyProfile
+→ 2.7.2 Minimal ModelFamilyProfile（已完成）
 → 2.7.3 Stage 1 Hardening Batch A
 → 2.7.4 Formal Repair-aware UnifiedRunner / CLI
 → 2.7.5 Real Network-model Candidate Repair Smoke
@@ -726,29 +726,32 @@ CandidateResponseContract 新语法与 CSYNTH parser 新规则没有被 Stage 2.
 → 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
 ```
 
-2.7.1 功能提交：
+2.7.1 已完成 shared repair envelope、typed payload 与原子 artifacts。
+
+2.7.2 功能提交：
 
 ```text
-ae1042fc77efe5c87a85a5f4954a7c0a951f2045
-feat: add shared repair protocol artifacts
+a9ec856540940f1767fe245a3c662468293fda5b
+feat: add minimal model family profiles
 ```
 
-已完成：
+2.7.2 已完成：
 
-- versioned shared repair vocabulary；
-- candidate/testbench 共享公共 attempt/run envelope；
-- CandidateRepairPayload / TestbenchRepairPayload 保留各自业务语义；
-- prompt manifest、normalized response、observed usage 与 typed payload；
-- stop reason、terminal status、agent-safe/operator-artifact 显式边界；
-- 原子 `repair_run.json`、attempt JSON 和 `artifact_manifest.json`；
-- Candidate orchestration 写出入口；
-- Testbench 保留 legacy JSON，同时自动写共享 artifacts；
-- executors 仍保持分离。
+- vendor-neutral `ModelCapabilityTag`；
+- typed `ModelFamilyProfile`；
+- 五个最小 capability tags；
+- 无 credential 的 safe default parameters；
+- `profile < ModelSpec < call override` 参数优先级；
+- Registry 对用户固定逻辑模型解析 profile；
+- Candidate/Testbench 共用 profile instruction 与安全 manifest；
+- legacy family string / family instruction 兼容；
+- Response Contract、模型选择和工具链均未放宽或改变。
 
 验收见
-[`stage2_repair_protocol_acceptance.md`](stage2_repair_protocol_acceptance.md)。
+[`stage2_model_family_profile_acceptance.md`](stage2_model_family_profile_acceptance.md)。
 
-Stage 2.7 保持有限收尾：只处理 B-01～B-05，以及 2.7.5 真实 smoke 直接证明的新 blocker；其余问题进入对应 Stage 或 backlog。当前只进入 2.7.2；不接 CLI、不运行真实网络模型，也不提前做 Batch A。
+Stage 2.7 保持有限收尾。当前只进入 2.7.3 Stage 1 Hardening Batch A；
+不接正式 CLI、不运行真实网络模型，也不扩展到 Batch B。
 
 ### 6.9 Stage 2.8：最终文档、复现和关闭 — 待执行
 
@@ -772,7 +775,7 @@ Testbench Reliability 完成
 
 当前准确表述：
 
-> **Stage 2.1–2.6 与 2.7.1 已完成；下一步是 2.7.2 Minimal ModelFamilyProfile。
+> **Stage 2.1–2.6 与 2.7.1–2.7.2 已完成；下一步是 2.7.3 Stage 1 Hardening Batch A。
 > Stage 2 必须经过其余 2.7 补强和 2.8 最终同步后才能关闭。**
 
 详细文档：
