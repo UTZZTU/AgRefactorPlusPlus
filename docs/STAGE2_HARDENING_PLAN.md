@@ -10,7 +10,7 @@
 Stage 2.5 Multi-type Kernel Smoke Matrix
 → Stage 2.6 Closure-readiness Audit
 → Stage 2.7 Cross-stage Validation and Repair Hardening
-→ Stage 2.8 Final Documentation and Stage 2 Closure
+→ Stage 2.8 Final Documentation and Stage 2 Closure（已完成）
 → Stage 3 Safe Three-Level Optimizer
 ```
 
@@ -103,7 +103,7 @@ future_or_external=4
 → 2.7.4 Formal Repair-aware UnifiedRunner / CLI（已完成）
 → 2.7.5 Real Network-model Candidate Repair Smoke（已完成）
 → 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation（已完成）
-→ 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
+→ 2.7.7 Cross-stage Regression and Stage 2.8 Handoff（已完成）
 ```
 
 ### 4.1 2.7.1 Repair Protocol and Artifact Schema — 已完成
@@ -305,27 +305,29 @@ CSYNTH/CSIM，也未关闭 Stage 2。验收见
    smoke、PROJECT_STATE 和 NEXT_CHAT_HANDOFF 同步；
 10. 文档继续区分 deterministic、FakeProvider、real model 和 real tools。
 
-### Stage 2.7.7 closure-check status
+### Stage 2.8 final closure status
 
 ```text
-satisfied=9/10
-pending=C-09 final documentation synchronization
-ready_for_stage2_8=true
-stage2_closed=false
-stage3_allowed=false
+satisfied=10/10
+pending=none
+related_tests=389/389
+full_unittest=836/836
+stage2_closed=true
+stage3_allowed=true
 ```
 
-条件 1～8 与 10 已经由 cross-stage evidence index 核对。条件 9 只能在
-Stage 2.8 同步 README、USAGE、REPRODUCTION_STATUS、CHANGELOG、ROADMAP、
-acceptance、smoke、PROJECT_STATE 和 NEXT_CHAT_HANDOFF 后完成。
+C-09 已通过 README、`docs/CHANGELOG.md`、USAGE、REPRODUCTION_STATUS、
+ROADMAP、Goal Traceability、Project State、Handoff、Evidence/Hardening 和
+formal closure acceptance 的同步完成。详细记录见
+[`stage2_closure_acceptance.md`](stage2_closure_acceptance.md)。
 
 ## 8. 执行原则
 
-- 当前只进入 Stage 2.8 Final Documentation and Stage 2 Closure；
+- Stage 2.8 已完成，当前进入 Stage 3 Safe Three-Level Optimizer；
 - 2.5 evidence summary 是 2.6 的主要入口；
 - 2.6 已完成分类；2.7.1 只实现 shared protocol/artifacts；
 - 有限矩阵不能外推为任意 HLS 或统计准确率；
 - 2.6 先审计，再冻结文件级任务；
 - 2.7 只修证据证明的阻塞项；
-- 2.8 才宣布 Stage 2 关闭；
-- Stage 2 未关闭前不进入 Stage 3。
+- 2.8 已完成并正式关闭 Stage 2；
+- Stage 3 现在允许开始，但必须从安全优化器契约和 correctness gate 开始。

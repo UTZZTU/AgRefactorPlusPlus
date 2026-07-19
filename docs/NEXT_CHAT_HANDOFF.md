@@ -596,35 +596,35 @@ Preflight → CSYNTH → Public CSIM → Hidden CSIM
 该里程碑证明七类 committed baseline 在本机 Vitis 2023.2 上完整通过，
 但不证明任意 HLS kernel 支持，也不包含故障归属矩阵或模型修复。
 
-## Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff 已完成
+## Stage 2.8 Final Documentation and Stage 2 Closure 已完成
 
 ```text
-code_baseline=5d9ca6b76162f30e6a33c76d933ebb0021955baf
+closure_validation_baseline=3f57371c8b58f53449064219c024ab63042a87d4
 related_tests=389/389
 full_unittest=836/836
 evidence_milestones=8/8
 blockers_satisfied=5/5
 artifact_manifests_validated=8
-closure_checklist=9/10
-pending=C-09
-ready_for_stage2_8=true
-stage2_closed=false
-stage3_allowed=false
+artifact_manifest_entries=34
+closure_checklist=10/10
+stage2_closed=true
+stage3_allowed=true
 ```
 
-2.5.4、2.6、2.7.1～2.7.6 的 acceptance、提交和执行类别已经统一索引。
-B-01～B-05 均有验收；deterministic、FakeProvider、real model 和 real tools
-继续显式区分。所有发现的 artifact manifests 已重新验证。
+C-09 final documentation synchronization 已完成。README、USAGE、
+REPRODUCTION_STATUS、docs/CHANGELOG、ROADMAP、Goal Traceability、
+Project State、Handoff、Stage 2 Evidence/Hardening 和 closure acceptance
+已经同步。
 
 ```text
-/data/agrefactor_runs/stage2_7_7_cross_stage_regression_handoff_20260719_224214/acceptance
+/data/agrefactor_runs/stage2_8_final_documentation_closure_v2_20260719_233430/acceptance
 ```
 
-## 当前唯一主任务：Stage 2.8 Final Documentation and Stage 2 Closure
+## 当前唯一主任务：Stage 3 Safe Three-Level Optimizer
 
-只执行最终文档同步、完整回归和正式 closure acceptance。不得增加新功能，
-不得再次调用网络模型，也不得在最终 commit/push/clean 之前宣布 Stage 2
-closed。
+先进行 Stage 3 contract/architecture freeze：CandidateRecord、候选树、
+checkpoint/rollback、best_correct/best_ppa、假设与证据、cheap gate、cache、
+三级控制器和预算耗尽语义。不得直接把 legacy simple_iter 包装成 Stage 3。
 
 # 八、后续路线
 
@@ -645,52 +645,37 @@ Stage 2.4.3.1 Candidate Prompt Policies（已完成）
 → Stage 2.7.5 Real Network-model Candidate Repair Smoke（已完成）
 → Stage 2.7.6 Evidence-gated Contract/Parser Delta（已完成）
 → Stage 2.7.7 Cross-stage Regression（已完成）
-→ Stage 2.8 Final Documentation and Stage 2 Closure
+→ Stage 2.8 Final Documentation and Stage 2 Closure（已完成）
 → Stage 3 Safe Three-Level Optimizer
 → Stage 4 Memory Applicability Gate
 → Stage 5 Target Version Extension / Migration
 → Stage 6 System Evaluation
 ```
 
-Stage 2 未关闭前，不进入 Stage 3。
+Stage 2 已关闭；Stage 3 允许开始，但尚未实现。
 
 # 九、新对话工作方式
 
 先阅读：
 
 ```text
-1. docs/NEXT_CHAT_HANDOFF.md（若已提交）
+1. docs/NEXT_CHAT_HANDOFF.md
 2. docs/PROJECT_STATE.md
 3. docs/ROADMAP.md
 4. docs/GOAL_TRACEABILITY.md
-5. docs/STAGE2_EVIDENCE_LOOP.md
-6. docs/STAGE2_HARDENING_PLAN.md
-7. docs/stage2_hardening_acceptance.md
-8. docs/STAGE2_CLOSURE_READINESS_AUDIT.md
-9. docs/stage2_closure_readiness_audit.json
-10. docs/stage2_smoke_evidence_summary.md
-11. docs/stage2_smoke_evidence_index.json
-12. docs/stage2_smoke_corpus_acceptance.md
-13. docs/stage2_smoke_pass_matrix_acceptance.md
-14. docs/stage2_smoke_fault_matrix_acceptance.md
-15. docs/stage2_acceptance.md
-16. docs/stage2_runtime_evidence_acceptance.md
-16. agrefactor/smoke/stage2_matrix.py
-17. agrefactor/smoke/stage2_corpus.py
-18. agrefactor/smoke/stage2_pass_matrix.py
-19. agrefactor/smoke/stage2_fault_matrix.py
-20. tests/test_stage2_smoke_matrix.py
-21. tests/test_stage2_smoke_pass_matrix.py
-22. tests/test_stage2_smoke_fault_matrix.py
-23. agrefactor/prompts/layered.py
-24. agrefactor/prompts/candidate_repair.py
-25. agrefactor/models/candidate_adapter.py
-26. agrefactor/repair/candidate_loop.py
-27. tests/test_candidate_repair_loop.py
-28. agrefactor/testing/model_testbench_repairer.py
-29. agrefactor/testing/testbench_repair.py
-30. Feedback、Budget、Validation 相关代码和 tests
-31. git log -15 --oneline
+5. docs/stage2_closure_acceptance.md
+6. docs/stage2_hardening_acceptance.md
+7. docs/STAGE2_EVIDENCE_LOOP.md
+8. docs/STAGE2_HARDENING_PLAN.md
+9. docs/STAGE3_SAFE_OPTIMIZER.md
+10. agrefactor/runtime/runner.py
+11. agrefactor/runtime/repair_phase.py
+12. agrefactor/repair/candidate_loop.py
+13. agrefactor/evaluation/
+14. agrefactor/runtime/budget.py
+15. opt/simple_iter/（仅作为 legacy baseline 阅读）
+16. tests/ 中 Candidate repair、Budget、Validation、UnifiedRunner 相关测试
+17. git log -15 --oneline
 ```
 
 事实由以下共同决定：
@@ -760,12 +745,12 @@ Git history
 
 # 十一、下一对话第一项任务
 
-核对 `stage2_hardening_acceptance.md`、2.7.7 cross-stage evidence index 和
-Stage 2.8 frozen checklist，然后只执行 Stage 2.8 Final Documentation and
-Stage 2 Closure。先完成全局文档同步和完整回归；最终 commit/push/clean
-成功前不得写出 `Stage 2 closed` 的最终状态。
+核对 `stage2_closure_acceptance.md`、当前 HEAD、836/836 和 clean worktree，
+然后只设计 Stage 3 的第一个 contract milestone。先冻结 CandidateRecord、
+CandidateTree、Checkpoint、best_correct/best_ppa、hypothesis/evidence、
+cheap gate、cache 和 budget-exhaustion 语义；不得直接写模型优化循环。
 
 # 十二、一句话状态
 
-Stage 2.7.7 已完成 5/5 blocker、8/8 evidence milestone、artifact manifest
-和 836/836 回归核对；当前只进入 Stage 2.8，Stage 2 仍未关闭。
+Stage 2 已以 10/10 closure checklist、836/836、5/5 blockers 和完整文档同步
+正式关闭；当前进入 Stage 3 Safe Three-Level Optimizer 的契约与架构冻结。

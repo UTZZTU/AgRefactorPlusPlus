@@ -712,7 +712,7 @@ CandidateResponseContract 新语法与 CSYNTH parser 新规则没有被 Stage 2.
 - [`STAGE2_CLOSURE_READINESS_AUDIT.md`](STAGE2_CLOSURE_READINESS_AUDIT.md)；
 - [`stage2_closure_readiness_audit.json`](stage2_closure_readiness_audit.json)。
 
-### 6.8 Stage 2.7：Cross-stage Validation and Repair Hardening — 进行中
+### 6.8 Stage 2.7：Cross-stage Validation and Repair Hardening — 已完成
 
 冻结顺序：
 
@@ -723,7 +723,7 @@ CandidateResponseContract 新语法与 CSYNTH parser 新规则没有被 Stage 2.
 → 2.7.4 Formal Repair-aware UnifiedRunner / CLI（已完成）
 → 2.7.5 Real Network-model Candidate Repair Smoke（已完成）
 → 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation（已完成）
-→ 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
+→ 2.7.7 Cross-stage Regression and Stage 2.8 Handoff（已完成）
 ```
 
 2.7.1 已完成 shared repair envelope、typed payload 与原子 artifacts。
@@ -830,14 +830,42 @@ combined_usage=55/29/9/17/0
 验收见
 [`stage2_evidence_gated_ground_truth_revalidation.md`](stage2_evidence_gated_ground_truth_revalidation.md)。
 
-当前只进入 2.7.7 Cross-stage Regression and Stage 2.8 Handoff；2.7.7
-不新增功能，也不关闭 Stage 2。
+Stage 2.7.7 已完成跨阶段回归和 Stage 2.8 frozen handoff：
 
-### 6.9 Stage 2.8：最终文档、复现和关闭 — 待执行
+```text
+related_tests=389/389
+full_unittest=836/836
+evidence_milestones=8/8
+blockers_satisfied=5/5
+artifact_manifests=8
+artifact_manifest_entries=34
+closure_checklist=9/10
+```
 
-只有 2.5、2.6 和 2.7 全部验收后，才同步 README、USAGE、
-REPRODUCTION_STATUS、CHANGELOG、ROADMAP、acceptance、smoke 和 handoff，
-并正式关闭 Stage 2。
+2.7.7 未新增功能、未调用网络模型、未执行新的正式 Vitis acceptance，并保持
+Stage 2 open 直到 2.8。
+
+### 6.9 Stage 2.8：最终文档、复现和关闭 — 已完成
+
+在代码基线 `3f57371c8b58f53449064219c024ab63042a87d4` 上完成 C-09 final documentation synchronization，
+同步 README、USAGE、REPRODUCTION_STATUS、CHANGELOG、ROADMAP、Goal
+Traceability、Project State、Handoff、Stage 2 Evidence/Hardening 文档和正式
+closure acceptance。
+
+```text
+related_tests=389/389
+full_unittest=836/836
+closure_checklist=10/10
+stage2_closed=true
+stage3_allowed=true
+new_network_model_calls=0
+new_vitis_csynth_calls=0
+new_vitis_csim_calls=0
+feature_code_changes=0
+```
+
+正式关闭记录：
+[`stage2_closure_acceptance.md`](stage2_closure_acceptance.md)。
 
 ### 6.10 Stage 2 完成标准
 
@@ -855,15 +883,17 @@ Testbench Reliability 完成
 
 当前准确表述：
 
-> **Stage 2.1–2.6 与 2.7.1–2.7.5 已完成；下一步是 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation。
-> Stage 2 必须经过其余 2.7 补强和 2.8 最终同步后才能关闭。**
+> **Stage 2.1–2.8 已完成，Stage 2 正式关闭。下一阶段是 Stage 3 Safe Three-Level Optimizer。
+> Stage 2 的有限证据不能外推为任意 kernel、任意 Vitis 版本、稳定模型修复成功率或已完成 PPA 优化。**
 
 详细文档：
 
 - [`STAGE2_EVIDENCE_LOOP.md`](STAGE2_EVIDENCE_LOOP.md)；
 - [`STAGE2_HARDENING_PLAN.md`](STAGE2_HARDENING_PLAN.md)；
 - [`stage2_acceptance.md`](stage2_acceptance.md)；
-- [`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)。
+- [`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)；
+- [`stage2_hardening_acceptance.md`](stage2_hardening_acceptance.md)；
+- [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md)。
 
 ## 7. Stage 3 — 安全的三级优化器
 

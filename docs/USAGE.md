@@ -376,37 +376,111 @@ csynth_invocation.json
 
 验收记录：[`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md)。
 
-### 当前统一 CLI 限制
+### 当前统一 CLI 边界
 
-- `--legacy` 正式支持 `mode=refactor`；
-- `optimize/full` 当前只可 dry-run；
-- LLM calls 仍是已知下界；
-- tool hard budget 尚未完成；
-- repair cost 缺失时 `cost_complete=false`，未知不能解释为零。
+- `--dry-run`、`--legacy`、`--repair-aware` 三种执行模式显式互斥；
+- `--legacy` 与 `--repair-aware` 当前正式支持 `mode=refactor`；
+- `optimize/full` 的真实 Stage 3 adapter 尚未实现；
+- compile、csynth、csim 和 aggregate tool hard budget 已接入共享 `BudgetManager`；
+- 网络模型由用户固定选择，credential 只从指定环境变量读取；
+- unknown token/cost 或 ownership 不能解释为零或自动归属。
 <!-- AGREFPP_UNIFIED_CLI:END -->
 
 
 <!-- AGREFPP_STAGE2_RUNTIME_API_STATUS:START -->
-## Stage 2 Runtime Validation API 状态
+## 正式 Repair-aware CLI（Stage 2 已关闭）
 
-当前已经存在并真实验收的 programmatic handlers：
+### TaskSpec 输入
 
-```text
-PreflightValidationStageHandler
-CsynthValidationStageHandler
-CsimValidationStageHandler(split=public)
-CsimValidationStageHandler(split=hidden)
-ValidationOrchestrator
+Repair-aware 模式要求原始代码、初始 candidate、Preflight testbench 和可选
+Public/Hidden suites。相对路径按 TaskSpec 文件所在目录解析。
+
+```json
+{
+  "task_id": "repair-example",
+  "kernel_path": "original.cpp",
+  "kernel_name": "top",
+  "mode": "refactor",
+  "testbench_path": "preflight.cpp",
+  "test_suites": [
+    {
+      "suite_id": "public-main",
+      "split": "public",
+      "testbench_path": "public.cpp"
+    },
+    {
+      "suite_id": "hidden-final",
+      "split": "hidden",
+      "testbench_path": "hidden.cpp"
+    }
+  ]
+}
 ```
 
-它们共享一个 `RunContext` 和物理工具预算，并完成过真实
-Preflight→CSYNTH→Public CSIM→Hidden CSIM 验收。
+### 执行
 
-当前**没有**发布一个新的稳定 CLI 命令来自动构造这条链，也没有从该
-orchestrator 执行模型 candidate repair。因此不要把内部 acceptance 脚本
-当成用户 API，也不要手工复制其中的测试 secret 或临时路径。
+```bash
+export DEEPSEEK_API_KEY=...
+export AGREFACTOR_VITIS_RUN=/data/Xilinx/Vitis/2023.2/bin/vitis-run
 
-当前用户入口仍以本文档前面的 `flow.new` 和 `agrefactor.cli` 已记录能力
-为准。正式 runtime validation CLI 将在其配置、输入来源和 repair policy
-稳定后再加入。
+python -m agrefactor.cli run task.json \
+  --repair-aware \
+  --model deepseek-v4-flash \
+  --model-family deepseek-v4 \
+  --base-url https://api.deepseek.com \
+  --api-key-env DEEPSEEK_API_KEY \
+  --candidate-file candidate.cpp \
+  --repair-work-dir "$WORK_DIR/repair-example" \
+  --artifact-dir "$RUN_DIR/repair-example" \
+  --max-candidate-repair-attempts 2 \
+  --csynth-timelimit 300 \
+  --csim-timelimit 60 \
+  --run-id repair-example
+```
+
+多个 Public suite 存在时，必须显式提供唯一 prompt-facing public testbench：
+
+```text
+--prompt-public-testbench-file public_prompt.cpp
+```
+
+Hidden suite 参与最终 operator-side 验证，但 Hidden source、diagnostic 和 sentinel
+不得进入模型 Prompt、普通 result 或 agent-safe trace。
+
+### 输出 artifacts
+
+```text
+artifact-dir/
+├── run_result.json
+├── run_artifact_manifest.json
+├── trace.jsonl
+└── refactor/
+    ├── orchestration_result.json
+    ├── final_candidate.cpp
+    ├── artifact_manifest.json
+    └── repair_artifacts/
+        ├── repair_run.json
+        ├── attempts/
+        └── artifact_manifest.json
+```
+
+一次 `UnifiedRunner` run 共享同一个 `BudgetManager` 和 `TraceRecorder`。
+Changed candidate 必须从 Preflight 重新进入验证。模型回复通过结构 contract
+不代表编译、链接、功能或综合必然通过；这些仍由真实工具验证。
+
+### 已验证边界
+
+```text
+Vitis HLS=2023.2
+formal CLI=true
+real network-model smoke=1
+multi-type baseline full chains=7/7
+fault/ownership/Hidden matrix=9/9
+independent labels=16/16
+full unittest=836/836
+```
+
+这些结果不代表任意 kernel、任意 Vitis 版本、自动模型路由或 Stage 3 优化已经完成。
+关闭证据见
+[`stage2_closure_acceptance.md`](stage2_closure_acceptance.md)。
 <!-- AGREFPP_STAGE2_RUNTIME_API_STATUS:END -->

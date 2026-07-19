@@ -45,14 +45,14 @@
 - 第一次真实综合成功，第二次在 version probe 前阻断，final usage 为 1/1。
 - 新增 `stage1_csynth_budget_acceptance.md`。
 
-### Stage 1 当前缺口
+### Stage 1 Hardening 状态
 
-- compile/public-test/csim/cosim 工具硬预算；
-- stable named profiles；
-- per-profile executable/settings；
-- platform/resources/parser；
-- per-field provenance；
-- 更多版本、器件和 kernel 验证。
+- compile、csynth、csim 与 aggregate tool hard budget 已完成；
+- Batch A 已完成 stable named profile、per-profile executable/settings、
+  parser identity、basic resources、per-field provenance 和无 secret 模板；
+- Batch B 的更多版本、器件、platform、版本特定 parser 与多 kernel 交叉验证
+  留到 Stage 5 前，不阻塞 Stage 3；
+- cosim 仍不属于当前活跃主路径。
 
 ### Stage 2 结构化证据闭环
 
@@ -84,6 +84,27 @@ Public/Hidden 与通用反馈：
 - 精确预算：`6 tool / 3 compile / 1 csynth / 2 csim`。
 - Hidden-only mismatch 终止且不泄漏；zero CSIM budget 在 compile 前阻断。
 - Stage 2 仍缺 Shared Layered Prompt Builder、多类型 smoke 与最终 closure。
+### Stage 2 最终关闭
+
+- 完成 Shared Layered Prompt Builder 与 Testbench/Candidate consumers。
+- 完成 provider-neutral CandidateModelAdapter、strict complete-replacement contract
+  和 bounded Candidate Repair Loop。
+- 完成正式 `--repair-aware` UnifiedRunner/CLI，写入 versioned run、phase 和
+  repair artifacts；legacy、dry-run 与 repair-aware 模式显式互斥。
+- 完成七类 baseline、`7/7` Vitis 2023.2 full chains、九场景 fault matrix 与
+  `16/16` independent ground-truth labels。
+- 完成 shared Repair Protocol/artifact schema、Minimal ModelFamilyProfile 和
+  Stage 1 Hardening Batch A。
+- 完成一次真实 DeepSeek network-model request/response/usage smoke；成功修复
+  不是关闭条件，可信 terminal result 被完整记录。
+- Evidence gate 未证明 CandidateResponseContract 或 CSYNTH parser 缺口，因此
+  未做猜测式代码扩张。
+- 完成 B-01～B-05 `5/5`、8 个跨阶段 evidence nodes、8 个 manifests 与
+  34 个 entries 的完整性审计。
+- 最终确定性回归 `836/836`，Stage 2 closure checklist `10/10`。
+- 新增 `stage2_hardening_acceptance.md` 与 `stage2_closure_acceptance.md`。
+- Stage 2 正式关闭；下一阶段为 Stage 3 Safe Three-Level Optimizer。
+
 <!-- AGREFPP_STAGE1_STAGE2_CHANGELOG:END -->
 
 ### 文档

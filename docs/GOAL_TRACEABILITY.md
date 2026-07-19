@@ -9,9 +9,9 @@
 | TargetProfile | Stage 1/2/5 | 2.7.3 已完成 committed named profile、executable/settings、parser identity、resource schema、per-field provenance；保持 Vitis 2023.2 默认兼容 | Batch B 多版本/设备/platform 与 Stage 5 source/target | [`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md) |
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
 | Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、用户固定模型、typed ModelFamilyProfile；2.7.5 一次真实 network-model response/usage 已验收 | 更多 provider 实例与后续统计验证 | [`stage2_real_network_candidate_repair_smoke.md`](stage2_real_network_candidate_repair_smoke.md) |
-| 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、typed family instruction、formal CLI；2.7.6 真实 proposal 复核未证明 contract 缺口，保持 strict contract 不变 | 2.7.7 regression、2.8 closure | [`stage2_evidence_gated_ground_truth_revalidation.md`](stage2_evidence_gated_ground_truth_revalidation.md) |
-| 结构化反馈/状态机 | Stage 2 | Public/Hidden、router/state/coordinator、real handlers；B-01～B-05 已完成，2.7.6 evidence gate 与 16/16 revalidation 已通过 | 2.7.7 regression、2.8 closure | [`stage2_evidence_gated_ground_truth_revalidation.md`](stage2_evidence_gated_ground_truth_revalidation.md) |
-| Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、9 faults、16 labels；2.7.6 在当前基线重跑 7/7 full chains 与 9/9 fault matrix | 2.7.7 regression、2.8 closure | [`stage2_evidence_gated_ground_truth_revalidation.md`](stage2_evidence_gated_ground_truth_revalidation.md) |
+| 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、typed family instruction、formal CLI 与 strict contract 已完成；真实 proposal evidence 未证明需要放宽 | Stage 2 已关闭；后续仅按新真实证据 harden | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
+| 结构化反馈/状态机 | Stage 2 | Public/Hidden、router/state/coordinator、real handlers、formal repair-aware CLI、5/5 blockers 与 final closure 已完成 | Stage 2 已关闭；Stage 3 复用 correctness gate | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
+| Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、7/7 full chains、9/9 faults、16/16 labels，并经 2.7.7/2.8 closure audit | 扩大版本、器件和 kernel 统计覆盖 | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
 | 安全三级优化器 | Stage 3 | legacy `simple_iter` baseline | hypothesis、3 levels、checkpoint、rollback、cache、best_correct | 多 kernel 与 baseline 对照 |
 | Memory Applicability Gate | Stage 4 | legacy RAG 正负 trial | schema、score、abstention、off/gated/always | 负迁移与弃权实验 |
 | BudgetManager | Stage 1/3 | token/cost、LLM/tool/compile/csynth/csim hard limits、pre-call block、real launch exact-once accounting、UnifiedRunner/legacy propagation；真实 DFS 工具链与 Stage 2 repair-aware validation 共享预算通过 | Stage 3 budget exhaustion 停止新候选并返回 best_correct | [`PROJECT_STATE.md`](PROJECT_STATE.md) |
@@ -20,7 +20,7 @@
 
 已经能够声明：
 
-> 在 commit `717fdef` 上，TargetProfile 本地执行核心已真实控制 Vitis 2023.2 的 executable、版本、part、clock、compile flags 和 Tcl，并留下可审计证据。
+> 在 Stage 1 Core 与 Stage 2.7.3 Batch A 验收中，TargetProfile 已真实控制 Vitis 2023.2 的 executable/settings、版本、part、clock、compile flags、Tcl、parser identity、resource schema 和 provenance。
 
 仍不能声明：
 
@@ -57,11 +57,12 @@ Stage 1 Core 已关闭 ≠ Stage 1 Hardening 已完成，也 ≠ API 智能体�
 
 ## 5. 当前下一任务
 
-Stage 2.7.1–2.7.6 已完成。下一步：
+Stage 2 已正式关闭。下一步：
 
 ```text
-Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
-→ 2.8 closure
+Stage 3 Safe Three-Level Optimizer
 ```
 
-2.7.7 只做回归和 handoff，不新增功能，也不进入 Stage 3。
+第一项工作应冻结 Stage 3 的 candidate/checkpoint/best_correct 数据契约和
+Structural → Bottleneck → Pragma 控制边界；不得把 legacy `simple_iter`
+直接包装成已完成的安全优化器。

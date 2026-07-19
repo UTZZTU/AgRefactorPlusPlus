@@ -1,15 +1,18 @@
 # AgRefactor++
 
-AgRefactor++ 是一个基于原始 AgRefactor 扩展的 **Vitis HLS 智能体实验仓库**。当前工作重点是稳定复现 HLS 代码重构、RAG 记忆、批量实验和反馈驱动优化流程，并在此基础上继续研究 Vitis HLS 版本感知迁移。
+AgRefactor++ 是一个基于原始 AgRefactor 扩展的 **目标环境条件化、模型可插拔、证据驱动、预算约束的 Vitis HLS 智能体实验仓库**。Stage 2 已完成结构化证据闭环、正式 repair-aware CLI、多类型真实工具 smoke、独立 ground truth、真实网络模型 smoke 与跨阶段 hardening。
 
-> 当前版本已经能够完成单 kernel 重构和基础优化实验；“跨版本迁移”仍是后续建设方向，不应理解为已经完整实现。
+> 当前 Stage 2 已正式关闭，下一阶段是 Stage 3 Safe Three-Level Optimizer。跨版本迁移、Memory Applicability Gate 和任意 kernel 支持仍是后续建设方向，不能由 Stage 2 的单主机、单 Vitis 版本和有限矩阵外推。
 
 ## 当前已验证能力
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
 | `flow.new` 单 kernel 重构 | 已验证 | DFS 最小样例可完成测试生成、问题识别、规划、重构、csim/csynth 与反馈修复 |
-| DeepSeek V4 Flash / Pro | 已验证 | 已完成 OpenAI-compatible 接入和端到端运行 |
+| DeepSeek V4 Flash / Pro | 已验证 | 已完成 OpenAI-compatible 接入；Stage 2.7.5 记录一次真实 repair-aware response/usage |
+| 正式 `--repair-aware` CLI | 已验证 | TaskSpec → UnifiedRunner → bounded Candidate repair → real local validation → versioned safe artifacts |
+| Public/Hidden 证据闭环 | 已验证 | Preflight、CSYNTH、Public CSIM、Hidden CSIM、共享预算、Hidden suppression |
+| Multi-type Smoke / Ground Truth | 已验证 | 7 类 baseline、7/7 full chains、9/9 fault matrix、16/16 独立标签 |
 | Token / Cost 汇总 | 已验证 | 运行结束后输出本次 agent 调用统计 |
 | RAG 检索与经验写入 | 已验证 | 可记录成功/失败 trial，并在后续运行中检索相关经验 |
 | `flow.parallel_kernel` | 部分验证 | 批量调度、隔离目录和结果汇总可运行；最终成功率仍会受 LLM 与测试代码质量影响 |
@@ -28,7 +31,8 @@ AgRefactor++ 是一个基于原始 AgRefactor 扩展的 **Vitis HLS 智能体实
 3. [`docs/STAGE0_BASELINE.md`](docs/STAGE0_BASELINE.md)；
 4. [`docs/STAGE1_INFRASTRUCTURE.md`](docs/STAGE1_INFRASTRUCTURE.md)；
 5. [`docs/STAGE2_EVIDENCE_LOOP.md`](docs/STAGE2_EVIDENCE_LOOP.md)；
-6. [`docs/stage2_acceptance.md`](docs/stage2_acceptance.md)。
+6. [`docs/stage2_closure_acceptance.md`](docs/stage2_closure_acceptance.md)；
+7. [`docs/STAGE3_SAFE_OPTIMIZER.md`](docs/STAGE3_SAFE_OPTIMIZER.md)。
 
 当前主线是：用户指定模型、Memory、目标 Vitis 与预算 → 证据驱动修复 → 安全三级优化 → Memory Gate → Stage 5 真实版本迁移 → 返回 best_correct 与完整轨迹。版本迁移不得删除。
 <!-- AGREFPP_PROJECT_CONTINUITY:END -->
@@ -51,39 +55,49 @@ AgRefactor++ 是一个基于原始 AgRefactor 扩展的 **Vitis HLS 智能体实
 - [`docs/STAGE5_VERSION_MIGRATION.md`](docs/STAGE5_VERSION_MIGRATION.md)：真实版本迁移；
 - [`docs/STAGE6_EVALUATION.md`](docs/STAGE6_EVALUATION.md)：系统评测与最终交付；
 - [`docs/stage2_acceptance.md`](docs/stage2_acceptance.md)：Testbench Reliability 验收。
-- [`docs/stage2_runtime_evidence_acceptance.md`](docs/stage2_runtime_evidence_acceptance.md)：Stage 2.3 真实验证链验收。
+- [`docs/stage2_runtime_evidence_acceptance.md`](docs/stage2_runtime_evidence_acceptance.md)：Stage 2.3 真实验证链验收；
+- [`docs/stage2_hardening_acceptance.md`](docs/stage2_hardening_acceptance.md)：Stage 2.7 cross-stage hardening/handoff；
+- [`docs/stage2_closure_acceptance.md`](docs/stage2_closure_acceptance.md)：Stage 2.8 正式关闭验收。
 <!-- AGREFPP_DETAILED_DOCS:END -->
 
 <!-- AGREFPP_STAGE2_RUNTIME_STATUS:START -->
-## Stage 2 结构化证据闭环当前状态
+## Stage 2 结构化证据闭环：已关闭
 
-Stage 2.1–2.3 核心已经完成：
+Stage 2 当前正式状态：
 
 ```text
-Public/Hidden suite evidence
-→ general feedback and state strategy
-→ real Preflight
-→ real Vitis CSYNTH
-→ real Public CSIM
-→ real Hidden CSIM
+Stage 2.1–2.7 completed
+Stage 2.8 final documentation/closure completed
+full unittest=836/836
+blockers=5/5
+ground_truth=16/16
+stage2_closed=true
+stage3_allowed=true
 ```
 
-最新验收：
+已验证的正式链包括：
 
-- `531/531` 确定性测试；
-- Vitis HLS `2023.2`；
-- shared exact usage：`6 tool / 3 compile / 1 csynth / 2 csim`；
-- Public pass + Hidden-only mismatch → terminal rejection；
-- Hidden diagnostic 不进入普通 result/trace；
-- zero CSIM budget 在 compile 前阻断；
-- commit `a354eb0`。
+```text
+TaskSpec
+→ CLI --repair-aware
+→ UnifiedRunner
+→ CandidateRepairPhase
+→ real Preflight / Vitis 2023.2 CSYNTH / Public CSIM / Hidden CSIM
+→ bounded Candidate repair
+→ versioned run / phase / repair artifacts
+```
 
-该里程碑没有调用模型 repair，也没有把 validation handlers 接入稳定
-CLI。整个 Stage 2 仍需 Shared Layered Prompt Builder、多类型 kernel smoke
-和最终 closure。
+证据类别保持分离：
 
-详细证据见
-[`docs/stage2_runtime_evidence_acceptance.md`](docs/stage2_runtime_evidence_acceptance.md)。
+- deterministic tests；
+- local FakeProvider/FakeValidator；
+- 一次真实 DeepSeek network-model response/usage；
+- 真实 g++ 与 Vitis 2023.2；
+- 手工独立标注的 16 条 ground-truth labels。
+
+Stage 2 的关闭不代表支持任意 kernel、任意 Vitis 版本、自动模型路由、形式化
+等价证明或 Stage 3 PPA 优化。完整关闭证据见
+[`docs/stage2_closure_acceptance.md`](docs/stage2_closure_acceptance.md)。
 <!-- AGREFPP_STAGE2_RUNTIME_STATUS:END -->
 
 <!-- AGREFPP_STAGE1_TARGET_PROFILE_STATUS:START -->
@@ -348,11 +362,11 @@ docs/                  环境、用法、验证状态与变更记录
 
 ## 当前研究方向
 
-- Vitis HLS 多版本知识库与版本约束建模
-- 编译、仿真和综合反馈驱动的自动修复
-- 可复用的 AST/Clang 迁移规则
-- 跨版本 HLS 迁移测试集与评价方法
-- 更稳定的测试代码生成和批量评测
+- Stage 3 假设驱动的 Structural → Bottleneck → Pragma 安全三级优化器
+- `best_correct`、checkpoint、rollback、cache 与候选树
+- Stage 4 Memory Applicability Gate 与 Retrieval Abstention
+- Stage 5 Vitis HLS 真实 source→target 版本迁移
+- 更大规模、多版本、多器件、多 kernel 的统计评测
 
 ## 项目来源与致谢
 

@@ -28,11 +28,11 @@ Testbench Reliability
 | 2.4 Shared Layered Prompt Builder | Complete | Shared contract and consumers, provider-neutral candidate adapter, strict response contract, bounded repair, and safe validation re-entry |
 | 2.5 Multi-type Kernel Smoke Matrix | Complete | Seven types, 7/7 real full chains, nine faults, 16 labels, unified evidence index |
 | 2.6 Closure-readiness Audit | Complete | 4 satisfied, 5 Stage 3 blockers, 4 deferred, 4 future/external; Stage 2.7 plan frozen |
-| 2.7 Cross-stage Validation and Repair Hardening | In progress | 2.7.1–2.7.6 complete; cross-stage regression and Stage 2.8 handoff next |
-| 2.8 Final documentation and closure | Not started | Final reproducibility synchronization and formal Stage 2 closure |
+| 2.7 Cross-stage Validation and Repair Hardening | Complete | 2.7.1–2.7.7 complete; 5/5 blockers, 8/8 evidence nodes, manifest audit and frozen handoff |
+| 2.8 Final documentation and closure | Complete | Global documentation synchronized, 836/836 regression, formal closure acceptance, Stage 2 closed |
 
-Stage 2 is not closed until 2.5–2.8 are complete. Stage 2.4 is complete; no
-separate 2.4.4 or 2.4.4.1 milestone is defined by the authoritative roadmap.
+Stage 2.1–2.8 are complete and Stage 2 is formally closed. No separate
+2.4.4 or 2.4.4.1 milestone is defined by the authoritative roadmap.
 
 ## 3. Early foundation: Testbench Reliability
 
@@ -643,6 +643,57 @@ Detailed record:
 
 Next: Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff.
 
+## 8.10 Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
+
+Completed.
+
+```text
+code_baseline=5d9ca6b76162f30e6a33c76d933ebb0021955baf
+related_tests=389/389
+full_unittest=836/836
+evidence_milestones=8/8
+blockers_satisfied=5/5
+artifact_manifests=8
+artifact_manifest_entries=34
+closure_checklist=9/10
+ready_for_stage2_8=true
+```
+
+The audit kept deterministic tests, FakeProvider, real network-model evidence, real
+local tools and independent ground truth distinct. It launched no new network call or
+formal Vitis acceptance and did not close Stage 2.
+
+Detailed record:
+[`stage2_hardening_acceptance.md`](stage2_hardening_acceptance.md).
+
+## 8.11 Stage 2.8 Final Documentation and Closure
+
+Completed on validation baseline:
+
+```text
+3f57371c8b58f53449064219c024ab63042a87d4
+```
+
+```text
+related_tests=389/389
+full_unittest=836/836
+closure_checklist=10/10
+stage2_closed=true
+stage3_allowed=true
+new_network_model_calls=0
+new_vitis_csynth_calls=0
+new_vitis_csim_calls=0
+feature_code_changes=0
+```
+
+All public status, usage, reproducibility, roadmap, traceability, handoff and Stage 2
+acceptance documents were synchronized. The formal closure record is
+[`stage2_closure_acceptance.md`](stage2_closure_acceptance.md).
+
+Stage 2 closure preserves all scope caveats: one Vitis version/host, finite kernel
+matrix, one real model smoke, no formal equivalence, no automatic routing, and no
+Stage 3 optimizer implementation.
+
 ## 9. Stage 2 closure standard
 
 Stage 2 closes only when:
@@ -657,3 +708,16 @@ Stage 2 closes only when:
 + 2.7 Evidence-backed hardening completed
 + 2.8 Final documentation and acceptance synchronized
 ```
+
+## 10. Final closure result
+
+```text
+closure_checklist=10/10
+full_unittest=836/836
+stage2_closed=true
+stage3_allowed=true
+next_stage=Stage 3 Safe Three-Level Optimizer
+```
+
+The closure is documentation and acceptance of the Stage 2 evidence loop. It does not
+upgrade finite evidence into arbitrary-kernel or arbitrary-version support.

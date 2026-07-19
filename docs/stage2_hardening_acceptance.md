@@ -104,7 +104,7 @@ Stage 2.8 must synchronize:
 
 ```text
 README.md
-CHANGELOG.md
+docs/CHANGELOG.md
 docs/USAGE.md
 docs/REPRODUCTION_STATUS.md
 docs/ROADMAP.md
@@ -130,6 +130,27 @@ stage3_allowed=false
 Stage 2 may be declared closed only after the Stage 2.8 documentation, regression,
 commit, push, local=remote and clean-worktree checks all pass.
 
+## Stage 2.8 closure result
+
+The frozen handoff was consumed by Stage 2.8.
+
+```text
+closure_validation_baseline=3f57371c8b58f53449064219c024ab63042a87d4
+related_tests=389/389
+full_unittest=836/836
+closure_checklist=10/10
+pending=none
+stage2_closed=true
+stage3_allowed=true
+```
+
+C-09 was satisfied by synchronizing all required public status and reproducibility
+documents and creating
+[`stage2_closure_acceptance.md`](stage2_closure_acceptance.md).
+
+Stage 2.7.7's historical `stage2_closed=false` remains evidence of the pre-closure
+handoff boundary; the authoritative current state is now the Stage 2.8 closure record.
+
 ## Artifacts
 
 ```text
@@ -149,5 +170,5 @@ full_unittest.log
 Next:
 
 ```text
-Stage 2.8 Final Documentation and Stage 2 Closure
+Stage 3 Safe Three-Level Optimizer
 ```

@@ -129,25 +129,43 @@ python -m opt.simple_iter.main
 
 已完成一次 DeepSeek V4 Pro 的 8 轮优化实验，并成功生成 `best_design` 记录。该结果证明优化闭环可以运行，但单次实验不能作为普适的 PPA 提升结论。
 
-## 7. Public/Hidden 评测与测试强度
+## 7. Public/Hidden 评测、正式 Repair-aware CLI 与 Stage 2：已验证
 
-AgRefactor++ 新的 Stage 2 runtime path 已经真实验证：
+Stage 2 已正式关闭。当前已真实或确定性验收：
 
 ```text
-Preflight
+TaskSpec
+→ CLI --repair-aware
+→ UnifiedRunner
+→ CandidateRepairPhase
+→ Preflight
 → CSYNTH
 → Public CSIM
 → Hidden CSIM
+→ bounded repair / trusted terminal result
 ```
 
-已验证 Public/Hidden 角色、Hidden 信息抑制、多 suite 执行策略和共享物理
-预算。该路径当前是 programmatic runtime integration，尚未由稳定 CLI
-构造，也尚未完成多类型 kernel smoke。
+核心证据：
 
-Legacy `flow.new`/`flow.parallel_kernel` 中的 coverage loop、自动 hidden TB
-生成和缓存复用参数仍未纳入稳定主验证基线。不要把“新的 split-aware
-runtime handler 已验证”误写成“legacy coverage/hidden generation 全部已
-验证”。
+- Public/Hidden suite role、agent-safe/operator-full evidence 和 Hidden suppression；
+- 通用 feedback schema、router、state machine、coordinator 与真实 handlers；
+- Shared Layered Prompt Builder、Candidate/Testbench consumers 和 strict contract；
+- 正式 repair-aware CLI、共享 budget/trace 和 versioned safe artifacts；
+- 七类 baseline 的 `7/7` Vitis 2023.2 full chains；
+- 九场景 fault/ownership/Hidden matrix 的 `9/9` matches；
+- `16/16` 独立 ground-truth labels；
+- 一次真实 DeepSeek network-model response/usage smoke；
+- Stage 2.6 五个 blocker 已 `5/5` 完成；
+- 最终确定性回归 `836/836`。
+
+真实网络模型 smoke 的 proposal 通过 response contract，但在第二次真实 Preflight
+以可信 `validation_terminal` 结束。该结果证明真实 request/response/usage、
+strict contract、bounded terminal state 和 artifacts 可审计，不证明模型能够
+稳定修复任意 kernel。
+
+Legacy `flow.new` 的 coverage loop、自动 Hidden TB 生成和缓存复用参数仍未成为
+Stage 2 正式主验证基线。Stage 2 关闭也不代表 Stage 3 optimizer、Memory Gate
+或跨版本迁移已完成。
 
 ## 8. HeteroRefactor：暂停
 
@@ -175,95 +193,69 @@ HeteroRefactor 属于可选外部工具，不是当前 AgRefactor++ 主流程的
 - 固定 benchmark 上的正确率、成功率、延迟和资源指标。
 
 <!-- AGREFPP_STAGE1_STAGE2_STATUS:START -->
-## AgRefactor++ Stage 1/2 补充状态
+## AgRefactor++ Stage 1/2 最终补充状态
 
-### Stage 1 共享架构
+### Stage 1 Core：已关闭
 
-TaskSpec、TargetProfile、Model Registry、OpenAI-compatible Provider、UnifiedRunner、CLI、Budget core、Trace、Legacy Adapter 与已知 usage 合并已经实现。
+共享 TaskSpec、TargetProfile、Model Registry、Provider、Budget、Trace、
+UnifiedRunner、CLI 和真实 DFS Preflight→Vitis 2023.2→CSIM 链已经验收。
 
-### Stage 1 TargetProfile 本地执行核心：已验证
+### Stage 1 Hardening Batch A：已完成
 
-在 commit `717fdef` 上完成：
-
-- default profile 与 partial override；
-- part/device；
-- 4.0 ns clock；
-- compile flag semantic guard；
-- target-aware Tcl；
-- actual `/data/Xilinx/Vitis/2023.2/bin/vitis-run`；
-- requested/actual version `2023.2` matched；
-- mismatch-before-csynth；
-- effective profile 与 invocation evidence；
-- 153 个确定性测试；
-- 真实 Vitis csynth。
-
-真实运行：
+已完成：
 
 ```text
-/data/agrefactor_runs/stage1_target_profile_real_vitis_20260715_141118
+committed named profile
+per-profile executable/settings
+parser identity
+basic resource limits
+per-field provenance
+secret-free templates
 ```
 
-结果：
+Batch B 的更多 Vitis 版本、器件、platform 和版本特定 parser 留到 Stage 5 前，
+不阻塞 Stage 3。
+
+### Stage 2：已关闭
 
 ```text
-REAL_VITIS_SMOKE_PASSED=1
-Target device=xcu200-fsgd2104-2-e
-Target clock=4.00 ns
-Estimated clock=2.920 ns
-Estimated Fmax=342.47 MHz
+2.1 Public/Hidden roles and evidence
+2.2 General feedback/state strategy
+2.3 Runtime evidence-loop integration
+2.4 Shared Layered Prompt Builder and repair consumers
+2.5 Multi-type smoke and independent ground truth
+2.6 Closure-readiness Audit
+2.7 Evidence-backed hardening
+2.8 Final documentation and closure
 ```
 
-多版本机器当前通过 `target.toolchain_version` 加 `AGREFACTOR_VITIS_RUN` 显式指定；只有 2023.2 已完成真实验收。
-
-### Stage 1 尚未关闭
-
-工具硬预算尚未完成：
+最终状态：
 
 ```text
-compile/public-test/csim/csynth/cosim
-pre-call hard check
-post-call accounting
-safe exhaustion
+full unittest=836/836
+blockers=5/5
+evidence milestones=8/8 before closure
+artifact manifests=8
+manifest entries=34
+ground truth=16/16
+stage2_closed=true
+stage3_allowed=true
 ```
 
-### Stage 2 结构化证据闭环
+### 仍不能宣称
 
-早期 Testbench Reliability 已验证：
-
-- preflight、ownership、private-global gate、ABI/linkage；
-- bounded repair、artifact、统一 usage；
-- 一个真实状态型 kernel 的 DeepSeek + Vitis E2E。
-
-后续 Stage 2.1–2.3 已验证：
-
-- Public/Hidden suite evidence、redaction、trace 与 composition；
-- 通用 feedback parser/adapters/views/composers；
-- deterministic router、state machine 与 coordinator；
-- real Preflight/CSYNTH/Public-CSIM/Hidden-CSIM handlers；
-- 531 个确定性测试；
-- Vitis 2023.2 真实全链；
-- exact physical budget `6/3/1/2`；
-- Hidden-only mismatch suppression；
-- zero-CSIM-budget pre-compile block。
-
-运行：
-
-```text
-/data/agrefactor_runs/
-stage2_real_csim_handler_resume5_20260717_184240
-```
-### 尚不能宣称
-
-- 153 个测试不等于 153 个真实 kernel；
-- 一次 2023.2 smoke 不等于支持任意版本；
-- general feedback/state strategy 与 Stage 2 runtime handlers 已完成核心验收；Shared Prompt Builder、多类型 smoke、安全优化器、Memory Gate 与真实版本迁移仍未完成。
+- 836 个测试不等于 836 个真实 kernel；
+- 单主机 Vitis 2023.2 不等于任意版本或器件支持；
+- 一次真实模型 smoke 不等于稳定修复成功率；
+- `opt.simple_iter` baseline 不等于 Stage 3 安全三级优化器；
+- legacy RAG 不等于 Stage 4 Memory Applicability Gate；
+- TaskSpec version 字段不等于 Stage 5 真实版本迁移。
 
 详见：
 
-- [`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md)
+- [`stage2_hardening_acceptance.md`](stage2_hardening_acceptance.md)
+- [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md)
 - [`STAGE2_EVIDENCE_LOOP.md`](STAGE2_EVIDENCE_LOOP.md)
-- [`stage2_acceptance.md`](stage2_acceptance.md)
-- [`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
 <!-- AGREFPP_STAGE1_STAGE2_STATUS:END -->
 
 ## 文档原则
