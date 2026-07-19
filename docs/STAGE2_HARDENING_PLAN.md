@@ -232,9 +232,24 @@ Preflight 捕获。没有 CSYNTH evidence，因此 parser 未修改。随后重�
 baseline full chains 与 9/9 fault matrix。验收见
 [`stage2_evidence_gated_ground_truth_revalidation.md`](stage2_evidence_gated_ground_truth_revalidation.md)。
 
-### 4.7 2.7.7 Cross-stage Regression
+### 4.7 2.7.7 Cross-stage Regression — 已完成
 
-完成 blocker 验收、文档记录和 Stage 2.8 handoff，不在此阶段关闭 Stage 2。
+```text
+code_baseline=5d9ca6b76162f30e6a33c76d933ebb0021955baf
+related_tests=389/389
+full_unittest=836/836
+evidence_milestones=8/8
+blockers_satisfied=5/5
+artifact_manifests_validated=8
+closure_checklist=9/10
+ready_for_stage2_8=true
+stage2_closed=false
+```
+
+已完成 blocker 验收、acceptance/commit/evidence 索引、manifest/hash 核对和
+Stage 2.8 frozen handoff。2.7.7 未新增功能、未调用网络模型、未重新执行 Vitis
+CSYNTH/CSIM，也未关闭 Stage 2。验收见
+[`stage2_hardening_acceptance.md`](stage2_hardening_acceptance.md)。
 
 ## 5. Stage 1 Hardening Batch B
 
@@ -290,9 +305,23 @@ baseline full chains 与 9/9 fault matrix。验收见
    smoke、PROJECT_STATE 和 NEXT_CHAT_HANDOFF 同步；
 10. 文档继续区分 deterministic、FakeProvider、real model 和 real tools。
 
+### Stage 2.7.7 closure-check status
+
+```text
+satisfied=9/10
+pending=C-09 final documentation synchronization
+ready_for_stage2_8=true
+stage2_closed=false
+stage3_allowed=false
+```
+
+条件 1～8 与 10 已经由 cross-stage evidence index 核对。条件 9 只能在
+Stage 2.8 同步 README、USAGE、REPRODUCTION_STATUS、CHANGELOG、ROADMAP、
+acceptance、smoke、PROJECT_STATE 和 NEXT_CHAT_HANDOFF 后完成。
+
 ## 8. 执行原则
 
-- 当前只进入 Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff；
+- 当前只进入 Stage 2.8 Final Documentation and Stage 2 Closure；
 - 2.5 evidence summary 是 2.6 的主要入口；
 - 2.6 已完成分类；2.7.1 只实现 shared protocol/artifacts；
 - 有限矩阵不能外推为任意 HLS 或统计准确率；

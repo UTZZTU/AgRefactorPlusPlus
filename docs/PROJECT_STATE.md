@@ -5,14 +5,15 @@
 ## 1. 当前快照
 
 - 当前开发分支：`stage2-general-feedback`
-- 当前功能代码基线：`a09915878aca4012a01b258d1f196ba0f18b4be5`
+- 当前功能代码基线：`7e9aef66ba062b25465f6552f9bf346b8ed5eb86`
+- 当前 Stage 2.7 evidence/docs 基线：`5d9ca6b76162f30e6a33c76d933ebb0021955baf`
 - 最新确定性测试：**836/836 passed**
 - 最新 Stage 2.5 总结：**7 baseline、7/7 real full chains、9 faults、16 labels、23 scenario executions；跨三次独立验收累计 62/36/9/17/0，0 LLM**
 - 最新完整验证链验收仍为：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation 已完成；下一步 Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff**
+- 当前关键任务：**Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff 已完成；下一步 Stage 2.8 Final Documentation and Stage 2 Closure**
 ## 2. 已完成
 
 ### Stage 0
@@ -856,6 +857,49 @@ optimizer = false
 详见
 [`stage2_evidence_gated_ground_truth_revalidation.md`](stage2_evidence_gated_ground_truth_revalidation.md)。
 
+### Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
+
+已经完成。
+
+```text
+code_baseline=5d9ca6b76162f30e6a33c76d933ebb0021955baf
+related_tests=389/389
+full_unittest=836/836
+evidence_milestones=8/8
+blockers_satisfied=5/5
+artifact_manifests_validated=8
+artifact_manifest_entries=34
+execution_classes_distinct=true
+closure_checklist=9/10
+pending=C-09 final documentation synchronization
+ready_for_stage2_8=true
+stage2_closed=false
+stage3_allowed=false
+```
+
+本阶段核对了 2.5.4、2.6 和 2.7.1～2.7.6 的本地 acceptance，
+将 B-01～B-05 映射到对应提交、文档、证据目录和执行类别，并验证所有发现的
+versioned artifact manifest 的路径、SHA-256 与字节数。
+
+```text
+new network-model calls = 0
+new Vitis CSYNTH calls = 0
+new Vitis CSIM calls = 0
+optimizer executed = false
+feature commit created = false
+```
+
+2.7.7 只冻结 Stage 2.8 handoff，不关闭 Stage 2。唯一未完成的 closure
+condition 是 C-09：README、USAGE、REPRODUCTION_STATUS、CHANGELOG、
+ROADMAP 和其余状态文档的最终同步。
+
+```text
+/data/agrefactor_runs/stage2_7_7_cross_stage_regression_handoff_20260719_224214/acceptance
+```
+
+详见
+[`stage2_hardening_acceptance.md`](stage2_hardening_acceptance.md)。
+
 ## 3. 未完成
 
 ### Stage 1 Hardening（不阻塞 Core 关闭）
@@ -880,10 +924,11 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 
 ### Stage 2 剩余项
 
-1. Stage 2.7 Cross-stage Validation and Repair Hardening；
-2. Stage 2.8 Final Documentation and Stage 2 Closure。
+1. Stage 2.8 Final Documentation and Stage 2 Closure。
 
-当前五个 blocker：
+Stage 2.7 已完成，但 Stage 2 当前仍为 open；Stage 3 仍不允许开始。
+
+Stage 2.6 五个 blocker（5/5 已完成验收）：
 
 - B-01：已由 Stage 2.7.4 完成并验收；
 - B-02：已由 Stage 2.7.1 完成并验收；
@@ -908,11 +953,17 @@ Stage 3 仍需实现预算耗尽时停止新候选并返回 `best_correct`。
 下一步只做：
 
 ```text
-Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
+Stage 2.8 Final Documentation and Stage 2 Closure
 ```
 
-执行最终跨阶段回归、blocker/acceptance 索引核对和 2.8 handoff。2.7.7
-不新增功能、不重新调用网络模型、不进入 Stage 3，也不正式关闭 Stage 2。
+2.8 必须重新核对 2.7.7 evidence index 和 frozen closure checklist，完成
+README、CHANGELOG、USAGE、REPRODUCTION_STATUS、ROADMAP、GOAL_TRACEABILITY、
+PROJECT_STATE、NEXT_CHAT_HANDOFF、STAGE2_EVIDENCE_LOOP 和
+STAGE2_HARDENING_PLAN 的最终同步，运行完整回归，并新增正式 closure
+acceptance。
+
+只有 2.8 的文档、测试、commit、push、local=remote 和 clean 全部通过后，
+才能声明 Stage 2 closed 并进入 Stage 3。2.8 不新增 Stage 2 功能。
 
 ## 5. 多 Vitis 版本的当前显式用法
 

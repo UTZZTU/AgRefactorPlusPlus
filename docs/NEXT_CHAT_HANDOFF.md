@@ -596,33 +596,35 @@ Preflight → CSYNTH → Public CSIM → Hidden CSIM
 该里程碑证明七类 committed baseline 在本机 Vitis 2023.2 上完整通过，
 但不证明任意 HLS kernel 支持，也不包含故障归属矩阵或模型修复。
 
-## Stage 2.7.6 Evidence-gated Contract/Parser Delta + Ground-truth Revalidation 已完成
+## Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff 已完成
 
 ```text
-code_baseline=b1a787ab0e41b382fec25973968e2b162a500f85
-replayed_preflight_failure_kind=link_error
-replayed_preflight_failure_owner=unknown
-contract_delta_required=false
-parser_delta_required=false
-code_delta_applied=false
-ground_truth_labels=16/16
-baseline_full_chains=7/7
-fault_matrix=9/9
-combined_usage=55/29/9/17/0
+code_baseline=5d9ca6b76162f30e6a33c76d933ebb0021955baf
+related_tests=389/389
+full_unittest=836/836
+evidence_milestones=8/8
+blockers_satisfied=5/5
+artifact_manifests_validated=8
+closure_checklist=9/10
+pending=C-09
+ready_for_stage2_8=true
+stage2_closed=false
+stage3_allowed=false
 ```
 
-真实 proposal 的结构 contract 复核通过；失败属于真实 Preflight 验证域。
-2.7.5 没有 CSYNTH evidence，所以 parser 保持不变。16 条独立标签已在当前
-基线上重新验证。
+2.5.4、2.6、2.7.1～2.7.6 的 acceptance、提交和执行类别已经统一索引。
+B-01～B-05 均有验收；deterministic、FakeProvider、real model 和 real tools
+继续显式区分。所有发现的 artifact manifests 已重新验证。
 
 ```text
-/data/agrefactor_runs/stage2_7_6_evidence_gated_ground_truth_revalidation_20260719_215820/acceptance
+/data/agrefactor_runs/stage2_7_7_cross_stage_regression_handoff_20260719_224214/acceptance
 ```
 
-## 当前唯一主任务：Stage 2.7.7 Cross-stage Regression and Stage 2.8 Handoff
+## 当前唯一主任务：Stage 2.8 Final Documentation and Stage 2 Closure
 
-只做最终跨阶段回归、evidence/index 一致性和 2.8 handoff，不新增功能，不关闭
-Stage 2。
+只执行最终文档同步、完整回归和正式 closure acceptance。不得增加新功能，
+不得再次调用网络模型，也不得在最终 commit/push/clean 之前宣布 Stage 2
+closed。
 
 # 八、后续路线
 
@@ -642,7 +644,7 @@ Stage 2.4.3.1 Candidate Prompt Policies（已完成）
 → Stage 2.7.4 Formal Repair-aware UnifiedRunner / CLI（已完成）
 → Stage 2.7.5 Real Network-model Candidate Repair Smoke（已完成）
 → Stage 2.7.6 Evidence-gated Contract/Parser Delta（已完成）
-→ Stage 2.7.7 Cross-stage Regression
+→ Stage 2.7.7 Cross-stage Regression（已完成）
 → Stage 2.8 Final Documentation and Stage 2 Closure
 → Stage 3 Safe Three-Level Optimizer
 → Stage 4 Memory Applicability Gate
@@ -663,15 +665,16 @@ Stage 2 未关闭前，不进入 Stage 3。
 4. docs/GOAL_TRACEABILITY.md
 5. docs/STAGE2_EVIDENCE_LOOP.md
 6. docs/STAGE2_HARDENING_PLAN.md
-7. docs/STAGE2_CLOSURE_READINESS_AUDIT.md
-8. docs/stage2_closure_readiness_audit.json
-9. docs/stage2_smoke_evidence_summary.md
-10. docs/stage2_smoke_evidence_index.json
-11. docs/stage2_smoke_corpus_acceptance.md
-12. docs/stage2_smoke_pass_matrix_acceptance.md
-13. docs/stage2_smoke_fault_matrix_acceptance.md
-14. docs/stage2_acceptance.md
-15. docs/stage2_runtime_evidence_acceptance.md
+7. docs/stage2_hardening_acceptance.md
+8. docs/STAGE2_CLOSURE_READINESS_AUDIT.md
+9. docs/stage2_closure_readiness_audit.json
+10. docs/stage2_smoke_evidence_summary.md
+11. docs/stage2_smoke_evidence_index.json
+12. docs/stage2_smoke_corpus_acceptance.md
+13. docs/stage2_smoke_pass_matrix_acceptance.md
+14. docs/stage2_smoke_fault_matrix_acceptance.md
+15. docs/stage2_acceptance.md
+16. docs/stage2_runtime_evidence_acceptance.md
 16. agrefactor/smoke/stage2_matrix.py
 17. agrefactor/smoke/stage2_corpus.py
 18. agrefactor/smoke/stage2_pass_matrix.py
@@ -757,11 +760,12 @@ Git history
 
 # 十一、下一对话第一项任务
 
-核对 2.7.6 evidence gate、16-label revalidation、Vitis/Hidden/budget artifacts，
-然后只执行 2.7.7 Cross-stage Regression and Stage 2.8 Handoff。不得在
-2.7.7 增加新功能或宣布 Stage 2 closed。
+核对 `stage2_hardening_acceptance.md`、2.7.7 cross-stage evidence index 和
+Stage 2.8 frozen checklist，然后只执行 Stage 2.8 Final Documentation and
+Stage 2 Closure。先完成全局文档同步和完整回归；最终 commit/push/clean
+成功前不得写出 `Stage 2 closed` 的最终状态。
 
 # 十二、一句话状态
 
-Stage 2.7.6 已以无代码 delta 的结论完成真实证据审查和 16/16 ground-truth
-重验证；当前只进入 2.7.7 最终跨阶段回归与 2.8 handoff。
+Stage 2.7.7 已完成 5/5 blocker、8/8 evidence milestone、artifact manifest
+和 836/836 回归核对；当前只进入 Stage 2.8，Stage 2 仍未关闭。
