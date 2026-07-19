@@ -587,6 +587,9 @@ class BoundedCandidateRepairLoop:
                 current_candidate=current_candidate,
                 attempt=attempt_number,
                 prior_summaries=tuple(prior_summaries),
+                family_profile=(
+                    self._model_adapter.family_profile
+                ),
             )
             prompt_manifest = prompt.manifest
             model_request = CandidateModelRequest(
@@ -884,6 +887,7 @@ def _build_prompt(
     current_candidate: str,
     attempt: int,
     prior_summaries: tuple[str, ...],
+    family_profile,
 ):
     inputs = CandidateRepairPromptInputs(
         task=request.task,
@@ -894,6 +898,7 @@ def _build_prompt(
         attempt=attempt,
         max_attempts=request.max_attempts,
         family_instruction=request.family_instruction,
+        family_profile=family_profile,
         prior_attempt_summaries=prior_summaries,
         approved_memory_snippets=request.approved_memory_snippets,
     )

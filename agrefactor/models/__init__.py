@@ -8,6 +8,11 @@ from .base import (
     ModelSpec,
     TokenUsage,
 )
+from .family import (
+    ModelCapabilityTag,
+    ModelFamilyProfile,
+    NEUTRAL_MODEL_FAMILY_PROFILE,
+)
 from .openai_compatible import (
     MissingModelCredentialError,
     OpenAICompatibleProvider,
@@ -18,6 +23,7 @@ from .registry import (
     ModelRegistry,
     ModelRegistryError,
     UnknownModelError,
+    UnknownModelFamilyProfileError,
     UnknownProviderError,
 )
 
@@ -50,16 +56,20 @@ __all__ = [
     "CandidateResponseError",
     "ChatMessage",
     "MissingModelCredentialError",
+    "ModelCapabilityTag",
+    "ModelFamilyProfile",
     "ModelProvider",
     "ModelRegistry",
     "ModelRegistryError",
     "ModelRequest",
     "ModelResponse",
     "ModelSpec",
+    "NEUTRAL_MODEL_FAMILY_PROFILE",
     "OpenAICompatibleProvider",
     "OpenAICompatibleProviderError",
     "OpenAICompatibleResponseError",
     "TokenUsage",
     "UnknownModelError",
+    "UnknownModelFamilyProfileError",
     "UnknownProviderError",
 ]

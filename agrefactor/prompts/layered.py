@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 import json
 import re
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from agrefactor.config import TaskSpec
 from agrefactor.evidence import (
@@ -299,6 +299,17 @@ class PromptOutputContract:
         }
 
 
+@runtime_checkable
+class FamilyInstructionProfile(Protocol):
+    """Prompt-safe structural interface for family instructions."""
+
+    def render_instruction(self) -> str | None:
+        ...
+
+    def to_manifest(self) -> Mapping[str, Any]:
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class LayeredPromptRequest:
     """All explicit inputs used by the shared prompt builder."""
@@ -313,6 +324,7 @@ class LayeredPromptRequest:
     attempt: int = 1
     max_attempts: int = 1
     family_instruction: str | None = None
+    family_profile: FamilyInstructionProfile | None = None
     prior_attempt_summaries: tuple[str, ...] = ()
     approved_memory_snippets: tuple[str, ...] = ()
 
@@ -434,6 +446,17 @@ class LayeredPromptRequest:
             ),
         )
         object.__setattr__(self, "artifacts", artifacts)
+        if (
+            self.family_profile is not None
+            and not isinstance(
+                self.family_profile,
+                FamilyInstructionProfile,
+            )
+        ):
+            raise TypeError(
+                "LayeredPromptRequest.family_profile must satisfy "
+                "FamilyInstructionProfile or be None"
+            )
         object.__setattr__(
             self,
             "family_instruction",
@@ -532,6 +555,25 @@ class LayeredPrompt:
         }
 
 
+def _compose_family_instruction(
+    request: LayeredPromptRequest,
+) -> tuple[str | None, str]:
+    parts: list[str] = []
+    source_parts: list[str] = []
+    if request.family_profile is not None:
+        rendered = request.family_profile.render_instruction()
+        if rendered is not None:
+            parts.append(rendered)
+            source_parts.append("profile")
+    if request.family_instruction is not None:
+        parts.append(request.family_instruction)
+        source_parts.append("explicit")
+    return (
+        "\n\n".join(parts) if parts else None,
+        "+".join(source_parts) if source_parts else "none",
+    )
+
+
 class SharedLayeredPromptBuilder:
     """Build deterministic prompts from safe structured inputs."""
 
@@ -547,7 +589,13 @@ class SharedLayeredPromptBuilder:
             )
 
         self._validate_feedback(request)
-        system_prompt = self._build_system_prompt(request)
+        family_instruction, family_source = (
+            _compose_family_instruction(request)
+        )
+        system_prompt = self._build_system_prompt(
+            request,
+            family_instruction=family_instruction,
+        )
         user_prompt = self._build_user_prompt(request)
 
         manifest = {
@@ -569,7 +617,13 @@ class SharedLayeredPromptBuilder:
             "attempt": request.attempt,
             "max_attempts": request.max_attempts,
             "family_instruction_present": (
-                request.family_instruction is not None
+                family_instruction is not None
+            ),
+            "family_instruction_source": family_source,
+            "model_family_profile": (
+                None
+                if request.family_profile is None
+                else request.family_profile.to_manifest()
             ),
             "prior_attempt_count": len(
                 request.prior_attempt_summaries
@@ -683,6 +737,8 @@ class SharedLayeredPromptBuilder:
     def _build_system_prompt(
         self,
         request: LayeredPromptRequest,
+        *,
+        family_instruction: str | None,
     ) -> str:
         scope = request.modification_scope
         contract = request.output_contract
@@ -724,12 +780,12 @@ class SharedLayeredPromptBuilder:
                 for item in scope.forbidden_actions
             )
 
-        if request.family_instruction is not None:
+        if family_instruction is not None:
             lines.extend(
                 [
                     "",
                     "Model-family instruction:",
-                    request.family_instruction,
+                    family_instruction,
                 ]
             )
 

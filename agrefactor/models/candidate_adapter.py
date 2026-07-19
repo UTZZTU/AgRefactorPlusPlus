@@ -345,10 +345,20 @@ class CandidateModelAdapter:
     ) -> None:
         if not isinstance(registry, ModelRegistry):
             raise TypeError("registry must be a ModelRegistry")
-        self._model, self._provider = registry.resolve(model_name)
+        (
+            self._model,
+            self._provider,
+            self._family_profile,
+        ) = registry.resolve_with_profile(model_name)
         self._parameters = _copy_json_mapping(
             parameters or {},
             "parameters",
+        )
+        self._effective_parameters = (
+            self._family_profile.merge_parameters(
+                self._model.default_parameters,
+                self._parameters,
+            )
         )
         self._prompts: list[LayeredPrompt] = []
         self._responses: list[ModelResponse] = []
@@ -357,6 +367,14 @@ class CandidateModelAdapter:
     @property
     def model_spec(self) -> ModelSpec:
         return self._model
+
+    @property
+    def family_profile(self):
+        return self._family_profile
+
+    @property
+    def effective_parameters(self) -> dict[str, Any]:
+        return dict(self._effective_parameters)
 
     @property
     def prompts(self) -> tuple[LayeredPrompt, ...]:
@@ -410,8 +428,7 @@ class CandidateModelAdapter:
             request.task,
             request.current_candidate,
         )
-        parameters = dict(self._model.default_parameters)
-        parameters.update(self._parameters)
+        parameters = dict(self._effective_parameters)
 
         self._prompts.append(request.prompt)
         if before_provider_call is not None:

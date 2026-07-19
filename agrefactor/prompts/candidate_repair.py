@@ -8,6 +8,7 @@ from agrefactor.config import TaskSpec
 from agrefactor.evidence import FeedbackReport
 
 from .layered import (
+    FamilyInstructionProfile,
     LayeredPrompt,
     LayeredPromptRequest,
     ModificationScope,
@@ -108,6 +109,7 @@ class CandidateRepairPromptInputs:
     attempt: int = 1
     max_attempts: int = 1
     family_instruction: str | None = None
+    family_profile: FamilyInstructionProfile | None = None
     prior_attempt_summaries: tuple[str, ...] = ()
     approved_memory_snippets: tuple[str, ...] = ()
 
@@ -132,6 +134,17 @@ class CandidateRepairPromptInputs:
             self.family_instruction,
             "family_instruction",
         )
+        if (
+            self.family_profile is not None
+            and not isinstance(
+                self.family_profile,
+                FamilyInstructionProfile,
+            )
+        ):
+            raise TypeError(
+                "family_profile must satisfy "
+                "FamilyInstructionProfile or be None"
+            )
         _validate_text_tuple(
             self.prior_attempt_summaries,
             "prior_attempt_summaries",
@@ -302,6 +315,7 @@ def _build_candidate_repair_prompt(
         attempt=inputs.attempt,
         max_attempts=inputs.max_attempts,
         family_instruction=inputs.family_instruction,
+        family_profile=inputs.family_profile,
         prior_attempt_summaries=inputs.prior_attempt_summaries,
         approved_memory_snippets=inputs.approved_memory_snippets,
     )

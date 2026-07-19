@@ -16,6 +16,7 @@ from agrefactor.evaluation.preflight_feedback_view import (
 )
 from agrefactor.models import (
     ChatMessage,
+    ModelFamilyProfile,
     ModelRegistry,
     ModelRequest,
     ModelResponse,
@@ -255,6 +256,7 @@ def build_testbench_repair_prompt(
     request: TestbenchRepairRequest,
     *,
     family_instruction: str | None = None,
+    family_profile: ModelFamilyProfile | None = None,
     builder: SharedLayeredPromptBuilder | None = None,
 ) -> LayeredPrompt:
     """Build one shared layered prompt from safe preflight evidence."""
@@ -330,6 +332,7 @@ def build_testbench_repair_prompt(
         attempt=request.attempt,
         max_attempts=request.max_attempts,
         family_instruction=family_instruction,
+        family_profile=family_profile,
     )
 
     return builder.build(layered_request)
@@ -339,6 +342,7 @@ def build_testbench_repair_messages(
     request: TestbenchRepairRequest,
     *,
     family_instruction: str | None = None,
+    family_profile: ModelFamilyProfile | None = None,
     builder: SharedLayeredPromptBuilder | None = None,
 ) -> tuple[ChatMessage, ...]:
     """Compatibility wrapper returning shared layered messages."""
@@ -346,6 +350,7 @@ def build_testbench_repair_messages(
     return build_testbench_repair_prompt(
         request,
         family_instruction=family_instruction,
+        family_profile=family_profile,
         builder=builder,
     ).messages
 
@@ -375,12 +380,22 @@ class ModelTestbenchRepairer:
                 "SharedLayeredPromptBuilder or None"
             )
 
-        self._model, self._provider = registry.resolve(model_name)
+        (
+            self._model,
+            self._provider,
+            self._family_profile,
+        ) = registry.resolve_with_profile(model_name)
         self._parameters = dict(parameters or {})
         self._family_instructions = dict(
             family_instructions or {}
         )
         self._prompt_builder = prompt_builder
+        self._effective_parameters = (
+            self._family_profile.merge_parameters(
+                self._model.default_parameters,
+                self._parameters,
+            )
+        )
         self._responses: list[ModelResponse] = []
         self._prompts: list[LayeredPrompt] = []
         self._audit_events: list[
@@ -392,6 +407,14 @@ class ModelTestbenchRepairer:
             ensure_ascii=False,
             sort_keys=True,
         )
+
+    @property
+    def family_profile(self) -> ModelFamilyProfile:
+        return self._family_profile
+
+    @property
+    def effective_parameters(self) -> dict[str, Any]:
+        return dict(self._effective_parameters)
 
     @property
     def responses(self) -> tuple[ModelResponse, ...]:
@@ -442,6 +465,7 @@ class ModelTestbenchRepairer:
         prompt = build_testbench_repair_prompt(
             request,
             family_instruction=family_instruction,
+            family_profile=self._family_profile,
             builder=self._prompt_builder,
         )
         self._prompts.append(prompt)
@@ -452,8 +476,7 @@ class ModelTestbenchRepairer:
             )
         )
 
-        parameters = dict(self._model.default_parameters)
-        parameters.update(self._parameters)
+        parameters = dict(self._effective_parameters)
 
         response = self._provider.generate(
             self._model,
