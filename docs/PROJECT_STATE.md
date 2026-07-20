@@ -5,16 +5,16 @@
 ## 1. 当前快照
 
 - 当前开发分支：`stage2-general-feedback`
-- 当前功能代码基线：`7e9aef66ba062b25465f6552f9bf346b8ed5eb86`
+- 当前功能代码基线：`53045b4cdc6c262e0be5cdcddedae0d302908812`
 - Stage 2 closure validation baseline：`3f57371c8b58f53449064219c024ab63042a87d4`
 - Stage 2 状态：**closed**；Stage 3：**allowed, not started**
-- 最新确定性测试：**836/836 passed**
+- 最新确定性测试：**855/855 passed**
 - 最新 Stage 2.5 总结：**7 baseline、7/7 real full chains、9 faults、16 labels、23 scenario executions；跨三次独立验收累计 62/36/9/17/0，0 LLM**
 - 最新完整验证链验收仍为：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Stage 2 已正式关闭；下一步 Stage 3 Safe Three-Level Optimizer**
+- 当前关键任务：**Pre-Stage-3 Bridge；先完成真实 DFS、模型 profile、source-only bootstrap、测试资格审查和用户输出策略，再开始 Stage 3**
 ## 2. 已完成
 
 ### Stage 0
@@ -977,28 +977,22 @@ Stage 2.6 五个 blocker（5/5 已完成验收）：
 
 ## 4. 当前下一任务
 
-下一步只做：
+Stage 2 保持 closed，Stage 3 尚未开始。当前先完成
+[`PRE_STAGE3_BRIDGE.md`](PRE_STAGE3_BRIDGE.md)：
 
 ```text
-Stage 3 Safe Three-Level Optimizer
+P0 Real DFS end-to-end acceptance
+P1 Adaptive Model Profile Registry
+P2 Source-only Refactor Bootstrap Contract
+P3 Test Qualification Contract
+P4 Provided / Auto / Hybrid test policy
+P5 User-facing quiet output / verbosity policy
 ```
 
-先冻结：
-
-```text
-CandidateRecord / CandidateTree
-Checkpoint / Rollback
-best_correct / best_ppa
-hypothesis and evidence contract
-Structural → Bottleneck → Pragma stage controller
-cheap correctness gates
-cache identity
-Stage 3 budget-exhaustion semantics
-```
-
-不得把 legacy `opt.simple_iter` 直接视为 Stage 3 实现，也不得在 correctness
-未通过时进入 PPA 优化。Stage 3 的第一个 feature milestone 应先完成数据契约、
-状态边界和确定性测试，再接真实工具。
+本次 `53045b4cdc6c262e0be5cdcddedae0d302908812` 已完成 P0 的 test-generation hardening 子项，但真实 DFS
+仍未成功，不能提前宣称端到端通过。下一次真实验收默认先用
+`deepseek-v4-flash`，并要求 independent qualification 与正式 Stage 2
+Preflight→CSYNTH→Public→Hidden 全部 accepted。
 
 ## 5. 多 Vitis 版本的当前显式用法
 
