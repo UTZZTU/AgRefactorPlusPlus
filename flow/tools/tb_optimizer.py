@@ -20,6 +20,7 @@ import json
 import os
 import tempfile
 import hashlib
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from autogen.agentchat.group import ContextVariables  # type: ignore
@@ -91,15 +92,25 @@ def _initial_user_message(
     return "\n".join(parts)
 
 
-def _stub_request_message() -> str:
+def _stub_request_message(
+    kernel_name: Optional[str] = None,
+) -> str:
+    original_clause = (
+        f"for the original `{kernel_name}` function "
+        if kernel_name
+        else "for every original function it calls "
+    )
     return (
         "Now write a minimal stub HLS implementation that matches the testbench you just produced. "
-        "The stub MUST define every `_hls` function declared in the testbench with EXACTLY the same signature, "
-        "and each `_hls` MUST delegate to the corresponding original function in a way that makes the testbench's "
-        "golden-vs-HLS output comparison always pass. Do NOT include a `main`. Do NOT redeclare the original function "
-        "(assume it is linked from `orig_code.cpp`). Reply with one ```cpp ... ``` block containing the complete stub, "
-        "no commentary outside it."
+        "The stub MUST define every `_hls` function declared in the testbench with EXACTLY the same "
+        "signature and delegate to the corresponding original function. Do NOT include a `main`. "
+        "The stub is compiled in a separate translation unit from `orig_code.cpp`, so it MUST "
+        "contain a forward declaration ending in `;` "
+        + original_clause
+        + "before calling it. Do NOT copy or define the original function body. Reply with exactly "
+        "one complete ```cpp ... ``` block and no commentary."
     )
+
 
 
 def _empty_stub_request_message(hls_name: str) -> str:
@@ -245,22 +256,263 @@ def _final_text_request(
 
 # -------------------------- helpers --------------------------
 
-def _extract_one_cpp_block(content: str) -> str:
-    """Extract first code block from response; fall back to raw text."""
-    blocks = tools.general.extract_code(tools.general.strip_thinking(content))
-    if blocks:
-        return blocks[0]
-    return content.strip()
+class ModelArtifactError(ValueError):
+    pass
+
+
+_CPP_FENCE_RE = re.compile(
+    r"```\s*(?:cpp|c\+\+|hpp|h\+\+)\s*(.*?)```",
+    re.DOTALL | re.IGNORECASE,
+)
+_PROMPT_ECHO_MARKERS = (
+    "Original kernel source code:",
+    "Top function name (original / golden reference):",
+    "Reply with one ```cpp",
+    "userOriginal kernel source code",
+)
+_ARTIFACT_RESPONSE_RETRIES = 1
+_REPEATED_FAILURE_LIMIT = 2
+
+
+def _extract_one_cpp_block(
+    content: str,
+    *,
+    artifact_kind: str = "cpp",
+    required_symbol: Optional[str] = None,
+) -> str:
+    if not isinstance(content, str):
+        raise ModelArtifactError("model response content must be a string")
+    cleaned = tools.general.strip_thinking(content).strip()
+    if not cleaned:
+        raise ModelArtifactError("model response is empty")
+    matches = list(_CPP_FENCE_RE.finditer(cleaned))
+    if len(matches) != 1:
+        raise ModelArtifactError(
+            "model response must contain exactly one fenced C++ block"
+        )
+    match = matches[0]
+    outside = (cleaned[: match.start()] + cleaned[match.end() :]).strip()
+    if outside:
+        raise ModelArtifactError(
+            "model response contains text outside the C++ block"
+        )
+    code = match.group(1).strip()
+    if not code:
+        raise ModelArtifactError("model returned an empty C++ block")
+    for marker in _PROMPT_ECHO_MARKERS:
+        if marker in code:
+            raise ModelArtifactError(
+                "model response contains prompt text instead of C++"
+            )
+    if artifact_kind == "testbench":
+        if not re.search(r"\b(?:int|auto)\s+main\s*\(", code):
+            raise ModelArtifactError("testbench artifact must define main")
+        if required_symbol and not re.search(
+            rf"\b{re.escape(required_symbol)}\s*\(",
+            code,
+        ):
+            raise ModelArtifactError(
+                f"testbench artifact does not reference {required_symbol}"
+            )
+    elif artifact_kind in {"stub", "empty_stub"}:
+        if re.search(r"\bmain\s*\(", code):
+            raise ModelArtifactError("stub artifact must not define main")
+        if required_symbol and not re.search(
+            rf"\b{re.escape(required_symbol)}\s*\([^;{{}}]*\)\s*\{{",
+            code,
+            re.DOTALL,
+        ):
+            raise ModelArtifactError(
+                f"stub artifact must define {required_symbol}"
+            )
+    return code + "\n"
+
 
 
 def _agent_run_once(agent, message: str, first_turn: bool) -> str:
-    """One agent.run() call. first_turn=True clears history; otherwise preserves it."""
     if first_turn:
-        resp = agent.run(message=message, max_turns=1)
+        response = agent.run(message=message, max_turns=1)
     else:
-        resp = agent.run(message=message, max_turns=1, clear_history=False)
-    resp.process()
-    return resp.messages[-1]["content"]
+        response = agent.run(
+            message=message,
+            max_turns=1,
+            clear_history=False,
+        )
+    response.process()
+    messages = getattr(response, "messages", None)
+    if not isinstance(messages, list) or not messages:
+        raise ModelArtifactError("agent response contains no messages")
+    terminal = messages[-1]
+    if not isinstance(terminal, dict):
+        raise ModelArtifactError("agent terminal message must be a mapping")
+    content = terminal.get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise ModelArtifactError(
+            "agent terminal assistant message is empty"
+        )
+    return content
+
+
+def _request_cpp_artifact(
+    agent,
+    message: str,
+    *,
+    first_turn: bool,
+    artifact_kind: str,
+    required_symbol: Optional[str],
+) -> str:
+    current_message = message
+    current_first_turn = first_turn
+    last_error: Exception | None = None
+    for attempt in range(_ARTIFACT_RESPONSE_RETRIES + 1):
+        try:
+            raw = _agent_run_once(
+                agent,
+                current_message,
+                current_first_turn,
+            )
+            return _extract_one_cpp_block(
+                raw,
+                artifact_kind=artifact_kind,
+                required_symbol=required_symbol,
+            )
+        except ModelArtifactError as exc:
+            last_error = exc
+            if attempt >= _ARTIFACT_RESPONSE_RETRIES:
+                break
+            current_first_turn = False
+            current_message = (
+                "Your previous response was invalid: "
+                f"{exc}. Return exactly one complete fenced ```cpp block "
+                "for the requested artifact, with no other text."
+            )
+    raise ModelArtifactError(
+        f"model did not return a valid {artifact_kind} artifact"
+    ) from last_error
+
+
+def _ensure_original_forward_declaration(
+    stub_code: str,
+    orig_code: str,
+    kernel_name: str,
+) -> str:
+    call_re = re.compile(rf"\b{re.escape(kernel_name)}\s*\(")
+    declaration_re = re.compile(
+        rf"(?m)^\s*(?:extern\s+\"C\"\s+)?"
+        r"(?:[\w:<>,*&]+\s+)+"
+        rf"{re.escape(kernel_name)}\s*\([^;{{}}]*\)\s*[;{{]",
+        re.DOTALL,
+    )
+    if not call_re.search(stub_code):
+        return stub_code
+    if declaration_re.search(stub_code):
+        return stub_code
+    declaration = _extract_seed_hls_decl(orig_code, kernel_name)
+    if not declaration:
+        raise ModelArtifactError(
+            f"could not derive original declaration for {kernel_name}"
+        )
+    return declaration.rstrip() + ";\n\n" + stub_code.lstrip()
+
+
+def _coverage_failure_fingerprint(record: Dict[str, Any]) -> str:
+    diagnostic = (
+        str(record.get("status") or "unknown")
+        + "\n"
+        + str(record.get("compile_stderr") or "")
+        + "\n"
+        + str(record.get("run_stderr") or "")
+    )
+    diagnostic = re.sub(r"/tmp/[^\s:]+", "/tmp/<path>", diagnostic)
+    diagnostic = re.sub(r"\s+", " ", diagnostic).strip()
+    return hashlib.sha256(diagnostic.encode("utf-8")).hexdigest()
+
+
+def _repeated_failure(rounds: List[Dict[str, Any]]) -> bool:
+    failed = [
+        record
+        for record in rounds
+        if record.get("status") != "ok"
+    ]
+    if len(failed) < _REPEATED_FAILURE_LIMIT:
+        return False
+    recent = failed[-_REPEATED_FAILURE_LIMIT:]
+    return len(
+        {_coverage_failure_fingerprint(record) for record in recent}
+    ) == 1
+
+
+def _persist_round_artifacts(
+    trajectory_idx: int,
+    record: Dict[str, Any],
+) -> None:
+    root = os.getenv("AGREFACTOR_TB_DEBUG_DIR")
+    if not root:
+        return
+    round_root = os.path.join(
+        root,
+        f"trajectory_{trajectory_idx:03d}",
+        f"round_{int(record['round']):03d}",
+    )
+    os.makedirs(round_root, exist_ok=True)
+    with open(
+        os.path.join(round_root, "testbench.cpp"),
+        "w",
+        encoding="utf-8",
+    ) as file:
+        file.write(str(record.get("tb_code") or ""))
+    with open(
+        os.path.join(round_root, "stub.cpp"),
+        "w",
+        encoding="utf-8",
+    ) as file:
+        file.write(str(record.get("stub_code") or ""))
+    safe_record = {
+        key: value
+        for key, value in record.items()
+        if key not in {"tb_code", "stub_code"}
+    }
+    with open(
+        os.path.join(round_root, "coverage.json"),
+        "w",
+        encoding="utf-8",
+    ) as file:
+        json.dump(
+            safe_record,
+            file,
+            indent=2,
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+
+
+def _append_round(
+    rounds: List[Dict[str, Any]],
+    *,
+    trajectory_idx: int,
+    round_index: int,
+    tb_code: str,
+    stub_code: str,
+    cov: Dict[str, Any],
+    **extra: Any,
+) -> Dict[str, Any]:
+    record = {
+        "round": round_index,
+        "tb_code": tb_code,
+        "stub_code": stub_code,
+        "cov_pct": cov.get("cov_pct"),
+        "lines_total": cov.get("lines_total"),
+        "lines_hit": cov.get("lines_hit"),
+        "uncovered_lines": cov.get("uncovered_lines", []),
+        "status": cov.get("status"),
+        "compile_stderr": cov.get("compile_stderr", "")[-2000:],
+        "run_stderr": cov.get("run_stderr", "")[-2000:],
+        **extra,
+    }
+    rounds.append(record)
+    _persist_round_artifacts(trajectory_idx, record)
+    return record
+
 
 
 # -------------------------- trajectory runner --------------------------
@@ -276,94 +528,124 @@ def run_trajectory(
     trajectory_idx: int = 0,
     pinned_hls_decl: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Run one K-round TB+stub iterative trajectory.
-
-    Args:
-        orig_code: original kernel source
-        kernel_name: kernel function name
-        K: max rounds
-        target_pct: early-stop coverage threshold
-        sig_spec_constraint: if set, injected into round-1 prompt as hard constraint
-                             (used by public TB loop; None for hidden TB loop)
-        llm_config: optional autogen LLM config override
-        want_sig_spec: if True, final text call asks for sig_spec; else asks for instruction
-        trajectory_idx: just for logging
-    """
-    loader = HLSAgentLoader(AGENT_YAML, llm_config_override=llm_config)
+    if isinstance(K, bool) or not isinstance(K, int) or K < 1:
+        raise ValueError("K must be a positive integer")
+    loader = HLSAgentLoader(
+        AGENT_YAML,
+        llm_config_override=llm_config,
+    )
     agent = loader.load_agent(AGENT_NAME)
     hls_name = f"{kernel_name}_hls"
-
     rounds: List[Dict[str, Any]] = []
 
-    # ---- Round 1: TB + delegating stub (the stub is REUSED across all subsequent rounds) ----
-    msg = _initial_user_message(orig_code, kernel_name, sig_spec_constraint, pinned_hls_decl=pinned_hls_decl)
-    tb_raw = _agent_run_once(agent, msg, first_turn=True)
-    tb_code = _extract_one_cpp_block(tb_raw)
-    stub_raw = _agent_run_once(agent, _stub_request_message(), first_turn=False)
-    delegating_stub = _extract_one_cpp_block(stub_raw)  # reused for all coverage measurements
-    cov = measure_coverage(orig_code, tb_code, delegating_stub)
-    rounds.append({
-        "round": 1,
-        "tb_code": tb_code,
-        "stub_code": delegating_stub,
-        "cov_pct": cov.get("cov_pct"),
-        "lines_total": cov.get("lines_total"),
-        "lines_hit": cov.get("lines_hit"),
-        "uncovered_lines": cov.get("uncovered_lines", []),
-        "status": cov.get("status"),
-        "compile_stderr": cov.get("compile_stderr", "")[-2000:],
-        "run_stderr": cov.get("run_stderr", "")[-2000:],
-    })
+    tb_code = _request_cpp_artifact(
+        agent,
+        _initial_user_message(
+            orig_code,
+            kernel_name,
+            sig_spec_constraint,
+            pinned_hls_decl=pinned_hls_decl,
+        ),
+        first_turn=True,
+        artifact_kind="testbench",
+        required_symbol=hls_name,
+    )
+    stub_code = _request_cpp_artifact(
+        agent,
+        _stub_request_message(kernel_name),
+        first_turn=False,
+        artifact_kind="stub",
+        required_symbol=hls_name,
+    )
+    stub_code = _ensure_original_forward_declaration(
+        stub_code,
+        orig_code,
+        kernel_name,
+    )
+    coverage = measure_coverage(orig_code, tb_code, stub_code)
+    _append_round(
+        rounds,
+        trajectory_idx=trajectory_idx,
+        round_index=1,
+        tb_code=tb_code,
+        stub_code=stub_code,
+        cov=coverage,
+    )
 
-    # Early stop?
-    best_so_far = rounds[0]
-    if (best_so_far["cov_pct"] or 0.0) >= target_pct:
-        return _finalize_trajectory(agent, rounds, want_sig_spec, trajectory_idx,
-                                    expected_hls_name=hls_name, orig_code=orig_code,
-                                    sig_spec_constraint=sig_spec_constraint)
-
-    # ---- Rounds 2..K: TB only (REUSE delegating_stub; sig must stay stable) ----
-    for k in range(2, K + 1):
-        prev = rounds[-1]
-        prev_cov = prev["cov_pct"] or 0.0
-        prev_status = prev["status"] or "unknown"
-        if prev_status == "ok":
-            annotated = annotate_uncovered_source(orig_code, prev["uncovered_lines"])
-        else:
-            annotated = orig_code  # fallback: don't annotate when prior round failed
-        fb_msg = _feedback_message(
-            k, prev_cov, prev["uncovered_lines"], annotated, prev_status,
-            prev_compile_stderr=prev.get("compile_stderr", ""),
-            prev_run_stderr=prev.get("run_stderr", ""),
-        )
-        # Append a hard reminder so the LLM keeps sig stable → delegating_stub stays valid.
-        fb_msg += (
-            f"\n\nREMINDER: The `{hls_name}` declaration (return type, parameter types/qualifiers, "
-            f"and order) and all MACROs MUST stay IDENTICAL to your round-1 testbench. We reuse the "
-            f"round-1 stub for coverage measurement; any sig drift will fail compile and waste this round."
-        )
-
-        tb_raw = _agent_run_once(agent, fb_msg, first_turn=False)
-        tb_code = _extract_one_cpp_block(tb_raw)
-        cov = measure_coverage(orig_code, tb_code, delegating_stub)  # ← reuse stub
-        rounds.append({
-            "round": k,
-            "tb_code": tb_code,
-            "stub_code": delegating_stub,  # reused
-            "cov_pct": cov.get("cov_pct"),
-            "lines_total": cov.get("lines_total"),
-            "lines_hit": cov.get("lines_hit"),
-            "uncovered_lines": cov.get("uncovered_lines", []),
-            "status": cov.get("status"),
-            "compile_stderr": cov.get("compile_stderr", "")[-2000:],
-            "run_stderr": cov.get("run_stderr", "")[-2000:],
-        })
-        if (cov.get("cov_pct") or 0.0) >= target_pct:
+    for round_index in range(2, K + 1):
+        if (rounds[-1].get("cov_pct") or 0.0) >= target_pct:
             break
+        if _repeated_failure(rounds):
+            rounds[-1]["early_stop_reason"] = (
+                "repeated_identical_coverage_failure"
+            )
+            break
+        previous = rounds[-1]
+        previous_status = previous.get("status") or "unknown"
+        annotated = (
+            annotate_uncovered_source(
+                orig_code,
+                previous.get("uncovered_lines", []),
+            )
+            if previous_status == "ok"
+            else orig_code
+        )
+        feedback = _feedback_message(
+            round_index,
+            previous.get("cov_pct") or 0.0,
+            previous.get("uncovered_lines", []),
+            annotated,
+            previous_status,
+            prev_compile_stderr=previous.get(
+                "compile_stderr",
+                "",
+            ),
+            prev_run_stderr=previous.get("run_stderr", ""),
+        )
+        feedback += (
+            f"\n\nREMINDER: The `{hls_name}` declaration and all MACROs "
+            "must remain compatible. A new matching stub will be generated "
+            "for this round."
+        )
+        tb_code = _request_cpp_artifact(
+            agent,
+            feedback,
+            first_turn=False,
+            artifact_kind="testbench",
+            required_symbol=hls_name,
+        )
+        stub_code = _request_cpp_artifact(
+            agent,
+            _stub_request_message(kernel_name),
+            first_turn=False,
+            artifact_kind="stub",
+            required_symbol=hls_name,
+        )
+        stub_code = _ensure_original_forward_declaration(
+            stub_code,
+            orig_code,
+            kernel_name,
+        )
+        coverage = measure_coverage(orig_code, tb_code, stub_code)
+        _append_round(
+            rounds,
+            trajectory_idx=trajectory_idx,
+            round_index=round_index,
+            tb_code=tb_code,
+            stub_code=stub_code,
+            cov=coverage,
+        )
 
-    return _finalize_trajectory(agent, rounds, want_sig_spec, trajectory_idx,
-                                expected_hls_name=hls_name, orig_code=orig_code,
-                                sig_spec_constraint=sig_spec_constraint)
+    return _finalize_trajectory(
+        agent,
+        rounds,
+        want_sig_spec,
+        trajectory_idx,
+        expected_hls_name=hls_name,
+        orig_code=orig_code,
+        sig_spec_constraint=sig_spec_constraint,
+    )
+
 
 
 def _finalize_trajectory(
@@ -376,65 +658,157 @@ def _finalize_trajectory(
     sig_spec_constraint: Optional[str] = None,
     synth_retry_budget: int = 1,
 ) -> Dict[str, Any]:
-    """Pick best round by cov, run synth check on _hls sig, retry if it fails.
+    del sig_spec_constraint
+    ok_rounds = [
+        record
+        for record in rounds
+        if record.get("status") == "ok"
+        and record.get("cov_pct") is not None
+    ]
+    if not ok_rounds:
+        last = rounds[-1]
+        return {
+            "trajectory_idx": trajectory_idx,
+            "best_round": last["round"],
+            "best_cov": 0.0,
+            "best_tb": last["tb_code"],
+            "best_stub": last["stub_code"],
+            "best_empty_stub": "",
+            "best_uncovered_lines": [],
+            "final_text": "",
+            "rounds": rounds,
+            "synth_ok": False,
+            "synth_error": (
+                last.get("compile_stderr")
+                or last.get("run_stderr")
+                or "coverage qualification failed"
+            ),
+            "qualified": False,
+            "trajectory_status": "coverage_failed",
+        }
 
-    Adds `synth_ok` and `synth_error` to the returned dict.
-    """
-    ok_rounds = [r for r in rounds if r["status"] == "ok" and r["cov_pct"] is not None]
-    if ok_rounds:
-        best = max(ok_rounds, key=lambda r: r["cov_pct"])
-    else:
-        best = rounds[0]
-
-    # ---- Synth check on best-cov TB ----
+    best = max(ok_rounds, key=lambda record: record["cov_pct"])
     synth_ok = False
     synth_error = ""
     empty_stub = ""
+
     if expected_hls_name and orig_code is not None:
         retries_left = synth_retry_budget
         while True:
-            # Ask the agent for an empty stub matching the CURRENT best testbench.
-            empty_raw = _agent_run_once(agent, _empty_stub_request_message(expected_hls_name), first_turn=False)
-            empty_stub = _extract_one_cpp_block(empty_raw)
-            with tempfile.TemporaryDirectory(prefix=f"synth_check_traj{trajectory_idx}_") as work_dir:
-                synth_ok, synth_error = _synth_check(empty_stub, expected_hls_name, work_dir)
+            message = _empty_stub_request_message(expected_hls_name)
+            best_decl = _extract_seed_hls_decl(
+                best["tb_code"],
+                expected_hls_name,
+            )
+            if best_decl:
+                message += (
+                    "\n\nUse this exact declaration:\n```cpp\n"
+                    + best_decl.rstrip()
+                    + ";\n```"
+                )
+            empty_stub = _request_cpp_artifact(
+                agent,
+                message,
+                first_turn=False,
+                artifact_kind="empty_stub",
+                required_symbol=expected_hls_name,
+            )
+            with tempfile.TemporaryDirectory(
+                prefix=f"synth_check_traj{trajectory_idx}_"
+            ) as work_dir:
+                synth_ok, synth_error = _synth_check(
+                    empty_stub,
+                    expected_hls_name,
+                    work_dir,
+                )
             if synth_ok or retries_left <= 0:
                 break
-            # Retry: ask the LLM to rewrite the testbench with HLS-friendly sig.
             retries_left -= 1
-            rewrite_msg = _hls_friendly_rewrite_message(expected_hls_name, synth_error)
-            new_tb_raw = _agent_run_once(agent, rewrite_msg, first_turn=False)
-            new_tb_code = _extract_one_cpp_block(new_tb_raw)
-            # Regenerate the delegating stub for the new sig.
-            new_stub_raw = _agent_run_once(agent, _stub_request_message(), first_turn=False)
-            new_stub_code = _extract_one_cpp_block(new_stub_raw)
-            new_cov = measure_coverage(orig_code, new_tb_code, new_stub_code)
-            rounds.append({
-                "round": (rounds[-1]["round"] + 1) if rounds else 1,
-                "tb_code": new_tb_code,
-                "stub_code": new_stub_code,
-                "cov_pct": new_cov.get("cov_pct"),
-                "lines_total": new_cov.get("lines_total"),
-                "lines_hit": new_cov.get("lines_hit"),
-                "uncovered_lines": new_cov.get("uncovered_lines", []),
-                "status": new_cov.get("status"),
-                "compile_stderr": new_cov.get("compile_stderr", "")[-2000:],
-                "run_stderr": new_cov.get("run_stderr", "")[-2000:],
-                "synth_retry": True,
-            })
-            # Make this the new "best" candidate (it should pass synth on next loop).
-            best = rounds[-1]
+            new_tb = _request_cpp_artifact(
+                agent,
+                _hls_friendly_rewrite_message(
+                    expected_hls_name,
+                    synth_error,
+                ),
+                first_turn=False,
+                artifact_kind="testbench",
+                required_symbol=expected_hls_name,
+            )
+            original_name = (
+                expected_hls_name[:-4]
+                if expected_hls_name.endswith("_hls")
+                else expected_hls_name
+            )
+            new_stub = _request_cpp_artifact(
+                agent,
+                _stub_request_message(original_name),
+                first_turn=False,
+                artifact_kind="stub",
+                required_symbol=expected_hls_name,
+            )
+            new_stub = _ensure_original_forward_declaration(
+                new_stub,
+                orig_code,
+                original_name,
+            )
+            new_coverage = measure_coverage(
+                orig_code,
+                new_tb,
+                new_stub,
+            )
+            new_record = _append_round(
+                rounds,
+                trajectory_idx=trajectory_idx,
+                round_index=rounds[-1]["round"] + 1,
+                tb_code=new_tb,
+                stub_code=new_stub,
+                cov=new_coverage,
+                synth_retry=True,
+            )
+            if (
+                new_record.get("status") != "ok"
+                or new_record.get("cov_pct") is None
+            ):
+                synth_error = (
+                    new_record.get("compile_stderr")
+                    or new_record.get("run_stderr")
+                    or "synth-retry coverage failed"
+                )
+                break
+            best = new_record
 
-    # ---- Final sig_spec / instruction ----
-    final_msg = _final_text_request(
-        best_round_idx=best["round"],
-        best_cov=best.get("cov_pct") or 0.0,
-        want_sig_spec=want_sig_spec,
-        expected_hls_name=expected_hls_name,
+    if not synth_ok:
+        return {
+            "trajectory_idx": trajectory_idx,
+            "best_round": best["round"],
+            "best_cov": best.get("cov_pct") or 0.0,
+            "best_tb": best["tb_code"],
+            "best_stub": best["stub_code"],
+            "best_empty_stub": empty_stub,
+            "best_uncovered_lines": best.get("uncovered_lines", []),
+            "final_text": "",
+            "rounds": rounds,
+            "synth_ok": False,
+            "synth_error": synth_error,
+            "qualified": False,
+            "trajectory_status": "synth_failed",
+        }
+
+    final_raw = _agent_run_once(
+        agent,
+        _final_text_request(
+            best_round_idx=best["round"],
+            best_cov=best.get("cov_pct") or 0.0,
+            want_sig_spec=want_sig_spec,
+            expected_hls_name=expected_hls_name,
+        ),
+        first_turn=False,
     )
-    final_raw = _agent_run_once(agent, final_msg, first_turn=False)
     final_text = tools.general.strip_thinking(final_raw).strip()
-
+    if not final_text:
+        raise ModelArtifactError(
+            "model returned an empty final instruction/specification"
+        )
     return {
         "trajectory_idx": trajectory_idx,
         "best_round": best["round"],
@@ -443,11 +817,14 @@ def _finalize_trajectory(
         "best_stub": best["stub_code"],
         "best_empty_stub": empty_stub,
         "best_uncovered_lines": best.get("uncovered_lines", []),
-        "final_text": final_text,  # instruction or sig_spec depending on want_sig_spec
+        "final_text": final_text,
         "rounds": rounds,
-        "synth_ok": synth_ok,
-        "synth_error": synth_error,
+        "synth_ok": True,
+        "synth_error": "",
+        "qualified": True,
+        "trajectory_status": "qualified",
     }
+
 
 
 # -------------------------- public-facing entrypoints --------------------------
@@ -461,12 +838,7 @@ def optimize_tb_public(
     llm_config: Optional[Dict[str, Any]] = None,
     pinned_hls_decl: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Generate a coverage-optimized public TB for one refactor attempt.
-
-    Returns dict with keys: best_tb, best_stub, best_cov, instruction (str),
-    best_round, rounds (per-round debug info).
-    """
-    traj = run_trajectory(
+    trajectory = run_trajectory(
         orig_code=orig_code,
         kernel_name=kernel_name,
         K=K,
@@ -477,24 +849,30 @@ def optimize_tb_public(
         trajectory_idx=0,
         pinned_hls_decl=pinned_hls_decl,
     )
-    # If we have a pinned decl, append it to the instruction so the downstream
-    # refactor agent also sees it as a hard constraint (not just the public TB).
-    instruction = traj["final_text"]
+    if not trajectory.get("qualified"):
+        raise RuntimeError(
+            "public testbench generation produced no qualified trajectory: "
+            f"{trajectory.get('trajectory_status')}"
+        )
+    instruction = trajectory["final_text"]
     if pinned_hls_decl:
         instruction = (
             (instruction or "").rstrip()
-            + "\n\nPINNED `_hls` DECLARATION — your refactored kernel MUST define a function with this EXACT signature (character-for-character; do NOT change whitespace, const, pointer/array notation, or `extern \"C\"`):\n"
-            f"```cpp\n{pinned_hls_decl.rstrip()};\n```\n"
+            + "\n\nPINNED `_hls` DECLARATION:\n```cpp\n"
+            + pinned_hls_decl.rstrip()
+            + ";\n```\n"
         )
     return {
-        "best_tb": traj["best_tb"],
-        "best_stub": traj["best_stub"],
-        "best_cov": traj["best_cov"],
-        "best_round": traj["best_round"],
+        "best_tb": trajectory["best_tb"],
+        "best_stub": trajectory["best_stub"],
+        "best_cov": trajectory["best_cov"],
+        "best_round": trajectory["best_round"],
         "instruction": instruction,
         "new_kernel_name": f"{kernel_name}_hls",
-        "rounds": traj["rounds"],
+        "rounds": trajectory["rounds"],
+        "qualified": True,
     }
+
 
 
 def optimize_tb_seeded(
@@ -695,31 +1073,21 @@ def make_golden_hidden_tb(
     cache_dir: Optional[str] = None,
     cache_key: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Generate (or load from cache) the golden hidden TB for a kernel.
-
-    Runs M trajectories in parallel, each K rounds; picks the trajectory with
-    highest max-cov; returns that trajectory's best TB + its sig_spec.
-
-    Args:
-        cache_key: optional override for the cache filename (default: kernel_name).
-                   Use a unique-per-kernel value (e.g., kernel_name_suffix) when
-                   multiple kernels share the same `kernel_name` (e.g., several
-                   hetero kernels all use `process_top`).
-
-    Returns dict with keys: hidden_tb, hidden_sig_spec, hidden_stub,
-    hidden_cov, best_trajectory, best_round, trajectories (debug), orig_sha.
-    """
     orig_sha = hashlib.sha256(orig_code.encode("utf-8")).hexdigest()
     cache_key = cache_key or kernel_name
-
     if cache_dir is not None:
         cached = _load_golden_cache(cache_dir, cache_key, orig_sha)
-        if cached is not None:
+        if (
+            cached is not None
+            and cached.get("synth_ok")
+            and cached.get("hidden_tb")
+            and cached.get("hidden_sig_spec")
+        ):
             return cached
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=M) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=M) as executor:
         futures = {
-            ex.submit(
+            executor.submit(
                 run_trajectory,
                 orig_code=orig_code,
                 kernel_name=kernel_name,
@@ -728,35 +1096,59 @@ def make_golden_hidden_tb(
                 sig_spec_constraint=None,
                 llm_config=llm_config,
                 want_sig_spec=True,
-                trajectory_idx=m,
-            ): m
-            for m in range(M)
+                trajectory_idx=index,
+            ): index
+            for index in range(M)
         }
         trajectories: List[Dict[str, Any]] = []
-        for fut in concurrent.futures.as_completed(futures):
+        for future in concurrent.futures.as_completed(futures):
             try:
-                trajectories.append(fut.result())
-            except Exception as e:
-                # Don't lose the whole golden TB to a single trajectory crash.
-                trajectories.append({
-                    "trajectory_idx": futures[fut],
-                    "best_cov": 0.0,
-                    "best_tb": "",
-                    "best_stub": "",
-                    "best_round": -1,
-                    "final_text": "",
-                    "rounds": [],
-                    "error": f"{type(e).__name__}: {e}",
-                })
+                trajectories.append(future.result())
+            except Exception as exc:
+                trajectories.append(
+                    {
+                        "trajectory_idx": futures[future],
+                        "best_cov": 0.0,
+                        "best_tb": "",
+                        "best_stub": "",
+                        "best_round": -1,
+                        "final_text": "",
+                        "rounds": [],
+                        "synth_ok": False,
+                        "qualified": False,
+                        "trajectory_status": "exception",
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                )
 
-    trajectories.sort(key=lambda t: t.get("trajectory_idx", 0))
-    # Pick by (synth_ok=True FIRST, then max cov). If no trajectory has synth_ok,
-    # fall back to max-cov but flag synth_ok=False in the result.
+    trajectories.sort(key=lambda item: item.get("trajectory_idx", 0))
+    qualified = [
+        trajectory
+        for trajectory in trajectories
+        if trajectory.get("qualified")
+        and trajectory.get("synth_ok")
+        and trajectory.get("best_tb")
+        and trajectory.get("final_text")
+    ]
+    if not qualified:
+        reasons = [
+            str(
+                trajectory.get("error")
+                or trajectory.get("synth_error")
+                or trajectory.get("trajectory_status")
+                or "unknown"
+            )[-500:]
+            for trajectory in trajectories
+        ]
+        raise RuntimeError(
+            "golden hidden testbench generation produced no "
+            "qualified trajectory: "
+            + " | ".join(reasons)
+        )
     best = max(
-        trajectories,
-        key=lambda t: (1 if t.get("synth_ok") else 0, t.get("best_cov", 0.0)),
+        qualified,
+        key=lambda trajectory: trajectory.get("best_cov", 0.0),
     )
-
     result = {
         "kernel_name": kernel_name,
         "orig_sha256": orig_sha,
@@ -767,15 +1159,15 @@ def make_golden_hidden_tb(
         "hidden_cov": best["best_cov"],
         "best_trajectory": best.get("trajectory_idx", -1),
         "best_round": best["best_round"],
-        "synth_ok": bool(best.get("synth_ok", False)),
-        "synth_error": best.get("synth_error", "") or "",
+        "synth_ok": True,
+        "synth_error": "",
+        "qualified": True,
         "trajectories": trajectories,
     }
-
     if cache_dir is not None:
         _write_golden_cache(cache_dir, cache_key, result)
-
     return result
+
 
 
 # -------------------------- golden TB cache --------------------------

@@ -15,24 +15,53 @@ WORK_DIR = os.getenv('WORK_DIR') # optional scratch dir for intermediate work
 MAX_RETRY_ATTEMPTS = 3
 
 
+_AUTOGEN_REASONING_EFFORTS = frozenset(
+    {"none", "low", "minimal", "medium", "high", "xhigh"}
+)
+_REASONING_EFFORT_ALIASES = {"max": "xhigh"}
+
+
+def normalize_reasoning_effort(
+    reasoning_effort: Optional[str],
+) -> Optional[str]:
+    if reasoning_effort is None:
+        return None
+    if not isinstance(reasoning_effort, str):
+        raise TypeError("reasoning_effort must be a string or None")
+    cleaned = reasoning_effort.strip().lower()
+    if not cleaned:
+        return None
+    normalized = _REASONING_EFFORT_ALIASES.get(cleaned, cleaned)
+    if normalized not in _AUTOGEN_REASONING_EFFORTS:
+        allowed = ", ".join(
+            sorted(
+                _AUTOGEN_REASONING_EFFORTS
+                | set(_REASONING_EFFORT_ALIASES)
+            )
+        )
+        raise ValueError(
+            f"Unsupported reasoning_effort {reasoning_effort!r}; "
+            f"expected one of: {allowed}"
+        )
+    return normalized
+
+
 def make_llm_config(
-    model: Optional[str], 
+    model: Optional[str],
     reasoning_effort: Optional[str] = None,
-    base_url: Optional[str] = None
+    base_url: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    # AgRefactor++ keeps OpenAI compatibility and also supports
-    # OpenAI-compatible endpoints such as DeepSeek through base_url.
     if not model:
         return None
-
     api_type = "google" if "gemini" in model.lower() else "openai"
     config: Dict[str, Any] = {"model": model, "api_type": api_type}
-
-    if reasoning_effort:
-        config["reasoning_effort"] = reasoning_effort
+    normalized = normalize_reasoning_effort(reasoning_effort)
+    if normalized:
+        config["reasoning_effort"] = normalized
     if base_url:
         config["base_url"] = base_url
     return config
+
 
 def debug_print(debug: int, msg: str):
     if debug >= 1:

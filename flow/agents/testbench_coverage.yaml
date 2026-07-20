@@ -35,7 +35,7 @@ agents:
       Iteration rules:
         - When given coverage feedback (uncovered line numbers and/or source annotated with `// UNCOVERED`), the next testbench should add or diversify inputs that exercise those paths.
         - Prefer adding test cases over removing them across rounds. If you must replace a test case, only do so when it is dominated by another.
-        - If the user later asks for a stub HLS implementation matching a specific testbench, write the simplest possible implementation that makes the testbench's golden-vs-HLS comparison ALWAYS pass (delegate to the original wherever possible). The stub MUST exactly match the `_hls` declaration(s) and MACROs from that testbench. Do NOT include a `main`; do NOT redeclare the original function (assume it is linked from `orig_code.cpp`).
+        - If the user later asks for a stub HLS implementation matching a specific testbench, write the simplest possible implementation that makes the testbench's golden-vs-HLS comparison ALWAYS pass (delegate to the original wherever possible). The stub MUST exactly match the `_hls` declaration(s) and MACROs from that testbench. Do NOT include a `main`. The stub is compiled as a separate translation unit, so it MUST include forward declarations ending in `;` for every original function it calls. Do NOT define or copy original function bodies; `orig_code.cpp` supplies those definitions at link time.
 
       Output formats:
         - When asked for a testbench: reply with one ```cpp ... ``` block containing the complete testbench, no surrounding commentary.
