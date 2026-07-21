@@ -90,6 +90,7 @@ def _initial_user_message(
         "Generate one complete, normal-strength testbench now; do not emit a preliminary or simplified version. Aim for high line coverage while respecting every explicit macro, fixed array capacity, memory limit, and interface constraint in the source.",
         "Before writing calls, inspect the original for mutable global/static state, heap-backed structures, allocator state, counters, and other state that survives a return. The original and `_hls` sides must start from equivalent clean logical states and must use separate mutable input/output storage.",
         "Reset all relevant explicit state immediately before EACH side is invoked. If a complete reset cannot be established, do not call the original repeatedly; use one representative original invocation and design the testbench for a non-delegating matching stub. State safety takes priority over testcase count or marginal coverage.",
+        "When declaring the original golden function, preserve its C/C++ language linkage exactly as shown in the source. Never add or remove `extern \"C\"`; a linkage mismatch causes an undefined reference even when the parameter list looks identical.",
         "Reply with one ```cpp ... ``` block containing the complete testbench, no commentary outside it.",
     ])
     return "\n".join(parts)
@@ -97,26 +98,41 @@ def _initial_user_message(
 
 def _stub_request_message(
     kernel_name: Optional[str] = None,
+    pinned_hls_decl: Optional[str] = None,
 ) -> str:
     original_clause = (
         f"for the original `{kernel_name}` function "
         if kernel_name
         else "for every original function it calls "
     )
+    pinned_clause = ""
+    if pinned_hls_decl:
+        pinned_clause = (
+            "\n\nCRITICAL — EXACT `_hls` DEFINITION HEADER:\n"
+            "Use the declaration below character-for-character as the "
+            "definition header, replacing only its trailing `;` with the "
+            "function body. Preserve `extern \"C\"` presence or absence, "
+            "return type, function name, parameters, and qualifiers exactly.\n"
+            "```cpp\n"
+            + pinned_hls_decl.rstrip().rstrip(";")
+            + ";\n```"
+        )
     return (
         "Now write a minimal stub HLS implementation that matches the testbench you just produced. "
         "The stub MUST define every `_hls` function declared in the testbench with EXACTLY the same "
-        "signature. Delegation to the corresponding original function is CONDITIONAL, not mandatory. "
-        "Delegate only if the original is stateless/reentrant, or if the testbench establishes a "
-        "complete clean state immediately before the delegated `_hls` call. Never delegate as a "
-        "second execution over shared mutable global, static, heap-backed, allocator, pointer, tree, "
-        "queue, counter, or mutated-buffer state. If safe delegation cannot be established, write an "
-        "independent minimal stub that matches the tested observable behavior and does not call or "
-        "copy the original implementation. Do NOT include a `main`. If the stub calls the original, "
-        "it is compiled in a separate translation unit from `orig_code.cpp`, so it MUST contain a "
-        "forward declaration ending in `;` "
+        "signature and C/C++ language linkage. Delegation to the corresponding original function is "
+        "CONDITIONAL, not mandatory. Delegate only if the original is stateless/reentrant, or if the "
+        "testbench establishes a complete clean state immediately before the delegated `_hls` call. "
+        "Never delegate as a second execution over shared mutable global, static, heap-backed, "
+        "allocator, pointer, tree, queue, counter, or mutated-buffer state. If safe delegation cannot "
+        "be established, write an independent minimal stub that matches the tested observable behavior "
+        "and does not call or copy the original implementation. Do NOT include a `main`. If the stub "
+        "calls the original, it is compiled in a separate translation unit from `orig_code.cpp`, so it "
+        "MUST contain a forward declaration ending in `;` "
         + original_clause
-        + "before calling it. Reply with exactly one complete ```cpp ... ``` block and no commentary."
+        + "before calling it."
+        + pinned_clause
+        + "\nReply with exactly one complete ```cpp ... ``` block and no commentary."
     )
 
 
@@ -199,7 +215,7 @@ def _feedback_message(
             error_chunk = (
                 f"\n\nThe previous testbench failed the lightweight pre-compile qualification gate:\n"
                 f"```\n{prev_run_stderr.strip()[-1500:]}\n```\n"
-                f"Respect every reported capacity and persistent-state constraint. Do not repeatedly call a stateful original or delegate the `_hls` stub back to it unless a complete reset is explicitly verified."
+                f"Respect every reported capacity, language-linkage, and persistent-state constraint. Do not repeatedly call a stateful original or delegate the `_hls` stub back to it unless a complete reset is explicitly verified."
             )
         elif prev_status in ("no_gcda", "gcov_failed", "missing_orig_gcov") and prev_run_stderr:
             error_chunk = (
@@ -529,6 +545,46 @@ def _obvious_capacity_conflicts(
     return sorted(set(errors))
 
 
+def _obvious_linkage_conflicts(
+    orig_code: str,
+    tb_code: str,
+    stub_code: str,
+    kernel_name: str,
+) -> List[str]:
+    hls_name = f"{kernel_name}_hls"
+
+    def extern_c(declaration: str) -> bool:
+        return bool(
+            re.search(r'\bextern\s+"C"', declaration or "")
+        )
+
+    original_decl = _extract_seed_hls_decl(orig_code, kernel_name)
+    tb_original_decl = _extract_seed_hls_decl(tb_code, kernel_name)
+    tb_hls_decl = _extract_seed_hls_decl(tb_code, hls_name)
+    stub_hls_decl = _extract_seed_hls_decl(stub_code, hls_name)
+
+    errors: List[str] = []
+    if (
+        original_decl
+        and tb_original_decl
+        and extern_c(original_decl) != extern_c(tb_original_decl)
+    ):
+        errors.append(
+            f"testbench changes C/C++ language linkage of original "
+            f"{kernel_name}"
+        )
+    if (
+        tb_hls_decl
+        and stub_hls_decl
+        and extern_c(tb_hls_decl) != extern_c(stub_hls_decl)
+    ):
+        errors.append(
+            f"stub changes C/C++ language linkage of {hls_name} "
+            "relative to the testbench declaration"
+        )
+    return errors
+
+
 def _obvious_persistent_state_markers(orig_code: str) -> List[str]:
     # Return only obvious mutable file-scope or function-static state.
     source = re.sub(r"/\*.*?\*/", "", orig_code, flags=re.DOTALL)
@@ -598,36 +654,112 @@ def _obvious_state_safety_conflicts(
 
     call_re = re.compile(rf"\b{re.escape(kernel_name)}\s*\(")
 
-    def direct_call_count(code: str) -> int:
+    def direct_call_positions(code: str) -> Tuple[str, List[int]]:
         source = re.sub(r"/\*.*?\*/", "", code, flags=re.DOTALL)
-        count = 0
-        for raw in source.splitlines():
-            line = raw.split("//", 1)[0]
-            for match in call_re.finditer(line):
-                prefix = line[:match.start()]
-                if re.fullmatch(
-                    r"\s*(?:extern\s+\"C\"\s+)?"
-                    r"(?:[\w:<>,*&]+\s+)+",
-                    prefix,
-                ):
-                    continue
-                count += 1
-        return count
+        positions: List[int] = []
+        for match in call_re.finditer(source):
+            line_start = source.rfind("\n", 0, match.start()) + 1
+            prefix = source[line_start:match.start()]
+            if re.fullmatch(
+                r"\s*(?:extern\s+\"C\"\s+)?"
+                r"(?:[\w:<>,*&]+\s+)+",
+                prefix,
+            ):
+                continue
+            positions.append(match.start())
+        return source, positions
+
+    def matching_close(
+        source: str,
+        start: int,
+        opening: str,
+        closing: str,
+    ) -> Optional[int]:
+        depth = 0
+        for index in range(start, len(source)):
+            if source[index] == opening:
+                depth += 1
+            elif source[index] == closing:
+                depth -= 1
+                if depth == 0:
+                    return index
+        return None
+
+    def call_is_in_obvious_loop(
+        source: str,
+        positions: List[int],
+    ) -> bool:
+        for loop in re.finditer(r"\b(?:for|while)\s*\(", source):
+            opening = source.find("(", loop.start())
+            closing = matching_close(source, opening, "(", ")")
+            if closing is None:
+                continue
+            body_start = closing + 1
+            while (
+                body_start < len(source)
+                and source[body_start].isspace()
+            ):
+                body_start += 1
+            if body_start >= len(source):
+                continue
+            if source[body_start] == "{":
+                body_end = matching_close(
+                    source,
+                    body_start,
+                    "{",
+                    "}",
+                )
+            else:
+                body_end = source.find(";", body_start)
+            if body_end is None or body_end < 0:
+                continue
+            if any(body_start <= pos <= body_end for pos in positions):
+                return True
+
+        for loop in re.finditer(r"\bdo\b", source):
+            body_start = loop.end()
+            while (
+                body_start < len(source)
+                and source[body_start].isspace()
+            ):
+                body_start += 1
+            if body_start >= len(source):
+                continue
+            if source[body_start] == "{":
+                body_end = matching_close(
+                    source,
+                    body_start,
+                    "{",
+                    "}",
+                )
+            else:
+                body_end = source.find(";", body_start)
+            if body_end is None or body_end < 0:
+                continue
+            if any(body_start <= pos <= body_end for pos in positions):
+                return True
+        return False
 
     errors: List[str] = []
     state_hint = markers[0]
-    stub_calls = direct_call_count(stub_code)
-    tb_calls = direct_call_count(tb_code)
+    _stub_source, stub_positions = direct_call_positions(stub_code)
+    tb_source, tb_positions = direct_call_positions(tb_code)
 
-    if stub_calls:
+    if stub_positions:
         errors.append(
             f"stub delegates to stateful original {kernel_name}; "
             f"{state_hint}"
         )
-    if tb_calls > 1:
+    if call_is_in_obvious_loop(tb_source, tb_positions):
+        errors.append(
+            f"testbench calls stateful original {kernel_name} inside "
+            f"an obvious loop without a verified reset; {state_hint}"
+        )
+    elif len(tb_positions) > 1:
         errors.append(
             f"testbench calls stateful original {kernel_name} "
-            f"{tb_calls} times without a verified reset; {state_hint}"
+            f"{len(tb_positions)} times without a verified reset; "
+            f"{state_hint}"
         )
     return errors
 
@@ -642,6 +774,14 @@ def _measure_qualified_coverage(
         orig_code,
         tb_code,
         kernel_name,
+    )
+    errors.extend(
+        _obvious_linkage_conflicts(
+            orig_code,
+            tb_code,
+            stub_code,
+            kernel_name,
+        )
     )
     errors.extend(
         _obvious_state_safety_conflicts(
@@ -812,7 +952,10 @@ def run_trajectory(
     )
     stub_code = _request_cpp_artifact(
         agent,
-        _stub_request_message(kernel_name),
+        _stub_request_message(
+            kernel_name,
+            _extract_seed_hls_decl(tb_code, hls_name),
+        ),
         first_turn=False,
         artifact_kind="stub",
         required_symbol=hls_name,
@@ -881,7 +1024,10 @@ def run_trajectory(
         )
         stub_code = _request_cpp_artifact(
             agent,
-            _stub_request_message(kernel_name),
+            _stub_request_message(
+                kernel_name,
+                _extract_seed_hls_decl(tb_code, hls_name),
+            ),
             first_turn=False,
             artifact_kind="stub",
             required_symbol=hls_name,
@@ -1011,7 +1157,13 @@ def _finalize_trajectory(
             )
             new_stub = _request_cpp_artifact(
                 agent,
-                _stub_request_message(original_name),
+                _stub_request_message(
+                    original_name,
+                    _extract_seed_hls_decl(
+                        new_tb,
+                        expected_hls_name,
+                    ),
+                ),
                 first_turn=False,
                 artifact_kind="stub",
                 required_symbol=expected_hls_name,
@@ -1225,7 +1377,14 @@ def optimize_tb_seeded(
     tb_code = _extract_one_cpp_block(tb_raw)
 
     # Generate stub ONCE — signature is fixed across all rounds, so reuse it.
-    stub_raw = _agent_run_once(agent, _stub_request_message(), first_turn=False)
+    stub_raw = _agent_run_once(
+        agent,
+        _stub_request_message(
+            kernel_name,
+            _extract_seed_hls_decl(tb_code, hls_name),
+        ),
+        first_turn=False,
+    )
     stub_code = _extract_one_cpp_block(stub_raw)
 
     rounds: List[Dict[str, Any]] = []

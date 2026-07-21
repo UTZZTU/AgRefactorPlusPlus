@@ -94,6 +94,8 @@ class PromptStateSafetyTests(unittest.TestCase):
         self.assertIn("separate mutable input/output storage", message)
         self.assertIn("do not call the original repeatedly", message)
         self.assertIn("State safety takes priority", message)
+        self.assertIn("preserve its C/C++ language linkage", message)
+        self.assertIn("Never add or remove `extern \"C\"`", message)
 
     def test_stub_prompt_makes_original_delegation_conditional(self):
         message = tb_optimizer._stub_request_message("process_top")
@@ -103,6 +105,22 @@ class PromptStateSafetyTests(unittest.TestCase):
         self.assertIn("does not call or copy the original", message)
         self.assertNotIn(
             "signature and delegate to the corresponding original function",
+            message,
+        )
+
+    def test_stub_prompt_pins_exact_hls_linkage(self):
+        declaration = (
+            'void process_top_hls(int n, int *input, '
+            'int *output, int *fallback)'
+        )
+        message = tb_optimizer._stub_request_message(
+            "process_top",
+            declaration,
+        )
+        self.assertIn("EXACT `_hls` DEFINITION HEADER", message)
+        self.assertIn(declaration, message)
+        self.assertIn(
+            'Preserve `extern "C"` presence or absence',
             message,
         )
 
@@ -319,6 +337,83 @@ class LightweightQualificationGateTests(unittest.TestCase):
             [],
         )
 
+
+    def test_original_linkage_mismatch_is_rejected(self):
+        errors = tb_optimizer._obvious_linkage_conflicts(
+            "void process_top() {}\n",
+            (
+                'extern "C" void process_top();\n'
+                "void process_top_hls();\n"
+                "int main(){process_top();process_top_hls();}\n"
+            ),
+            "void process_top_hls() {}\n",
+            "process_top",
+        )
+        self.assertTrue(
+            any(
+                "language linkage of original" in error
+                for error in errors
+            )
+        )
+
+    def test_hls_linkage_mismatch_is_rejected(self):
+        errors = tb_optimizer._obvious_linkage_conflicts(
+            "void process_top() {}\n",
+            (
+                "void process_top();\n"
+                "void process_top_hls();\n"
+                "int main(){process_top();process_top_hls();}\n"
+            ),
+            'extern "C" void process_top_hls() {}\n',
+            "process_top",
+        )
+        self.assertTrue(
+            any(
+                "language linkage of process_top_hls" in error
+                for error in errors
+            )
+        )
+
+    def test_matching_cpp_linkage_is_allowed(self):
+        self.assertEqual(
+            tb_optimizer._obvious_linkage_conflicts(
+                "void process_top() {}\n",
+                (
+                    "void process_top();\n"
+                    "void process_top_hls();\n"
+                    "int main(){process_top();process_top_hls();}\n"
+                ),
+                "void process_top_hls() {}\n",
+                "process_top",
+            ),
+            [],
+        )
+
+    def test_looped_stateful_original_call_is_rejected(self):
+        looped_tb = (
+            "int main(){\n"
+            " int input[1] = {}, output[1] = {}, fallback = 0;\n"
+            " for (int t = 0; t < 3; ++t) {\n"
+            "  process_top(1, input, output, &fallback);\n"
+            " }\n"
+            " return 0;\n"
+            "}\n"
+        )
+        with patch.object(tb_optimizer, "measure_coverage") as measure:
+            result = tb_optimizer._measure_qualified_coverage(
+                self.STATEFUL,
+                looped_tb,
+                "void process_top_hls(int, int*, int*, int*) {}\n",
+                "process_top",
+            )
+        measure.assert_not_called()
+        self.assertTrue(
+            any(
+                "inside an obvious loop" in error
+                for error in result["qualification_errors"]
+            )
+        )
+
     def test_failure_feedback_explains_both_gates(self):
         run_failed = tb_optimizer._feedback_message(
             2, 0.0, [], self.ORIGINAL, "run_failed",
@@ -330,6 +425,7 @@ class LightweightQualificationGateTests(unittest.TestCase):
         )
         self.assertIn("coverage alone is not sufficient", run_failed)
         self.assertIn("pre-compile qualification gate", qualification_failed)
+        self.assertIn("language-linkage", qualification_failed)
         self.assertIn("persistent-state constraint", qualification_failed)
 
 class CoverageLoopHardeningTests(unittest.TestCase):
