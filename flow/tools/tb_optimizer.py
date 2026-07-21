@@ -87,7 +87,10 @@ def _initial_user_message(
         ])
     parts.extend([
         "",
-        "Generate the first testbench. Aim for high line coverage of the original kernel source above. Reply with one ```cpp ... ``` block containing the complete testbench, no commentary outside it.",
+        "Generate one complete, normal-strength testbench now; do not emit a preliminary or simplified version. Aim for high line coverage while respecting every explicit macro, fixed array capacity, memory limit, and interface constraint in the source.",
+        "Before writing calls, inspect the original for mutable global/static state, heap-backed structures, allocator state, counters, and other state that survives a return. The original and `_hls` sides must start from equivalent clean logical states and must use separate mutable input/output storage.",
+        "Reset all relevant explicit state immediately before EACH side is invoked. If a complete reset cannot be established, do not call the original repeatedly; use one representative original invocation and design the testbench for a non-delegating matching stub. State safety takes priority over testcase count or marginal coverage.",
+        "Reply with one ```cpp ... ``` block containing the complete testbench, no commentary outside it.",
     ])
     return "\n".join(parts)
 
@@ -103,12 +106,17 @@ def _stub_request_message(
     return (
         "Now write a minimal stub HLS implementation that matches the testbench you just produced. "
         "The stub MUST define every `_hls` function declared in the testbench with EXACTLY the same "
-        "signature and delegate to the corresponding original function. Do NOT include a `main`. "
-        "The stub is compiled in a separate translation unit from `orig_code.cpp`, so it MUST "
-        "contain a forward declaration ending in `;` "
+        "signature. Delegation to the corresponding original function is CONDITIONAL, not mandatory. "
+        "Delegate only if the original is stateless/reentrant, or if the testbench establishes a "
+        "complete clean state immediately before the delegated `_hls` call. Never delegate as a "
+        "second execution over shared mutable global, static, heap-backed, allocator, pointer, tree, "
+        "queue, counter, or mutated-buffer state. If safe delegation cannot be established, write an "
+        "independent minimal stub that matches the tested observable behavior and does not call or "
+        "copy the original implementation. Do NOT include a `main`. If the stub calls the original, "
+        "it is compiled in a separate translation unit from `orig_code.cpp`, so it MUST contain a "
+        "forward declaration ending in `;` "
         + original_clause
-        + "before calling it. Do NOT copy or define the original function body. Reply with exactly "
-        "one complete ```cpp ... ``` block and no commentary."
+        + "before calling it. Reply with exactly one complete ```cpp ... ``` block and no commentary."
     )
 
 
@@ -185,13 +193,13 @@ def _feedback_message(
                 f"\n\nThe previous testbench likely crashed during execution (no coverage data was emitted). "
                 f"Trailing stderr (last excerpt):\n"
                 f"```\n{prev_run_stderr.strip()[-1500:]}\n```\n"
-                f"Diagnose the crash (heap corruption, OOB access, etc.) and write a NEW testbench whose runs all return normally."
+                f"Diagnose the crash (heap corruption, OOB access, etc.). Before merely shrinking inputs, explicitly check whether the original was invoked repeatedly or again through a delegating stub while global/static/heap/allocator state, pointers, trees, queues, counters, or mutated buffers were shared. Regenerate the testbench and matching stub so each side starts from an equivalent clean state; otherwise eliminate repeated original calls or unsafe delegation. Write a NEW testbench whose runs all return normally."
             )
         return (
             f"The previous testbench / stub did not measure cleanly (status: {prev_status})."
             f"{error_chunk}\n\n"
-            f"Please write a NEW testbench that compiles cleanly, runs to completion, and exercises as much "
-            f"of the original kernel source as possible. Reply with one ```cpp ... ``` block containing the "
+            f"Please write a NEW testbench that compiles cleanly, runs to completion, preserves equivalent clean state and independent mutable storage for the original and `_hls` sides, and exercises as much "
+            f"of the original kernel source as possible without violating declared bounds. Reply with one ```cpp ... ``` block containing the "
             f"complete testbench, no commentary outside it."
         )
 
@@ -211,7 +219,7 @@ def _feedback_message(
         f"{uncovered_summary}\n\n"
         f"Below is the original source with `// UNCOVERED` markers appended to lines the previous testbench did not exercise. "
         f"Write the next testbench (a new version, not a diff) that ADDITIONALLY covers the marked paths. "
-        f"You may add cases, vary inputs, or add seeds; do not remove cases unless they are dominated by others.\n\n"
+        f"You may add cases, vary inputs, or add seeds; do not remove cases unless they are dominated by others. Preserve state safety: do not add repeated original calls unless every persistent state component is reset immediately before each invocation, and do not introduce unsafe original delegation in the matching stub.\n\n"
         f"```cpp\n{annotated_source.rstrip()}\n```\n\n"
         f"Reply with one ```cpp ... ``` block containing the complete next testbench, no commentary outside it."
     )

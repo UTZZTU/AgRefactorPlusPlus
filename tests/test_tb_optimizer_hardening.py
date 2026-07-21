@@ -81,6 +81,60 @@ class StrictCppArtifactTests(unittest.TestCase):
             )
 
 
+class PromptStateSafetyTests(unittest.TestCase):
+    def test_initial_prompt_requests_normal_complete_state_safe_testbench(self):
+        message = tb_optimizer._initial_user_message(
+            orig_code="int state; void process_top(){}\n",
+            kernel_name="process_top",
+            sig_spec_constraint=None,
+        )
+        self.assertIn("complete, normal-strength testbench", message)
+        self.assertIn("do not emit a preliminary or simplified", message)
+        self.assertIn("equivalent clean logical states", message)
+        self.assertIn("separate mutable input/output storage", message)
+        self.assertIn("do not call the original repeatedly", message)
+        self.assertIn("State safety takes priority", message)
+
+    def test_stub_prompt_makes_original_delegation_conditional(self):
+        message = tb_optimizer._stub_request_message("process_top")
+        self.assertIn("CONDITIONAL, not mandatory", message)
+        self.assertIn("Never delegate as a second execution", message)
+        self.assertIn("independent minimal stub", message)
+        self.assertIn("does not call or copy the original", message)
+        self.assertNotIn(
+            "signature and delegate to the corresponding original function",
+            message,
+        )
+
+    def test_runtime_crash_feedback_names_shared_state_delegation(self):
+        message = tb_optimizer._feedback_message(
+            round_idx=2,
+            prev_cov=0.0,
+            uncovered_lines=[],
+            annotated_source="void process_top(){}\n",
+            prev_status="no_gcda",
+            prev_run_stderr="malloc(): corrupted top size",
+        )
+        self.assertIn("invoked repeatedly", message)
+        self.assertIn("delegating stub", message)
+        self.assertIn("equivalent clean state", message)
+        self.assertIn("unsafe delegation", message)
+
+    def test_agent_system_prompt_has_same_state_safety_policy(self):
+        import yaml
+
+        data = yaml.safe_load(
+            Path(tb_optimizer.AGENT_YAML).read_text(encoding="utf-8")
+        )
+        message = data["agents"]["tb_engineer"]["system_message"]
+        self.assertIn("complete, normal-strength testbench directly", message)
+        self.assertIn("Persistent-state safety rules", message)
+        self.assertIn("State safety takes priority", message)
+        self.assertIn("CONDITIONAL, not mandatory", message)
+        self.assertIn("independent minimal behavior", message)
+        self.assertNotIn("delegate to the original wherever possible", message)
+
+
 class CoverageLoopHardeningTests(unittest.TestCase):
     ORIGINAL = (
         "void process_top(int n, int *input, int *output, "

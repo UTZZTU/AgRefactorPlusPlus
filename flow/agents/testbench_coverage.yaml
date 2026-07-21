@@ -13,6 +13,15 @@ agents:
 
       Conversation history is retained across turns. Use prior testbenches, prior stubs, and prior coverage feedback when generating the next artifact.
 
+      Generate one complete, normal-strength testbench directly. Do NOT produce a preliminary, simplified, or placeholder testbench before the real one.
+
+      Persistent-state safety rules:
+        - Before designing calls, inspect the original source for mutable globals, static locals, heap-backed data structures, allocator/pool offsets, counters, file/I/O state, and any other state that can survive a function return. Unless the source clearly proves otherwise, treat such code as non-reentrant.
+        - The original call and the `_hls` call must begin from equivalent clean logical states. Use separate mutable input/output storage for the two sides. Do not reuse mutated buffers, pointers, trees, queues, counters, allocator offsets, or other persistent objects between them.
+        - Reset every relevant explicit state component immediately before EACH side is invoked, not only once at the start of a testcase.
+        - If a complete reset cannot be established, do not call the original repeatedly. Prefer one representative original invocation and a non-delegating `_hls` stub. State safety takes priority over testcase count and marginal coverage.
+        - Never use oversized inputs outside explicit macros, fixed array capacities, memory-pool limits, or other declared constraints merely to force an allocation/error path.
+
       Core testbench rules (apply unless explicitly relaxed in the user message):
         - Keep the function signature of the original code unchanged when calling it as the golden reference. The original may be NON-synthesizable; that is fine for the golden side.
         - Declare a NEW HLS-side function whose name is the original with "_hls" appended. This is a FRESH signature, not a copy of the original's — its job is to be FULLY HLS-synthesizable, so you MUST replace or remove any non-synthesizable patterns from the original API:
@@ -25,8 +34,8 @@ agents:
             * Recursive type definitions → flatten to indices into a fixed pool.
           When in doubt, prefer the smallest synthesizable surface that still lets the testbench pass meaningful inputs.
         - Any varying input size MUST be a `#define` MACRO at the top of the testbench so the refactoring flow can keep them in sync.
-        - Inputs must be deterministic (fixed seed or hard-coded). Use 3-10 testcases per testbench; favor diversity over count.
-        - Call both the original and the `_hls` version on the same inputs and compare outputs. If they differ, return 1 and emit a hint to stderr. Otherwise print "success" and return 0.
+        - Inputs must be deterministic (fixed seed or hard-coded). Use a compact representative set of normal, boundary, and branch-relevant cases. Use 3-10 cases only when repeated execution is state-safe; fewer cases or one process-level scenario are valid when required for correctness.
+        - Call both the original and the `_hls` version on equivalent logical inputs, but use independent mutable storage for each side. Compare outputs. If they differ, return 1 and emit a hint to stderr. Otherwise print "success" and return 0.
         - The testbench will be compiled and run like:
           ```
           g++ -O0 -g --coverage -Wno-unknown-pragmas testbench.cpp orig_code.cpp refactor_code.cpp -o csim_cov
@@ -37,7 +46,7 @@ agents:
       Iteration rules:
         - When given coverage feedback (uncovered line numbers and/or source annotated with `// UNCOVERED`), the next testbench should add or diversify inputs that exercise those paths.
         - Prefer adding test cases over removing them across rounds. If you must replace a test case, only do so when it is dominated by another.
-        - If the user later asks for a stub HLS implementation matching a specific testbench, write the simplest possible implementation that makes the testbench's golden-vs-HLS comparison ALWAYS pass (delegate to the original wherever possible). The stub MUST exactly match the `_hls` declaration(s) and MACROs from that testbench. Do NOT include a `main`. The stub is compiled as a separate translation unit, so it MUST include forward declarations ending in `;` for every original function it calls. Do NOT define or copy original function bodies; `orig_code.cpp` supplies those definitions at link time.
+        - If the user later asks for a stub HLS implementation matching a specific testbench, write the simplest possible implementation that makes the testbench's golden-vs-HLS comparison pass. Delegation to the original is CONDITIONAL, not mandatory: delegate only when the original is stateless/reentrant, or when the testbench performs a complete verified reset immediately before the delegated call. If mutable global/static/heap/allocator state cannot be completely reset, do NOT call the original from the stub; implement an independent minimal behavior for the tested observable contract instead. The stub MUST exactly match the `_hls` declaration(s) and MACROs from that testbench. Do NOT include a `main`. If the stub calls any original function, it is compiled as a separate translation unit and MUST include the corresponding forward declaration ending in `;`. Do NOT copy the original function body into the stub.
 
       Output formats:
         - When asked for a testbench: reply with one ```cpp ... ``` block containing the complete testbench, no surrounding commentary.
