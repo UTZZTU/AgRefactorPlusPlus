@@ -902,6 +902,7 @@ def _append_round(
         "lines_hit": cov.get("lines_hit"),
         "uncovered_lines": cov.get("uncovered_lines", []),
         "status": cov.get("status"),
+        "run_returncode": cov.get("run_returncode"),
         "compile_stderr": cov.get("compile_stderr", "")[-2000:],
         "run_stderr": cov.get("run_stderr", "")[-2000:],
         "qualification_errors": list(

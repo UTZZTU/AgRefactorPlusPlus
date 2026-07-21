@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -499,24 +500,42 @@ class CoverageLoopHardeningTests(unittest.TestCase):
 
     def test_debug_artifacts_are_persisted(self):
         with tempfile.TemporaryDirectory() as tmp:
-            record = {
-                "round": 1,
-                "tb_code": "int main(){return 0;}\n",
-                "stub_code": "void process_top_hls(){}\n",
-                "status": "compile_failed",
-                "compile_stderr": "error",
+            rounds = []
+            coverage = {
+                "status": "ok",
+                "cov_pct": 100.0,
+                "lines_total": 1,
+                "lines_hit": 1,
+                "uncovered_lines": [],
+                "run_returncode": 0,
+                "compile_stderr": "",
                 "run_stderr": "",
+                "qualification_errors": [],
             }
             with patch.dict(
                 os.environ,
                 {"AGREFACTOR_TB_DEBUG_DIR": tmp},
                 clear=False,
             ):
-                tb_optimizer._persist_round_artifacts(2, record)
+                record = tb_optimizer._append_round(
+                    rounds,
+                    trajectory_idx=2,
+                    round_index=1,
+                    tb_code="int main(){return 0;}\n",
+                    stub_code="void process_top_hls(){}\n",
+                    cov=coverage,
+                )
             root = Path(tmp) / "trajectory_002" / "round_001"
             self.assertTrue((root / "testbench.cpp").is_file())
             self.assertTrue((root / "stub.cpp").is_file())
-            self.assertTrue((root / "coverage.json").is_file())
+            coverage_path = root / "coverage.json"
+            self.assertTrue(coverage_path.is_file())
+            persisted = json.loads(
+                coverage_path.read_text(encoding="utf-8")
+            )
+            self.assertEqual(record["run_returncode"], 0)
+            self.assertEqual(rounds[0]["run_returncode"], 0)
+            self.assertEqual(persisted["run_returncode"], 0)
 
     def test_run_trajectory_regenerates_stub(self):
         failed = {
