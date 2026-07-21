@@ -188,6 +188,19 @@ def _feedback_message(
                 f"```\n{prev_run_stderr.strip()[-1500:]}\n```\n"
                 f"Make inputs smaller or avoid the runaway code path; the run must finish within the time limit."
             )
+        elif prev_status == "run_failed" and prev_run_stderr:
+            error_chunk = (
+                f"\n\nThe previous testbench returned a non-zero status, so it is not qualified. "
+                f"Trailing stderr (last excerpt):\n"
+                f"```\n{prev_run_stderr.strip()[-1500:]}\n```\n"
+                f"Fix the golden-vs-HLS mismatch; coverage alone is not sufficient."
+            )
+        elif prev_status == "qualification_failed" and prev_run_stderr:
+            error_chunk = (
+                f"\n\nThe previous testbench failed the lightweight pre-compile qualification gate:\n"
+                f"```\n{prev_run_stderr.strip()[-1500:]}\n```\n"
+                f"Keep every requested element count within the fixed capacity of each array passed to the original."
+            )
         elif prev_status in ("no_gcda", "gcov_failed", "missing_orig_gcov") and prev_run_stderr:
             error_chunk = (
                 f"\n\nThe previous testbench likely crashed during execution (no coverage data was emitted). "
@@ -423,6 +436,130 @@ def _ensure_original_forward_declaration(
     return declaration.rstrip() + ";\n\n" + stub_code.lstrip()
 
 
+_SIZE_PARAMETER_NAMES = {
+    "n", "len", "length", "size", "count",
+    "num", "num_items", "num_elements",
+}
+
+
+def _obvious_capacity_conflicts(
+    orig_code: str,
+    tb_code: str,
+    kernel_name: str,
+) -> List[str]:
+    # Deliberately recognizes only simple direct calls and fixed arrays.
+    declaration = _extract_seed_hls_decl(orig_code, kernel_name)
+    if not declaration or "(" not in declaration:
+        return []
+
+    params = declaration.split("(", 1)[1].rsplit(")", 1)[0].split(",")
+    size_index: Optional[int] = None
+    pointer_indices: List[int] = []
+    for index, parameter in enumerate(params):
+        match = re.search(r"([A-Za-z_]\w*)\s*$", parameter.strip())
+        if not match:
+            continue
+        name = match.group(1).lower()
+        if size_index is None and (
+            name in _SIZE_PARAMETER_NAMES
+            or name.endswith(("_size", "_count", "_length"))
+        ):
+            size_index = index
+        if "*" in parameter or "[" in parameter:
+            pointer_indices.append(index)
+    if size_index is None or not pointer_indices:
+        return []
+
+    values: Dict[str, int] = {}
+
+    def resolve(token: str) -> Optional[int]:
+        token = re.sub(r"[uUlL]+$", "", token.strip().strip("()"))
+        if re.fullmatch(r"[+-]?\d+", token):
+            return int(token)
+        return values.get(token)
+
+    pairs = re.findall(
+        r"(?m)^\s*#\s*define\s+([A-Za-z_]\w*)\s+"
+        r"([A-Za-z_]\w*|[+-]?\d+[uUlL]*)\s*$",
+        tb_code,
+    ) + re.findall(
+        r"\b(?:const\s+)?(?:unsigned\s+|signed\s+)?"
+        r"(?:int|long|size_t|std::size_t)\s+([A-Za-z_]\w*)\s*=\s*"
+        r"([A-Za-z_]\w*|[+-]?\d+[uUlL]*)\s*;",
+        tb_code,
+    )
+    for _ in range(2):
+        for name, raw in pairs:
+            value = resolve(raw)
+            if value is not None:
+                values[name] = value
+
+    capacities: Dict[str, int] = {}
+    for name, raw in re.findall(
+        r"(?m)^\s*(?:const\s+)?(?:[\w:<>]+\s+)+"
+        r"([A-Za-z_]\w*)\s*\[\s*"
+        r"([A-Za-z_]\w*|[+-]?\d+[uUlL]*)\s*\]",
+        tb_code,
+    ):
+        value = resolve(raw)
+        if value is not None and value >= 0:
+            capacities[name] = value
+
+    errors: List[str] = []
+    for call in re.findall(
+        rf"\b{re.escape(kernel_name)}\s*\(([^()]*)\)\s*;",
+        tb_code,
+    ):
+        arguments = [item.strip() for item in call.split(",")]
+        if size_index >= len(arguments):
+            continue
+        requested = resolve(arguments[size_index])
+        if requested is None or requested < 0:
+            continue
+        for index in pointer_indices:
+            if index >= len(arguments):
+                continue
+            argument = arguments[index].lstrip("&*").strip()
+            capacity = capacities.get(argument)
+            if capacity is not None and requested > capacity:
+                errors.append(
+                    f"{kernel_name} requests {requested} elements but "
+                    f"array {argument} has fixed capacity {capacity}"
+                )
+    return sorted(set(errors))
+
+
+def _measure_qualified_coverage(
+    orig_code: str,
+    tb_code: str,
+    stub_code: str,
+    kernel_name: str,
+) -> Dict[str, Any]:
+    errors = _obvious_capacity_conflicts(
+        orig_code,
+        tb_code,
+        kernel_name,
+    )
+    if not errors:
+        result = measure_coverage(orig_code, tb_code, stub_code)
+        result.setdefault("qualification_errors", [])
+        return result
+    return {
+        "status": "qualification_failed",
+        "cov_pct": None,
+        "lines_total": None,
+        "lines_hit": None,
+        "uncovered_lines": [],
+        "run_returncode": None,
+        "compile_stderr": "",
+        "run_stderr": (
+            "Lightweight testbench qualification failed:\n"
+            + "\n".join(f"- {error}" for error in errors)
+        ),
+        "qualification_errors": errors,
+    }
+
+
 def _coverage_failure_fingerprint(record: Dict[str, Any]) -> str:
     diagnostic = (
         str(record.get("status") or "unknown")
@@ -515,6 +652,9 @@ def _append_round(
         "status": cov.get("status"),
         "compile_stderr": cov.get("compile_stderr", "")[-2000:],
         "run_stderr": cov.get("run_stderr", "")[-2000:],
+        "qualification_errors": list(
+            cov.get("qualification_errors", [])
+        ),
         **extra,
     }
     rounds.append(record)
@@ -570,7 +710,12 @@ def run_trajectory(
         orig_code,
         kernel_name,
     )
-    coverage = measure_coverage(orig_code, tb_code, stub_code)
+    coverage = _measure_qualified_coverage(
+        orig_code,
+        tb_code,
+        stub_code,
+        kernel_name,
+    )
     _append_round(
         rounds,
         trajectory_idx=trajectory_idx,
@@ -634,7 +779,12 @@ def run_trajectory(
             orig_code,
             kernel_name,
         )
-        coverage = measure_coverage(orig_code, tb_code, stub_code)
+        coverage = _measure_qualified_coverage(
+        orig_code,
+        tb_code,
+        stub_code,
+        kernel_name,
+    )
         _append_round(
             rounds,
             trajectory_idx=trajectory_idx,
@@ -759,10 +909,11 @@ def _finalize_trajectory(
                 orig_code,
                 original_name,
             )
-            new_coverage = measure_coverage(
+            new_coverage = _measure_qualified_coverage(
                 orig_code,
                 new_tb,
                 new_stub,
+                original_name,
             )
             new_record = _append_round(
                 rounds,
@@ -966,7 +1117,12 @@ def optimize_tb_seeded(
     stub_code = _extract_one_cpp_block(stub_raw)
 
     rounds: List[Dict[str, Any]] = []
-    cov = measure_coverage(orig_code, tb_code, stub_code)
+    cov = _measure_qualified_coverage(
+        orig_code,
+        tb_code,
+        stub_code,
+        kernel_name,
+    )
     rounds.append({
         "round": 1,
         "tb_code": tb_code,
@@ -978,6 +1134,9 @@ def optimize_tb_seeded(
         "status": cov.get("status"),
         "compile_stderr": cov.get("compile_stderr", "")[-2000:],
         "run_stderr": cov.get("run_stderr", "")[-2000:],
+        "qualification_errors": list(
+            cov.get("qualification_errors", [])
+        ),
     })
 
     # Early stop?
@@ -1011,7 +1170,12 @@ def optimize_tb_seeded(
             )
         tb_raw = _agent_run_once(agent, fb_msg, first_turn=False)
         tb_code = _extract_one_cpp_block(tb_raw)
-        cov = measure_coverage(orig_code, tb_code, stub_code)  # ← reuse stub_code!
+        cov = _measure_qualified_coverage(
+            orig_code,
+            tb_code,
+            stub_code,
+            kernel_name,
+        )  # reuse stub_code
         rounds.append({
             "round": k,
             "tb_code": tb_code,
@@ -1023,6 +1187,9 @@ def optimize_tb_seeded(
             "status": cov.get("status"),
             "compile_stderr": cov.get("compile_stderr", "")[-2000:],
             "run_stderr": cov.get("run_stderr", "")[-2000:],
+            "qualification_errors": list(
+                cov.get("qualification_errors", [])
+            ),
         })
         if (cov.get("cov_pct") or 0.0) >= target_pct:
             break

@@ -176,8 +176,11 @@ def measure_coverage(
             )
             res["run_returncode"] = r.returncode
             res["run_stderr"] = r.stderr[-2000:]
-            # NB: returncode != 0 just means TB reported mismatch. Coverage is
-            # still valid — gcov captures whatever ran before exit. We continue.
+            if r.returncode != 0:
+                # A generated testbench that reports a golden-vs-HLS mismatch
+                # is not qualified, even if partial gcov data exists.
+                res["status"] = "run_failed"
+                return res
         except subprocess.TimeoutExpired:
             res["status"] = "run_timeout"
             return res

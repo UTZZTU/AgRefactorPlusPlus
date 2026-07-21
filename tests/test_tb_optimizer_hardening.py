@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from flow import new as flow_new
-from flow.tools import tb_optimizer
+from flow.tools import tb_coverage, tb_optimizer
 
 
 class ReasoningEffortNormalizationTests(unittest.TestCase):
@@ -134,6 +134,85 @@ class PromptStateSafetyTests(unittest.TestCase):
         self.assertIn("independent minimal behavior", message)
         self.assertNotIn("delegate to the original wherever possible", message)
 
+
+class LightweightQualificationGateTests(unittest.TestCase):
+    ORIGINAL = (
+        "void process_top(int n, int *input, int *output, "
+        "int *fallback) { *fallback = 0; }\n"
+    )
+
+    @staticmethod
+    def _tb(size: str) -> str:
+        return (
+            "#define CAPACITY 8\n"
+            "int main(){\n"
+            " int input[CAPACITY] = {};\n"
+            " int output[CAPACITY] = {};\n"
+            " int fallback = 0;\n"
+            f" process_top({size}, input, output, &fallback);\n"
+            " return 0;\n"
+            "}\n"
+        )
+
+    def test_capacity_gate_is_conservative(self):
+        conflicts = tb_optimizer._obvious_capacity_conflicts
+        self.assertEqual(
+            len(conflicts(self.ORIGINAL, self._tb("16"), "process_top")),
+            2,
+        )
+        self.assertEqual(
+            conflicts(self.ORIGINAL, self._tb("CAPACITY"), "process_top"),
+            [],
+        )
+        self.assertEqual(
+            conflicts(
+                self.ORIGINAL,
+                self._tb("runtime_size + 1"),
+                "process_top",
+            ),
+            [],
+        )
+
+    def test_capacity_failure_skips_coverage_process(self):
+        with patch.object(tb_optimizer, "measure_coverage") as measure:
+            result = tb_optimizer._measure_qualified_coverage(
+                self.ORIGINAL,
+                self._tb("16"),
+                "void process_top_hls(){}\n",
+                "process_top",
+            )
+        measure.assert_not_called()
+        self.assertEqual(result["status"], "qualification_failed")
+        self.assertEqual(len(result["qualification_errors"]), 2)
+
+    def test_nonzero_testbench_return_is_run_failed(self):
+        compile_result = Mock(returncode=0, stderr="", stdout="")
+        run_result = Mock(returncode=1, stderr="mismatch", stdout="")
+        with patch.object(
+            tb_coverage.subprocess,
+            "run",
+            side_effect=[compile_result, run_result],
+        ) as run:
+            result = tb_coverage.measure_coverage(
+                "void process_top(){}\n",
+                "int main(){return 1;}\n",
+                "void process_top_hls(){}\n",
+            )
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(result["status"], "run_failed")
+        self.assertEqual(result["run_returncode"], 1)
+
+    def test_failure_feedback_explains_both_gates(self):
+        run_failed = tb_optimizer._feedback_message(
+            2, 0.0, [], self.ORIGINAL, "run_failed",
+            prev_run_stderr="mismatch",
+        )
+        qualification_failed = tb_optimizer._feedback_message(
+            2, 0.0, [], self.ORIGINAL, "qualification_failed",
+            prev_run_stderr="fixed capacity 8",
+        )
+        self.assertIn("coverage alone is not sufficient", run_failed)
+        self.assertIn("pre-compile qualification gate", qualification_failed)
 
 class CoverageLoopHardeningTests(unittest.TestCase):
     ORIGINAL = (
