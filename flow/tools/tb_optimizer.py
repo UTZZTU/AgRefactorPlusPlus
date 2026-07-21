@@ -199,7 +199,7 @@ def _feedback_message(
             error_chunk = (
                 f"\n\nThe previous testbench failed the lightweight pre-compile qualification gate:\n"
                 f"```\n{prev_run_stderr.strip()[-1500:]}\n```\n"
-                f"Keep every requested element count within the fixed capacity of each array passed to the original."
+                f"Respect every reported capacity and persistent-state constraint. Do not repeatedly call a stateful original or delegate the `_hls` stub back to it unless a complete reset is explicitly verified."
             )
         elif prev_status in ("no_gcda", "gcov_failed", "missing_orig_gcov") and prev_run_stderr:
             error_chunk = (
@@ -529,6 +529,109 @@ def _obvious_capacity_conflicts(
     return sorted(set(errors))
 
 
+def _obvious_persistent_state_markers(orig_code: str) -> List[str]:
+    # Return only obvious mutable file-scope or function-static state.
+    source = re.sub(r"/\*.*?\*/", "", orig_code, flags=re.DOTALL)
+    markers: List[str] = []
+    depth = 0
+    ignored = (
+        "#",
+        "typedef ",
+        "using ",
+        "extern ",
+        "const ",
+        "constexpr ",
+        "struct ",
+        "class ",
+        "enum ",
+        "union ",
+        "namespace ",
+        "template ",
+        "static_assert",
+    )
+
+    for lineno, raw in enumerate(source.splitlines(), start=1):
+        line = raw.split("//", 1)[0].strip()
+        if not line:
+            continue
+
+        if (
+            depth == 0
+            and line.endswith(";")
+            and "(" not in line
+            and not line.startswith(ignored)
+            and not re.search(r"\b(?:const|constexpr)\b", line)
+            and re.match(
+                r"^(?:static\s+)?"
+                r"(?:unsigned\s+|signed\s+|long\s+|short\s+|volatile\s+)*"
+                r"[\w:<>]+\s+.+;$",
+                line,
+            )
+        ):
+            markers.append(
+                f"line {lineno}: mutable file-scope declaration"
+            )
+        elif (
+            depth > 0
+            and line.endswith(";")
+            and re.search(r"\bstatic\b", line)
+            and not re.search(r"\b(?:const|constexpr)\b", line)
+        ):
+            markers.append(
+                f"line {lineno}: mutable function-static declaration"
+            )
+
+        depth = max(0, depth + line.count("{") - line.count("}"))
+
+    return markers[:8]
+
+
+def _obvious_state_safety_conflicts(
+    orig_code: str,
+    tb_code: str,
+    stub_code: str,
+    kernel_name: str,
+) -> List[str]:
+    markers = _obvious_persistent_state_markers(orig_code)
+    if not markers:
+        return []
+
+    call_re = re.compile(rf"\b{re.escape(kernel_name)}\s*\(")
+
+    def direct_call_count(code: str) -> int:
+        source = re.sub(r"/\*.*?\*/", "", code, flags=re.DOTALL)
+        count = 0
+        for raw in source.splitlines():
+            line = raw.split("//", 1)[0]
+            for match in call_re.finditer(line):
+                prefix = line[:match.start()]
+                if re.fullmatch(
+                    r"\s*(?:extern\s+\"C\"\s+)?"
+                    r"(?:[\w:<>,*&]+\s+)+",
+                    prefix,
+                ):
+                    continue
+                count += 1
+        return count
+
+    errors: List[str] = []
+    state_hint = markers[0]
+    stub_calls = direct_call_count(stub_code)
+    tb_calls = direct_call_count(tb_code)
+
+    if stub_calls:
+        errors.append(
+            f"stub delegates to stateful original {kernel_name}; "
+            f"{state_hint}"
+        )
+    if tb_calls > 1:
+        errors.append(
+            f"testbench calls stateful original {kernel_name} "
+            f"{tb_calls} times without a verified reset; {state_hint}"
+        )
+    return errors
+
+
 def _measure_qualified_coverage(
     orig_code: str,
     tb_code: str,
@@ -540,6 +643,15 @@ def _measure_qualified_coverage(
         tb_code,
         kernel_name,
     )
+    errors.extend(
+        _obvious_state_safety_conflicts(
+            orig_code,
+            tb_code,
+            stub_code,
+            kernel_name,
+        )
+    )
+    errors = sorted(set(errors))
     if not errors:
         result = measure_coverage(orig_code, tb_code, stub_code)
         result.setdefault("qualification_errors", [])
@@ -780,11 +892,11 @@ def run_trajectory(
             kernel_name,
         )
         coverage = _measure_qualified_coverage(
-        orig_code,
-        tb_code,
-        stub_code,
-        kernel_name,
-    )
+            orig_code,
+            tb_code,
+            stub_code,
+            kernel_name,
+        )
         _append_round(
             rounds,
             trajectory_idx=trajectory_idx,

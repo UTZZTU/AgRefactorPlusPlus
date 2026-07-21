@@ -202,6 +202,123 @@ class LightweightQualificationGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "run_failed")
         self.assertEqual(result["run_returncode"], 1)
 
+
+    STATEFUL = (
+        "int *queue;\n"
+        "int front = 0, rear = -1;\n"
+        "bool fallback = false;\n"
+        "void process_top(int n, int *input, int *output, int *flag) {}\n"
+    )
+
+    @staticmethod
+    def _state_tb(call_count: int) -> str:
+        calls = "\n".join(
+            " process_top(1, input, output, &fallback);"
+            for _ in range(call_count)
+        )
+        return (
+            "int main(){\n"
+            " int input[1] = {};\n"
+            " int output[1] = {};\n"
+            " int fallback = 0;\n"
+            f"{calls}\n"
+            " return 0;\n"
+            "}\n"
+        )
+
+    def test_stateful_delegating_stub_is_rejected(self):
+        stub = (
+            "void process_top_hls(int n, int *input, int *output, "
+            "int *fallback){\n"
+            " process_top(n, input, output, fallback);\n"
+            "}\n"
+        )
+        with patch.object(tb_optimizer, "measure_coverage") as measure:
+            result = tb_optimizer._measure_qualified_coverage(
+                self.STATEFUL,
+                self._state_tb(1),
+                stub,
+                "process_top",
+            )
+        measure.assert_not_called()
+        self.assertEqual(result["status"], "qualification_failed")
+        self.assertTrue(
+            any(
+                "stub delegates to stateful original" in error
+                for error in result["qualification_errors"]
+            )
+        )
+
+    def test_repeated_stateful_original_calls_are_rejected(self):
+        with patch.object(tb_optimizer, "measure_coverage") as measure:
+            result = tb_optimizer._measure_qualified_coverage(
+                self.STATEFUL,
+                self._state_tb(2),
+                "void process_top_hls(int, int*, int*, int*){}\n",
+                "process_top",
+            )
+        measure.assert_not_called()
+        self.assertTrue(
+            any(
+                "without a verified reset" in error
+                for error in result["qualification_errors"]
+            )
+        )
+
+    def test_safe_cases_are_not_blocked_by_state_gate(self):
+        passed = {
+            "status": "ok",
+            "cov_pct": 100.0,
+            "lines_total": 1,
+            "lines_hit": 1,
+            "uncovered_lines": [],
+            "run_returncode": 0,
+            "compile_stderr": "",
+            "run_stderr": "",
+        }
+        independent_stub = (
+            "void process_top_hls(int, int*, int*, int*){}\n"
+        )
+        stateless = (
+            "void process_top(int n, int *input, int *output, "
+            "int *fallback){}\n"
+        )
+        delegating_stub = (
+            "void process_top_hls(int n, int *input, int *output, "
+            "int *fallback){process_top(n,input,output,fallback);}\n"
+        )
+        with patch.object(
+            tb_optimizer,
+            "measure_coverage",
+            return_value=dict(passed),
+        ) as measure:
+            stateful_once = tb_optimizer._measure_qualified_coverage(
+                self.STATEFUL,
+                self._state_tb(1),
+                independent_stub,
+                "process_top",
+            )
+            stateless_delegate = tb_optimizer._measure_qualified_coverage(
+                stateless,
+                self._state_tb(1),
+                delegating_stub,
+                "process_top",
+            )
+        self.assertEqual(measure.call_count, 2)
+        self.assertEqual(stateful_once["status"], "ok")
+        self.assertEqual(stateless_delegate["status"], "ok")
+
+    def test_const_only_globals_do_not_count_as_mutable_state(self):
+        source = (
+            "const int LIMIT = 8;\n"
+            "static constexpr int WIDTH = 4;\n"
+            "void process_top(){}\n"
+        )
+        self.assertEqual(
+            tb_optimizer._obvious_persistent_state_markers(source),
+            [],
+        )
+
     def test_failure_feedback_explains_both_gates(self):
         run_failed = tb_optimizer._feedback_message(
             2, 0.0, [], self.ORIGINAL, "run_failed",
@@ -213,6 +330,7 @@ class LightweightQualificationGateTests(unittest.TestCase):
         )
         self.assertIn("coverage alone is not sufficient", run_failed)
         self.assertIn("pre-compile qualification gate", qualification_failed)
+        self.assertIn("persistent-state constraint", qualification_failed)
 
 class CoverageLoopHardeningTests(unittest.TestCase):
     ORIGINAL = (
