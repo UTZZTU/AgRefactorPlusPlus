@@ -57,12 +57,24 @@ Stage 1 Core 已关闭 ≠ Stage 1 Hardening 已完成，也 ≠ API 智能体�
 
 ## 5. 当前下一任务
 
-Stage 2 已正式关闭。下一步：
+Stage 2 已关闭，但 Stage 3 仍被 Pre-Stage-3 产品化收尾阻断。权威计划见
+[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md)。
 
 ```text
-Stage 3 Safe Three-Level Optimizer
+Step 0  文档冻结与只读 consumer 审计
+Step 1  P1 已知模型静态兼容 Profile
+Step 2  P4 Public/Hidden 来源与 provenance
+Step 3  P2 source-only bootstrap 与统一 CLI
+Step 4  Execution Identity
+Step 5  P5 简洁输出
+Step 6  P0 真实 DFS source-only accepted
+Step 7  清理、弃用与 Pre-Stage-3 Closure
+Step 8  Stage 3 Safe Three-Level Optimizer
 ```
 
-第一项工作应冻结 Stage 3 的 candidate/checkpoint/best_correct 数据契约和
-Structural → Bottleneck → Pragma 控制边界；不得把 legacy `simple_iter`
-直接包装成已完成的安全优化器。
+普通用户必须提供 source、`--top` 和 model，只看到
+`refactor / optimize / full`，不选择 `--legacy / --repair-aware`。
+
+P0 只有在最终 source-only 入口内部生成 TaskSpec、测试和初始 Candidate，
+并由 Stage 2 的 Preflight → CSYNTH → Public → Hidden → bounded repair
+正式链返回 `accepted` 时才完成。Legacy flow 自身的成功不能替代该证据。

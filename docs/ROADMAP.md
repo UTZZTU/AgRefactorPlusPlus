@@ -44,6 +44,39 @@ AgRefactor++ 是一个**目标环境条件化、模型可插拔、证据驱动�
 
 详细追踪见 [`GOAL_TRACEABILITY.md`](GOAL_TRACEABILITY.md)。
 
+<!-- PRE_STAGE3_PRODUCTIZATION_PLAN:BEGIN -->
+## 2.1 Pre-Stage-3 产品化关闭合同
+
+进入 Stage 3 前必须完成
+[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md)。
+
+普通用户合同：
+
+```bash
+python -m agrefactor.cli refactor kernel.cpp   --top process_top   --model <logical-model>
+```
+
+不存在省略 `--top` 的普通模式。普通用户只选择
+`refactor / optimize / full`；`--legacy / --repair-aware`
+是兼容实现细节，不是产品模式。
+
+关闭顺序：
+
+```text
+known-model compatibility profiles
+→ independent Public/Hidden source contract
+→ source-only bootstrap
+→ Execution Identity
+→ concise output
+→ real DFS accepted by Stage 2 formal backend
+→ cleanup/deprecation audit
+→ Stage 3
+```
+
+首批静态模型范围为 DeepSeek、Kimi、GLM、MiniMax、Qwen 和
+Generic OpenAI-compatible；动态未知模型探测和自动路由后置。
+<!-- PRE_STAGE3_PRODUCTIZATION_PLAN:END -->
+
 ## 3. 全局不可违反的规则
 
 ### 3.1 用户决定模型

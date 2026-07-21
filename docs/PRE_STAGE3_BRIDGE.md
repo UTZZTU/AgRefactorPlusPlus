@@ -5,6 +5,31 @@
 Stage 2 remains closed. Stage 3 has not started and is explicitly gated by this
 bridge. Work must proceed in small, evidence-driven steps.
 
+<!-- PRE_STAGE3_PRODUCTIZATION_PLAN:BEGIN -->
+## Frozen productization and closure decisions
+
+完整实施合同见
+[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md)。
+
+普通 CLI 必须要求 source、`--top` 和 model，只暴露
+`refactor / optimize / full`；普通用户不选择 `--legacy / --repair-aware`。
+
+冻结顺序：
+
+```text
+P1 known-model profiles
+→ P4 Public/Hidden source contract
+→ P2 source-only bootstrap
+→ Execution Identity
+→ P5 concise output
+→ P0 real DFS accepted
+→ cleanup and closure
+→ Stage 3
+```
+
+P3 不再是活跃工作项，三个退休的静态启发式硬门禁不得恢复为最终裁决者。
+<!-- PRE_STAGE3_PRODUCTIZATION_PLAN:END -->
+
 The earlier P0-P5 list remains the long-term product map, but the active
 implementation scope is reduced to five compact work packages:
 

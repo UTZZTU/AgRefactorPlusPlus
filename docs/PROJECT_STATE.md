@@ -14,7 +14,28 @@
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**Pre-Stage-3 Bridge；先完成真实 DFS、模型 profile、source-only bootstrap、测试资格审查和用户输出策略，再开始 Stage 3**
+- 当前关键任务：**按冻结顺序完成 P1 模型兼容、P4 测试来源、P2 source-only 入口、Execution Identity、P5 简洁输出，再用最终入口完成 P0 真实 DFS，随后清理并关闭 Pre-Stage-3**
+
+<!-- PRE_STAGE3_PRODUCTIZATION_PLAN:BEGIN -->
+## 1.1 Frozen Pre-Stage-3 productization plan
+
+权威详细计划：
+[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md)。
+
+关键决定：
+
+- 普通 source 命令必须显式提供 `--top`；
+- 普通产品命令为 `refactor / optimize / full`；
+- `TaskSpec` 由普通入口内部生成并作为复现合同保存；
+- 普通用户不选择 `--legacy / --repair-aware`；
+- 首批静态模型家族为 DeepSeek、Kimi、GLM、MiniMax、Qwen 和
+  Generic OpenAI-compatible；
+- Public/Hidden 独立选择来源并支持多个 suite；
+- 默认输出简洁，完整证据进入 artifacts；
+- Execution Identity 是关闭前必交付；
+- P0 必须经普通 source-only 入口和 Stage 2 正式后端；
+- P0 后执行弃用清理，再进入 Stage 3。
+<!-- PRE_STAGE3_PRODUCTIZATION_PLAN:END -->
 ## 2. 已完成
 
 ### Stage 0
