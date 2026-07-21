@@ -770,47 +770,11 @@ def _measure_qualified_coverage(
     stub_code: str,
     kernel_name: str,
 ) -> Dict[str, Any]:
-    errors = _obvious_capacity_conflicts(
-        orig_code,
-        tb_code,
-        kernel_name,
-    )
-    errors.extend(
-        _obvious_linkage_conflicts(
-            orig_code,
-            tb_code,
-            stub_code,
-            kernel_name,
-        )
-    )
-    errors.extend(
-        _obvious_state_safety_conflicts(
-            orig_code,
-            tb_code,
-            stub_code,
-            kernel_name,
-        )
-    )
-    errors = sorted(set(errors))
-    if not errors:
-        result = measure_coverage(orig_code, tb_code, stub_code)
-        result.setdefault("qualification_errors", [])
-        return result
-    return {
-        "status": "qualification_failed",
-        "cov_pct": None,
-        "lines_total": None,
-        "lines_hit": None,
-        "uncovered_lines": [],
-        "run_returncode": None,
-        "compile_stderr": "",
-        "run_stderr": (
-            "Lightweight testbench qualification failed:\n"
-            + "\n".join(f"- {error}" for error in errors)
-        ),
-        "qualification_errors": errors,
-    }
-
+    # Keep the text-heuristic helpers for later reference, but do not let
+    # capacity, linkage, or persistent-state guesses block real tools.
+    result = measure_coverage(orig_code, tb_code, stub_code)
+    result.setdefault("qualification_errors", [])
+    return result
 
 def _coverage_failure_fingerprint(record: Dict[str, Any]) -> str:
     diagnostic = (
