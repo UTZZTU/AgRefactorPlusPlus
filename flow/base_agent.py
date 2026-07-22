@@ -214,27 +214,115 @@ class HLSAgentLoader:
         self._context_variables = None
         self._process_global_config()
         
+    @staticmethod
+    def _overlay_llm_config(
+        base: Any,
+        overlay: Any,
+    ) -> Any:
+        'Overlay one generic AG2 LLM configuration layer.'
+
+        if overlay is None:
+            return copy.deepcopy(base)
+        if base is None:
+            return copy.deepcopy(overlay)
+
+        if isinstance(overlay, LLMConfig):
+            return copy.deepcopy(overlay)
+        if isinstance(base, LLMConfig):
+            return copy.deepcopy(overlay)
+
+        if isinstance(base, dict) and isinstance(
+            overlay,
+            dict,
+        ):
+            merged = copy.deepcopy(base)
+            merged.update(copy.deepcopy(overlay))
+            return merged
+
+        if isinstance(base, list) and isinstance(
+            overlay,
+            dict,
+        ):
+            merged_entries = []
+            for entry in base:
+                if not isinstance(entry, dict):
+                    merged_entries.append(
+                        copy.deepcopy(entry)
+                    )
+                    continue
+                merged = copy.deepcopy(entry)
+                merged.update(copy.deepcopy(overlay))
+                merged_entries.append(merged)
+            return merged_entries
+
+        return copy.deepcopy(overlay)
+
+    @classmethod
+    def _merge_llm_config_layers(
+        cls,
+        *layers: Any,
+    ) -> Any:
+        merged = None
+        for layer in layers:
+            if layer is None:
+                continue
+            merged = cls._overlay_llm_config(
+                merged,
+                layer,
+            )
+        return merged
+
+    @staticmethod
+    def _resolve_llm_config_imports(
+        value: Any,
+    ) -> Any:
+        if isinstance(value, dict):
+            resolved = copy.deepcopy(value)
+            response_format = resolved.get(
+                'response_format'
+            )
+            if isinstance(response_format, str):
+                resolved['response_format'] = (
+                    import_from_string(
+                        response_format
+                    )
+                )
+            return resolved
+        if isinstance(value, list):
+            return [
+                HLSAgentLoader._resolve_llm_config_imports(
+                    entry
+                )
+                for entry in value
+            ]
+        return copy.deepcopy(value)
+
     def _process_global_config(self):
-        llm_config_data: Dict[str, Any] = None
-        if self.config_data.get('llm_config'):
-            llm_config_data = self.config_data.get('llm_config')
-        if self._runtime_llm_config:
-            if llm_config_data == None: llm_config_data = self._runtime_llm_config
-            else:
-                llm_config_data.update(self._runtime_llm_config)
-        if llm_config_data is not None:
-            self._global_llm_config = llm_config_data
+        global_llm_config = self.config_data.get(
+            'llm_config'
+        )
+        self._global_llm_config = copy.deepcopy(
+            global_llm_config
+        )
         if 'context_variables' in self.config_data:
-            cv_data = self.config_data['context_variables']
-            self._context_variables = ContextVariables(**cv_data) if isinstance(cv_data, dict) else cv_data
-                
+            cv_data = self.config_data[
+                'context_variables'
+            ]
+            self._context_variables = (
+                ContextVariables(**cv_data)
+                if isinstance(cv_data, dict)
+                else copy.deepcopy(cv_data)
+            )
+
     def _resolve_imports(self, config: Dict[str, Any]) -> Dict[str, Any]:
         resolved_config = copy.deepcopy(config)
 
         if 'llm_config' in resolved_config:
-            llm_config = resolved_config['llm_config']
-            if 'response_format' in llm_config and llm_config['response_format'] is not None:
-                resolved_config['llm_config']['response_format'] = import_from_string(llm_config['response_format'])
+            resolved_config['llm_config'] = (
+                self._resolve_llm_config_imports(
+                    resolved_config['llm_config']
+                )
+            )
         
         if 'functions' in resolved_config:
             functions = resolved_config['functions']
@@ -290,104 +378,139 @@ class HLSAgentLoader:
         agent_config: Dict[str, Any],
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         config = copy.deepcopy(agent_config)
-        
+
         if 'name' not in config:
             config['name'] = agent_name
 
-        if self._runtime_llm_config is not None:
-            config['llm_config'].update(self._global_llm_config)
-        elif 'llm_config' not in config and self._global_llm_config:
-            config['llm_config'] = self._global_llm_config
-        
-        if 'llm_config' in config and not isinstance(config['llm_config'], LLMConfig):
-            # AgRefactor++ compatibility:
-            # - AG2/AutoGen 0.11.x expects LLMConfig(config_dict), not LLMConfig(**config_dict).
-            # - Preserve normal OpenAI-compatible and Gemini configs.
-            # - For DeepSeek V4/OpenAI-compatible endpoints, adapt Pydantic response_format
-            #   to JSON mode, reserve enough tokens for thinking-mode responses, and add
-            #   price metadata to avoid AG2 unknown-model cost warnings.
-            _llm_config_obj = copy.deepcopy(config['llm_config'])
+        merged_llm_config = self._merge_llm_config_layers(
+            config.get('llm_config'),
+            self._global_llm_config,
+            self._runtime_llm_config,
+        )
+        merged_llm_config = (
+            self._resolve_llm_config_imports(
+                merged_llm_config
+            )
+        )
+        if merged_llm_config is not None:
+            config['llm_config'] = merged_llm_config
 
-            def _append_system_message_suffix(suffix: str) -> None:
-                system_message = config.get('system_message', '')
-                if isinstance(system_message, dict):
-                    # Many AgRefactor agents store system_message as sys_start/sys_middle/sys_end.
-                    # Append to sys_end so later normalization still works correctly.
-                    system_message['sys_end'] = str(system_message.get('sys_end', '')) + suffix
-                else:
-                    config['system_message'] = str(system_message) + suffix
-
-            def _patch_one_llm_entry(entry):
-                if not isinstance(entry, dict):
-                    return entry
-
-                model = str(entry.get('model', ''))
-                base_url = str(entry.get('base_url', ''))
-                model_l = model.lower()
-                base_l = base_url.lower()
-                is_deepseek = ('deepseek' in model_l) or ('deepseek' in base_l)
-
-                if not is_deepseek:
-                    return entry
-
-                # DeepSeek is OpenAI-compatible.
-                entry.setdefault('api_type', 'openai')
-
-                # Prices are USD per 1K tokens. These defaults avoid AG2's unknown-model
-                # warning and can be overridden by explicitly setting price in config.
-                if 'price' not in entry:
-                    if 'v4-pro' in model_l:
-                        entry['price'] = [0.000435, 0.00087]
-                    elif 'v4-flash' in model_l or model_l in {'deepseek-chat', 'deepseek-reasoner'}:
-                        entry['price'] = [0.00014, 0.00028]
-
-                # DeepSeek JSON mode accepts {'type': 'json_object'}, not Python/Pydantic classes.
-                response_format = entry.get('response_format')
-                if response_format is not None and not isinstance(response_format, dict):
-                    entry['response_format'] = {'type': 'json_object'}
-                    _append_system_message_suffix('\n\nIMPORTANT OUTPUT FORMAT:\nRespond ONLY with valid JSON. Do not use markdown fences, comments, or prose outside JSON. Use the field names requested by the task.')
-
-                # Thinking mode may spend tokens before producing final content.
-                entry.setdefault('max_tokens', 8192)
-                return entry
-
-            if isinstance(_llm_config_obj, dict):
-                _llm_config_obj = _patch_one_llm_entry(_llm_config_obj)
-                config['llm_config'] = LLMConfig(_llm_config_obj)
-            elif isinstance(_llm_config_obj, list):
-                _llm_config_obj = [_patch_one_llm_entry(entry) for entry in _llm_config_obj]
-                config['llm_config'] = LLMConfig(*_llm_config_obj)
+        if (
+            'llm_config' in config
+            and config['llm_config'] is not None
+            and not isinstance(
+                config['llm_config'],
+                LLMConfig,
+            )
+        ):
+            llm_config_obj = copy.deepcopy(
+                config['llm_config']
+            )
+            if isinstance(llm_config_obj, dict):
+                config['llm_config'] = LLMConfig(
+                    llm_config_obj
+                )
+            elif isinstance(llm_config_obj, list):
+                config['llm_config'] = LLMConfig(
+                    *llm_config_obj
+                )
             else:
-                config['llm_config'] = LLMConfig(_llm_config_obj)
-            
-        if 'context_variables' not in config and self._context_variables:
-            config['context_variables'] = self._context_variables
-        elif 'context_variables' in config and isinstance(config['context_variables'], dict):
-            config['context_variables'] = ContextVariables(**config['context_variables'])
-        
-        if 'system_message' not in config and config['name'] != 'human':
-            raise ValueError("system_message is required")
+                config['llm_config'] = LLMConfig(
+                    llm_config_obj
+                )
+
+        if (
+            'context_variables' not in config
+            and self._context_variables
+        ):
+            config['context_variables'] = (
+                self._context_variables
+            )
+        elif (
+            'context_variables' in config
+            and isinstance(
+                config['context_variables'],
+                dict,
+            )
+        ):
+            config['context_variables'] = (
+                ContextVariables(
+                    **config['context_variables']
+                )
+            )
+
+        if (
+            'system_message' not in config
+            and config['name'] != 'human'
+        ):
+            raise ValueError(
+                "system_message is required"
+            )
 
         if 'system_message' in config:
-            if isinstance(config['system_message'], dict):
-                config['system_message'] = config['system_message']['sys_start'] + config['system_message']['sys_middle'] + config['system_message']['sys_end']
+            if isinstance(
+                config['system_message'],
+                dict,
+            ):
+                config['system_message'] = (
+                    config['system_message'][
+                        'sys_start'
+                    ]
+                    + config['system_message'][
+                        'sys_middle'
+                    ]
+                    + config['system_message'][
+                        'sys_end'
+                    ]
+                )
 
-        config.setdefault('human_input_mode', 'TERMINATE')
-        config.setdefault('code_execution_config', False)
-        config.setdefault('default_auto_reply', "")
-            
+        config.setdefault(
+            'human_input_mode',
+            'TERMINATE',
+        )
+        config.setdefault(
+            'code_execution_config',
+            False,
+        )
+        config.setdefault(
+            'default_auto_reply',
+            "",
+        )
+
         agent_params = {
-            'name', 'system_message', 'is_termination_msg', 'max_consecutive_auto_reply',
-            'human_input_mode', 'function_map', 'code_execution_config', 'llm_config',
-            'default_auto_reply', 'description', 'chat_messages', 'silent',
-            'context_variables', 'functions', 'update_agent_state_before_reply', 'handoffs'
+            'name',
+            'system_message',
+            'is_termination_msg',
+            'max_consecutive_auto_reply',
+            'human_input_mode',
+            'function_map',
+            'code_execution_config',
+            'llm_config',
+            'default_auto_reply',
+            'description',
+            'chat_messages',
+            'silent',
+            'context_variables',
+            'functions',
+            'update_agent_state_before_reply',
+            'handoffs',
         }
-        filtered_config = {k: v for k, v in config.items() if k in agent_params}
-        extra_config = {k: v for k, v in config.items() if k not in agent_params}
-        filtered_config = self._resolve_imports(filtered_config)
-        
+        filtered_config = {
+            key: value
+            for key, value in config.items()
+            if key in agent_params
+        }
+        extra_config = {
+            key: value
+            for key, value in config.items()
+            if key not in agent_params
+        }
+        filtered_config = self._resolve_imports(
+            filtered_config
+        )
+
         return filtered_config, extra_config
-        
+
     def load_agent(self, agent_name: str, **overrides) -> ConversableAgent:
         if 'agents' not in self.config_data:
             raise ValueError("No 'agents' section found in configuration")
