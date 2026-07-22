@@ -39,16 +39,21 @@ P1-A–P1-D split and acceptance gates are recorded in
 P1-A deterministic acceptance is complete at `e9f4a51744ce44c04236466450b8af85ebf9be9c` with **889/889** tests.
 Evidence: [`P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md`](P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md).
 
+P1-B0 read-only pricing/cost audit is complete at `24918d6fcfe1250043cd6a72082456241fa4679e`.
+Evidence:
+[`P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md`](P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md).
+
 Current next evidence:
 
 ```text
-P1-B typed pricing snapshot and native-currency cost structure
--> official-source provenance and snapshot hash
--> unavailable / verified / approximate estimation paths
+P1-B1 typed pricing/native-currency schema
+-> source_content_sha256 and pricing_snapshot_sha256
+-> backwards-compatible TokenUsage extension
+-> full deterministic regression
 ```
 
-P1-B does not include Legacy migration, normal CLI, Budget resolution, P5,
-P0 or Stage 3.
+P1-B1 does not include numeric prices, estimator wiring, Legacy migration,
+Budget resolution, normal CLI, P5, P0 or Stage 3.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## 2. TargetProfile 当前边界
@@ -97,7 +102,7 @@ Stage 2 已关闭，但 Stage 3 仍被 Pre-Stage-3 产品化收尾阻断。权�
 
 ```text
 Step 0  文档冻结与只读 consumer 审计
-Step 1  P1-A 静态兼容已完成；P1-B pricing 当前活跃
+Step 1  P1-A/P1-B0 已完成；P1-B1 typed schema 当前活跃
 Step 2  P4 Public/Hidden 来源与 provenance
 Step 3  P2 source-only bootstrap 与统一 CLI
 Step 4  Execution Identity

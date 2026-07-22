@@ -1,6 +1,6 @@
 # P1 模型运行时审计决策账本
 
-> **状态：** P1-A deterministic acceptance 已完成；P1-B 为当前唯一活跃实现项
+> **状态：** P1-A 已完成；P1-B0 审计已完成；P1-B1 typed schema 为当前唯一活跃实现项
 > **审计基线：** `8b543267a88ed63d343bd633cf29cd6edf9c4127`  
 > **人工复核日期：** 2026-07-22  
 > **作用：** 保存自动审计发现、人工修正、新增发现、阶段归属和关闭证据。  
@@ -321,6 +321,31 @@ real_model_or_vitis_acceptance=0
 F02 is closed. F03 and F04 remain accepted architecture invariants.
 F01, F05, F06, F11, F12, F13 and F15 continue in P1-B/P1-C.
 
+## 8.3 P1-B0 pricing consumer audit and P1-B1 freeze
+
+Formal decisions:
+[`P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md`](P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md)
+
+```text
+audit_head=24918d6fcfe1250043cd6a72082456241fa4679e
+tracked_files=461
+occurrences=972
+cost_pricing_occurrences=190
+automated_findings=8
+manual_amendments=2
+official_snapshots_retrieved=5
+official_pages_unreadable=1
+repository_modified=false
+```
+
+P1B0-F09 records the wider runtime migration surface. P1B0-F10 separates raw
+source and canonical pricing hashes and corrects the nonexistent
+`tests/test_model_api.py` path.
+
+P1-B1 is restricted to typed schema and backwards-compatible `TokenUsage`
+extension. Numeric prices, estimator wiring, Budget, serialization, Legacy,
+CLI and P5 remain outside P1-B1.
+
 ## 9. 当前下一步
 
 ```text
@@ -328,7 +353,8 @@ Step 0 documentation freeze                 completed
 Step 0 read-only consumer audit              completed
 Step 0 manual audit review and decision log  completed
 Step 1 P1-A static model compatibility core  completed
-Step 1 P1-B pricing and cost structure        active
+Step 1 P1-B0 pricing consumer audit           completed
+Step 1 P1-B1 typed pricing schema             active
 ```
 
-P1-A deterministic acceptance 已完成。当前只推进 P1-B；P4、P2、P0 与 Stage 3 仍不得提前开始。
+P1-B0 已完成。当前只推进 P1-B1 typed schema；P1-B2、P1-C、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。

@@ -64,7 +64,8 @@ Completed against `8b543267a88ed63d343bd633cf29cd6edf9c4127`:
   [`P1_MODEL_RUNTIME_AUDIT_DECISIONS.md`](P1_MODEL_RUNTIME_AUDIT_DECISIONS.md).
 
 P1-A static model compatibility completed deterministic acceptance at `e9f4a51744ce44c04236466450b8af85ebf9be9c` with **889/889** tests. Evidence: [`P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md`](P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md).
-Current active implementation is **P1-B official pricing and native-currency cost structure**. P1-C wiring and P1-D smoke remain ordered follow-ups.
+P1-B0 pricing/cost consumer audit completed at `24918d6fcfe1250043cd6a72082456241fa4679e`: 461 tracked files, 972 occurrences, 8 automated findings, 2 manual amendments, 5 readable official snapshots and 1 unreadable official page. Evidence: [`P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md`](P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md).
+Current active implementation is **P1-B1 typed pricing and native-currency schema**. P1-B2/B3/B4, P1-C and P1-D remain ordered follow-ups.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## 2. 已完成
