@@ -314,22 +314,7 @@ class CandidateModelResult:
             "request_parameters": dict(self.request_parameters),
             "prompt_manifest": dict(self.prompt_manifest),
             "response_contract": self.response_contract.to_dict(),
-            "response": {
-                "text": self.response.text,
-                "model": self.response.model,
-                "usage": {
-                    "prompt_tokens": (
-                        self.response.usage.prompt_tokens
-                    ),
-                    "completion_tokens": (
-                        self.response.usage.completion_tokens
-                    ),
-                    "total_tokens": self.response.usage.total_tokens,
-                    "cost_usd": self.response.usage.cost_usd,
-                },
-                "finish_reason": self.response.finish_reason,
-                "metadata": dict(self.response.metadata),
-            },
+            "response": self.response.to_dict(),
         }
 
 

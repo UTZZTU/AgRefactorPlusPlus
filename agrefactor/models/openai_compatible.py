@@ -14,6 +14,7 @@ from .base import (
     ModelSpec,
     TokenUsage,
 )
+from .pricing import TokenUsageBreakdown
 
 
 class OpenAICompatibleProviderError(RuntimeError):
@@ -54,6 +55,179 @@ def _require_non_negative_int(
             f"{field_name} must be a non-negative integer"
         )
     return value
+
+
+def _optional_non_negative_int(
+    value: Any,
+    *,
+    field_name: str,
+) -> int | None:
+    if value is None:
+        return None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value < 0
+    ):
+        raise OpenAICompatibleResponseError(
+            f"{field_name} must be a non-negative integer or None"
+        )
+    return value
+
+
+def _read_path(
+    value: Any,
+    path: tuple[str, ...],
+) -> Any:
+    current = value
+    for name in path:
+        if current is None:
+            return None
+        current = _read(current, name)
+    return current
+
+
+def _coalesce_usage_int(
+    usage: Any,
+    *,
+    field_name: str,
+    paths: tuple[tuple[str, ...], ...],
+) -> int | None:
+    observed: list[tuple[str, int]] = []
+    for path in paths:
+        raw = _read_path(usage, path)
+        if raw is None:
+            continue
+        normalized = _optional_non_negative_int(
+            raw,
+            field_name="usage." + ".".join(path),
+        )
+        assert normalized is not None
+        observed.append((".".join(path), normalized))
+
+    if not observed:
+        return None
+
+    expected = observed[0][1]
+    if any(value != expected for _, value in observed[1:]):
+        details = ", ".join(
+            f"{name}={value}"
+            for name, value in observed
+        )
+        raise OpenAICompatibleResponseError(
+            f"conflicting usage fields for {field_name}: "
+            + details
+        )
+    return expected
+
+
+def _normalize_usage_breakdown(
+    usage: Any,
+    *,
+    prompt_tokens: int,
+    completion_tokens: int,
+) -> TokenUsageBreakdown | None:
+    if usage is None:
+        return None
+
+    cache_hit = _coalesce_usage_int(
+        usage,
+        field_name="cached input tokens",
+        paths=(
+            ("prompt_cache_hit_tokens",),
+            ("cached_tokens",),
+            ("prompt_tokens_details", "cached_tokens"),
+            ("input_tokens_details", "cached_tokens"),
+        ),
+    )
+    cache_miss = _coalesce_usage_int(
+        usage,
+        field_name="cache-miss input tokens",
+        paths=(("prompt_cache_miss_tokens",),),
+    )
+
+    if cache_hit is not None or cache_miss is not None:
+        if cache_hit is None:
+            assert cache_miss is not None
+            if cache_miss > prompt_tokens:
+                raise OpenAICompatibleResponseError(
+                    "usage cache partition exceeds prompt_tokens"
+                )
+            cache_hit = prompt_tokens - cache_miss
+        elif cache_miss is None:
+            if cache_hit > prompt_tokens:
+                raise OpenAICompatibleResponseError(
+                    "usage cache partition exceeds prompt_tokens"
+                )
+            cache_miss = prompt_tokens - cache_hit
+        elif cache_hit + cache_miss != prompt_tokens:
+            raise OpenAICompatibleResponseError(
+                "usage cache partition must equal prompt_tokens"
+            )
+
+    cache_read = _coalesce_usage_int(
+        usage,
+        field_name="cache_read input tokens",
+        paths=(
+            ("cache_read_input_tokens",),
+            ("prompt_tokens_details", "cache_read_tokens"),
+        ),
+    )
+    cache_write = _coalesce_usage_int(
+        usage,
+        field_name="cache creation input tokens",
+        paths=(
+            ("cache_creation_input_tokens",),
+            (
+                "prompt_tokens_details",
+                "cache_creation_input_tokens",
+            ),
+            (
+                "prompt_tokens_details",
+                "cache_creation",
+                "cache_creation_input_tokens",
+            ),
+        ),
+    )
+    thinking = _coalesce_usage_int(
+        usage,
+        field_name="reasoning output tokens",
+        paths=(
+            (
+                "completion_tokens_details",
+                "reasoning_tokens",
+            ),
+            (
+                "output_tokens_details",
+                "reasoning_tokens",
+            ),
+        ),
+    )
+    if (
+        thinking is not None
+        and thinking > completion_tokens
+    ):
+        raise OpenAICompatibleResponseError(
+            "usage reasoning tokens exceed completion_tokens"
+        )
+
+    values = (
+        cache_hit,
+        cache_miss,
+        cache_read,
+        cache_write,
+        thinking,
+    )
+    if all(value is None for value in values):
+        return None
+
+    return TokenUsageBreakdown(
+        cache_hit_input_tokens=cache_hit,
+        cache_miss_input_tokens=cache_miss,
+        cache_read_tokens=cache_read,
+        cache_write_tokens=cache_write,
+        thinking_output_tokens=thinking,
+    )
 
 
 def _normalize_content(content: Any) -> str:
@@ -215,17 +389,32 @@ class OpenAICompatibleProvider(ModelProvider):
         )
 
         usage_object = _read(response, "usage")
-        prompt_tokens = _require_non_negative_int(
-            _read(usage_object, "prompt_tokens")
-            if usage_object is not None
-            else None,
-            field_name="usage.prompt_tokens",
+        prompt_tokens = (
+            _coalesce_usage_int(
+                usage_object,
+                field_name="prompt tokens",
+                paths=(
+                    ("prompt_tokens",),
+                    ("input_tokens",),
+                ),
+            )
+            or 0
         )
-        completion_tokens = _require_non_negative_int(
-            _read(usage_object, "completion_tokens")
-            if usage_object is not None
-            else None,
-            field_name="usage.completion_tokens",
+        completion_tokens = (
+            _coalesce_usage_int(
+                usage_object,
+                field_name="completion tokens",
+                paths=(
+                    ("completion_tokens",),
+                    ("output_tokens",),
+                ),
+            )
+            or 0
+        )
+        usage_breakdown = _normalize_usage_breakdown(
+            usage_object,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
         )
 
         response_model = _read(response, "model")
@@ -253,6 +442,19 @@ class OpenAICompatibleProvider(ModelProvider):
                 if isinstance(reasoning_content, str)
                 else 0
             ),
+            "usage_breakdown_observed": (
+                usage_breakdown is not None
+            ),
+            "usage_breakdown_categories": (
+                []
+                if usage_breakdown is None
+                else [
+                    key
+                    for key, value
+                    in usage_breakdown.to_dict().items()
+                    if value is not None
+                ]
+            ),
         }
         metadata = {
             key: value
@@ -267,6 +469,7 @@ class OpenAICompatibleProvider(ModelProvider):
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 cost_usd=None,
+                breakdown=usage_breakdown,
             ),
             finish_reason=finish_reason,
             metadata=metadata,

@@ -184,6 +184,24 @@ class TokenUsage:
     def total_tokens(self) -> int:
         return self.prompt_tokens + self.completion_tokens
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "total_tokens": self.total_tokens,
+            "cost_usd": self.cost_usd,
+            "breakdown": (
+                None
+                if self.breakdown is None
+                else self.breakdown.to_dict()
+            ),
+            "estimated_cost": (
+                None
+                if self.estimated_cost is None
+                else self.estimated_cost.to_dict()
+            ),
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class ModelResponse:
@@ -210,6 +228,15 @@ class ModelResponse:
             "metadata",
             _copy_json_mapping("metadata", self.metadata),
         )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "text": self.text,
+            "model": self.model,
+            "usage": self.usage.to_dict(),
+            "finish_reason": self.finish_reason,
+            "metadata": dict(self.metadata),
+        }
 
 
 class ModelProvider(ABC):

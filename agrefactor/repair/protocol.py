@@ -93,18 +93,7 @@ def model_response_to_safe_dict(
         return None
     if not isinstance(response, ModelResponse):
         raise TypeError("response must be ModelResponse or None")
-    return {
-        "text": response.text,
-        "model": response.model,
-        "usage": {
-            "prompt_tokens": response.usage.prompt_tokens,
-            "completion_tokens": response.usage.completion_tokens,
-            "total_tokens": response.usage.total_tokens,
-            "cost_usd": response.usage.cost_usd,
-        },
-        "finish_reason": response.finish_reason,
-        "metadata": dict(response.metadata),
-    }
+    return response.to_dict()
 
 
 @dataclass(frozen=True, slots=True)
