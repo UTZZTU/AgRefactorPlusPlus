@@ -1,4 +1,6 @@
 import logging, copy, yaml, importlib
+from collections.abc import Mapping
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Dict, Any, Union, List
 from autogen import LLMConfig, UserProxyAgent, ConversableAgent, UpdateSystemMessage # type: ignore
@@ -30,159 +32,516 @@ def register_agrefactorpp_usage_agent(agent: Any) -> None:
         AGREFPP_USAGE_AGENTS.append(agent)
 
 
-def _agrefactorpp_price_per_1k(model_name: str) -> tuple[float, float] | None:
-    # Return default USD price per 1K tokens for known OpenAI-compatible models.
-    model_l = str(model_name or "").lower()
-    if "deepseek-v4-pro" in model_l:
-        return (0.000435, 0.00087)
-    if "deepseek-v4-flash" in model_l or model_l in {"deepseek-chat", "deepseek-reasoner"}:
-        return (0.00014, 0.00028)
-    return None
-
-
-def _agrefactorpp_number(value: Any, default: float = 0.0) -> float:
-    try:
-        if value is None:
-            return default
-        return float(value)
-    except Exception:
+def _agrefactorpp_nonnegative_int(
+    value: Any,
+    default: int = 0,
+) -> int:
+    if isinstance(value, bool):
         return default
+    try:
+        converted = int(
+            default if value is None else value
+        )
+    except (TypeError, ValueError, OverflowError):
+        return default
+    return max(0, converted)
 
 
-def get_agrefactorpp_usage_summary() -> Dict[str, Any]:
-    # Collect token/cost usage for all agents created in the current run.
-    agents = [agent for agent in AGREFPP_USAGE_AGENTS if agent is not None]
-    summary: Dict[str, Any] = {
-        "agents": len(agents),
+def _agrefactorpp_cost_decimal(
+    value: Any,
+) -> Decimal | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        converted = (
+            value
+            if isinstance(value, Decimal)
+            else Decimal(str(value))
+        )
+    except (InvalidOperation, ValueError):
+        return None
+    if not converted.is_finite() or converted < 0:
+        return None
+    return converted
+
+
+def _agrefactorpp_decimal_text(
+    value: Decimal,
+) -> str:
+    if value == 0:
+        return "0"
+    return format(value.normalize(), "f")
+
+
+def _agrefactorpp_cost_observation(
+    amount: Decimal | None,
+    *,
+    source: str,
+    complete: bool,
+) -> Dict[str, Any]:
+    if amount is None:
+        return {
+            "kind": "unavailable",
+            "amount": None,
+            "currency": None,
+            "quality": "unavailable",
+            "source": source,
+            "ledger_eligible": False,
+            "complete": False,
+            "assumptions": [
+                (
+                    "No framework cost amount was reported "
+                    "with an explicit currency."
+                )
+            ],
+        }
+
+    return {
+        "kind": "framework_reported",
+        "amount": _agrefactorpp_decimal_text(
+            amount
+        ),
+        "currency": None,
+        "quality": (
+            "reported_unverified_currency"
+        ),
+        "source": source,
+        "ledger_eligible": False,
+        "complete": bool(complete),
+        "assumptions": [
+            (
+                "The AG2 framework did not provide an "
+                "explicit currency. This amount is retained "
+                "for audit only and is not entered into the "
+                "native-currency Budget ledger."
+            ),
+            "Cost estimates are not invoices.",
+        ],
+    }
+
+
+def _agrefactorpp_empty_usage_summary(
+    agent_count: int,
+) -> Dict[str, Any]:
+    unavailable = _agrefactorpp_cost_observation(
+        None,
+        source="none",
+        complete=False,
+    )
+    return {
+        "agents": agent_count,
         "models": {},
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
-        "total_cost": 0.0,
         "source": "none",
+        "framework_reported_cost": unavailable,
+        "estimated_cost": None,
+        "costs_by_currency": {},
+        "cost_usd": None,
+        "total_cost": None,
+        "cost_complete": False,
     }
 
+
+def _agrefactorpp_new_model_bucket(
+) -> Dict[str, Any]:
+    return {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "framework_reported_cost": (
+            _agrefactorpp_cost_observation(
+                None,
+                source="none",
+                complete=False,
+            )
+        ),
+        "estimated_cost": None,
+        "costs_by_currency": {},
+        "cost_usd": None,
+        "cost": None,
+        "cost_complete": False,
+    }
+
+
+def _agrefactorpp_accumulate_model_usage(
+    summary: Dict[str, Any],
+    cost_states: Dict[str, Dict[str, Any]],
+    *,
+    model_name: str,
+    data: Mapping[str, Any],
+    source: str,
+) -> None:
+    prompt_tokens = _agrefactorpp_nonnegative_int(
+        data.get("prompt_tokens")
+    )
+    completion_tokens = (
+        _agrefactorpp_nonnegative_int(
+            data.get("completion_tokens")
+        )
+    )
+    total_tokens = _agrefactorpp_nonnegative_int(
+        data.get(
+            "total_tokens",
+            prompt_tokens + completion_tokens,
+        ),
+        prompt_tokens + completion_tokens,
+    )
+
+    model_key = str(model_name)
+    bucket = summary["models"].setdefault(
+        model_key,
+        _agrefactorpp_new_model_bucket(),
+    )
+    bucket["prompt_tokens"] += prompt_tokens
+    bucket[
+        "completion_tokens"
+    ] += completion_tokens
+    bucket["total_tokens"] += total_tokens
+
+    summary["prompt_tokens"] += prompt_tokens
+    summary[
+        "completion_tokens"
+    ] += completion_tokens
+    summary["total_tokens"] += total_tokens
+
+    raw_cost = data.get(
+        "cost",
+        data.get("total_cost"),
+    )
+    amount = _agrefactorpp_cost_decimal(raw_cost)
+
+    state = cost_states.setdefault(
+        model_key,
+        {
+            "amount": Decimal("0"),
+            "observed": False,
+            "complete": True,
+            "source": source,
+        },
+    )
+    if amount is None:
+        state["complete"] = False
+    else:
+        state["amount"] += amount
+        state["observed"] = True
+
+
+def _agrefactorpp_finalize_usage_costs(
+    summary: Dict[str, Any],
+    cost_states: Mapping[str, Mapping[str, Any]],
+    *,
+    source: str,
+    aggregate_amount: Decimal | None = None,
+) -> None:
+    for model_name, state in cost_states.items():
+        observed = bool(state.get("observed"))
+        amount = (
+            state.get("amount")
+            if observed
+            else None
+        )
+        observation = _agrefactorpp_cost_observation(
+            amount,
+            source=str(state.get("source", source)),
+            complete=(
+                observed
+                and bool(state.get("complete"))
+            ),
+        )
+        bucket = summary["models"][model_name]
+        bucket[
+            "framework_reported_cost"
+        ] = observation
+        bucket["cost_complete"] = False
+
+    if aggregate_amount is not None:
+        aggregate_observation = (
+            _agrefactorpp_cost_observation(
+                aggregate_amount,
+                source=f"{source}:aggregate",
+                complete=True,
+            )
+        )
+    else:
+        observed_states = [
+            state
+            for state in cost_states.values()
+            if bool(state.get("observed"))
+        ]
+        if observed_states:
+            aggregate_observation = (
+                _agrefactorpp_cost_observation(
+                    sum(
+                        (
+                            state["amount"]
+                            for state
+                            in observed_states
+                        ),
+                        Decimal("0"),
+                    ),
+                    source=f"{source}:model_sum",
+                    complete=(
+                        len(observed_states)
+                        == len(cost_states)
+                        and all(
+                            bool(
+                                state.get(
+                                    "complete"
+                                )
+                            )
+                            for state
+                            in observed_states
+                        )
+                    ),
+                )
+            )
+        else:
+            aggregate_observation = (
+                _agrefactorpp_cost_observation(
+                    None,
+                    source=f"{source}:unavailable",
+                    complete=False,
+                )
+            )
+
+    summary[
+        "framework_reported_cost"
+    ] = aggregate_observation
+    summary["cost_complete"] = False
+
+
+def _agrefactorpp_usage_mapping(
+    usage: Any,
+) -> Mapping[str, Any]:
+    if not isinstance(usage, Mapping):
+        return {}
+    including = usage.get(
+        "usage_including_cached_inference"
+    )
+    excluding = usage.get(
+        "usage_excluding_cached_inference"
+    )
+    if isinstance(including, Mapping):
+        return including
+    if isinstance(excluding, Mapping):
+        return excluding
+    return {}
+
+
+def get_agrefactorpp_usage_summary() -> Dict[str, Any]:
+    """Return token observations and currency-safe cost provenance."""
+
+    agents = [
+        agent
+        for agent in AGREFPP_USAGE_AGENTS
+        if agent is not None
+    ]
+    summary = _agrefactorpp_empty_usage_summary(
+        len(agents)
+    )
     if not agents:
         return summary
 
     try:
         from autogen import gather_usage_summary  # type: ignore
 
-        usage = gather_usage_summary(agents)
-        usage_data = (
-            usage.get("usage_including_cached_inference")
-            or usage.get("usage_excluding_cached_inference")
-            or {}
+        usage_data = _agrefactorpp_usage_mapping(
+            gather_usage_summary(agents)
         )
-        summary["source"] = "autogen.gather_usage_summary"
-
-        total_cost_from_ag2 = usage_data.get("total_cost")
-        if total_cost_from_ag2 is not None:
-            summary["total_cost"] = _agrefactorpp_number(total_cost_from_ag2)
+        source = "autogen.gather_usage_summary"
+        summary["source"] = source
+        cost_states: Dict[
+            str,
+            Dict[str, Any],
+        ] = {}
 
         for model_name, data in usage_data.items():
-            if model_name == "total_cost" or not isinstance(data, dict):
+            if (
+                model_name == "total_cost"
+                or not isinstance(data, Mapping)
+            ):
                 continue
+            _agrefactorpp_accumulate_model_usage(
+                summary,
+                cost_states,
+                model_name=str(model_name),
+                data=data,
+                source=source,
+            )
 
-            prompt_tokens = int(_agrefactorpp_number(data.get("prompt_tokens"), 0))
-            completion_tokens = int(_agrefactorpp_number(data.get("completion_tokens"), 0))
-            total_tokens = int(_agrefactorpp_number(data.get("total_tokens"), prompt_tokens + completion_tokens))
-
-            cost = data.get("cost", data.get("total_cost"))
-            if cost is None:
-                price = _agrefactorpp_price_per_1k(str(model_name))
-                if price is not None:
-                    cost = (prompt_tokens / 1000.0) * price[0] + (completion_tokens / 1000.0) * price[1]
-            cost_f = _agrefactorpp_number(cost, 0.0)
-
-            summary["models"][str(model_name)] = {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens,
-                "cost": cost_f,
-            }
-            summary["prompt_tokens"] += prompt_tokens
-            summary["completion_tokens"] += completion_tokens
-            summary["total_tokens"] += total_tokens
-
-            if total_cost_from_ag2 is None:
-                summary["total_cost"] += cost_f
-
+        aggregate_amount = (
+            _agrefactorpp_cost_decimal(
+                usage_data.get("total_cost")
+            )
+        )
+        _agrefactorpp_finalize_usage_costs(
+            summary,
+            cost_states,
+            source=source,
+            aggregate_amount=aggregate_amount,
+        )
         return summary
     except Exception as exc:
-        summary["source"] = f"fallback_per_agent: {type(exc).__name__}: {exc}"
+        source = (
+            "fallback_per_agent: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        summary = (
+            _agrefactorpp_empty_usage_summary(
+                len(agents)
+            )
+        )
+        summary["source"] = source
 
+    cost_states: Dict[
+        str,
+        Dict[str, Any],
+    ] = {}
     for agent in agents:
-        for method_name in ("get_actual_usage", "get_total_usage"):
-            method = getattr(agent, method_name, None)
+        for method_name in (
+            "get_actual_usage",
+            "get_total_usage",
+        ):
+            method = getattr(
+                agent,
+                method_name,
+                None,
+            )
             if not callable(method):
                 continue
             try:
                 usage = method()
             except Exception:
                 usage = None
-            if not isinstance(usage, dict):
+            if not isinstance(usage, Mapping):
                 continue
 
             for model_name, data in usage.items():
-                if model_name == "total_cost" or not isinstance(data, dict):
+                if (
+                    model_name == "total_cost"
+                    or not isinstance(
+                        data,
+                        Mapping,
+                    )
+                ):
                     continue
-                prompt_tokens = int(_agrefactorpp_number(data.get("prompt_tokens"), 0))
-                completion_tokens = int(_agrefactorpp_number(data.get("completion_tokens"), 0))
-                total_tokens = int(_agrefactorpp_number(data.get("total_tokens"), prompt_tokens + completion_tokens))
-                cost = data.get("cost", data.get("total_cost"))
-                if cost is None:
-                    price = _agrefactorpp_price_per_1k(str(model_name))
-                    if price is not None:
-                        cost = (prompt_tokens / 1000.0) * price[0] + (completion_tokens / 1000.0) * price[1]
-                cost_f = _agrefactorpp_number(cost, 0.0)
-
-                model_key = str(model_name)
-                bucket = summary["models"].setdefault(
-                    model_key,
-                    {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0},
+                _agrefactorpp_accumulate_model_usage(
+                    summary,
+                    cost_states,
+                    model_name=str(model_name),
+                    data=data,
+                    source=source,
                 )
-                bucket["prompt_tokens"] += prompt_tokens
-                bucket["completion_tokens"] += completion_tokens
-                bucket["total_tokens"] += total_tokens
-                bucket["cost"] += cost_f
-                summary["prompt_tokens"] += prompt_tokens
-                summary["completion_tokens"] += completion_tokens
-                summary["total_tokens"] += total_tokens
-                summary["total_cost"] += cost_f
             break
 
+    _agrefactorpp_finalize_usage_costs(
+        summary,
+        cost_states,
+        source=source,
+    )
     return summary
 
 
+def _agrefactorpp_cost_text(
+    observation: Any,
+) -> str:
+    if not isinstance(observation, Mapping):
+        return "unavailable"
+    amount = observation.get("amount")
+    if amount is None:
+        return "unavailable"
+    currency = observation.get("currency")
+    if isinstance(currency, str) and currency:
+        return f"{amount} {currency}"
+    return (
+        f"{amount} "
+        "(currency unspecified; audit only)"
+    )
+
+
 def print_agrefactorpp_usage_summary() -> None:
-    # Print a human-readable usage summary to the current run log.
+    """Print token observations without inventing currency semantics."""
+
     summary = get_agrefactorpp_usage_summary()
 
-    print("=============== Token / Cost Summary ===============")
+    print(
+        "=============== Token / Cost Summary "
+        "==============="
+    )
     print(f"Usage source: {summary.get('source')}")
-    print(f"Registered agents: {summary.get('agents', 0)}")
+    print(
+        "Registered agents: "
+        f"{summary.get('agents', 0)}"
+    )
 
     models = summary.get("models", {})
     if not models:
-        print("No token usage was reported by the current AG2 client.")
-        print("====================================================")
+        print(
+            "No token usage was reported by the "
+            "current AG2 client."
+        )
+        print(
+            "Cost: "
+            + _agrefactorpp_cost_text(
+                summary.get(
+                    "framework_reported_cost"
+                )
+            )
+        )
+        print(
+            "===================================================="
+        )
         return
 
-    print(f"Prompt tokens: {int(summary.get('prompt_tokens', 0)):,}")
-    print(f"Completion tokens: {int(summary.get('completion_tokens', 0)):,}")
-    print(f"Total tokens: {int(summary.get('total_tokens', 0)):,}")
-    print(f"Estimated cost: ${float(summary.get('total_cost', 0.0)):.6f}")
+    print(
+        "Prompt tokens: "
+        f"{int(summary.get('prompt_tokens', 0)):,}"
+    )
+    print(
+        "Completion tokens: "
+        f"{int(summary.get('completion_tokens', 0)):,}"
+    )
+    print(
+        "Total tokens: "
+        f"{int(summary.get('total_tokens', 0)):,}"
+    )
+    print(
+        "Framework-reported cost: "
+        + _agrefactorpp_cost_text(
+            summary.get(
+                "framework_reported_cost"
+            )
+        )
+    )
 
     for model_name, info in models.items():
         print(f"--- {model_name} ---")
-        print(f"  Prompt tokens: {int(info.get('prompt_tokens', 0)):,}")
-        print(f"  Completion tokens: {int(info.get('completion_tokens', 0)):,}")
-        print(f"  Total tokens: {int(info.get('total_tokens', 0)):,}")
-        print(f"  Estimated cost: ${float(info.get('cost', 0.0)):.6f}")
+        print(
+            "  Prompt tokens: "
+            f"{int(info.get('prompt_tokens', 0)):,}"
+        )
+        print(
+            "  Completion tokens: "
+            f"{int(info.get('completion_tokens', 0)):,}"
+        )
+        print(
+            "  Total tokens: "
+            f"{int(info.get('total_tokens', 0)):,}"
+        )
+        print(
+            "  Framework-reported cost: "
+            + _agrefactorpp_cost_text(
+                info.get(
+                    "framework_reported_cost"
+                )
+            )
+        )
 
-    print("====================================================")
-
+    print(
+        "===================================================="
+    )
 
 def is_termination_msg(x: dict[str, Any]) -> bool:
     content = x.get("content", "")

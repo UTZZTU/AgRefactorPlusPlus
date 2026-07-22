@@ -154,17 +154,17 @@ class HLSAgentLoaderPolicyTests(unittest.TestCase):
             source,
         )
 
-    def test_usage_fallback_price_helper_is_preserved(self):
+    def test_usage_accounting_is_not_loader_policy(self):
         source = inspect.getsource(
-            base_agent_module
+            base_agent_module.HLSAgentLoader
         )
-        self.assertIn(
-            "def _agrefactorpp_price_per_1k(",
+        self.assertNotIn(
+            "_agrefactorpp_price_per_1k",
             source,
         )
-        self.assertGreaterEqual(
-            source.count("_agrefactorpp_price_per_1k("),
-            3,
+        self.assertNotIn(
+            "framework_reported_cost",
+            source,
         )
 
     def test_runtime_override_wins_over_global_and_agent(self):
