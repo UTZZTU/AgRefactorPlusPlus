@@ -49,6 +49,24 @@ Frozen decisions:
 - P5 displays Token, LLM, compile, CSIM, CSYNTH, cost and wall time usage.
 <!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:END -->
 
+<!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:BEGIN -->
+## P1 consumer audit and manual review
+
+Completed against `8b543267a88ed63d343bd633cf29cd6edf9c4127`:
+
+- 166 files scanned;
+- 1597 model/budget/pricing references;
+- 14 automated findings;
+- F03 confirmed after manual review;
+- F14 conclusion retained with corrected evidence;
+- F15 added for native-currency versus `cost_usd` compatibility;
+- decision ledger:
+  [`P1_MODEL_RUNTIME_AUDIT_DECISIONS.md`](P1_MODEL_RUNTIME_AUDIT_DECISIONS.md).
+
+Current active implementation is **P1-A static model compatibility core**.
+P1-B pricing, P1-C Legacy/Stage-2 wiring and P1-D smoke remain ordered follow-ups.
+<!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
+
 ## 2. 已完成
 
 ### Stage 0

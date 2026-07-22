@@ -247,6 +247,24 @@ python -m agrefactor.cli run task.json
 
 ## 5. P1：已知模型兼容与 Prompt 适配基础
 
+<!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:BEGIN -->
+### 5.0 审计与人工复核依据
+
+Step 0 的只读 consumer 审计与人工复核已经完成。权威决策账本见
+[`P1_MODEL_RUNTIME_AUDIT_DECISIONS.md`](P1_MODEL_RUNTIME_AUDIT_DECISIONS.md)。
+
+该账本：
+
+- 保存 F01–F14 自动发现；
+- 将 F03 人工复核为 confirmed；
+- 修正 F14 的证据定位但保留结论；
+- 新增 F15 原生币种与 `cost_usd` 结构冲突；
+- 将 P1 拆分为 P1-A 静态兼容、P1-B pricing、P1-C 接线、P1-D 验收；
+- 冻结当前唯一活跃实现项为 P1-A。
+
+P1-A 不提前实现 pricing 数值、CLI 迁移、Budget resolver、P5 或 P0。
+<!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
+
 ### 5.1 与八项核心能力的关系
 
 P1 同时服务于：

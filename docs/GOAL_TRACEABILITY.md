@@ -29,6 +29,25 @@ Before Stage 3:
 - P0 validates the complete contract through the normal source-only entry.
 <!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:END -->
 
+<!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:BEGIN -->
+## 1.2 P1 audit closure and active evidence
+
+Step 0 consumer audit is complete. The final findings, corrections, F15 addition,
+P1-A–P1-D split and acceptance gates are recorded in
+[`P1_MODEL_RUNTIME_AUDIT_DECISIONS.md`](P1_MODEL_RUNTIME_AUDIT_DECISIONS.md).
+
+Current next evidence:
+
+```text
+P1-A static known-model compatibility
+→ deterministic profile/parameter/registry acceptance
+→ full regression
+```
+
+P1-A does not include pricing values, Legacy migration, normal CLI, Budget
+resolution, P5 or P0.
+<!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
+
 ## 2. TargetProfile 当前边界
 
 已经能够声明：

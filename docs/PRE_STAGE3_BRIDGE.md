@@ -63,6 +63,18 @@ provenance; P2 owns budget resolution; P5 reports both effective hard limits and
 actual usage.
 <!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:END -->
 
+<!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:BEGIN -->
+## P1 audit decision ledger
+
+The read-only model/budget/pricing consumer audit and manual review are complete.
+The authoritative implementation decisions are recorded in
+[`P1_MODEL_RUNTIME_AUDIT_DECISIONS.md`](P1_MODEL_RUNTIME_AUDIT_DECISIONS.md).
+
+The active package is P1-A static model compatibility only. Pricing collection,
+Legacy wiring, normal CLI migration, Budget resolution, P5 output and P0 remain
+separate later packages.
+<!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
+
 ## Scope control
 
 1. Fix observed failures before hypothetical ones.
