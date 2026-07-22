@@ -9,6 +9,7 @@ from .base import (
     TokenUsage,
 )
 from .cost_estimator import estimate_model_cost
+from .effective_config import EffectiveModelConfig
 from .family import (
     ModelCapabilityTag,
     ModelFamilyProfile,
@@ -97,6 +98,7 @@ __all__ = [
     "CostEstimate",
     "CostEstimationQuality",
     "DEEPSEEK_MODEL_FAMILY_PROFILE",
+    "EffectiveModelConfig",
     "GENERIC_OPENAI_COMPATIBLE_MODEL_FAMILY_PROFILE",
     "GLM_MODEL_FAMILY_PROFILE",
     "KIMI_MODEL_FAMILY_PROFILE",

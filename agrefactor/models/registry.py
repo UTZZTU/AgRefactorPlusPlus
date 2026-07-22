@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from .base import ModelProvider, ModelSpec
+from .effective_config import EffectiveModelConfig
 from .family import (
     ModelFamilyProfile,
     NEUTRAL_MODEL_FAMILY_PROFILE,
@@ -11,6 +15,7 @@ from .known_profiles import (
     KNOWN_MODEL_FAMILY_ALIASES,
     KNOWN_MODEL_FAMILY_PROFILES,
 )
+from .pricing import ModelPricingSnapshot
 
 
 class ModelRegistryError(LookupError):
@@ -208,6 +213,38 @@ class ModelRegistry:
             spec,
             provider,
             self.resolve_family_profile(model_name),
+        )
+
+    def resolve_effective_config(
+        self,
+        model_name: str,
+        *,
+        parameters: Mapping[str, Any] | None = None,
+        pricing_snapshot: ModelPricingSnapshot | None = None,
+        allow_approximate_cost: bool = False,
+    ) -> EffectiveModelConfig:
+        'Resolve one immutable model configuration before Provider use.'
+
+        spec, provider, family_profile = (
+            self.resolve_with_profile(model_name)
+        )
+        effective_parameters = (
+            family_profile.merge_parameters(
+                spec.default_parameters,
+                parameters,
+            )
+        )
+        return EffectiveModelConfig(
+            logical_model_name=spec.name,
+            provider_name=provider.name,
+            model_id=spec.model,
+            requested_family_name=spec.family,
+            family_profile=family_profile,
+            base_url=spec.base_url,
+            api_key_env=spec.api_key_env,
+            effective_parameters=effective_parameters,
+            pricing_snapshot=pricing_snapshot,
+            allow_approximate_cost=allow_approximate_cost,
         )
 
     def model_names(self) -> tuple[str, ...]:
