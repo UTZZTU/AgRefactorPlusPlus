@@ -1,6 +1,6 @@
 # P1 模型运行时审计决策账本
 
-> **状态：** P1-A、P1-B0、P1-B1、P1-B2、P1-B3 已完成；P1-B4 compatibility migration 为当前唯一活跃实现项
+> **状态：** P1-A、P1-B0、P1-B1、P1-B2、P1-B3、P1-B4A 已完成；P1-B4B estimation/native accounting 为当前唯一活跃实现项
 > **审计基线：** `8b543267a88ed63d343bd633cf29cd6edf9c4127`  
 > **人工复核日期：** 2026-07-22  
 > **作用：** 保存自动审计发现、人工修正、新增发现、阶段归属和关闭证据。  
@@ -422,6 +422,35 @@ This acceptance also corrects the P1-B2 evidence field from the accidental
 status-line substitution back to `new_tests=30`; no P1-B2 code or acceptance
 claim changes.
 
+## 8.7 P1-B4A deterministic acceptance
+
+Formal evidence:
+[`P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md`](P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md)
+
+```text
+parent_commit=4e9353f81c6c284a32f514811de61f0067045cbb
+implementation_commit=ae276f3df79685a7edd36dc6b06c7d82d5784e7a
+baseline_unittest=993/993
+p1b4a_unittest=1016/1016
+new_tests=23
+patch_id=89db552f6660c8e5fa9ac2a67deb21909ae25ae3
+provider_usage_breakdown_normalized=true
+shared_model_response_serialization=true
+candidate_serialization_migrated=true
+repair_serialization_migrated=true
+legacy_serialization_keys_preserved=true
+estimator_wiring=false
+budget_modified=false
+runtime_runner_modified=false
+legacy_modified=false
+currency_conversion=false
+```
+
+P1B0-F04 is closed. Provider token-category normalization is complete for the
+accepted OpenAI-compatible aliases. P1B0-F03/F06/F09 and F15 remain partially
+open until P1-B4B connects an explicit pricing snapshot and extends the single
+BudgetManager/BudgetUsage ledger for native-currency observed costs.
+
 ## 9. 当前下一步
 
 ```text
@@ -434,6 +463,8 @@ Step 1 P1-B1 typed pricing schema             completed
 Step 1 P1-B2 official model snapshots         completed
 Step 1 P1-B3 usage-to-cost estimator          completed
 Step 1 P1-B4 compatibility migration          active
+Step 1 P1-B4A usage normalization/serialization completed
+Step 1 P1-B4B estimation/native accounting    active
 ```
 
-P1-B3 已完成。当前只推进 P1-B4 compatibility migration；P1-C、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。
+P1-B4A 已完成。当前只推进 P1-B4B explicit estimation and native-cost accounting；P1-C、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。

@@ -296,6 +296,18 @@ main_targeted_unittest.log  cf4e7745b438ffc76fae480fced12c46bd9922dd9de793a02c01
 staged_stat.txt  b9726680781b7c2f536fc6eac779007d8a5b34d135b7b800f5a838ddc5075b79
 ```
 
+## P1-B4A acceptance linkage
+
+P1-B4A completed deterministic acceptance at `ae276f3df79685a7edd36dc6b06c7d82d5784e7a` with
+**1016/1016** tests and stable patch ID `89db552f6660c8e5fa9ac2a67deb21909ae25ae3`.
+
+Evidence:
+[`P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md`](P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md).
+
+Provider cache/thinking usage normalization and Candidate/Repair shared
+serialization are complete. P1-B4B remains active for explicit snapshot
+estimation wiring and single-ledger native-currency run accounting.
+
 ## Next package
 
 ```text
@@ -304,6 +316,8 @@ P1-B1 typed pricing schema            completed
 P1-B2 official model-level snapshots  completed
 P1-B3 usage-to-cost estimator         completed
 P1-B4 compatibility migration         active
+  P1-B4A usage normalization/serialization completed
+  P1-B4B estimation/native accounting active
 P1-C unified effective config         pending
 P1-D bounded real-model smoke         pending
 ```
