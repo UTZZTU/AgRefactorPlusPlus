@@ -166,6 +166,15 @@ main_targeted_unittest.log  1bd698fbd9f46a04c58f675a94014250897c6c5fb2aa4777e163
 staged_stat.txt  1a8f49dedafb63354ff0ccd11f850449ad49c55ea57e7df1c324799fe114a952
 ```
 
+## P1-C1 acceptance linkage
+
+Formal evidence:
+[`P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md`](P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md).
+
+P1-C1 completed deterministic acceptance at `3137a9cdbaf0201ed2ee3f5a28225121ceb04d56` with
+**1089/1089** tests and patch ID `4a37e161da17664a073761837ce944ea7eff749d`. The typed foundation is
+complete; P1-C2 modern consumer migration is active.
+
 ## Ordered continuation
 
 ```text
@@ -173,13 +182,15 @@ P1-B compatibility and pricing runtime        completed
 P1-B4A usage normalization/serialization      completed
 P1-B4B estimation/native accounting           completed
 P1-C unified effective configuration          active
+P1-C1 typed effective model resolution        completed
+P1-C2 modern consumer migration               active
+P1-C3 Legacy authority migration              pending
+P1-C4 deterministic parity acceptance         pending
 P1-D bounded real-model smoke                  pending
 P4 Public/Hidden source contract               pending
 ```
 
-P1-C must establish one authoritative effective model configuration shared by
-the normal runtime, repair-aware path and Legacy adapter. It must reuse the
-existing family/model parameter merge seam, resolve reasoning policy and model
-identity before Provider execution, and retire Legacy pricing/config helpers
-from authority without deleting the compatibility path. P1-C must not begin
-normal source-only CLI, P5, P4, P0 or Stage 3 work.
+P1-C1 established the immutable typed resolution foundation. P1-C2 is now
+active to migrate the modern Candidate and repair-aware consumers. P1-C3 will
+later migrate Legacy/AG2 authority, and P1-C4 will close deterministic parity.
+P1-C must not begin normal source-only CLI, P5, P4, P0 or Stage 3 work.
