@@ -10,6 +10,7 @@ import sys
 from typing import Any
 
 from agrefactor.config import TaskSpec
+from agrefactor.models import EffectiveModelConfig
 from agrefactor.runtime import (
     PhaseResult,
     PhaseStatus,
@@ -58,6 +59,59 @@ def _call_backend_preserving_standard_streams(
                 pass
 
 
+_LEGACY_PROVIDER_API_TYPES = {
+    "openai-compatible": "openai",
+}
+_LEGACY_LLM_RESERVED_KEYS = frozenset(
+    {
+        "model",
+        "api_type",
+        "base_url",
+        "api_key",
+        "api_key_env",
+    }
+)
+
+
+def _build_effective_legacy_llm_config(
+    config: EffectiveModelConfig,
+) -> dict[str, Any]:
+    if not isinstance(config, EffectiveModelConfig):
+        raise TypeError(
+            "config must be an EffectiveModelConfig"
+        )
+    api_type = _LEGACY_PROVIDER_API_TYPES.get(
+        config.provider_name
+    )
+    if api_type is None:
+        raise ValueError(
+            "Legacy AG2 translation does not support provider "
+            f"{config.provider_name!r}"
+        )
+
+    parameters = config.parameters
+    conflicts = sorted(
+        key
+        for key in parameters
+        if key in _LEGACY_LLM_RESERVED_KEYS
+    )
+    if conflicts:
+        raise ValueError(
+            "effective model parameters contain reserved "
+            "Legacy AG2 identity keys: "
+            + ", ".join(conflicts)
+        )
+
+    translated: dict[str, Any] = {
+        "model": config.model_id,
+        "api_type": api_type,
+    }
+    if config.base_url is not None:
+        translated["base_url"] = config.base_url
+    translated.update(parameters)
+    return translated
+
+
 @dataclass(frozen=True, slots=True)
 class LegacyRefactorSettings:
     """Options forwarded to the existing ``hls_refactor_with_rag`` function."""
@@ -75,6 +129,7 @@ class LegacyRefactorSettings:
     remote: bool = False
     reasoning_effort: str | None = None
     base_url: str | None = None
+    effective_model_config: EffectiveModelConfig | None = None
     enable_testbench_repair: bool = False
     max_testbench_repair_attempts: int = 2
     testbench_repair_model: str | None = None
@@ -93,6 +148,41 @@ class LegacyRefactorSettings:
     use_cached_tb_as_public: bool = False
 
     def __post_init__(self) -> None:
+        config = self.effective_model_config
+        if config is not None:
+            if not isinstance(
+                config,
+                EffectiveModelConfig,
+            ):
+                raise TypeError(
+                    "effective_model_config must be an "
+                    "EffectiveModelConfig or None"
+                )
+            if self.model is not None:
+                if (
+                    not isinstance(self.model, str)
+                    or self.model.strip() != config.model_id
+                ):
+                    raise ValueError(
+                        "Legacy compatibility model conflicts "
+                        "with effective_model_config.model_id"
+                    )
+            if self.base_url is not None:
+                if (
+                    not isinstance(self.base_url, str)
+                    or self.base_url.strip()
+                    != (config.base_url or "")
+                ):
+                    raise ValueError(
+                        "Legacy compatibility base_url conflicts "
+                        "with effective_model_config.base_url"
+                    )
+            if self.reasoning_effort is not None:
+                raise ValueError(
+                    "reasoning_effort is a parallel authority "
+                    "when effective_model_config is provided"
+                )
+
         if self.max_retry_attempts < 0:
             raise ValueError("max_retry_attempts must not be negative")
         if self.max_testbench_repair_attempts < 0:
@@ -120,6 +210,7 @@ class LegacyRefactorSettings:
             if not (
                 self.testbench_repair_model
                 or self.model
+                or self.effective_model_config is not None
             ):
                 raise ValueError(
                     "enabled testbench repair requires "
@@ -154,6 +245,40 @@ def build_legacy_refactor_kwargs(
             encoding="utf-8"
         )
 
+    effective_config = settings.effective_model_config
+    if effective_config is None:
+        resolved_model = settings.model
+        resolved_reasoning = settings.reasoning_effort
+        resolved_base_url = settings.base_url
+        llm_config_override = None
+        effective_manifest = None
+        family_instruction = None
+        model_configuration_source = (
+            "legacy_compatibility"
+        )
+    else:
+        resolved_model = effective_config.model_id
+        resolved_reasoning = (
+            effective_config.parameters.get(
+                "reasoning_effort"
+            )
+        )
+        resolved_base_url = effective_config.base_url
+        llm_config_override = (
+            _build_effective_legacy_llm_config(
+                effective_config
+            )
+        )
+        effective_manifest = (
+            effective_config.to_manifest()
+        )
+        family_instruction = (
+            effective_config.family_instruction
+        )
+        model_configuration_source = (
+            "effective_model_config"
+        )
+
     return {
         "kernel_path": task.kernel_path,
         "kernel_name": task.kernel_name,
@@ -167,10 +292,18 @@ def build_legacy_refactor_kwargs(
         "max_retry_attempts": settings.max_retry_attempts,
         "hetero_enabled": settings.hetero_enabled,
         "debug": 1 if settings.debug else 0,
-        "model": settings.model,
+        "model": resolved_model,
         "remote": settings.remote,
-        "reasoning_effort": settings.reasoning_effort,
-        "base_url": settings.base_url,
+        "reasoning_effort": resolved_reasoning,
+        "base_url": resolved_base_url,
+        "llm_config_override": llm_config_override,
+        "effective_model_config_manifest": (
+            effective_manifest
+        ),
+        "family_instruction": family_instruction,
+        "model_configuration_source": (
+            model_configuration_source
+        ),
         "enable_testbench_repair": (
             settings.enable_testbench_repair
         ),
@@ -220,6 +353,12 @@ class LegacyRefactorAdapter:
         )
         kwargs["budget"] = context.budget
         backend = self._backend or self._load_backend()
+        effective_manifest = kwargs.get(
+            "effective_model_config_manifest"
+        )
+        configuration_source = kwargs.get(
+            "model_configuration_source"
+        )
 
         context.trace.record(
             "legacy_refactor.invoked",
@@ -228,6 +367,12 @@ class LegacyRefactorAdapter:
             metadata={
                 "kernel_path": context.task.kernel_path,
                 "kernel_name": context.task.kernel_name,
+                "model_configuration_source": (
+                    configuration_source
+                ),
+                "effective_model_config": (
+                    effective_manifest
+                ),
             },
         )
 
@@ -274,6 +419,12 @@ class LegacyRefactorAdapter:
             metadata={
                 "adapter": "flow.new",
                 "legacy_usage": usage_metadata,
+                "model_configuration_source": (
+                    configuration_source
+                ),
+                "effective_model_config": (
+                    effective_manifest
+                ),
             },
         )
 

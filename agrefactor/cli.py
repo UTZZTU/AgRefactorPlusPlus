@@ -322,6 +322,88 @@ def _run_dry_task(
     )
 
 
+def _build_cli_legacy_settings(
+    args,
+) -> LegacyRefactorSettings:
+    effective_config = None
+    logical_name = None
+    if args.model is not None:
+        if (
+            not isinstance(args.model, str)
+            or not args.model.strip()
+        ):
+            raise ValueError(
+                "--model must not be empty"
+            )
+        logical_name = args.model.strip()
+
+    typed_resolution_requested = (
+        logical_name is not None
+        and args.model_family is not None
+    )
+    if typed_resolution_requested:
+        if (
+            not isinstance(args.api_key_env, str)
+            or not args.api_key_env.strip()
+        ):
+            raise ValueError(
+                "--api-key-env must not be empty"
+            )
+        provider = OpenAICompatibleProvider(
+            default_base_url=args.base_url,
+            default_api_key_env=args.api_key_env,
+        )
+        registry = ModelRegistry()
+        registry.register_provider(provider)
+        registry.register_model(
+            ModelSpec(
+                name=logical_name,
+                provider=provider.name,
+                model=logical_name,
+                family=args.model_family,
+                base_url=args.base_url,
+                api_key_env=args.api_key_env,
+            )
+        )
+        call_parameters: dict[str, Any] = {}
+        if args.reasoning_effort is not None:
+            call_parameters["reasoning_effort"] = (
+                args.reasoning_effort
+            )
+        effective_config = (
+            registry.resolve_effective_config(
+                logical_name,
+                parameters=call_parameters,
+            )
+        )
+
+    return LegacyRefactorSettings(
+        effective_model_config=effective_config,
+        model=logical_name,
+        base_url=args.base_url,
+        reasoning_effort=(
+            None
+            if effective_config is not None
+            else args.reasoning_effort
+        ),
+        max_retry_attempts=args.max_retry_attempts,
+        enable_testbench_repair=(
+            args.enable_testbench_repair
+        ),
+        max_testbench_repair_attempts=(
+            args.max_testbench_repair_attempts
+        ),
+        testbench_repair_model=(
+            args.testbench_repair_model
+        ),
+        testbench_repair_api_key_env=(
+            args.testbench_repair_api_key_env
+        ),
+        output_dir=args.output_dir,
+        debug=args.debug,
+    )
+
+
 def _run_legacy_refactor(
     task: TaskSpec,
     *,
@@ -669,25 +751,8 @@ def main(
                 )
             else:
                 execution_mode = "legacy"
-                settings = LegacyRefactorSettings(
-                    model=args.model,
-                    base_url=args.base_url,
-                    reasoning_effort=args.reasoning_effort,
-                    max_retry_attempts=args.max_retry_attempts,
-                    enable_testbench_repair=(
-                        args.enable_testbench_repair
-                    ),
-                    max_testbench_repair_attempts=(
-                        args.max_testbench_repair_attempts
-                    ),
-                    testbench_repair_model=(
-                        args.testbench_repair_model
-                    ),
-                    testbench_repair_api_key_env=(
-                        args.testbench_repair_api_key_env
-                    ),
-                    output_dir=args.output_dir,
-                    debug=args.debug,
+                settings = _build_cli_legacy_settings(
+                    args
                 )
                 result = _run_legacy_refactor(
                     task,

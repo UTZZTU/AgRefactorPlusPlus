@@ -1,4 +1,4 @@
-import os, dotenv, concurrent.futures, argparse  # type: ignore
+import os, dotenv, concurrent.futures, argparse, copy  # type: ignore
 from autogen.agentchat.group import ContextVariables  # type: ignore
 from typing import Optional, Dict, Any
 import flow.tools as tools
@@ -63,6 +63,25 @@ def make_llm_config(
     return config
 
 
+def resolve_runtime_llm_config(
+    model: Optional[str],
+    reasoning_effort: Optional[str] = None,
+    base_url: Optional[str] = None,
+    llm_config_override: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    if llm_config_override is not None:
+        if not isinstance(llm_config_override, dict):
+            raise TypeError(
+                "llm_config_override must be a dictionary or None"
+            )
+        return copy.deepcopy(llm_config_override)
+    return make_llm_config(
+        model,
+        reasoning_effort,
+        base_url,
+    )
+
+
 def debug_print(debug: int, msg: str):
     if debug >= 1:
         print(f"=============== {msg} ===============")
@@ -83,6 +102,10 @@ def hls_refactor_with_rag(
     remote: bool = False,
     reasoning_effort: Optional[str] = None,
     base_url: Optional[str] = None,
+    llm_config_override: Optional[Dict[str, Any]] = None,
+    effective_model_config_manifest: Optional[Dict[str, Any]] = None,
+    family_instruction: Optional[str] = None,
+    model_configuration_source: str = "legacy_compatibility",
     target_profile: Optional[Dict[str, Any]] = None,
     budget: Optional[BudgetManager] = None,
     enable_testbench_repair: bool = False,
@@ -106,7 +129,37 @@ def hls_refactor_with_rag(
     use_cached_tb_as_public: bool = False,  # Skip TB gen entirely; use cached hidden TB as the agent's testbench.
 ):
     reset_agrefactorpp_usage_registry()
-    llm_config = make_llm_config(model, reasoning_effort, base_url)
+    llm_config = resolve_runtime_llm_config(
+        model,
+        reasoning_effort,
+        base_url,
+        llm_config_override,
+    )
+    if (
+        effective_model_config_manifest is not None
+        and not isinstance(
+            effective_model_config_manifest,
+            dict,
+        )
+    ):
+        raise TypeError(
+            "effective_model_config_manifest must be "
+            "a dictionary or None"
+        )
+    if (
+        family_instruction is not None
+        and not isinstance(family_instruction, str)
+    ):
+        raise TypeError(
+            "family_instruction must be a string or None"
+        )
+    if (
+        not isinstance(model_configuration_source, str)
+        or not model_configuration_source.strip()
+    ):
+        raise ValueError(
+            "model_configuration_source must not be empty"
+        )
 
     if max_testbench_repair_attempts < 0:
         raise ValueError(
@@ -173,6 +226,15 @@ def hls_refactor_with_rag(
         "code_for_hetero": "",        # current code for hetero tool to refactor
         "new_kernel_name": "",        # new kernel function name
         "target_profile": dict(target_profile or {}),
+        "effective_model_config": copy.deepcopy(
+            effective_model_config_manifest
+        ),
+        "model_family_instruction": (
+            family_instruction or ""
+        ),
+        "model_configuration_source": (
+            model_configuration_source
+        ),
         "identified_items": [],       # identified items
         "items_hetero": [],           # identified items for heterorefactor
         "testbench": "",              # generated testbench
