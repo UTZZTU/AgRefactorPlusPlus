@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 import json
 from math import isfinite
 import re
+from types import MappingProxyType
 from typing import Any
 
 from agrefactor.models import ModelResponse
@@ -86,6 +88,82 @@ def _json_mapping(
     return copied
 
 
+_CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
+_COST_TOLERANCE = Decimal("1e-12")
+
+
+def _clean_cost_decimal(name: str, value) -> Decimal:
+    if isinstance(value, bool):
+        raise ValueError(
+            f"{name} must be a finite non-negative decimal"
+        )
+    try:
+        converted = (
+            value
+            if isinstance(value, Decimal)
+            else Decimal(str(value))
+        )
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(
+            f"{name} must be a finite non-negative decimal"
+        ) from exc
+    if not converted.is_finite() or converted < 0:
+        raise ValueError(
+            f"{name} must be a finite non-negative decimal"
+        )
+    return converted
+
+
+def _clean_currency(value: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError("currency must be a string")
+    normalized = value.strip().upper()
+    if _CURRENCY_RE.fullmatch(normalized) is None:
+        raise ValueError(
+            "currency must be a three-letter alphabetic code"
+        )
+    return normalized
+
+
+def _decimal_text(value: Decimal) -> str:
+    if value == 0:
+        return "0"
+    return format(value.normalize(), "f")
+
+
+def _normalize_costs_by_currency(
+    value: Mapping[str, object],
+) -> dict[str, Decimal]:
+    if not isinstance(value, Mapping):
+        raise TypeError(
+            "costs_by_currency must be a mapping"
+        )
+    normalized: dict[str, Decimal] = {}
+    for raw_currency, raw_amount in value.items():
+        currency = _clean_currency(raw_currency)
+        amount = _clean_cost_decimal(
+            f"costs_by_currency[{currency}]",
+            raw_amount,
+        )
+        normalized[currency] = amount
+    return dict(sorted(normalized.items()))
+
+
+def _merge_cost(
+    costs: dict[str, Decimal],
+    currency: str,
+    amount: Decimal,
+) -> None:
+    existing = costs.get(currency)
+    if existing is None:
+        costs[currency] = amount
+        return
+    if abs(existing - amount) > _COST_TOLERANCE:
+        raise ValueError(
+            f"conflicting observed cost for {currency}"
+        )
+
+
 def model_response_to_safe_dict(
     response: ModelResponse | None,
 ) -> dict[str, Any] | None:
@@ -157,6 +235,9 @@ class RepairObservedUsage:
     llm_calls: int = 0
     tokens: int = 0
     cost_usd: float = 0.0
+    costs_by_currency: Mapping[str, Decimal] = field(
+        default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         for name in (
@@ -185,10 +266,42 @@ class RepairObservedUsage:
             raise ValueError(
                 "cost_usd must be a finite non-negative number"
             )
+
+        costs = _normalize_costs_by_currency(
+            self.costs_by_currency
+        )
+        legacy_usd = _clean_cost_decimal(
+            "cost_usd",
+            self.cost_usd,
+        )
+        mapped_usd = costs.get("USD")
+        if mapped_usd is None:
+            if legacy_usd != 0:
+                costs["USD"] = legacy_usd
+            usd_total = legacy_usd
+        else:
+            if (
+                legacy_usd != 0
+                and abs(mapped_usd - legacy_usd)
+                > _COST_TOLERANCE
+            ):
+                raise ValueError(
+                    "cost_usd conflicts with "
+                    "costs_by_currency['USD']"
+                )
+            usd_total = mapped_usd
+
         object.__setattr__(
             self,
             "cost_usd",
-            float(self.cost_usd),
+            float(usd_total),
+        )
+        object.__setattr__(
+            self,
+            "costs_by_currency",
+            MappingProxyType(
+                dict(sorted(costs.items()))
+            ),
         )
 
     @classmethod
@@ -202,7 +315,7 @@ class RepairObservedUsage:
             raise ValueError(
                 "before and after must both be BudgetUsage or both be None"
             )
-        deltas = {
+        deltas: dict[str, Any] = {
             "tool_calls": 0,
             "compile_calls": 0,
             "csynth_calls": 0,
@@ -210,12 +323,17 @@ class RepairObservedUsage:
             "llm_calls": 0,
             "tokens": 0,
             "cost_usd": 0.0,
+            "costs_by_currency": {},
         }
         if before is not None:
             if not isinstance(before, BudgetUsage):
-                raise TypeError("before must be BudgetUsage or None")
+                raise TypeError(
+                    "before must be BudgetUsage or None"
+                )
             if not isinstance(after, BudgetUsage):
-                raise TypeError("after must be BudgetUsage or None")
+                raise TypeError(
+                    "after must be BudgetUsage or None"
+                )
             for name in (
                 "tool_calls",
                 "compile_calls",
@@ -230,12 +348,40 @@ class RepairObservedUsage:
                         f"observed budget delta is negative for {name}"
                     )
                 deltas[name] = delta
+
             cost_delta = after.cost_usd - before.cost_usd
             if cost_delta < -1e-12:
                 raise ValueError(
                     "observed budget delta is negative for cost_usd"
                 )
-            deltas["cost_usd"] = max(0.0, cost_delta)
+            deltas["cost_usd"] = max(
+                0.0,
+                cost_delta,
+            )
+
+            native_deltas: dict[str, Decimal] = {}
+            currencies = set(
+                before.costs_by_currency
+            ) | set(after.costs_by_currency)
+            for currency in currencies:
+                amount = (
+                    after.costs_by_currency.get(
+                        currency,
+                        Decimal("0"),
+                    )
+                    - before.costs_by_currency.get(
+                        currency,
+                        Decimal("0"),
+                    )
+                )
+                if amount < 0:
+                    raise ValueError(
+                        "observed budget delta is negative "
+                        f"for currency {currency}"
+                    )
+                if amount != 0:
+                    native_deltas[currency] = amount
+            deltas["costs_by_currency"] = native_deltas
 
         if model is not None:
             if not isinstance(model, RepairModelObservation):
@@ -267,6 +413,42 @@ class RepairObservedUsage:
                     deltas["tokens"],
                     total_tokens,
                 )
+
+                native_costs = dict(
+                    deltas["costs_by_currency"]
+                )
+                estimate_payload = usage.get(
+                    "estimated_cost"
+                )
+                if estimate_payload is not None:
+                    if not isinstance(
+                        estimate_payload,
+                        Mapping,
+                    ):
+                        raise TypeError(
+                            "model response estimated_cost "
+                            "must be a mapping or None"
+                        )
+                    amount_text = estimate_payload.get(
+                        "amount"
+                    )
+                    currency_text = estimate_payload.get(
+                        "currency"
+                    )
+                    if amount_text is not None:
+                        amount = _clean_cost_decimal(
+                            "model response estimated_cost amount",
+                            amount_text,
+                        )
+                        currency = _clean_currency(
+                            currency_text
+                        )
+                        _merge_cost(
+                            native_costs,
+                            currency,
+                            amount,
+                        )
+
                 response_cost = usage.get("cost_usd")
                 if response_cost is not None:
                     if (
@@ -275,7 +457,9 @@ class RepairObservedUsage:
                             response_cost,
                             (int, float),
                         )
-                        or not isfinite(float(response_cost))
+                        or not isfinite(
+                            float(response_cost)
+                        )
                         or response_cost < 0
                     ):
                         raise ValueError(
@@ -285,10 +469,24 @@ class RepairObservedUsage:
                         float(deltas["cost_usd"]),
                         float(response_cost),
                     )
+                    if (
+                        "USD" not in native_costs
+                        and response_cost != 0
+                    ):
+                        native_costs["USD"] = (
+                            _clean_cost_decimal(
+                                "model response cost_usd",
+                                response_cost,
+                            )
+                        )
+
+                deltas["costs_by_currency"] = (
+                    native_costs
+                )
 
         return cls(**deltas)
 
-    def to_dict(self) -> dict[str, int | float]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "tool_calls": self.tool_calls,
             "compile_calls": self.compile_calls,
@@ -297,6 +495,11 @@ class RepairObservedUsage:
             "llm_calls": self.llm_calls,
             "tokens": self.tokens,
             "cost_usd": self.cost_usd,
+            "costs_by_currency": {
+                currency: _decimal_text(amount)
+                for currency, amount
+                in self.costs_by_currency.items()
+            },
         }
 
 

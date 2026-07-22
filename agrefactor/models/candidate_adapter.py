@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from decimal import Decimal
 import hashlib
 import json
 import re
@@ -13,6 +14,8 @@ from agrefactor.config import TaskSpec
 from agrefactor.prompts import LayeredPrompt, PromptPurpose
 
 from .base import ModelRequest, ModelResponse, ModelSpec
+from .cost_estimator import estimate_model_cost
+from .pricing import ModelPricingSnapshot
 from .registry import ModelRegistry
 
 
@@ -327,6 +330,8 @@ class CandidateModelAdapter:
         registry: ModelRegistry,
         model_name: str,
         parameters: Mapping[str, Any] | None = None,
+        pricing_snapshot: ModelPricingSnapshot | None = None,
+        allow_approximate_cost: bool = False,
     ) -> None:
         if not isinstance(registry, ModelRegistry):
             raise TypeError("registry must be a ModelRegistry")
@@ -335,6 +340,36 @@ class CandidateModelAdapter:
             self._provider,
             self._family_profile,
         ) = registry.resolve_with_profile(model_name)
+
+        if (
+            pricing_snapshot is not None
+            and not isinstance(
+                pricing_snapshot,
+                ModelPricingSnapshot,
+            )
+        ):
+            raise TypeError(
+                "pricing_snapshot must be a "
+                "ModelPricingSnapshot or None"
+            )
+        if (
+            pricing_snapshot is not None
+            and pricing_snapshot.model_id
+            != self._model.model
+        ):
+            raise ValueError(
+                "pricing_snapshot.model_id must match "
+                "the selected ModelSpec.model"
+            )
+        if not isinstance(allow_approximate_cost, bool):
+            raise TypeError(
+                "allow_approximate_cost must be boolean"
+            )
+
+        self._pricing_snapshot = pricing_snapshot
+        self._allow_approximate_cost = (
+            allow_approximate_cost
+        )
         self._parameters = _copy_json_mapping(
             parameters or {},
             "parameters",
@@ -352,6 +387,16 @@ class CandidateModelAdapter:
     @property
     def model_spec(self) -> ModelSpec:
         return self._model
+
+    @property
+    def pricing_snapshot(
+        self,
+    ) -> ModelPricingSnapshot | None:
+        return self._pricing_snapshot
+
+    @property
+    def allow_approximate_cost(self) -> bool:
+        return self._allow_approximate_cost
 
     @property
     def family_profile(self):
@@ -384,6 +429,81 @@ class CandidateModelAdapter:
     @property
     def last_result(self) -> CandidateModelResult | None:
         return self._results[-1] if self._results else None
+
+    def _with_estimated_cost(
+        self,
+        response: ModelResponse,
+    ) -> ModelResponse:
+        snapshot = self._pricing_snapshot
+        if snapshot is None:
+            return response
+
+        estimated = estimate_model_cost(
+            snapshot,
+            response.usage,
+            allow_approximate=(
+                self._allow_approximate_cost
+            ),
+        )
+
+        legacy_cost_usd = response.usage.cost_usd
+        if (
+            legacy_cost_usd is not None
+            and estimated.currency not in (None, "USD")
+        ):
+            raise ValueError(
+                "non-USD pricing estimate cannot be "
+                "combined with provider cost_usd"
+            )
+
+        if (
+            estimated.amount is not None
+            and estimated.currency == "USD"
+        ):
+            if legacy_cost_usd is not None:
+                legacy_decimal = Decimal(
+                    str(legacy_cost_usd)
+                )
+                if (
+                    abs(legacy_decimal - estimated.amount)
+                    > Decimal("1e-12")
+                ):
+                    raise ValueError(
+                        "provider cost_usd conflicts with "
+                        "the explicit USD pricing snapshot"
+                    )
+            legacy_cost_usd = float(
+                estimated.amount
+            )
+
+        usage = replace(
+            response.usage,
+            cost_usd=legacy_cost_usd,
+            estimated_cost=estimated,
+        )
+        metadata = dict(response.metadata)
+        metadata.update(
+            {
+                "pricing_estimation_attempted": True,
+                "pricing_estimation_quality": (
+                    estimated.quality.value
+                ),
+                "pricing_snapshot_sha256": (
+                    snapshot.pricing_snapshot_sha256
+                ),
+                "pricing_currency": (
+                    estimated.currency
+                ),
+                "pricing_amount_available": (
+                    estimated.amount is not None
+                ),
+            }
+        )
+        return replace(
+            response,
+            usage=usage,
+            metadata=metadata,
+        )
 
     def generate(
         self,
@@ -429,6 +549,7 @@ class CandidateModelAdapter:
             raise TypeError(
                 "model provider must return a ModelResponse"
             )
+        response = self._with_estimated_cost(response)
         self._responses.append(response)
         if after_provider_response is not None:
             after_provider_response(response)

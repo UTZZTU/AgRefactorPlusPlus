@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
@@ -186,8 +186,8 @@ class Stage2SmokePassCaseResult:
             "validation_result": (
                 self.validation_result.to_dict()
             ),
-            "budget_before": asdict(self.budget_before),
-            "budget_after": asdict(self.budget_after),
+            "budget_before": self.budget_before.to_dict(),
+            "budget_after": self.budget_after.to_dict(),
             "budget_delta": self.budget_delta.to_dict(),
             "trace_jsonl_path": self.trace_jsonl_path,
             "trace_snapshot_path": (
@@ -291,7 +291,7 @@ class Stage2SmokePassMatrixResult:
             "expected_total_budget": (
                 self.expected_total_budget.to_dict()
             ),
-            "total_usage": asdict(self.total_usage),
+            "total_usage": self.total_usage.to_dict(),
             "work_root": self.work_root,
         }
 

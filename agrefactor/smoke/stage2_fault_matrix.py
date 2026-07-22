@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from enum import Enum
 import hashlib
 import json
@@ -252,7 +252,7 @@ class Stage2SmokeFaultMatrixResult:
             "scenario_count": len(self.observations),
             "observations": [item.to_dict() for item in self.observations],
             "expected_total_budget": self.expected_total_budget.to_dict(),
-            "total_usage": asdict(self.total_usage),
+            "total_usage": self.total_usage.to_dict(),
             "work_root": self.work_root,
         }
 

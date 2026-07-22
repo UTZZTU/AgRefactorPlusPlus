@@ -3,9 +3,79 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from math import isfinite
+import re
+from types import MappingProxyType
+
+from agrefactor.models import CostEstimate, TokenUsage
+
+
+_CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
+_COST_TOLERANCE = Decimal("1e-12")
+
+
+def _clean_cost_decimal(name: str, value) -> Decimal:
+    if isinstance(value, bool):
+        raise ValueError(
+            f"{name} must be a finite non-negative decimal"
+        )
+    try:
+        converted = (
+            value
+            if isinstance(value, Decimal)
+            else Decimal(str(value))
+        )
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(
+            f"{name} must be a finite non-negative decimal"
+        ) from exc
+    if not converted.is_finite() or converted < 0:
+        raise ValueError(
+            f"{name} must be a finite non-negative decimal"
+        )
+    return converted
+
+
+def _clean_currency(value: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError("currency must be a string")
+    normalized = value.strip().upper()
+    if _CURRENCY_RE.fullmatch(normalized) is None:
+        raise ValueError(
+            "currency must be a three-letter alphabetic code"
+        )
+    return normalized
+
+
+def _decimal_text(value: Decimal) -> str:
+    if value == 0:
+        return "0"
+    return format(value.normalize(), "f")
+
+
+def _normalize_costs_by_currency(
+    value: Mapping[str, object],
+) -> dict[str, Decimal]:
+    if not isinstance(value, Mapping):
+        raise TypeError(
+            "costs_by_currency must be a mapping"
+        )
+    normalized: dict[str, Decimal] = {}
+    for raw_currency, raw_amount in value.items():
+        currency = _clean_currency(raw_currency)
+        amount = _clean_cost_decimal(
+            f"costs_by_currency[{currency}]",
+            raw_amount,
+        )
+        if currency in normalized:
+            raise ValueError(
+                "costs_by_currency contains duplicate currency"
+            )
+        normalized[currency] = amount
+    return dict(sorted(normalized.items()))
 
 
 class BudgetExceededError(RuntimeError):
@@ -81,6 +151,75 @@ class BudgetUsage:
     tokens: int
     cost_usd: float
     elapsed_s: float
+    costs_by_currency: Mapping[str, Decimal] = field(
+        default_factory=dict
+    )
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.cost_usd, bool)
+            or not isinstance(self.cost_usd, (int, float))
+            or not isfinite(float(self.cost_usd))
+            or self.cost_usd < 0
+        ):
+            raise ValueError(
+                "cost_usd must be a finite non-negative number"
+            )
+
+        normalized = _normalize_costs_by_currency(
+            self.costs_by_currency
+        )
+        legacy_usd = _clean_cost_decimal(
+            "cost_usd",
+            self.cost_usd,
+        )
+        mapped_usd = normalized.get("USD")
+
+        if mapped_usd is None:
+            if legacy_usd != 0:
+                normalized["USD"] = legacy_usd
+            usd_total = legacy_usd
+        else:
+            if (
+                legacy_usd != 0
+                and abs(mapped_usd - legacy_usd)
+                > _COST_TOLERANCE
+            ):
+                raise ValueError(
+                    "cost_usd conflicts with "
+                    "costs_by_currency['USD']"
+                )
+            usd_total = mapped_usd
+
+        object.__setattr__(
+            self,
+            "cost_usd",
+            float(usd_total),
+        )
+        object.__setattr__(
+            self,
+            "costs_by_currency",
+            MappingProxyType(
+                dict(sorted(normalized.items()))
+            ),
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "llm_calls": self.llm_calls,
+            "tool_calls": self.tool_calls,
+            "compile_calls": self.compile_calls,
+            "csim_calls": self.csim_calls,
+            "csynth_calls": self.csynth_calls,
+            "tokens": self.tokens,
+            "cost_usd": self.cost_usd,
+            "elapsed_s": self.elapsed_s,
+            "costs_by_currency": {
+                currency: _decimal_text(amount)
+                for currency, amount
+                in self.costs_by_currency.items()
+            },
+        }
 
 
 class BudgetManager:
@@ -101,7 +240,7 @@ class BudgetManager:
         self._csim_calls = 0
         self._csynth_calls = 0
         self._tokens = 0
-        self._cost_usd = 0.0
+        self._costs_by_currency: dict[str, Decimal] = {}
 
     @property
     def limits(self) -> BudgetLimits:
@@ -123,8 +262,11 @@ class BudgetManager:
             csim_calls=self._csim_calls,
             csynth_calls=self._csynth_calls,
             tokens=self._tokens,
-            cost_usd=self._cost_usd,
+            cost_usd=self._cost_usd_total(),
             elapsed_s=elapsed_s,
+            costs_by_currency=dict(
+                self._costs_by_currency
+            ),
         )
 
     def ensure_available(
@@ -180,7 +322,7 @@ class BudgetManager:
         )
         self._check_limit(
             "cost_usd",
-            self._cost_usd + cost_usd,
+            self._cost_usd_total() + cost_usd,
             self._limits.max_cost_usd,
         )
         self._check_limit(
@@ -217,8 +359,12 @@ class BudgetManager:
         self._compile_calls += compile_calls
         self._csim_calls += csim_calls
         self._csynth_calls += csynth_calls
+        cost_increment = self._cost_increment(
+            cost_usd=cost_usd,
+            estimated_cost=None,
+        )
         self._tokens += tokens
-        self._cost_usd += cost_usd
+        self._apply_cost_increment(cost_increment)
         return self.snapshot()
 
     def record_observed(
@@ -226,20 +372,22 @@ class BudgetManager:
         *,
         tokens: int = 0,
         cost_usd: float = 0.0,
+        estimated_cost: CostEstimate | None = None,
     ) -> BudgetUsage:
-        """Record usage known only after an external call completed.
+        """Record token and cost values known after a call completed.
 
-        LLM token and cost totals are not known before provider execution.
-        This method records the observed values without pretending they could
-        have blocked an already-completed call. Callers must still perform
-        prospective launch checks and consume ``llm_calls`` immediately before
-        the provider starts.
+        Observed token and estimated-cost totals are soft budgets: they are
+        recorded after provider execution and may stop later work, but they do
+        not pretend to block the completed call.
         """
 
         self._validate_increment("tokens", tokens)
-        self._validate_cost_increment(cost_usd)
+        cost_increment = self._cost_increment(
+            cost_usd=cost_usd,
+            estimated_cost=estimated_cost,
+        )
         self._tokens += tokens
-        self._cost_usd += cost_usd
+        self._apply_cost_increment(cost_increment)
         return BudgetUsage(
             llm_calls=self._llm_calls,
             tool_calls=self._tool_calls,
@@ -247,8 +395,108 @@ class BudgetManager:
             csim_calls=self._csim_calls,
             csynth_calls=self._csynth_calls,
             tokens=self._tokens,
-            cost_usd=self._cost_usd,
+            cost_usd=self._cost_usd_total(),
             elapsed_s=self._elapsed_s(),
+            costs_by_currency=dict(
+                self._costs_by_currency
+            ),
+        )
+
+    def record_model_usage(
+        self,
+        usage: TokenUsage,
+    ) -> BudgetUsage:
+        if not isinstance(usage, TokenUsage):
+            raise TypeError(
+                "usage must be a TokenUsage"
+            )
+        return self.record_observed(
+            tokens=usage.total_tokens,
+            cost_usd=(
+                0.0
+                if usage.cost_usd is None
+                else float(usage.cost_usd)
+            ),
+            estimated_cost=usage.estimated_cost,
+        )
+
+    def _cost_increment(
+        self,
+        *,
+        cost_usd: float,
+        estimated_cost: CostEstimate | None,
+    ) -> dict[str, Decimal]:
+        self._validate_cost_increment(cost_usd)
+        legacy_usd = _clean_cost_decimal(
+            "cost_usd increment",
+            cost_usd,
+        )
+
+        if estimated_cost is None:
+            return (
+                {}
+                if legacy_usd == 0
+                else {"USD": legacy_usd}
+            )
+        if not isinstance(estimated_cost, CostEstimate):
+            raise TypeError(
+                "estimated_cost must be a CostEstimate or None"
+            )
+
+        amount = estimated_cost.amount
+        currency = estimated_cost.currency
+        if amount is None:
+            return (
+                {}
+                if legacy_usd == 0
+                else {"USD": legacy_usd}
+            )
+        if currency is None:
+            raise ValueError(
+                "priced estimated_cost requires currency"
+            )
+
+        normalized_currency = _clean_currency(currency)
+        if normalized_currency == "USD":
+            if (
+                legacy_usd != 0
+                and abs(legacy_usd - amount)
+                > _COST_TOLERANCE
+            ):
+                raise ValueError(
+                    "conflicting USD cost_usd and "
+                    "estimated_cost amounts"
+                )
+            return {"USD": amount}
+
+        if legacy_usd != 0:
+            raise ValueError(
+                "non-USD estimated_cost must not be "
+                "combined with cost_usd"
+            )
+        return {normalized_currency: amount}
+
+    def _apply_cost_increment(
+        self,
+        increment: Mapping[str, Decimal],
+    ) -> None:
+        for currency, amount in increment.items():
+            if amount == 0:
+                continue
+            self._costs_by_currency[currency] = (
+                self._costs_by_currency.get(
+                    currency,
+                    Decimal("0"),
+                )
+                + amount
+            )
+
+    def _cost_usd_total(self) -> float:
+        return float(
+            self._costs_by_currency.get(
+                "USD",
+                Decimal("0"),
+            )
         )
 
     def exhausted(self) -> bool:
@@ -282,7 +530,12 @@ class BudgetManager:
 
     @staticmethod
     def _validate_cost_increment(value: float) -> None:
-        if not isfinite(value) or value < 0:
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not isfinite(float(value))
+            or value < 0
+        ):
             raise ValueError(
                 "cost_usd increment must be a finite non-negative number"
             )

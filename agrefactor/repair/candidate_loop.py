@@ -8,7 +8,7 @@ bounded model attempts, budget accounting, and conservative state preservation.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from enum import Enum
 import json
 from typing import Any, Protocol
@@ -394,8 +394,8 @@ class CandidateRepairAttempt:
             ),
             "error_type": self.error_type,
             "error_message": self.error_message,
-            "budget_before": asdict(self.budget_before),
-            "budget_after": asdict(self.budget_after),
+            "budget_before": self.budget_before.to_dict(),
+            "budget_after": self.budget_after.to_dict(),
         }
 
 
@@ -441,7 +441,7 @@ class CandidateRepairLoopResult:
             "last_validated_candidate": self.last_validated_candidate,
             "last_proposal": self.last_proposal,
             "attempts": [item.to_dict() for item in self.attempts],
-            "budget_usage": asdict(self.budget_usage),
+            "budget_usage": self.budget_usage.to_dict(),
         }
 
     def to_repair_run_record(
@@ -831,11 +831,8 @@ class BoundedCandidateRepairLoop:
         self._budget.consume(llm_calls=1)
 
     def _record_model_usage(self, response: ModelResponse) -> None:
-        self._budget.record_observed(
-            tokens=response.usage.total_tokens,
-            cost_usd=(
-                0.0 if response.usage.cost_usd is None else float(response.usage.cost_usd)
-            ),
+        self._budget.record_model_usage(
+            response.usage
         )
 
     def _new_response(self, previous_count: int) -> ModelResponse | None:

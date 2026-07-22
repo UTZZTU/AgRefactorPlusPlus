@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from enum import Enum
 import json
 import os
@@ -307,7 +307,7 @@ class CandidateRepairOrchestrationResult:
             "last_validation_state": (
                 self.last_validation_state.value
             ),
-            "budget_usage": asdict(self.budget_usage),
+            "budget_usage": self.budget_usage.to_dict(),
             "metadata": _json_mapping(
                 self.metadata,
                 "metadata",

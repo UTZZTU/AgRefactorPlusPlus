@@ -141,20 +141,7 @@ class RunResult:
             "budget_usage": (
                 None
                 if usage is None
-                else {
-                    "llm_calls": usage.llm_calls,
-                    "tool_calls": usage.tool_calls,
-                    "compile_calls": (
-                        usage.compile_calls
-                    ),
-                    "csim_calls": usage.csim_calls,
-                    "csynth_calls": (
-                        usage.csynth_calls
-                    ),
-                    "tokens": usage.tokens,
-                    "cost_usd": usage.cost_usd,
-                    "elapsed_s": usage.elapsed_s,
-                }
+                else usage.to_dict()
             ),
             "metadata": dict(self.metadata),
         }
