@@ -42,6 +42,15 @@ from .pricing import (
     PricingVerificationStatus,
     TokenUsageBreakdown,
 )
+from .official_pricing import (
+    OFFICIAL_MODEL_PRICING_SNAPSHOTS,
+    OFFICIAL_PRICING_MANIFEST_FILE_SHA256,
+    OFFICIAL_PRICING_SOURCE_RECORDS,
+    OfficialPricingSourceRecord,
+    find_official_model_pricing_snapshots,
+    find_official_pricing_sources,
+    official_pricing_manifest,
+)
 from .openai_compatible import (
     MissingModelCredentialError,
     OpenAICompatibleProvider,
@@ -108,6 +117,10 @@ __all__ = [
     "ModelResponse",
     "ModelSpec",
     "NEUTRAL_MODEL_FAMILY_PROFILE",
+    "OFFICIAL_MODEL_PRICING_SNAPSHOTS",
+    "OFFICIAL_PRICING_MANIFEST_FILE_SHA256",
+    "OFFICIAL_PRICING_SOURCE_RECORDS",
+    "OfficialPricingSourceRecord",
     "OpenAICompatibleProvider",
     "OpenAICompatibleProviderError",
     "OpenAICompatibleResponseError",
@@ -126,4 +139,7 @@ __all__ = [
     "UnknownModelFamilyProfileError",
     "UnknownProviderError",
     "UnsupportedReasoningLevelError",
+    "find_official_model_pricing_snapshots",
+    "find_official_pricing_sources",
+    "official_pricing_manifest",
 ]

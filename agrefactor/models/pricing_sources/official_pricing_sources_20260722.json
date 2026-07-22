@@ -1,0 +1,346 @@
+{
+  "policy": {
+    "currency_conversion": false,
+    "family_level_price": false,
+    "glm_numeric_price_inferred": false,
+    "official_sources_only": true,
+    "promotional_price_used": false
+  },
+  "schema_version": 1,
+  "snapshot_date": "2026-07-22",
+  "snapshots": [
+    {
+      "applicability": {
+        "billing_mode": "real-time",
+        "cache_mode": "automatic-kv-cache",
+        "deployment_scope": "api.deepseek.com",
+        "thinking_mode": "thinking-or-non-thinking"
+      },
+      "billing_unit_tokens": 1000000,
+      "currency": "CNY",
+      "effective_date": null,
+      "model_id": "deepseek-v4-flash",
+      "model_version": "DeepSeek-V4-Flash",
+      "provider": "deepseek",
+      "rates": [
+        {
+          "amount_per_billing_unit": "0.02",
+          "token_category": "cache_hit_input"
+        },
+        {
+          "amount_per_billing_unit": "1",
+          "token_category": "cache_miss_input"
+        },
+        {
+          "amount_per_billing_unit": "2",
+          "token_category": "output"
+        }
+      ],
+      "snapshot_id": "deepseek-v4-flash-cny-real-time",
+      "source_id": "deepseek_pricing_zh"
+    },
+    {
+      "applicability": {
+        "billing_mode": "real-time",
+        "cache_mode": "automatic-kv-cache",
+        "deployment_scope": "api.deepseek.com",
+        "thinking_mode": "thinking-or-non-thinking"
+      },
+      "billing_unit_tokens": 1000000,
+      "currency": "CNY",
+      "effective_date": null,
+      "model_id": "deepseek-v4-pro",
+      "model_version": "DeepSeek-V4-Pro",
+      "provider": "deepseek",
+      "rates": [
+        {
+          "amount_per_billing_unit": "0.025",
+          "token_category": "cache_hit_input"
+        },
+        {
+          "amount_per_billing_unit": "3",
+          "token_category": "cache_miss_input"
+        },
+        {
+          "amount_per_billing_unit": "6",
+          "token_category": "output"
+        }
+      ],
+      "snapshot_id": "deepseek-v4-pro-cny-real-time",
+      "source_id": "deepseek_pricing_zh"
+    },
+    {
+      "applicability": {
+        "billing_mode": "real-time",
+        "cache_mode": "automatic-context-cache",
+        "deployment_scope": "api.moonshot.cn/v1",
+        "region": "china",
+        "thinking_mode": "thinking-or-non-thinking"
+      },
+      "billing_unit_tokens": 1000000,
+      "currency": "CNY",
+      "effective_date": null,
+      "model_id": "kimi-k2.6",
+      "model_version": "Kimi-K2.6",
+      "provider": "kimi",
+      "rates": [
+        {
+          "amount_per_billing_unit": "1.10",
+          "token_category": "cache_hit_input"
+        },
+        {
+          "amount_per_billing_unit": "6.50",
+          "token_category": "cache_miss_input"
+        },
+        {
+          "amount_per_billing_unit": "27.00",
+          "token_category": "output"
+        }
+      ],
+      "snapshot_id": "kimi-k2.6-cny-china-real-time",
+      "source_id": "kimi_k26_pricing"
+    },
+    {
+      "applicability": {
+        "billing_mode": "real-time",
+        "cache_mode": "cache-read",
+        "deployment_scope": "api.minimaxi.com",
+        "region": "china",
+        "service_tier": "standard"
+      },
+      "billing_unit_tokens": 1000000,
+      "currency": "CNY",
+      "effective_date": null,
+      "model_id": "MiniMax-M3",
+      "model_version": "MiniMax-M3",
+      "provider": "minimax",
+      "rates": [
+        {
+          "amount_per_billing_unit": "2.10",
+          "input_token_max_inclusive": 512000,
+          "input_token_min_exclusive": null,
+          "token_category": "input"
+        },
+        {
+          "amount_per_billing_unit": "4.20",
+          "input_token_max_inclusive": null,
+          "input_token_min_exclusive": 512000,
+          "token_category": "input"
+        },
+        {
+          "amount_per_billing_unit": "8.40",
+          "input_token_max_inclusive": 512000,
+          "input_token_min_exclusive": null,
+          "token_category": "output"
+        },
+        {
+          "amount_per_billing_unit": "16.80",
+          "input_token_max_inclusive": null,
+          "input_token_min_exclusive": 512000,
+          "token_category": "output"
+        },
+        {
+          "amount_per_billing_unit": "0.42",
+          "input_token_max_inclusive": 512000,
+          "input_token_min_exclusive": null,
+          "token_category": "cache_read"
+        },
+        {
+          "amount_per_billing_unit": "0.84",
+          "input_token_max_inclusive": null,
+          "input_token_min_exclusive": 512000,
+          "token_category": "cache_read"
+        }
+      ],
+      "snapshot_id": "minimax-m3-cny-standard",
+      "source_id": "minimax_paygo"
+    },
+    {
+      "applicability": {
+        "billing_mode": "real-time",
+        "cache_mode": "cache-read",
+        "deployment_scope": "api.minimaxi.com",
+        "region": "china",
+        "service_tier": "priority"
+      },
+      "billing_unit_tokens": 1000000,
+      "currency": "CNY",
+      "effective_date": null,
+      "model_id": "MiniMax-M3",
+      "model_version": "MiniMax-M3",
+      "provider": "minimax",
+      "rates": [
+        {
+          "amount_per_billing_unit": "3.15",
+          "input_token_max_inclusive": 512000,
+          "input_token_min_exclusive": null,
+          "token_category": "input"
+        },
+        {
+          "amount_per_billing_unit": "6.30",
+          "input_token_max_inclusive": null,
+          "input_token_min_exclusive": 512000,
+          "token_category": "input"
+        },
+        {
+          "amount_per_billing_unit": "12.60",
+          "input_token_max_inclusive": 512000,
+          "input_token_min_exclusive": null,
+          "token_category": "output"
+        },
+        {
+          "amount_per_billing_unit": "25.20",
+          "input_token_max_inclusive": null,
+          "input_token_min_exclusive": 512000,
+          "token_category": "output"
+        },
+        {
+          "amount_per_billing_unit": "0.63",
+          "input_token_max_inclusive": 512000,
+          "input_token_min_exclusive": null,
+          "token_category": "cache_read"
+        },
+        {
+          "amount_per_billing_unit": "1.26",
+          "input_token_max_inclusive": null,
+          "input_token_min_exclusive": 512000,
+          "token_category": "cache_read"
+        }
+      ],
+      "snapshot_id": "minimax-m3-cny-priority",
+      "source_id": "minimax_paygo"
+    },
+    {
+      "applicability": {
+        "billing_mode": "real-time",
+        "cache_mode": "standard-rates-exclude-context-cache",
+        "deployment_scope": "global"
+      },
+      "billing_unit_tokens": 1000000,
+      "currency": "CNY",
+      "effective_date": null,
+      "model_id": "qwen3-coder-plus-2025-09-23",
+      "model_version": "2025-09-23",
+      "provider": "qwen",
+      "rates": [
+        {
+          "amount_per_billing_unit": "4",
+          "input_token_max_inclusive": 32768,
+          "input_token_min_exclusive": null,
+          "token_category": "input"
+        },
+        {
+          "amount_per_billing_unit": "6",
+          "input_token_max_inclusive": 131072,
+          "input_token_min_exclusive": 32768,
+          "token_category": "input"
+        },
+        {
+          "amount_per_billing_unit": "10",
+          "input_token_max_inclusive": 262144,
+          "input_token_min_exclusive": 131072,
+          "token_category": "input"
+        },
+        {
+          "amount_per_billing_unit": "20",
+          "input_token_max_inclusive": 1000000,
+          "input_token_min_exclusive": 262144,
+          "token_category": "input"
+        },
+        {
+          "amount_per_billing_unit": "16",
+          "input_token_max_inclusive": 32768,
+          "input_token_min_exclusive": null,
+          "token_category": "output"
+        },
+        {
+          "amount_per_billing_unit": "24",
+          "input_token_max_inclusive": 131072,
+          "input_token_min_exclusive": 32768,
+          "token_category": "output"
+        },
+        {
+          "amount_per_billing_unit": "40",
+          "input_token_max_inclusive": 262144,
+          "input_token_min_exclusive": 131072,
+          "token_category": "output"
+        },
+        {
+          "amount_per_billing_unit": "200",
+          "input_token_max_inclusive": 1000000,
+          "input_token_min_exclusive": 262144,
+          "token_category": "output"
+        }
+      ],
+      "snapshot_id": "qwen3-coder-plus-2025-09-23-cny-global",
+      "source_id": "qwen_model_pricing"
+    }
+  ],
+  "source_artifact_identity": "pre_stage3_p1b0_pricing_consumer_audit_20260722_154815",
+  "sources": [
+    {
+      "expected_model_ids": [
+        "deepseek-v4-flash",
+        "deepseek-v4-pro"
+      ],
+      "note": "CNY real-time API prices; cache-hit, cache-miss and output categories are explicit.",
+      "provider": "deepseek",
+      "retrieved_at": "2026-07-22T07:48:19.437592+00:00",
+      "source_content_sha256": "de70ea3a08da1e0ad1c5859779b99b6c2eb95b530146bed351b473abb89c88c8",
+      "source_id": "deepseek_pricing_zh",
+      "source_identity": "DeepSeek API Docs - 模型与价格",
+      "source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+      "verification_status": "official_verified"
+    },
+    {
+      "expected_model_ids": [
+        "kimi-k2.6"
+      ],
+      "note": "China API price for Kimi K2.6; no FX conversion.",
+      "provider": "kimi",
+      "retrieved_at": "2026-07-22T07:48:19.437592+00:00",
+      "source_content_sha256": "3f0db1e9743ab0f15f7e2520912a229eed4ec62bd37c0f7e0f3606d0b0902a40",
+      "source_id": "kimi_k26_pricing",
+      "source_identity": "Kimi API - Kimi K2.6 pricing",
+      "source_url": "https://platform.kimi.com/docs/pricing/chat-k26",
+      "verification_status": "official_verified"
+    },
+    {
+      "expected_model_ids": [
+        "MiniMax-M3"
+      ],
+      "note": "Standard and priority service tiers are separate snapshots with input-token tiers.",
+      "provider": "minimax",
+      "retrieved_at": "2026-07-22T07:48:19.437592+00:00",
+      "source_content_sha256": "1d187c925e4bf608acde607b5bbf1076221c2a9a7ab25bcdf9dd6e90cc6bc21c",
+      "source_id": "minimax_paygo",
+      "source_identity": "MiniMax 开放平台 - 按量计费",
+      "source_url": "https://platform.minimaxi.com/docs/guides/pricing-paygo",
+      "verification_status": "official_verified"
+    },
+    {
+      "expected_model_ids": [
+        "qwen3-coder-plus-2025-09-23"
+      ],
+      "note": "Global real-time standard rates; context-cache discount is not included in this snapshot.",
+      "provider": "qwen",
+      "retrieved_at": "2026-07-22T07:48:19.437592+00:00",
+      "source_content_sha256": "61e5aef7451196d49f0411ffdbe61e31c20da51c261f402d5bf29eb47735e67d",
+      "source_id": "qwen_model_pricing",
+      "source_identity": "Alibaba Cloud Model Studio - Model pricing",
+      "source_url": "https://help.aliyun.com/en/model-studio/model-pricing",
+      "verification_status": "official_verified"
+    },
+    {
+      "expected_model_ids": [],
+      "note": "Official pricing page was reachable but required JavaScript; no numeric GLM price is inferred.",
+      "provider": "glm",
+      "retrieved_at": "2026-07-22T07:48:19.437592+00:00",
+      "source_content_sha256": "c988273f16307238bfd94e0c9fe8d4531a3193b88a53724c3c5f436bd3443994",
+      "source_id": "glm_pricing",
+      "source_identity": "智谱 AI 开放平台 - Pricing",
+      "source_url": "https://open.bigmodel.cn/pricing",
+      "verification_status": "official_page_unreadable"
+    }
+  ]
+}
