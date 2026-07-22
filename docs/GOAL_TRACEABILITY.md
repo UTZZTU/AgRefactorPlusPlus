@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | TargetProfile | Stage 1/2/5 | 2.7.3 已完成 committed named profile、executable/settings、parser identity、resource schema、per-field provenance；保持 Vitis 2023.2 默认兼容 | Batch B 多版本/设备/platform 与 Stage 5 source/target | [`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md) |
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
-| Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、用户固定模型；P1-A 已完成六个 canonical 静态 Profile、typed verification、reasoning policy、alias/rejection 与 strict unknown-family failure，889/889 回归通过 | P1-B pricing schema、P1-C unified config、P1-D bounded network smoke | [`P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md`](P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md) |
+| Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、用户固定模型；P1-A 静态 Profile 已验收；P1-B1 已完成 typed pricing/native-currency schema、双哈希 provenance、TokenUsage 兼容扩展，920/920 回归通过 | P1-B2 official snapshots、P1-B3 estimator、P1-B4 migration、P1-C unified config、P1-D smoke | [`P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md`](P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md) |
 | 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、typed family instruction、formal CLI 与 strict contract 已完成；真实 proposal evidence 未证明需要放宽 | Stage 2 已关闭；后续仅按新真实证据 harden | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
 | 结构化反馈/状态机 | Stage 2 | Public/Hidden、router/state/coordinator、real handlers、formal repair-aware CLI、5/5 blockers 与 final closure 已完成 | Stage 2 已关闭；Stage 3 复用 correctness gate | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
 | Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、7/7 full chains、9/9 faults、16/16 labels，并经 2.7.7/2.8 closure audit | 扩大版本、器件和 kernel 统计覆盖 | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
@@ -43,16 +43,21 @@ P1-B0 read-only pricing/cost audit is complete at `24918d6fcfe1250043cd6a7208245
 Evidence:
 [`P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md`](P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md).
 
+P1-B1 deterministic acceptance is complete at `bb219ea9e3049b4f5959c9dbb9c0e585875afd82` with
+**920/920** tests. Evidence:
+[`P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md`](P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md).
+
 Current next evidence:
 
 ```text
-P1-B1 typed pricing/native-currency schema
--> source_content_sha256 and pricing_snapshot_sha256
--> backwards-compatible TokenUsage extension
--> full deterministic regression
+P1-B2 official concrete-model pricing snapshots
+-> retained official source bytes and source_content_sha256
+-> normalized model/deployment applicability and rates
+-> pricing_snapshot_sha256
+-> unreadable / unpublished / stale status without guessing
 ```
 
-P1-B1 does not include numeric prices, estimator wiring, Legacy migration,
+P1-B2 does not include estimator wiring, runtime migration, Legacy migration,
 Budget resolution, normal CLI, P5, P0 or Stage 3.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
@@ -102,7 +107,7 @@ Stage 2 已关闭，但 Stage 3 仍被 Pre-Stage-3 产品化收尾阻断。权�
 
 ```text
 Step 0  文档冻结与只读 consumer 审计
-Step 1  P1-A/P1-B0 已完成；P1-B1 typed schema 当前活跃
+Step 1  P1-A/P1-B0/P1-B1 已完成；P1-B2 snapshots 当前活跃
 Step 2  P4 Public/Hidden 来源与 provenance
 Step 3  P2 source-only bootstrap 与统一 CLI
 Step 4  Execution Identity

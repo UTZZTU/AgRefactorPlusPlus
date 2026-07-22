@@ -240,12 +240,24 @@ Vitis
 11. No official numeric prices or estimator are introduced.
 12. Full deterministic regression passes.
 
+## P1-B1 acceptance linkage
+
+P1-B1 completed deterministic acceptance at `bb219ea9e3049b4f5959c9dbb9c0e585875afd82` with
+**920/920** tests and stable patch ID `c793e3d1402bf63977e7a25d3ce829d46416fab2`.
+
+Evidence:
+[`P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md`](P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md).
+
+The automated-schema issues recorded as P1B0-F01, F07 and F10 are closed at
+the typed-schema level. P1B0-F06 remains partially open until P1-B3 parses
+provider-specific token categories.
+
 ## Ordered continuation
 
 ```text
 P1-B0 read-only audit and design freeze       completed
-P1-B1 typed pricing/native-currency schema    active
-P1-B2 official model-level snapshots          pending
+P1-B1 typed pricing/native-currency schema    completed
+P1-B2 official model-level snapshots          active
 P1-B3 usage-to-cost estimator                 pending
 P1-B4 serialization and compatibility migration pending
 P1-C unified Stage-2/Legacy effective config  pending

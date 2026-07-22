@@ -1,6 +1,6 @@
 # P1 模型运行时审计决策账本
 
-> **状态：** P1-A 已完成；P1-B0 审计已完成；P1-B1 typed schema 为当前唯一活跃实现项
+> **状态：** P1-A、P1-B0、P1-B1 已完成；P1-B2 official snapshots 为当前唯一活跃实现项
 > **审计基线：** `8b543267a88ed63d343bd633cf29cd6edf9c4127`  
 > **人工复核日期：** 2026-07-22  
 > **作用：** 保存自动审计发现、人工修正、新增发现、阶段归属和关闭证据。  
@@ -346,6 +346,28 @@ P1-B1 is restricted to typed schema and backwards-compatible `TokenUsage`
 extension. Numeric prices, estimator wiring, Budget, serialization, Legacy,
 CLI and P5 remain outside P1-B1.
 
+## 8.4 P1-B1 deterministic acceptance
+
+Formal evidence:
+[`P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md`](P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md)
+
+```text
+implementation_commit=bb219ea9e3049b4f5959c9dbb9c0e585875afd82
+baseline_unittest=889/889
+p1b1_unittest=920/920
+new_tests=31
+patch_id=c793e3d1402bf63977e7a25d3ce829d46416fab2
+compileall_recovery=passed
+provider_budget_legacy_modified=false
+official_numeric_prices_added=false
+estimator_implemented=false
+```
+
+P1B0-F01, F07 and F10 are closed at the typed-schema level. P1B0-F06 is
+partially closed because optional token categories now exist, while Provider
+normalization remains P1-B3. Runtime serialization and native-currency
+consumer migration remain P1-B4/P1-C.
+
 ## 9. 当前下一步
 
 ```text
@@ -354,7 +376,8 @@ Step 0 read-only consumer audit              completed
 Step 0 manual audit review and decision log  completed
 Step 1 P1-A static model compatibility core  completed
 Step 1 P1-B0 pricing consumer audit           completed
-Step 1 P1-B1 typed pricing schema             active
+Step 1 P1-B1 typed pricing schema             completed
+Step 1 P1-B2 official model snapshots         active
 ```
 
-P1-B0 已完成。当前只推进 P1-B1 typed schema；P1-B2、P1-C、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。
+P1-B1 已完成。当前只推进 P1-B2 official snapshots；P1-B3、P1-B4、P1-C、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。
