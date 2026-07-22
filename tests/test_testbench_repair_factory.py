@@ -37,6 +37,15 @@ class TestbenchRepairFactoryTests(unittest.TestCase):
         )
         self.assertEqual(repairer.responses, ())
 
+    def test_openai_family_alias_keeps_factory_compatible(self) -> None:
+        repairer = build_openai_compatible_testbench_repairer(
+            model="gpt-5",
+        )
+        self.assertEqual(
+            repairer.family_profile.name,
+            "generic-openai-compatible",
+        )
+
     def test_rejects_empty_model(self) -> None:
         with self.assertRaises(ValueError):
             build_openai_compatible_testbench_repairer(

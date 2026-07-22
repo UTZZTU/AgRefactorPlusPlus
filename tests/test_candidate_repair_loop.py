@@ -15,6 +15,7 @@ from agrefactor.evidence import (
 from agrefactor.models import (
     CandidateModelAdapter,
     CandidateModelRequest,
+    ModelFamilyProfile,
     ModelProvider,
     ModelRegistry,
     ModelResponse,
@@ -196,6 +197,9 @@ class SequenceProvider(ModelProvider):
 def make_adapter(provider):
     registry = ModelRegistry()
     registry.register_provider(provider)
+    registry.register_family_profile(
+        ModelFamilyProfile(name="reasoning")
+    )
     registry.register_model(
         ModelSpec(
             name="candidate-model",

@@ -5,6 +5,7 @@ from unittest.mock import patch
 from autogen.agentchat.group import ContextVariables
 
 from agrefactor.models import (
+    ModelFamilyProfile,
     ModelProvider,
     ModelRegistry,
     ModelResponse,
@@ -99,6 +100,9 @@ class FakeRepairProvider(ModelProvider):
 def make_repairer(provider):
     registry = ModelRegistry()
     registry.register_provider(provider)
+    registry.register_family_profile(
+        ModelFamilyProfile(name="reasoning")
+    )
     registry.register_model(
         ModelSpec(
             name="testbench-repair",

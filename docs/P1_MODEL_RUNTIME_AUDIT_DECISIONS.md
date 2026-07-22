@@ -281,6 +281,28 @@ newly discovered findings
 
 发现与原决策冲突的新证据时，新增 amendment，不静默删除旧记录。
 
+## 8.1 P1-A consumer-test scope amendment
+
+Implementation preflight found that strict unknown-family behavior affects four
+existing deterministic fixtures that used the ad-hoc family name `reasoning`,
+and that the existing OpenAI-compatible testbench factory emits the historical
+family spelling `openai`.
+
+This is consumer migration evidence, not a product-scope expansion. P1-A may
+therefore also update only these compatibility tests:
+
+```text
+tests/test_candidate_repair_loop.py
+tests/test_legacy_testbench_repair_integration.py
+tests/test_model_testbench_repairer.py
+tests/test_testbench_repair_factory.py
+```
+
+The three `reasoning` fixtures must explicitly register their local typed
+Profile. The historical `openai` spelling is retained only as an alias to the
+canonical `generic-openai-compatible` Profile. Arbitrary unknown family names
+remain rejected before Provider execution.
+
 ## 9. 当前下一步
 
 ```text

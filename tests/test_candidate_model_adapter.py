@@ -18,6 +18,7 @@ from agrefactor.models import (
     CandidateResponseContract,
     CandidateResponseError,
     ChatMessage,
+    ModelFamilyProfile,
     ModelProvider,
     ModelRegistry,
     ModelResponse,
@@ -146,6 +147,9 @@ class FakeProvider(ModelProvider):
 def make_registry(provider):
     registry = ModelRegistry()
     registry.register_provider(provider)
+    registry.register_family_profile(
+        ModelFamilyProfile(name="reasoning")
+    )
     registry.register_model(
         ModelSpec(
             name="candidate-repair-model",

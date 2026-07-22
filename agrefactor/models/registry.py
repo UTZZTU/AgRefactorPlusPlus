@@ -7,6 +7,10 @@ from .family import (
     ModelFamilyProfile,
     NEUTRAL_MODEL_FAMILY_PROFILE,
 )
+from .known_profiles import (
+    KNOWN_MODEL_FAMILY_ALIASES,
+    KNOWN_MODEL_FAMILY_PROFILES,
+)
 
 
 class ModelRegistryError(LookupError):
@@ -28,7 +32,11 @@ class UnknownModelFamilyProfileError(ModelRegistryError):
 class ModelRegistry:
     """Store fixed model specs separately from providers and profiles."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        include_known_family_profiles: bool = True,
+    ) -> None:
         self._models: dict[str, ModelSpec] = {}
         self._providers: dict[str, ModelProvider] = {}
         self._family_profiles: dict[str, ModelFamilyProfile] = {
@@ -36,6 +44,12 @@ class ModelRegistry:
                 NEUTRAL_MODEL_FAMILY_PROFILE
             )
         }
+        self._family_aliases: dict[str, str] = {}
+        if include_known_family_profiles:
+            for profile in KNOWN_MODEL_FAMILY_PROFILES:
+                self.register_family_profile(profile)
+            for alias, target in KNOWN_MODEL_FAMILY_ALIASES.items():
+                self.register_family_alias(alias, target)
 
     def register_model(
         self,
@@ -75,6 +89,11 @@ class ModelRegistry:
             raise TypeError(
                 "profile must be a ModelFamilyProfile"
             )
+        if profile.name in self._family_aliases:
+            raise ValueError(
+                "Model family profile name conflicts with alias: "
+                + profile.name
+            )
         if (
             profile.name in self._family_profiles
             and not replace
@@ -84,6 +103,42 @@ class ModelRegistry:
                 + profile.name
             )
         self._family_profiles[profile.name] = profile
+
+    def register_family_alias(
+        self,
+        alias: str,
+        target_profile: str,
+        *,
+        replace: bool = False,
+    ) -> None:
+        alias_name = self._clean_name(
+            "model family alias",
+            alias,
+        )
+        target_name = self._clean_name(
+            "model family alias target",
+            target_profile,
+        )
+        if alias_name == target_name:
+            raise ValueError(
+                "model family alias must differ from its target"
+            )
+        if alias_name in self._family_profiles:
+            raise ValueError(
+                "Model family alias conflicts with profile: "
+                + alias_name
+            )
+        if target_name not in self._family_profiles:
+            raise UnknownModelFamilyProfileError(
+                "Unknown model family alias target: "
+                + target_name
+            )
+        if alias_name in self._family_aliases and not replace:
+            raise ValueError(
+                "Model family alias already registered: "
+                + alias_name
+            )
+        self._family_aliases[alias_name] = target_name
 
     def get_model(self, name: str) -> ModelSpec:
         cleaned = self._clean_name("model name", name)
@@ -111,8 +166,9 @@ class ModelRegistry:
             "model family profile name",
             name,
         )
+        canonical = self._family_aliases.get(cleaned, cleaned)
         try:
-            return self._family_profiles[cleaned]
+            return self._family_profiles[canonical]
         except KeyError as exc:
             raise UnknownModelFamilyProfileError(
                 f"Unknown model family profile: {cleaned}"
@@ -137,10 +193,7 @@ class ModelRegistry:
         spec = self.get_model(model_name)
         if spec.family is None:
             return NEUTRAL_MODEL_FAMILY_PROFILE
-        registered = self._family_profiles.get(spec.family)
-        if registered is not None:
-            return registered
-        return ModelFamilyProfile(name=spec.family)
+        return self.get_family_profile(spec.family)
 
     def resolve_with_profile(
         self,
@@ -165,6 +218,9 @@ class ModelRegistry:
 
     def family_profile_names(self) -> tuple[str, ...]:
         return tuple(sorted(self._family_profiles))
+
+    def family_aliases(self) -> dict[str, str]:
+        return dict(sorted(self._family_aliases.items()))
 
     @staticmethod
     def _clean_name(label: str, value: str) -> str:

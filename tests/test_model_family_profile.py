@@ -399,7 +399,7 @@ class ModelFamilyRegistryTests(unittest.TestCase):
             NEUTRAL_MODEL_FAMILY_PROFILE,
         )
 
-    def test_legacy_unregistered_family_gets_typed_neutral_alias(self):
+    def test_explicit_unregistered_family_is_rejected(self):
         provider = FakeProvider([])
         registry = ModelRegistry()
         registry.register_provider(provider)
@@ -411,11 +411,10 @@ class ModelFamilyRegistryTests(unittest.TestCase):
                 family="legacy-family",
             )
         )
-        resolved = registry.resolve_family_profile(
-            "legacy-model"
-        )
-        self.assertEqual(resolved.name, "legacy-family")
-        self.assertEqual(resolved.capability_tags, ())
+        with self.assertRaises(
+            UnknownModelFamilyProfileError
+        ):
+            registry.resolve_family_profile("legacy-model")
 
     def test_registered_profile_is_resolved(self):
         provider = FakeProvider([])
@@ -475,7 +474,9 @@ class ModelFamilyRegistryTests(unittest.TestCase):
         )
 
     def test_profile_names_are_sorted(self):
-        registry = ModelRegistry()
+        registry = ModelRegistry(
+            include_known_family_profiles=False
+        )
         registry.register_family_profile(
             ModelFamilyProfile(name="z-profile")
         )

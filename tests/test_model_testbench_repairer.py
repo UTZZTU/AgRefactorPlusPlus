@@ -4,6 +4,7 @@ import unittest
 from agrefactor.config import TargetProfile, TaskSpec
 from agrefactor.evaluation import TestbenchPreflight
 from agrefactor.models import (
+    ModelFamilyProfile,
     ModelProvider,
     ModelRegistry,
     ModelResponse,
@@ -139,6 +140,9 @@ def make_request():
 def make_registry(provider):
     registry = ModelRegistry()
     registry.register_provider(provider)
+    registry.register_family_profile(
+        ModelFamilyProfile(name="reasoning")
+    )
     registry.register_model(
         ModelSpec(
             name="repair-model",

@@ -1,4 +1,4 @@
-"""Typed, vendor-neutral model-family capabilities and safe defaults."""
+"""Typed, vendor-neutral model-family compatibility policies."""
 
 from __future__ import annotations
 
@@ -24,6 +24,15 @@ def _clean_required(name: str, value: str) -> str:
     if not cleaned:
         raise ValueError(f"{name} must not be empty")
     return cleaned
+
+
+def _clean_optional(name: str, value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be a string or None")
+    cleaned = value.strip()
+    return cleaned or None
 
 
 def _copy_json_mapping(
@@ -56,7 +65,7 @@ def _reject_secret_keys(value: Any, path: str) -> None:
             child_path = f"{path}.{key_text}"
             if _SECRET_KEY_RE.search(key_text):
                 raise ValueError(
-                    "safe_default_parameters must not contain "
+                    "model parameters must not contain "
                     f"credential-like key: {child_path}"
                 )
             _reject_secret_keys(child, child_path)
@@ -65,14 +74,259 @@ def _reject_secret_keys(value: Any, path: str) -> None:
             _reject_secret_keys(child, f"{path}[{index}]")
 
 
-class ModelCapabilityTag(str, Enum):
-    """Minimal capabilities used only for safe defaults and instructions."""
+def _clean_name_set(name: str, values) -> frozenset[str]:
+    if isinstance(values, (str, bytes)):
+        raise TypeError(f"{name} must be an iterable of strings")
+    try:
+        items = tuple(values)
+    except TypeError as exc:
+        raise TypeError(
+            f"{name} must be an iterable of strings"
+        ) from exc
+    return frozenset(
+        _clean_required(f"{name} item", str(item))
+        for item in items
+    )
 
+
+class ModelCapabilityTag(str, Enum):
     REASONING_MODEL = "reasoning_model"
     CODE_SPECIALIZED = "code_specialized"
     STRICT_INSTRUCTION = "strict_instruction"
     THINKING_TAG_POSSIBLE = "thinking_tag_possible"
     STRICT_COMPLETION = "strict_completion"
+
+
+class ModelProfileVerificationStatus(str, Enum):
+    DECLARED = "declared"
+    OFFICIAL_DOCS_REVIEWED = "official_docs_reviewed"
+    NETWORK_SMOKE_VERIFIED = "network_smoke_verified"
+
+
+class ReasoningLevel(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class ReasoningPolicyAction(str, Enum):
+    MAP = "map"
+    OMIT = "omit"
+    REJECT = "reject"
+
+
+class ModelParameterPolicyError(ValueError):
+    pass
+
+
+class UnsupportedReasoningLevelError(ModelParameterPolicyError):
+    pass
+
+
+class RejectedModelParameterError(ModelParameterPolicyError):
+    pass
+
+
+class ModelParameterAliasConflictError(ModelParameterPolicyError):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class ReasoningLevelRule:
+    action: ReasoningPolicyAction
+    provider_value: str | None = None
+
+    def __post_init__(self) -> None:
+        action = self.action
+        if not isinstance(action, ReasoningPolicyAction):
+            try:
+                action = ReasoningPolicyAction(str(action))
+            except ValueError as exc:
+                raise ValueError(
+                    f"unsupported reasoning policy action: {self.action!r}"
+                ) from exc
+        provider_value = _clean_optional(
+            "provider_value",
+            self.provider_value,
+        )
+        if action is ReasoningPolicyAction.MAP:
+            if provider_value is None:
+                raise ValueError(
+                    "mapped reasoning rule requires provider_value"
+                )
+        elif provider_value is not None:
+            raise ValueError(
+                "omit/reject reasoning rule must not set provider_value"
+            )
+        object.__setattr__(self, "action", action)
+        object.__setattr__(self, "provider_value", provider_value)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "action": self.action.value,
+            "provider_value": self.provider_value,
+        }
+
+
+def _reject_all_reasoning_rules() -> dict[str, ReasoningLevelRule]:
+    return {
+        level.value: ReasoningLevelRule(
+            action=ReasoningPolicyAction.REJECT
+        )
+        for level in ReasoningLevel
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class ReasoningPolicy:
+    parameter_name: str = "reasoning_effort"
+    rules: Mapping[
+        str | ReasoningLevel,
+        ReasoningLevelRule,
+    ] = field(default_factory=_reject_all_reasoning_rules)
+
+    def __post_init__(self) -> None:
+        parameter_name = _clean_required(
+            "reasoning parameter_name",
+            self.parameter_name,
+        )
+        if not isinstance(self.rules, Mapping):
+            raise TypeError("reasoning rules must be a mapping")
+
+        normalized: dict[str, ReasoningLevelRule] = {}
+        for raw_level, raw_rule in self.rules.items():
+            try:
+                level = (
+                    raw_level
+                    if isinstance(raw_level, ReasoningLevel)
+                    else ReasoningLevel(str(raw_level).strip())
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    f"unsupported reasoning level: {raw_level!r}"
+                ) from exc
+            if not isinstance(raw_rule, ReasoningLevelRule):
+                raise TypeError(
+                    "reasoning rule values must be "
+                    "ReasoningLevelRule instances"
+                )
+            normalized[level.value] = raw_rule
+
+        expected = {level.value for level in ReasoningLevel}
+        if set(normalized) != expected:
+            raise ValueError(
+                "reasoning rules must cover low/medium/high exactly"
+            )
+        object.__setattr__(self, "parameter_name", parameter_name)
+        object.__setattr__(self, "rules", normalized)
+
+    @classmethod
+    def mapped(
+        cls,
+        *,
+        low: str,
+        medium: str,
+        high: str,
+        parameter_name: str = "reasoning_effort",
+    ) -> "ReasoningPolicy":
+        return cls(
+            parameter_name=parameter_name,
+            rules={
+                ReasoningLevel.LOW: ReasoningLevelRule(
+                    ReasoningPolicyAction.MAP, low
+                ),
+                ReasoningLevel.MEDIUM: ReasoningLevelRule(
+                    ReasoningPolicyAction.MAP, medium
+                ),
+                ReasoningLevel.HIGH: ReasoningLevelRule(
+                    ReasoningPolicyAction.MAP, high
+                ),
+            },
+        )
+
+    @classmethod
+    def omit_all(
+        cls,
+        *,
+        parameter_name: str = "reasoning_effort",
+    ) -> "ReasoningPolicy":
+        return cls(
+            parameter_name=parameter_name,
+            rules={
+                level: ReasoningLevelRule(
+                    ReasoningPolicyAction.OMIT
+                )
+                for level in ReasoningLevel
+            },
+        )
+
+    @classmethod
+    def reject_all(
+        cls,
+        *,
+        parameter_name: str = "reasoning_effort",
+    ) -> "ReasoningPolicy":
+        return cls(
+            parameter_name=parameter_name,
+            rules={
+                level: ReasoningLevelRule(
+                    ReasoningPolicyAction.REJECT
+                )
+                for level in ReasoningLevel
+            },
+        )
+
+    def apply(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
+        effective = _copy_json_mapping(
+            "reasoning parameters",
+            parameters,
+        )
+        if self.parameter_name not in effective:
+            return effective
+
+        raw_level = effective[self.parameter_name]
+        if not isinstance(raw_level, str):
+            raise UnsupportedReasoningLevelError(
+                f"{self.parameter_name} must be one of low/medium/high"
+            )
+        try:
+            level = ReasoningLevel(raw_level.strip().lower())
+        except ValueError as exc:
+            raise UnsupportedReasoningLevelError(
+                f"{self.parameter_name} must be one of low/medium/high; "
+                f"got {raw_level!r}"
+            ) from exc
+
+        rule = self.rules[level.value]
+        if rule.action is ReasoningPolicyAction.REJECT:
+            raise UnsupportedReasoningLevelError(
+                f"model family rejects {self.parameter_name}="
+                f"{level.value!r}"
+            )
+        if rule.action is ReasoningPolicyAction.OMIT:
+            del effective[self.parameter_name]
+            return effective
+
+        effective[self.parameter_name] = rule.provider_value
+        return effective
+
+    def to_manifest(self) -> dict[str, Any]:
+        return {
+            "parameter_name": self.parameter_name,
+            "actions": {
+                level.value: self.rules[level.value].action.value
+                for level in ReasoningLevel
+            },
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "parameter_name": self.parameter_name,
+            "rules": {
+                level.value: self.rules[level.value].to_dict()
+                for level in ReasoningLevel
+            },
+        }
 
 
 _CAPABILITY_INSTRUCTIONS = {
@@ -101,14 +355,23 @@ _CAPABILITY_INSTRUCTIONS = {
 
 @dataclass(frozen=True, slots=True)
 class ModelFamilyProfile:
-    """Describe one family without selecting or replacing a model."""
-
     name: str
     capabilities: frozenset[ModelCapabilityTag] = field(
         default_factory=frozenset
     )
     safe_default_parameters: Mapping[str, Any] = field(
         default_factory=dict
+    )
+    verification_status: ModelProfileVerificationStatus = (
+        ModelProfileVerificationStatus.DECLARED
+    )
+    verification_note: str | None = None
+    reasoning_policy: ReasoningPolicy = field(
+        default_factory=ReasoningPolicy.reject_all
+    )
+    parameter_aliases: Mapping[str, str] = field(default_factory=dict)
+    rejected_parameters: frozenset[str] = field(
+        default_factory=frozenset
     )
 
     def __post_init__(self) -> None:
@@ -146,6 +409,53 @@ class ModelFamilyProfile:
             "safe_default_parameters",
         )
 
+        status = self.verification_status
+        if not isinstance(status, ModelProfileVerificationStatus):
+            try:
+                status = ModelProfileVerificationStatus(str(status))
+            except ValueError as exc:
+                raise ValueError(
+                    "unsupported model profile verification status: "
+                    f"{self.verification_status!r}"
+                ) from exc
+
+        if not isinstance(self.reasoning_policy, ReasoningPolicy):
+            raise TypeError(
+                "reasoning_policy must be a ReasoningPolicy"
+            )
+
+        if not isinstance(self.parameter_aliases, Mapping):
+            raise TypeError("parameter_aliases must be a mapping")
+        aliases: dict[str, str] = {}
+        for raw_alias, raw_target in self.parameter_aliases.items():
+            alias = _clean_required("parameter alias", str(raw_alias))
+            target = _clean_required(
+                "parameter alias target",
+                str(raw_target),
+            )
+            if alias == target:
+                raise ValueError(
+                    f"parameter alias must change the name: {alias}"
+                )
+            aliases[alias] = target
+        if set(aliases) & set(aliases.values()):
+            raise ValueError(
+                "parameter alias chains/cycles are not supported"
+            )
+
+        rejected = _clean_name_set(
+            "rejected_parameters",
+            self.rejected_parameters,
+        )
+        conflicts = sorted(
+            (set(aliases) | set(aliases.values())) & rejected
+        )
+        if conflicts:
+            raise ValueError(
+                "aliased parameters must not also be rejected: "
+                + ", ".join(conflicts)
+            )
+
         object.__setattr__(self, "name", name)
         object.__setattr__(
             self,
@@ -157,6 +467,21 @@ class ModelFamilyProfile:
             "safe_default_parameters",
             parameters,
         )
+        object.__setattr__(
+            self,
+            "verification_status",
+            status,
+        )
+        object.__setattr__(
+            self,
+            "verification_note",
+            _clean_optional(
+                "verification_note",
+                self.verification_note,
+            ),
+        )
+        object.__setattr__(self, "parameter_aliases", aliases)
+        object.__setattr__(self, "rejected_parameters", rejected)
 
     @property
     def capability_tags(self) -> tuple[str, ...]:
@@ -181,13 +506,48 @@ class ModelFamilyProfile:
             )
         )
 
+    def _apply_aliases(
+        self,
+        parameters: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        effective = _copy_json_mapping(
+            "parameters before alias normalization",
+            parameters,
+        )
+        for alias, canonical in self.parameter_aliases.items():
+            if alias not in effective:
+                continue
+            alias_value = effective[alias]
+            if (
+                canonical in effective
+                and effective[canonical] != alias_value
+            ):
+                raise ModelParameterAliasConflictError(
+                    f"parameter alias conflict: {alias!r} and "
+                    f"{canonical!r} have different values"
+                )
+            effective[canonical] = alias_value
+            del effective[alias]
+        return effective
+
+    def _reject_parameters(
+        self,
+        parameters: Mapping[str, Any],
+    ) -> None:
+        present = sorted(
+            set(parameters) & set(self.rejected_parameters)
+        )
+        if present:
+            raise RejectedModelParameterError(
+                f"model family {self.name!r} rejects parameters: "
+                + ", ".join(present)
+            )
+
     def merge_parameters(
         self,
         model_defaults: Mapping[str, Any] | None = None,
         call_overrides: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Apply profile defaults, then model defaults, then call overrides."""
-
         merged = dict(self.safe_default_parameters)
         if model_defaults is not None:
             merged.update(
@@ -203,9 +563,15 @@ class ModelFamilyProfile:
                     call_overrides,
                 )
             )
+
+        _reject_secret_keys(merged, "effective_parameters")
+        effective = self._apply_aliases(merged)
+        self._reject_parameters(effective)
+        effective = self.reasoning_policy.apply(effective)
+        _reject_secret_keys(effective, "effective_parameters")
         return _copy_json_mapping(
             "effective_parameters",
-            merged,
+            effective,
         )
 
     def to_manifest(self) -> dict[str, Any]:
@@ -215,6 +581,11 @@ class ModelFamilyProfile:
             "instruction_present": (
                 self.render_instruction() is not None
             ),
+            "verification_status": self.verification_status.value,
+            "verification_note": self.verification_note,
+            "reasoning_policy": self.reasoning_policy.to_manifest(),
+            "parameter_aliases": sorted(self.parameter_aliases),
+            "rejected_parameters": sorted(self.rejected_parameters),
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -223,9 +594,16 @@ class ModelFamilyProfile:
             "safe_default_parameters": dict(
                 self.safe_default_parameters
             ),
+            "reasoning_policy": self.reasoning_policy.to_dict(),
+            "parameter_aliases": dict(self.parameter_aliases),
         }
 
 
 NEUTRAL_MODEL_FAMILY_PROFILE = ModelFamilyProfile(
-    name="default"
+    name="default",
+    reasoning_policy=ReasoningPolicy.reject_all(),
+    verification_note=(
+        "No explicit model family was selected; vendor-specific "
+        "reasoning parameters are rejected."
+    ),
 )

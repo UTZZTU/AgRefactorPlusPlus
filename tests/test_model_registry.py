@@ -9,6 +9,7 @@ from agrefactor.models import (
     ModelSpec,
     TokenUsage,
     UnknownModelError,
+    UnknownModelFamilyProfileError,
     UnknownProviderError,
 )
 
@@ -82,6 +83,25 @@ class ModelRegistryTests(unittest.TestCase):
 
         with self.assertRaises(UnknownProviderError):
             self.registry.resolve("deepseek-v4-flash")
+
+    def test_explicit_unknown_family_fails_before_provider(self) -> None:
+        provider = DummyProvider()
+        self.registry.register_provider(provider)
+        self.registry.register_model(
+            ModelSpec(
+                name="unknown-family-model",
+                provider=provider.name,
+                model="unknown",
+                family="not-registered",
+            )
+        )
+
+        with self.assertRaises(
+            UnknownModelFamilyProfileError
+        ):
+            self.registry.resolve_with_profile(
+                "unknown-family-model"
+            )
 
     def test_rejects_non_serializable_defaults(self) -> None:
         with self.assertRaises(TypeError):
