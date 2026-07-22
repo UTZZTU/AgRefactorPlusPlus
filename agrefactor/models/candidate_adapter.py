@@ -15,6 +15,7 @@ from agrefactor.prompts import LayeredPrompt, PromptPurpose
 
 from .base import ModelRequest, ModelResponse, ModelSpec
 from .cost_estimator import estimate_model_cost
+from .effective_config import EffectiveModelConfig
 from .pricing import ModelPricingSnapshot
 from .registry import ModelRegistry
 
@@ -328,57 +329,77 @@ class CandidateModelAdapter:
         self,
         *,
         registry: ModelRegistry,
-        model_name: str,
+        model_name: str | None = None,
+        effective_config: EffectiveModelConfig | None = None,
         parameters: Mapping[str, Any] | None = None,
         pricing_snapshot: ModelPricingSnapshot | None = None,
         allow_approximate_cost: bool = False,
     ) -> None:
         if not isinstance(registry, ModelRegistry):
             raise TypeError("registry must be a ModelRegistry")
-        (
-            self._model,
-            self._provider,
-            self._family_profile,
-        ) = registry.resolve_with_profile(model_name)
-
-        if (
-            pricing_snapshot is not None
-            and not isinstance(
-                pricing_snapshot,
-                ModelPricingSnapshot,
-            )
-        ):
-            raise TypeError(
-                "pricing_snapshot must be a "
-                "ModelPricingSnapshot or None"
-            )
-        if (
-            pricing_snapshot is not None
-            and pricing_snapshot.model_id
-            != self._model.model
-        ):
-            raise ValueError(
-                "pricing_snapshot.model_id must match "
-                "the selected ModelSpec.model"
-            )
         if not isinstance(allow_approximate_cost, bool):
             raise TypeError(
                 "allow_approximate_cost must be boolean"
             )
 
-        self._pricing_snapshot = pricing_snapshot
-        self._allow_approximate_cost = (
-            allow_approximate_cost
+        if effective_config is None:
+            if model_name is None:
+                raise ValueError(
+                    "model_name is required when effective_config "
+                    "is not provided"
+                )
+            resolved_config = (
+                registry.resolve_effective_config(
+                    model_name,
+                    parameters=parameters,
+                    pricing_snapshot=pricing_snapshot,
+                    allow_approximate_cost=(
+                        allow_approximate_cost
+                    ),
+                )
+            )
+        else:
+            if not isinstance(
+                effective_config,
+                EffectiveModelConfig,
+            ):
+                raise TypeError(
+                    "effective_config must be an "
+                    "EffectiveModelConfig or None"
+                )
+            conflicts = []
+            if model_name is not None:
+                conflicts.append("model_name")
+            if parameters is not None:
+                conflicts.append("parameters")
+            if pricing_snapshot is not None:
+                conflicts.append("pricing_snapshot")
+            if allow_approximate_cost:
+                conflicts.append("allow_approximate_cost")
+            if conflicts:
+                raise ValueError(
+                    "effective_config is authoritative; "
+                    "remove parallel constructor arguments: "
+                    + ", ".join(conflicts)
+                )
+            resolved_config = effective_config
+
+        self._effective_config = resolved_config
+        self._model = resolved_config.to_model_spec()
+        self._provider = registry.get_provider(
+            resolved_config.provider_name
         )
-        self._parameters = _copy_json_mapping(
-            parameters or {},
-            "parameters",
+        self._family_profile = (
+            resolved_config.family_profile
+        )
+        self._pricing_snapshot = (
+            resolved_config.pricing_snapshot
+        )
+        self._allow_approximate_cost = (
+            resolved_config.allow_approximate_cost
         )
         self._effective_parameters = (
-            self._family_profile.merge_parameters(
-                self._model.default_parameters,
-                self._parameters,
-            )
+            resolved_config.parameters
         )
         self._prompts: list[LayeredPrompt] = []
         self._responses: list[ModelResponse] = []
@@ -387,6 +408,14 @@ class CandidateModelAdapter:
     @property
     def model_spec(self) -> ModelSpec:
         return self._model
+
+    @property
+    def effective_config(self) -> EffectiveModelConfig:
+        return self._effective_config
+
+    @property
+    def family_instruction(self) -> str | None:
+        return self._effective_config.family_instruction
 
     @property
     def pricing_snapshot(
@@ -404,7 +433,7 @@ class CandidateModelAdapter:
 
     @property
     def effective_parameters(self) -> dict[str, Any]:
-        return dict(self._effective_parameters)
+        return self._effective_config.parameters
 
     @property
     def prompts(self) -> tuple[LayeredPrompt, ...]:
@@ -533,7 +562,7 @@ class CandidateModelAdapter:
             request.task,
             request.current_candidate,
         )
-        parameters = dict(self._effective_parameters)
+        parameters = self._effective_config.parameters
 
         self._prompts.append(request.prompt)
         if before_provider_call is not None:
@@ -557,8 +586,12 @@ class CandidateModelAdapter:
         candidate_code = contract.extract_and_validate(response.text)
         result = CandidateModelResult(
             candidate_code=candidate_code,
-            logical_model_name=self._model.name,
-            provider_name=self._provider.name,
+            logical_model_name=(
+                self._effective_config.logical_model_name
+            ),
+            provider_name=(
+                self._effective_config.provider_name
+            ),
             response=response,
             request_parameters=parameters,
             prompt_manifest=request.prompt.manifest,

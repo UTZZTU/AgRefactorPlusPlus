@@ -38,6 +38,36 @@ from .validation_orchestrator import (
 )
 
 
+def _select_family_instruction(
+    resolved_instruction: str | None,
+    request_instruction: str | None,
+) -> tuple[str | None, str]:
+    """Select one family instruction without accepting conflicts."""
+
+    _optional_text(
+        resolved_instruction,
+        "resolved_instruction",
+    )
+    _optional_text(
+        request_instruction,
+        "request_instruction",
+    )
+    if (
+        resolved_instruction is not None
+        and request_instruction is not None
+        and resolved_instruction != request_instruction
+    ):
+        raise ValueError(
+            "request family_instruction conflicts with "
+            "EffectiveModelConfig.family_instruction"
+        )
+    if resolved_instruction is not None:
+        return resolved_instruction, "effective_model_config"
+    if request_instruction is not None:
+        return request_instruction, "request_compatibility"
+    return None, "none"
+
+
 class CandidateRepairOrchestrationStatus(str, Enum):
     """Terminal status of repair-aware validation orchestration."""
 
@@ -627,6 +657,13 @@ class CandidateRepairValidationOrchestrator:
             )
         _required_text(validation_id, "validation_id")
         _validate_suite_codes(context.task, request)
+        (
+            family_instruction,
+            family_instruction_source,
+        ) = _select_family_instruction(
+            self._model_adapter.family_instruction,
+            request.family_instruction,
+        )
 
         context.trace.record(
             "candidate_repair.orchestration.started",
@@ -686,6 +723,10 @@ class CandidateRepairValidationOrchestrator:
                 last_validation_state=(
                     ValidationState.ACCEPTED
                 ),
+                family_instruction=family_instruction,
+                family_instruction_source=(
+                    family_instruction_source
+                ),
             )
 
         terminal_report = initial_outcome.terminal_report
@@ -725,6 +766,10 @@ class CandidateRepairValidationOrchestrator:
                 last_validation_state=(
                     initial_outcome.result.final_state
                 ),
+                family_instruction=family_instruction,
+                family_instruction_source=(
+                    family_instruction_source
+                ),
             )
 
         validator = _OrchestratedCandidateValidator(
@@ -750,9 +795,7 @@ class CandidateRepairValidationOrchestrator:
                 public_testbench_code=(
                     request.prompt_public_testbench_code
                 ),
-                family_instruction=(
-                    request.family_instruction
-                ),
+                family_instruction=family_instruction,
                 approved_memory_snippets=(
                     request.approved_memory_snippets
                 ),
@@ -788,6 +831,10 @@ class CandidateRepairValidationOrchestrator:
             candidate_validations=validation_results,
             final_candidate=final_candidate,
             last_validation_state=last_state,
+            family_instruction=family_instruction,
+            family_instruction_source=(
+                family_instruction_source
+            ),
         )
 
     def _finish(
@@ -805,6 +852,8 @@ class CandidateRepairValidationOrchestrator:
         ],
         final_candidate: str,
         last_validation_state: ValidationState,
+        family_instruction: str | None,
+        family_instruction_source: str,
     ) -> CandidateRepairOrchestrationResult:
         result = CandidateRepairOrchestrationResult(
             validation_id=validation_id,
@@ -840,6 +889,13 @@ class CandidateRepairValidationOrchestrator:
                     else "initial_candidate"
                 ),
                 "hidden_feedback_retained_in_result": False,
+                "effective_model_config": (
+                    self._model_adapter.effective_config.to_manifest()
+                ),
+                "family_instruction": family_instruction,
+                "family_instruction_source": (
+                    family_instruction_source
+                ),
             },
         )
         context.trace.record(

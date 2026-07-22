@@ -498,9 +498,18 @@ def _build_cli_candidate_adapter(args) -> CandidateModelAdapter:
             api_key_env=args.api_key_env,
         )
     )
+    call_parameters: dict[str, Any] = {}
+    if args.reasoning_effort is not None:
+        call_parameters["reasoning_effort"] = (
+            args.reasoning_effort
+        )
+    effective_config = registry.resolve_effective_config(
+        logical_name,
+        parameters=call_parameters,
+    )
     return CandidateModelAdapter(
         registry=registry,
-        model_name=logical_name,
+        effective_config=effective_config,
     )
 
 
