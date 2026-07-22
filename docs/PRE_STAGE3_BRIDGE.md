@@ -45,6 +45,24 @@ This bridge is not a new stage-sized subsystem. Existing components must be
 modified first; a new top-level subsystem is allowed only after repeated real
 failures prove that the current structure cannot support the requirement.
 
+<!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:BEGIN -->
+## Refined budget and pricing decision
+
+Pre-Stage-3 now distinguishes:
+
+```text
+system default
+system safety ceiling
+user requested value
+```
+
+Hard call/tool budgets use the system default unless the user selects a value
+within the safety ceiling. Token and estimated cost are currently observed-only
+soft budgets and do not stop the run. P1 owns official pricing metadata and
+provenance; P2 owns budget resolution; P5 reports both effective hard limits and
+actual usage.
+<!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:END -->
+
 ## Scope control
 
 1. Fix observed failures before hypothetical ones.

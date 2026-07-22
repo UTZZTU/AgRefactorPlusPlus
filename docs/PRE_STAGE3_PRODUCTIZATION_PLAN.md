@@ -46,6 +46,83 @@ Pre-Stage-3 的真实 Testbench 实验还证明：三个静态启发式硬门禁
 11. 默认终端输出简洁；完整模型与工具证据写入 artifacts。
 12. 每次 accepted 必须带有足够的 Execution Identity，能够复现和审计。
 
+<!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:BEGIN -->
+## 2.1 三层硬预算与软用量目标
+
+预算必须区分三个概念，不能混为一个“最大值”：
+
+```text
+system_default
+system_safety_ceiling
+user_requested
+```
+
+### 硬预算
+
+当前阶段真正参与流程阻断的是可在动作启动前可靠计数的资源：
+
+```text
+LLM calls
+aggregate tool calls
+compile calls
+CSIM calls
+CSYNTH calls
+wall-time boundary checks
+```
+
+每项硬预算的有效值按以下规则生成：
+
+```text
+用户未指定
+→ effective_limit = system_default
+
+用户指定且 0 <= user_requested <= system_safety_ceiling
+→ effective_limit = user_requested
+
+用户指定超过 system_safety_ceiling
+→ 启动前明确拒绝，不静默截断
+
+system_default 本身必须 <= system_safety_ceiling
+```
+
+因此用户既可以把默认值调低，也可以在安全区间内调高。例如系统可以定义
+LLM 调用默认值为 3、安全上限为 20；用户可以选择 0–20 内的值。这里的
+`3/20` 只是语义示例，实际默认值和安全上限必须根据完整流程预算另行验收后
+写入通用 Budget Profile。
+
+用户不能通过 CLI 突破系统安全上限。赛事或实验规则可以映射成通用
+Budget Profile，但核心名称、字段和执行逻辑不得绑定具体赛事。
+
+### Token 与 Cost 软预算
+
+当前 Pre-Stage-3 不把总 Token 或估算 Cost 作为流程硬阻断条件。原因是一次
+模型调用的最终输出 Token 和费用通常只能在响应返回后确认。
+
+普通用户可以声明：
+
+```text
+token_budget
+cost_budget
+```
+
+它们当前只用于统计、比较、告警和最终展示：
+
+```text
+Tokens: actual / user_budget
+Estimated cost: actual / user_budget
+```
+
+即使实际值超过软预算，当前流程也不因此中断。artifact 必须明确记录：
+
+```text
+enforcement = observed_only
+blocking = false
+```
+
+当前主要通过 `max_llm_calls` 控制模型调用规模。未来只有在形成可靠的
+reservation/reconcile 机制并单独验收后，Token/Cost 才能升级为硬预算。
+<!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:END -->
+
 ## 3. 最终普通 CLI 形态
 
 ### 3.1 重构
@@ -108,7 +185,46 @@ CLI 显式参数
 
 最终生效值必须写入运行产物。
 
-### 3.6 高级复现入口
+### 3.6 用户可选预算
+
+普通用户可以覆盖硬预算，也可以声明 Token/Cost 软预算：
+
+```bash
+python -m agrefactor.cli refactor \
+  path/to/kernel.cpp \
+  --top process_top \
+  --model deepseek-v4-flash \
+  --max-llm-calls 8 \
+  --max-compile-calls 10 \
+  --max-csim-calls 6 \
+  --max-csynth-calls 3 \
+  --token-budget 50000 \
+  --cost-budget 1.00
+```
+
+建议的普通 CLI 字段：
+
+```text
+硬预算：
+--max-llm-calls
+--max-tool-calls
+--max-compile-calls
+--max-csim-calls
+--max-csynth-calls
+--max-wall-time-s
+
+软预算：
+--token-budget
+--cost-budget
+```
+
+`--cost-budget` 使用所选模型 Profile 的官方定价币种。当前阶段不做动态汇率
+换算。若一次运行涉及多币种，必须分币种展示，不能直接错误求和。
+
+`--max-candidate-repairs` 等策略轮数约束与硬物理预算同时生效，但不能替代
+run-level `max_llm_calls`、CSIM 或 CSYNTH 预算。
+
+### 3.7 高级复现入口
 
 精确实验和 CI 继续支持：
 
@@ -242,6 +358,61 @@ endpoint/model metadata
 动态能力可进一步支持 Prompt 校准和用户授权范围内的模型路由，但不属于 Pre-Stage-3 交付。
 
 默认仍是用户固定模型，系统不得静默换模型。
+
+### 5.7 官方价格元数据与费用估算
+
+P1 必须从每个模型提供方的官方文档或官方控制台公开计费页收集价格，不能把
+第三方聚合站作为正式事实来源。
+
+静态 Profile 中的价格不能只保存一个 `input_price/output_price`。至少需要：
+
+```text
+model id/version
+provider
+service region/deployment scope
+currency
+billing unit
+input cache-hit price
+input cache-miss price
+output price
+thinking/non-thinking price difference
+context-length or token-tier rules
+batch/real-time distinction
+temporary discount flag
+official source identity
+source retrieval date
+source effective/update date（若官方提供）
+pricing verification status
+```
+
+价格验证状态至少区分：
+
+```text
+official_verified
+official_page_unreadable
+not_published
+stale
+unknown
+```
+
+价格可能变化，因此每次 run 的 Execution Identity 必须保存本次实际使用的
+pricing snapshot/hash，而不是只引用一个会变化的网页。
+
+费用输出只能称为 `Estimated cost`，不能冒充最终账单。估算规则：
+
+```text
+Provider 返回 cache-hit/cache-miss 明细
+→ 使用对应官方价格
+
+Provider 只返回总 input/output tokens
+→ 使用明确记录的保守规则，并标记 approximate
+
+Profile 没有已验证价格
+→ 显示 unavailable / unverified
+```
+
+不同币种不在当前阶段自动换算。费用估算服务于 P5 展示和实验分析，不参与
+当前流程的硬停止。
 
 ## 6. P4：Public/Hidden 测试来源合同
 
@@ -381,6 +552,49 @@ Legacy 代码可以被包装来提供初始生成能力，但 Legacy 完整流�
 4. P0 成功后把旧公开 flag 标记为 deprecated 并从普通 help 隐藏；
 5. consumer 全部迁移后再决定删除或内部保留。
 
+### 7.4 Budget Profile 与内部转换
+
+P2 必须把以下三类值转换成一份共享的 run-level budget contract：
+
+```text
+system_defaults
+system_safety_ceilings
+user_requested_limits
+```
+
+内部持久化：
+
+```text
+effective_hard_limits
+soft_usage_budgets
+actual_usage
+remaining_hard_budget
+budget_source_per_field
+budget_exhaustion_resource
+budget_exhaustion_stage
+```
+
+所有 Testbench 生成、初始 Candidate 生成、Candidate repair、compile、CSIM
+和 CSYNTH 必须共享同一个 `BudgetManager`。不得让不同阶段各自创建互不相干
+的调用计数器。
+
+硬预算耗尽时：
+
+```text
+阻止新的对应动作启动
+→ 保存现有 artifacts
+→ 若已有 accepted/best_correct 则返回它
+→ 否则返回结构化 budget_exhausted
+```
+
+Token/Cost 软预算超出时只记录：
+
+```text
+soft_budget_exceeded=true
+```
+
+当前不终止运行。
+
 ## 8. Execution Identity 与可复现性
 
 每次运行必须回答：
@@ -417,6 +631,36 @@ artifact schema version
 密钥不得进入任何 identity artifact。
 
 Execution Identity 同时作为 cache identity 和后续 Memory Applicability 实验的基础。
+
+### 8.1 Budget 与 Pricing Identity
+
+Execution Identity 必须保存：
+
+```text
+system defaults
+system safety ceilings
+user requested hard limits
+effective hard limits
+user Token/Cost soft budgets
+actual BudgetUsage
+soft-budget exceeded flags
+hard-budget exhaustion reason/stage
+pricing snapshot/hash
+pricing source status
+cost estimation quality
+currency
+```
+
+必须能区分：
+
+```text
+用户未设置
+系统使用默认值
+用户主动覆盖
+用户请求超过安全上限而被拒绝
+```
+
+不能只保存一个最终数字并丢失来源。
 
 ## 9. P5：简洁输出
 
@@ -469,6 +713,46 @@ run_artifact_manifest.json
 
 Legacy 后端输出默认捕获到 artifact，只在对应 verbose/debug 模式转发终端。
 
+### 9.4 默认输出中的预算与用量
+
+默认简洁输出增加：
+
+```text
+Usage:
+  Tokens: 32,418 / 50,000 (soft, observed only)
+  LLM calls: 6 / 8
+  Compile calls: 5 / 10
+  CSIM calls: 4 / 6
+  CSYNTH calls: 2 / 3
+  Estimated cost: ¥0.42 / ¥1.00 (soft, approximate)
+  Wall time: 18m 32s / 30m
+```
+
+其中：
+
+- Token 和 Cost 分母是用户声明的软预算，不参与当前流程阻断；
+- 调用次数和 wall-time 是 effective 硬预算；
+- 用户未设置硬预算时，显示系统默认值，并可在 JSON 中查看安全上限；
+- 用户未设置 Token/Cost 软预算时，显示实际值，不强行显示分母；
+- 价格未验证时显示 `Estimated cost: unavailable`；
+- 超过软预算时显示 `soft budget exceeded`，但不把结果改成失败。
+
+`--json` 必须分别输出：
+
+```text
+system_defaults
+system_safety_ceilings
+user_requested
+effective_hard_limits
+soft_budgets
+usage
+remaining
+hard_budget_exhausted
+soft_budget_exceeded
+pricing
+cost_estimation_quality
+```
+
 ## 10. P0：真实 DFS Source-only 验收
 
 P0 必须使用最终普通入口，并明确提供 top：
@@ -508,6 +792,20 @@ source-only normal CLI
 - local=remote，worktree clean。
 
 Legacy AgRefactor 自己的成功不能满足 P0，除非 Candidate 随后被 Stage 2 正式后端 accepted。
+
+### 10.1 P0 Budget 与 Cost 验收
+
+P0 必须额外证明：
+
+- 普通 CLI 可以设置 LLM、compile、CSIM、CSYNTH 等硬预算；
+- 未设置时使用系统默认值，而不是直接使用安全上限；
+- 用户可在 `[0, system_safety_ceiling]` 内覆盖默认值；
+- 超过安全上限的请求在运行前明确拒绝；
+- 所有阶段共享同一个 run-level BudgetManager；
+- LLM/tool 调用次数与最终 summary 一致；
+- Token 只做 observed usage 与软预算展示，不被宣称为硬限制；
+- Estimated cost 使用官方 pricing snapshot，或明确显示 unavailable；
+- 默认输出和 JSON 中的预算、用量、币种及估算质量一致。
 
 ## 11. 清理与弃用审计
 
@@ -587,13 +885,16 @@ Step 8  开始 Stage 3
 - 普通用户不提供 task.json、candidate、work dir、artifact dir；
 - 内部 TaskSpec 落盘；
 - 初始生成接入 Stage 2 后端；
-- 高级 task-file 复现入口保留。
+- 高级 task-file 复现入口保留；
+- 硬预算按 system default / safety ceiling / user override 生成；
+- Token/Cost 作为 observed-only 软预算进入内部合同。
 
 ### Step 4：Execution Identity
 
 - 必需非敏感字段齐全；
 - 真实工具版本和 effective 值记录；
-- materially different execution 不共享同一 cache identity。
+- materially different execution 不共享同一 cache identity；
+- Budget Profile 与 pricing snapshot 变化进入 identity。
 
 ### Step 5：P5
 
@@ -601,14 +902,18 @@ Step 8  开始 Stage 3
 - JSON schema 稳定；
 - verbose/debug 边界明确；
 - 完整证据仍在 artifact；
-- 普通输出不含 Hidden 信息。
+- 普通输出不含 Hidden 信息；
+- 默认输出显示 Token、LLM、compile、CSIM、CSYNTH、cost 和 wall time；
+- 软预算与硬预算的标签不得混淆。
 
 ### Step 6：P0
 
 - 真实 source-only DFS 由 Stage 2 返回 accepted；
 - 使用真实模型与真实 Vitis；
 - Public/Hidden 通过；
-- 预算和 repair 次数有界；
+- 硬预算和 repair 次数有界；
+- Token/Cost 只做统计与软预算展示；
+- 官方 pricing snapshot 与估算质量经过验收；
 - leakage、源码变更和 identity 检查通过。
 
 ### Step 7：Closure

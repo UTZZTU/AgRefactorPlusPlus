@@ -77,6 +77,18 @@ known-model compatibility profiles
 Generic OpenAI-compatible；动态未知模型探测和自动路由后置。
 <!-- PRE_STAGE3_PRODUCTIZATION_PLAN:END -->
 
+<!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:BEGIN -->
+### Budget product semantics before Stage 3
+
+The productization closure must distinguish system defaults from system safety
+ceilings. User-specified hard budgets may lower or raise defaults only within
+those ceilings. Token and estimated cost remain observed-only soft budgets
+until a separately validated reservation mechanism exists.
+
+Model Profiles must carry official pricing provenance and estimation quality so
+P5 can report estimated cost without presenting it as a final provider bill.
+<!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:END -->
+
 ## 3. 全局不可违反的规则
 
 ### 3.1 用户决定模型

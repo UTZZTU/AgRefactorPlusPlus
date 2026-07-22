@@ -16,6 +16,19 @@
 | Memory Applicability Gate | Stage 4 | legacy RAG 正负 trial | schema、score、abstention、off/gated/always | 负迁移与弃权实验 |
 | BudgetManager | Stage 1/3 | token/cost、LLM/tool/compile/csynth/csim hard limits、pre-call block、real launch exact-once accounting、UnifiedRunner/legacy propagation；真实 DFS 工具链与 Stage 2 repair-aware validation 共享预算通过 | Stage 3 budget exhaustion 停止新候选并返回 best_correct | [`PROJECT_STATE.md`](PROJECT_STATE.md) |
 
+<!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:BEGIN -->
+## 1.1 Budget and pricing product contract
+
+Before Stage 3:
+
+- P1 provides official pricing metadata, source identity and estimation quality;
+- P2 resolves system defaults, safety ceilings and user hard-budget overrides;
+- Token/Cost are observed-only soft budgets;
+- LLM/tool/compile/CSIM/CSYNTH calls remain hard-counted resources;
+- P5 reports both limits and actual usage;
+- P0 validates the complete contract through the normal source-only entry.
+<!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:END -->
+
 ## 2. TargetProfile 当前边界
 
 已经能够声明：

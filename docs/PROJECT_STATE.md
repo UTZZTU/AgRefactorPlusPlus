@@ -36,6 +36,19 @@
 - P0 必须经普通 source-only 入口和 Stage 2 正式后端；
 - P0 后执行弃用清理，再进入 Stage 3。
 <!-- PRE_STAGE3_PRODUCTIZATION_PLAN:END -->
+<!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:BEGIN -->
+## Budget defaults, ceilings, and pricing
+
+Frozen decisions:
+
+- hard budgets have separate system defaults and system safety ceilings;
+- a user may override the default only within the safety interval;
+- Token and Cost are observed-only soft budgets in the current closure scope;
+- `max_llm_calls` is the primary model-execution hard control;
+- P1 stores official pricing provenance and estimation quality;
+- P5 displays Token, LLM, compile, CSIM, CSYNTH, cost and wall time usage.
+<!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:END -->
+
 ## 2. 已完成
 
 ### Stage 0
