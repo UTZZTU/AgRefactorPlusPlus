@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | TargetProfile | Stage 1/2/5 | 2.7.3 已完成 committed named profile、executable/settings、parser identity、resource schema、per-field provenance；保持 Vitis 2023.2 默认兼容 | Batch B 多版本/设备/platform 与 Stage 5 source/target | [`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md) |
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
-| Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、用户固定模型、typed ModelFamilyProfile；2.7.5 一次真实 network-model response/usage 已验收 | 更多 provider 实例与后续统计验证 | [`stage2_real_network_candidate_repair_smoke.md`](stage2_real_network_candidate_repair_smoke.md) |
+| Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、用户固定模型；P1-A 已完成六个 canonical 静态 Profile、typed verification、reasoning policy、alias/rejection 与 strict unknown-family failure，889/889 回归通过 | P1-B pricing schema、P1-C unified config、P1-D bounded network smoke | [`P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md`](P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md) |
 | 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、typed family instruction、formal CLI 与 strict contract 已完成；真实 proposal evidence 未证明需要放宽 | Stage 2 已关闭；后续仅按新真实证据 harden | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
 | 结构化反馈/状态机 | Stage 2 | Public/Hidden、router/state/coordinator、real handlers、formal repair-aware CLI、5/5 blockers 与 final closure 已完成 | Stage 2 已关闭；Stage 3 复用 correctness gate | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
 | Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、7/7 full chains、9/9 faults、16/16 labels，并经 2.7.7/2.8 closure audit | 扩大版本、器件和 kernel 统计覆盖 | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
@@ -36,16 +36,19 @@ Step 0 consumer audit is complete. The final findings, corrections, F15 addition
 P1-A–P1-D split and acceptance gates are recorded in
 [`P1_MODEL_RUNTIME_AUDIT_DECISIONS.md`](P1_MODEL_RUNTIME_AUDIT_DECISIONS.md).
 
+P1-A deterministic acceptance is complete at `e9f4a51744ce44c04236466450b8af85ebf9be9c` with **889/889** tests.
+Evidence: [`P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md`](P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md).
+
 Current next evidence:
 
 ```text
-P1-A static known-model compatibility
-→ deterministic profile/parameter/registry acceptance
-→ full regression
+P1-B typed pricing snapshot and native-currency cost structure
+-> official-source provenance and snapshot hash
+-> unavailable / verified / approximate estimation paths
 ```
 
-P1-A does not include pricing values, Legacy migration, normal CLI, Budget
-resolution, P5 or P0.
+P1-B does not include Legacy migration, normal CLI, Budget resolution, P5,
+P0 or Stage 3.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## 2. TargetProfile 当前边界
@@ -94,7 +97,7 @@ Stage 2 已关闭，但 Stage 3 仍被 Pre-Stage-3 产品化收尾阻断。权�
 
 ```text
 Step 0  文档冻结与只读 consumer 审计
-Step 1  P1 已知模型静态兼容 Profile
+Step 1  P1-A 静态兼容已完成；P1-B pricing 当前活跃
 Step 2  P4 Public/Hidden 来源与 provenance
 Step 3  P2 source-only bootstrap 与统一 CLI
 Step 4  Execution Identity

@@ -70,9 +70,10 @@ The read-only model/budget/pricing consumer audit and manual review are complete
 The authoritative implementation decisions are recorded in
 [`P1_MODEL_RUNTIME_AUDIT_DECISIONS.md`](P1_MODEL_RUNTIME_AUDIT_DECISIONS.md).
 
-The active package is P1-A static model compatibility only. Pricing collection,
-Legacy wiring, normal CLI migration, Budget resolution, P5 output and P0 remain
-separate later packages.
+P1-A static model compatibility completed deterministic acceptance at `e9f4a51744ce44c04236466450b8af85ebf9be9c` with 889/889 tests. Evidence is recorded in
+[`P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md`](P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md).
+
+The active package is P1-B official pricing and native-currency cost structure only. Legacy wiring, normal CLI migration, Budget resolution, P5 output, P0 and Stage 3 remain separate later packages.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## Scope control

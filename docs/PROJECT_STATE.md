@@ -5,10 +5,10 @@
 ## 1. 当前快照
 
 - 当前开发分支：`stage2-general-feedback`
-- 当前功能代码基线：`53045b4cdc6c262e0be5cdcddedae0d302908812`
+- 当前功能代码基线：`e9f4a51744ce44c04236466450b8af85ebf9be9c`
 - Stage 2 closure validation baseline：`3f57371c8b58f53449064219c024ab63042a87d4`
 - Stage 2 状态：**closed**；Stage 3：**allowed, not started**
-- 最新确定性测试：**855/855 passed**
+- 最新确定性测试：**889/889 passed**
 - 最新 Stage 2.5 总结：**7 baseline、7/7 real full chains、9 faults、16 labels、23 scenario executions；跨三次独立验收累计 62/36/9/17/0，0 LLM**
 - 最新完整验证链验收仍为：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
@@ -63,8 +63,8 @@ Completed against `8b543267a88ed63d343bd633cf29cd6edf9c4127`:
 - decision ledger:
   [`P1_MODEL_RUNTIME_AUDIT_DECISIONS.md`](P1_MODEL_RUNTIME_AUDIT_DECISIONS.md).
 
-Current active implementation is **P1-A static model compatibility core**.
-P1-B pricing, P1-C Legacy/Stage-2 wiring and P1-D smoke remain ordered follow-ups.
+P1-A static model compatibility completed deterministic acceptance at `e9f4a51744ce44c04236466450b8af85ebf9be9c` with **889/889** tests. Evidence: [`P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md`](P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md).
+Current active implementation is **P1-B official pricing and native-currency cost structure**. P1-C wiring and P1-D smoke remain ordered follow-ups.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## 2. 已完成

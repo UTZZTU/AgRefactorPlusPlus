@@ -1,6 +1,6 @@
 # P1 模型运行时审计决策账本
 
-> **状态：** Step 0 consumer audit 已完成；P1-A 为当前唯一活跃实现项  
+> **状态：** P1-A deterministic acceptance 已完成；P1-B 为当前唯一活跃实现项
 > **审计基线：** `8b543267a88ed63d343bd633cf29cd6edf9c4127`  
 > **人工复核日期：** 2026-07-22  
 > **作用：** 保存自动审计发现、人工修正、新增发现、阶段归属和关闭证据。  
@@ -139,7 +139,7 @@ assumptions
 
 ## 5. P1 实施拆分
 
-### P1-A：静态模型兼容核心——当前活跃项
+### P1-A：静态模型兼容核心——deterministic acceptance 已完成
 
 目标：
 
@@ -303,13 +303,32 @@ Profile. The historical `openai` spelling is retained only as an alias to the
 canonical `generic-openai-compatible` Profile. Arbitrary unknown family names
 remain rejected before Provider execution.
 
+## 8.2 P1-A deterministic acceptance
+
+Formal evidence:
+[`P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md`](P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md)
+
+```text
+implementation_commit=e9f4a51744ce44c04236466450b8af85ebf9be9c
+baseline_unittest=873/873
+p1a_unittest=889/889
+test_delta=+16
+consumer_audit=passed
+patch_id=bc4e6a58447f86129dcf54ed536f3456fc8a9a04
+real_model_or_vitis_acceptance=0
+```
+
+F02 is closed. F03 and F04 remain accepted architecture invariants.
+F01, F05, F06, F11, F12, F13 and F15 continue in P1-B/P1-C.
+
 ## 9. 当前下一步
 
 ```text
 Step 0 documentation freeze                 completed
 Step 0 read-only consumer audit              completed
 Step 0 manual audit review and decision log  completed
-Step 1 P1-A static model compatibility core  active
+Step 1 P1-A static model compatibility core  completed
+Step 1 P1-B pricing and cost structure        active
 ```
 
-在 P1-A deterministic acceptance 完成前，不开始 P1-B、P4、P2 或 Stage 3。
+P1-A deterministic acceptance 已完成。当前只推进 P1-B；P4、P2、P0 与 Stage 3 仍不得提前开始。
