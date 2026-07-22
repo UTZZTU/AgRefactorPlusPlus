@@ -88,7 +88,10 @@ P1-B3 provider-neutral usage-to-cost estimator completed deterministic acceptanc
 P1-B4A usage normalization and shared serialization completed deterministic acceptance at `ae276f3df79685a7edd36dc6b06c7d82d5784e7a` with 1016/1016 tests. Evidence is recorded in
 [`P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md`](P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md).
 
-The active package is P1-B4B explicit estimation and native-cost accounting only. P1-B4 remains open until this subpackage is accepted. Legacy effective-configuration wiring, normal CLI migration, P5 output, P0 and Stage 3 remain separate later packages.
+P1-B4B explicit estimation and native-cost accounting completed deterministic acceptance at `f650478e842e9020c23489adb407b1b50f1c4438` with 1052/1052 tests. P1-B is closed. Evidence is recorded in
+[`P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md`](P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md).
+
+P1-B4 and the full P1-B pricing/runtime package are complete. The active package is P1-C unified effective configuration only. P1-D real-model smoke, P4, normal CLI migration, P5 output, P0 and Stage 3 remain separate later packages.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## Scope control

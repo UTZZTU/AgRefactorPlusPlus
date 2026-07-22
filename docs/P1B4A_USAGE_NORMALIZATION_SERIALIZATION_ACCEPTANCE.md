@@ -18,8 +18,9 @@ normalizes observed Provider usage breakdowns and establishes one shared,
 backwards-compatible safe serialization shape for `TokenUsage` and
 `ModelResponse`.
 
-P1-B4 remains active. Explicit pricing-snapshot estimation wiring and
-native-currency run-level accounting are deferred to P1-B4B.
+P1-B4B completed deterministic acceptance at
+`f650478e842e9020c23489adb407b1b50f1c4438` with **1052/1052** tests and patch ID
+`5360788b724a9c6d6fcebff107943436efb8a510`. P1-B4 is now complete.
 
 ## Accepted code contract
 
@@ -195,19 +196,27 @@ main_targeted_unittest.log  af5cc11ee0f2f7d398797b802530e2e87be099c5f939ecc7610b
 staged_stat.txt  2a4dd78fdd5f1bd2d7a5f0895a4292dbd94343ce7144981a8e0b9ef3d7224bbd
 ```
 
+## P1-B4B and P1-B4 closure linkage
+
+Formal evidence:
+[`P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md`](P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md).
+
+P1-B4B connects an explicit pricing snapshot to the accepted estimator,
+preserves the exact snapshot identity, records observed native-currency costs
+through the single BudgetManager/BudgetUsage ledger, and migrates all known
+BudgetUsage serializers. P1-B4A plus P1-B4B close P1-B4.
+
 ## Ordered continuation
 
 ```text
-P1-B4 compatibility migration                 active
+P1-B4 compatibility migration                 completed
 P1-B4A usage normalization and serialization  completed
-P1-B4B estimation and native-cost accounting  active
-P1-C unified effective config                 pending
+P1-B4B estimation and native-cost accounting  completed
+P1-C unified effective config                 active
 P1-D bounded real-model smoke                 pending
 ```
 
-P1-B4B must attach an estimate only through an explicit selected
-`ModelPricingSnapshot`, preserve the exact snapshot identity, and extend the
-single `BudgetManager/BudgetUsage` run-level source of truth for observed
-native-currency costs without creating a parallel counter. Token and estimated
-cost remain observed-only soft budgets. P1-B4B must not perform Legacy
-effective-config migration, normal CLI/P5 work, FX conversion or Stage 3 work.
+P1-B4B satisfied the explicit-snapshot, exact-identity, single-ledger and
+observed-only requirements without adding automatic selection, FX conversion or
+native-currency hard limits. P1-C is now active for unified effective
+configuration and Legacy authority migration.

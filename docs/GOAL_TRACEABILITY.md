@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | TargetProfile | Stage 1/2/5 | 2.7.3 已完成 committed named profile、executable/settings、parser identity、resource schema、per-field provenance；保持 Vitis 2023.2 默认兼容 | Batch B 多版本/设备/platform 与 Stage 5 source/target | [`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md) |
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
-| Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、用户固定模型；P1-B2 已冻结官方具体模型价格快照；P1-B3 已完成原生币种估算；P1-B4A 已完成 cache/thinking usage normalization、共享 TokenUsage/ModelResponse serialization 与旧 cost_usd 键兼容，1016/1016 回归通过 | P1-B4B explicit estimation/native accounting、P1-C unified config、P1-D smoke | [`P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md`](P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md) |
+| Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、用户固定模型；P1-B2 官方具体模型价格快照、P1-B3 原生币种估算、P1-B4A usage normalization/共享序列化、P1-B4B 显式 snapshot 接线与单一多币种 Budget ledger 均已完成，1052/1052 回归通过 | P1-C unified effective config、P1-D bounded smoke | [`P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md`](P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md) |
 | 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、typed family instruction、formal CLI 与 strict contract 已完成；真实 proposal evidence 未证明需要放宽 | Stage 2 已关闭；后续仅按新真实证据 harden | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
 | 结构化反馈/状态机 | Stage 2 | Public/Hidden、router/state/coordinator、real handlers、formal repair-aware CLI、5/5 blockers 与 final closure 已完成 | Stage 2 已关闭；Stage 3 复用 correctness gate | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
 | Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、7/7 full chains、9/9 faults、16/16 labels，并经 2.7.7/2.8 closure audit | 扩大版本、器件和 kernel 统计覆盖 | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
@@ -57,21 +57,23 @@ P1-B3 deterministic acceptance is complete with implementation commit
 P1-B4A deterministic acceptance is complete at `ae276f3df79685a7edd36dc6b06c7d82d5784e7a` with **1016/1016** tests and patch ID `89db552f6660c8e5fa9ac2a67deb21909ae25ae3`. Evidence:
 [`P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md`](P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md).
 
+P1-B4B deterministic acceptance is complete at `f650478e842e9020c23489adb407b1b50f1c4438` with **1052/1052** tests and patch ID `5360788b724a9c6d6fcebff107943436efb8a510`. P1-B is closed. Evidence:
+[`P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md`](P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md).
+
 Current next evidence:
 
 ```text
-P1-B4B explicit estimation and native-cost accounting
--> caller supplies one explicit ModelPricingSnapshot
--> estimate_model_cost consumes normalized TokenUsage
--> returned TokenUsage carries exact estimated_cost identity
--> the single BudgetManager/BudgetUsage ledger records native-currency totals
--> old cost_usd compatibility remains valid for USD-only consumers
--> Token/Cost remain observed-only soft budgets
--> no automatic snapshot selection, Legacy config, CLI, P5, FX or Stage 3 work
+P1-C unified effective configuration
+-> one authoritative effective model configuration
+-> family default < model default < explicit call/user override
+-> model identity, reasoning policy and request parameters resolve pre-Provider
+-> repair-aware and Legacy-compatible paths consume the same resolved contract
+-> Legacy pricing/config helpers leave the authoritative path
+-> no normal source-only CLI, P4, P5, P0, real-model smoke or Stage 3 work
 ```
 
-P1-B4B does not include Legacy effective-configuration migration, normal CLI,
-P5, P0 or Stage 3.
+P1-C preserves the compatibility path but removes duplicate configuration and
+pricing authority. P1-D remains a separate bounded real-model smoke.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## 2. TargetProfile 当前边界
@@ -120,7 +122,7 @@ Stage 2 已关闭，但 Stage 3 仍被 Pre-Stage-3 产品化收尾阻断。权�
 
 ```text
 Step 0  文档冻结与只读 consumer 审计
-Step 1  P1-A/P1-B0/P1-B1/P1-B2/P1-B3/P1-B4A 已完成；P1-B4B estimation/accounting 当前活跃
+Step 1  P1-A/P1-B0/P1-B1/P1-B2/P1-B3/P1-B4A/P1-B4B 已完成，P1-B 已关闭；P1-C unified config 当前活跃
 Step 2  P4 Public/Hidden 来源与 provenance
 Step 3  P2 source-only bootstrap 与统一 CLI
 Step 4  Execution Identity

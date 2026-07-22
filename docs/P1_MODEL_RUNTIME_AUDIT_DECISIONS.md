@@ -1,6 +1,6 @@
 # P1 模型运行时审计决策账本
 
-> **状态：** P1-A、P1-B0、P1-B1、P1-B2、P1-B3、P1-B4A 已完成；P1-B4B estimation/native accounting 为当前唯一活跃实现项
+> **状态：** P1-A、P1-B0、P1-B1、P1-B2、P1-B3、P1-B4A、P1-B4B 已完成，P1-B 已关闭；P1-C unified effective config 为当前唯一活跃实现项
 > **审计基线：** `8b543267a88ed63d343bd633cf29cd6edf9c4127`  
 > **人工复核日期：** 2026-07-22  
 > **作用：** 保存自动审计发现、人工修正、新增发现、阶段归属和关闭证据。  
@@ -451,6 +451,40 @@ accepted OpenAI-compatible aliases. P1B0-F03/F06/F09 and F15 remain partially
 open until P1-B4B connects an explicit pricing snapshot and extends the single
 BudgetManager/BudgetUsage ledger for native-currency observed costs.
 
+## 8.8 P1-B4B and P1-B4 deterministic acceptance
+
+Formal evidence:
+[`P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md`](P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md)
+
+```text
+parent_commit=149e8aaf86da9185f50cc017f676299fa2f55eb2
+implementation_commit=f650478e842e9020c23489adb407b1b50f1c4438
+baseline_unittest=1016/1016
+p1b4b_unittest=1052/1052
+new_tests=36
+baseline_targeted_files=13
+post_targeted_files=14
+patch_id=5360788b724a9c6d6fcebff107943436efb8a510
+explicit_pricing_snapshot_binding=true
+estimated_cost_attached=true
+exact_snapshot_identity_preserved=true
+native_currency_budget_ledger=true
+single_internal_cost_ledger=true
+legacy_cost_usd_view_preserved=true
+budget_serializer_repository_audit=true
+automatic_snapshot_selection=false
+native_currency_hard_limit=false
+currency_conversion=false
+legacy_modified=false
+normal_cli_modified=false
+p5_modified=false
+real_model_or_vitis_acceptance=false
+```
+
+P1B0-F03/F04/F06/F09, F12 and F15 are closed at the P1-B runtime level.
+F01, F05 and the Legacy-authority portion of F06/F11 advance to P1-C. P1-B is
+closed. P1-D remains the later bounded real-model smoke.
+
 ## 9. 当前下一步
 
 ```text
@@ -462,9 +496,10 @@ Step 1 P1-B0 pricing consumer audit           completed
 Step 1 P1-B1 typed pricing schema             completed
 Step 1 P1-B2 official model snapshots         completed
 Step 1 P1-B3 usage-to-cost estimator          completed
-Step 1 P1-B4 compatibility migration          active
+Step 1 P1-B4 compatibility migration          completed
 Step 1 P1-B4A usage normalization/serialization completed
-Step 1 P1-B4B estimation/native accounting    active
+Step 1 P1-B4B estimation/native accounting    completed
+Step 1 P1-C unified effective config           active
 ```
 
-P1-B4A 已完成。当前只推进 P1-B4B explicit estimation and native-cost accounting；P1-C、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。
+P1-B4B 与整个 P1-B 已完成。当前只推进 P1-C unified effective config；P1-D、P4、P2、P0 与 Stage 3 不得提前开始。
