@@ -5,10 +5,10 @@
 ## 1. 当前快照
 
 - 当前开发分支：`stage2-general-feedback`
-- 当前功能代码基线：`c14650b2a474478cd82c0a9d1798fdd9b80d971b`
+- 当前功能代码基线：`343d23c5b811f7c529991450b0952299f460c820`
 - Stage 2 closure validation baseline：`3f57371c8b58f53449064219c024ab63042a87d4`
 - Stage 2 状态：**closed**；Stage 3：**allowed, not started**
-- 最新确定性测试：**1153/1153 passed**
+- 最新确定性测试：**1184/1184 passed**
 - 最新 Stage 2.5 总结：**7 baseline、7/7 real full chains、9 faults、16 labels、23 scenario executions；跨三次独立验收累计 62/36/9/17/0，0 LLM**
 - 最新完整验证链验收仍为：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
@@ -73,7 +73,8 @@ P1-B4B explicit estimation and native-cost accounting completed deterministic ac
 P1-C1 typed effective model resolution completed deterministic acceptance at `3137a9cdbaf0201ed2ee3f5a28225121ceb04d56` with **1089/1089** tests and patch ID `4a37e161da17664a073761837ce944ea7eff749d`. Evidence: [`P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md`](P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md).
 P1-C2 modern consumer migration completed deterministic acceptance at `4a39ed894da4d04e3d46772c7b2f5d400ed98093` with **1119/1119** tests and patch ID `01d5e3c292b82e9fb58a8c9f14b02c7a90b5a9c9`. Evidence: [`P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md`](P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md).
 P1-C3A typed Legacy translation completed deterministic acceptance at `c14650b2a474478cd82c0a9d1798fdd9b80d971b` with **1153/1153** tests and patch ID `b5302f1d3205042b01884e9be4c4e9c0095fb380`. Evidence: [`P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md`](P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md).
-Current active implementation is **P1-C3B generic AG2 loader policy migration**. P1-C3C, P1-C4 and P1-D remain ordered follow-ups.
+P1-C3B generic AG2 loader policy completed deterministic acceptance at `343d23c5b811f7c529991450b0952299f460c820` with **1184/1184** tests and patch ID `4e4597fb64f4dc3dab29a6b51228143586cb174c`. Evidence: [`P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md`](P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md).
+Current active implementation is **P1-C3C currency-correct Legacy usage bridge**. P1-C4 and P1-D remain ordered follow-ups.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## 2. 已完成

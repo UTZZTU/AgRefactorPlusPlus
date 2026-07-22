@@ -100,7 +100,10 @@ P1-C2 modern consumer migration completed deterministic acceptance at `4a39ed894
 P1-C3A typed Legacy translation completed deterministic acceptance at `c14650b2a474478cd82c0a9d1798fdd9b80d971b` with 1153/1153 tests. Evidence is recorded in
 [`P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md`](P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md).
 
-P1-B, P1-C1, P1-C2 and P1-C3A are complete. The active package is P1-C3B generic AG2 loader policy migration only. P1-C3C usage, P1-C4 parity, P1-D real-model smoke, P4, normal CLI migration, P5 output, P0 and Stage 3 remain separate later packages.
+P1-C3B generic AG2 loader policy completed deterministic acceptance at `343d23c5b811f7c529991450b0952299f460c820` with 1184/1184 tests. Evidence is recorded in
+[`P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md`](P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md).
+
+P1-B, P1-C1, P1-C2, P1-C3A and P1-C3B are complete. The active package is P1-C3C currency-correct Legacy usage bridge only. P1-C4 parity, P1-D real-model smoke, P4, normal CLI migration, P5 output, P0 and Stage 3 remain separate later packages.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## Scope control

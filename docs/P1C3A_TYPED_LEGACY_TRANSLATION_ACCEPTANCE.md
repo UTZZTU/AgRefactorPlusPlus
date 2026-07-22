@@ -154,6 +154,15 @@ main_targeted_unittest.log  f1a7c93064e6f7aaccf996f9bae88c870b891f1471da2066f631
 staged_stat.txt  c00d79cb5bed8281134af8547884c2a8de2142a87299dd612bbe4e7d40a44f9e
 ```
 
+## P1-C3B acceptance linkage
+
+Formal evidence:
+[`P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md`](P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md).
+
+P1-C3B completed deterministic acceptance at `343d23c5b811f7c529991450b0952299f460c820` with
+**1184/1184** tests and patch ID `4e4597fb64f4dc3dab29a6b51228143586cb174c`. Vendor-specific Loader
+authority is removed; P1-C3C currency-correct usage migration is active.
+
 ## Ordered continuation
 
 ```text
@@ -162,15 +171,15 @@ P1-C1 typed effective model resolution        completed
 P1-C2 modern consumer migration               completed
 P1-C3 Legacy authority migration              active
 P1-C3A typed Legacy translation               completed
-P1-C3B generic AG2 loader policy migration    active
-P1-C3C currency-correct Legacy usage bridge   pending
+P1-C3B generic AG2 loader policy migration    completed
+P1-C3C currency-correct Legacy usage bridge   active
 P1-C4 deterministic parity acceptance         pending
 P1-D bounded real-model smoke                  pending
 P4 Public/Hidden source contract               pending
 ```
 
-P1-C3B must make `HLSAgentLoader` generic by consuming the translated typed
-configuration and removing DeepSeek-specific model/base-URL inference,
-hard-coded price injection, response-format patching and model-specific output
-policy from authority. It must preserve generic AG2 construction and must not
-migrate usage accounting, Budget, normal CLI, P1-C3C, P1-C4, P1-D or Stage 3.
+P1-C3B completed the generic Loader policy migration. P1-C3C is active to
+replace currency-implicit Legacy usage and the remaining hard-coded usage-price
+fallback with typed token/cost provenance and the existing native-currency
+Budget ledger. Loader policy, normal CLI, P1-C4, P1-D and Stage 3 must not
+change in that subpackage.

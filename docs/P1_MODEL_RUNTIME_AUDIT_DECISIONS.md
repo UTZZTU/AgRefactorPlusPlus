@@ -1,6 +1,6 @@
 # P1 模型运行时审计决策账本
 
-> **状态：** P1-A、P1-B、P1-C1、P1-C2、P1-C3A 已完成；P1-C3B generic AG2 loader policy migration 为当前唯一活跃实现项
+> **状态：** P1-A、P1-B、P1-C1、P1-C2、P1-C3A、P1-C3B 已完成；P1-C3C currency-correct Legacy usage bridge 为当前唯一活跃实现项
 > **审计基线：** `8b543267a88ed63d343bd633cf29cd6edf9c4127`  
 > **人工复核日期：** 2026-07-22  
 > **作用：** 保存自动审计发现、人工修正、新增发现、阶段归属和关闭证据。  
@@ -638,6 +638,59 @@ P1C3-F01/F02/F03/F04/F10 are closed or partially closed at the typed Legacy
 translation level. P1C3-F05/F06 advance to P1-C3B. P1C3-F07/F08/F09 remain
 assigned to P1-C3C.
 
+## 8.12 P1-C3B generic Loader policy deterministic acceptance
+
+Read-only Loader policy audit:
+
+```text
+artifact_dir=/data/agrefactor_runs/pre_stage3_p1c3b_loader_policy_audit_20260723_020234
+head=fe7b2a590541570fec1bf9767a43b10da62b91c2
+tracked_files=483
+python_files=187
+config_files=27
+python_parse_errors=0
+findings=10
+confirmed_findings=10
+hls_agent_loader_calls=8
+production_hls_agent_loader_calls=8
+baseline_direct_loader_tests=0
+repository_modified=false
+model_api_called=false
+vitis_run=false
+```
+
+Formal evidence:
+[`P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md`](P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md)
+
+```text
+parent_commit=fe7b2a590541570fec1bf9767a43b10da62b91c2
+implementation_commit=343d23c5b811f7c529991450b0952299f460c820
+baseline_unittest=1153/1153
+p1c3b_unittest=1184/1184
+new_tests=31
+focused_loader_policy=31/31
+baseline_targeted_files=8
+post_targeted_files=9
+patch_id=4e4597fb64f4dc3dab29a6b51228143586cb174c
+loader_vendor_string_matching=false
+loader_api_type_injection=false
+loader_price_injection=false
+loader_max_tokens_injection=false
+loader_vendor_output_policy=false
+loader_merge_precedence=agent_then_global_then_runtime
+loader_deep_copy_safe=true
+imports_resolved_before_llmconfig=true
+explicit_llm_config_preserved=true
+usage_fallback_price_helper_preserved=true
+legacy_usage_accounting_modified=false
+budget_modified=false
+real_model_or_vitis_acceptance=false
+```
+
+P1C3-F05 and the Loader-policy half of P1C3-F06 are closed. The remaining
+hard-coded usage fallback, currency-implicit summary, USD-only Legacy bridge and
+separate repair-model accounting advance to P1-C3C.
+
 ## 9. 当前下一步
 
 ```text
@@ -657,9 +710,9 @@ Step 1 P1-C1 typed effective resolution        completed
 Step 1 P1-C2 modern consumer migration         completed
 Step 1 P1-C3 Legacy authority migration        active
 Step 1 P1-C3A typed Legacy translation         completed
-Step 1 P1-C3B generic AG2 loader policy        active
-Step 1 P1-C3C currency-correct usage bridge    pending
+Step 1 P1-C3B generic AG2 loader policy        completed
+Step 1 P1-C3C currency-correct usage bridge    active
 Step 1 P1-C4 deterministic parity acceptance   pending
 ```
 
-P1-C3A 已完成。当前只推进 P1-C3B generic AG2 loader policy migration；P1-C3C、P1-C4、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。
+P1-C3B 已完成。当前只推进 P1-C3C currency-correct Legacy usage bridge；P1-C4、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。
