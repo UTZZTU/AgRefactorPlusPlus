@@ -8,6 +8,7 @@ from .base import (
     ModelSpec,
     TokenUsage,
 )
+from .cost_estimator import estimate_model_cost
 from .family import (
     ModelCapabilityTag,
     ModelFamilyProfile,
@@ -139,6 +140,8 @@ __all__ = [
     "UnknownModelFamilyProfileError",
     "UnknownProviderError",
     "UnsupportedReasoningLevelError",
+    "find_official_model_pricing_snapshots",
+    "estimate_model_cost",
     "find_official_model_pricing_snapshots",
     "find_official_pricing_sources",
     "official_pricing_manifest",
