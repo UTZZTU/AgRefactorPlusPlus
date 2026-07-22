@@ -1,6 +1,6 @@
 # P1 模型运行时审计决策账本
 
-> **状态：** P1-A、P1-B 已完成；P1-C1、P1-C2 已完成；P1-C3 Legacy authority migration 为当前唯一活跃实现项
+> **状态：** P1-A、P1-B、P1-C1、P1-C2、P1-C3A 已完成；P1-C3B generic AG2 loader policy migration 为当前唯一活跃实现项
 > **审计基线：** `8b543267a88ed63d343bd633cf29cd6edf9c4127`  
 > **人工复核日期：** 2026-07-22  
 > **作用：** 保存自动审计发现、人工修正、新增发现、阶段归属和关闭证据。  
@@ -583,6 +583,61 @@ real_model_or_vitis_acceptance=false
 P1C-F01/F08 are closed. P1C-F02/F03/F04/F07 remain assigned to P1-C3
 Legacy authority migration.
 
+## 8.11 P1-C3 authority audit and P1-C3A deterministic acceptance
+
+Read-only Legacy authority audit:
+
+```text
+artifact_dir=/data/agrefactor_runs/pre_stage3_p1c3_legacy_authority_audit_20260723_012843
+head=e73d0999e6fa6425831c55aca6af215834101883
+tracked_files=481
+python_files=186
+python_parse_errors=0
+findings=11
+confirmed_findings=11
+legacy_settings_calls=9
+production_legacy_settings_calls=2
+legacy_adapter_calls=16
+production_legacy_adapter_calls=1
+hls_agent_loader_calls=8
+production_hls_agent_loader_calls=8
+repository_modified=false
+model_api_called=false
+vitis_run=false
+```
+
+Formal evidence:
+[`P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md`](P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md)
+
+```text
+parent_commit=e73d0999e6fa6425831c55aca6af215834101883
+implementation_commit=c14650b2a474478cd82c0a9d1798fdd9b80d971b
+baseline_unittest=1119/1119
+p1c3a_unittest=1153/1153
+new_tests=34
+baseline_targeted_files=8
+post_targeted_files=9
+patch_id=b5302f1d3205042b01884e9be4c4e9c0095fb380
+legacy_settings_accept_effective_config=true
+legacy_raw_fields_compatible=true
+legacy_conflicts_rejected=true
+legacy_llm_override_translated=true
+legacy_safe_manifest_propagated=true
+legacy_cli_typed_resolver_seam_count=1
+legacy_cli_raw_no_family_compatibility=true
+flow_new_override_preferred=true
+flow_new_raw_config_fallback_preserved=true
+hls_agent_loader_policy_modified=false
+hard_coded_pricing_modified=false
+legacy_usage_accounting_modified=false
+budget_modified=false
+real_model_or_vitis_acceptance=false
+```
+
+P1C3-F01/F02/F03/F04/F10 are closed or partially closed at the typed Legacy
+translation level. P1C3-F05/F06 advance to P1-C3B. P1C3-F07/F08/F09 remain
+assigned to P1-C3C.
+
 ## 9. 当前下一步
 
 ```text
@@ -601,7 +656,10 @@ Step 1 P1-C unified effective config           active
 Step 1 P1-C1 typed effective resolution        completed
 Step 1 P1-C2 modern consumer migration         completed
 Step 1 P1-C3 Legacy authority migration        active
+Step 1 P1-C3A typed Legacy translation         completed
+Step 1 P1-C3B generic AG2 loader policy        active
+Step 1 P1-C3C currency-correct usage bridge    pending
 Step 1 P1-C4 deterministic parity acceptance   pending
 ```
 
-P1-C1、P1-C2 已完成。当前只推进 P1-C3 Legacy authority migration；P1-C4、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。
+P1-C3A 已完成。当前只推进 P1-C3B generic AG2 loader policy migration；P1-C3C、P1-C4、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。

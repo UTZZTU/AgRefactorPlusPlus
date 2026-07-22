@@ -137,6 +137,16 @@ main_targeted_unittest.log  9b08110ae3e9544bbae270e70b3e5279d9e3ee1cd916faa5b52b
 staged_stat.txt  aea56e4f27fdb0d03c879a9d0f0d0f31f7b21f1a5de74325e37d8c1cc42272af
 ```
 
+## P1-C3A acceptance linkage
+
+Formal evidence:
+[`P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md`](P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md).
+
+P1-C3A completed deterministic acceptance at `c14650b2a474478cd82c0a9d1798fdd9b80d971b` with
+**1153/1153** tests and patch ID `b5302f1d3205042b01884e9be4c4e9c0095fb380`. Typed Legacy translation and
+safe manifest propagation are complete; P1-C3B Loader policy migration is
+active.
+
 ## Ordered continuation
 
 ```text
@@ -144,13 +154,15 @@ P1-C unified effective configuration          active
 P1-C1 typed effective model resolution        completed
 P1-C2 modern consumer migration               completed
 P1-C3 Legacy authority migration              active
+P1-C3A typed Legacy translation               completed
+P1-C3B generic AG2 loader policy migration    active
+P1-C3C currency-correct Legacy usage bridge   pending
 P1-C4 deterministic parity acceptance         pending
 P1-D bounded real-model smoke                  pending
 P4 Public/Hidden source contract               pending
 ```
 
-P1-C3 must translate the same `EffectiveModelConfig` into the Legacy/AG2
-compatibility path, remove DeepSeek-specific configuration and hard-coded price
-helpers from authority, and keep observed usage currency-correct. It must
-preserve the compatibility path and must not begin normal source-only CLI, P4,
-P5, P0, real-model smoke or Stage 3 work.
+P1-C3A completed typed translation into the Legacy flow. P1-C3B is active to
+remove DeepSeek-specific Loader policy and hard-coded pricing from configuration
+authority while retaining generic AG2 construction. Usage accounting remains
+P1-C3C. Normal CLI, P4, P5, P0, P1-D and Stage 3 must not begin.
