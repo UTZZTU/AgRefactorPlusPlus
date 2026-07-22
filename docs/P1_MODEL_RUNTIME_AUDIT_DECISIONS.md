@@ -1,6 +1,6 @@
 # P1 模型运行时审计决策账本
 
-> **状态：** P1-A、P1-B 已完成；P1-C1 typed effective model resolution 已完成；P1-C2 modern consumer migration 为当前唯一活跃实现项
+> **状态：** P1-A、P1-B 已完成；P1-C1、P1-C2 已完成；P1-C3 Legacy authority migration 为当前唯一活跃实现项
 > **审计基线：** `8b543267a88ed63d343bd633cf29cd6edf9c4127`  
 > **人工复核日期：** 2026-07-22  
 > **作用：** 保存自动审计发现、人工修正、新增发现、阶段归属和关闭证据。  
@@ -533,6 +533,56 @@ P1C-F05/F06/F09 are closed at the typed-foundation level. P1C-F01/F08
 advance to P1-C2 modern consumer migration. P1C-F02/F03/F04/F07 remain assigned
 to P1-C3 Legacy authority migration.
 
+## 8.10 P1-C2 modern consumer migration deterministic acceptance
+
+Read-only consumer audit:
+
+```text
+artifact_dir=/data/agrefactor_runs/pre_stage3_p1c2_consumer_audit_20260723_004501
+head=3f1995e62449fcb3872ce8440a802ef1361f165a
+tracked_files=479
+python_files=185
+python_parse_errors=0
+findings=9
+confirmed_findings=9
+candidate_adapter_calls=14
+production_candidate_adapter_calls=1
+test_candidate_adapter_calls=13
+repository_modified=false
+model_api_called=false
+vitis_run=false
+```
+
+Formal evidence:
+[`P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md`](P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md)
+
+```text
+parent_commit=3f1995e62449fcb3872ce8440a802ef1361f165a
+implementation_commit=4a39ed894da4d04e3d46772c7b2f5d400ed98093
+baseline_unittest=1089/1089
+p1c2_unittest=1119/1119
+new_tests=30
+baseline_targeted_files=8
+post_targeted_files=9
+patch_id=01d5e3c292b82e9fb58a8c9f14b02c7a90b5a9c9
+adapter_effective_config_consumer=true
+old_constructor_compatible=true
+old_constructor_delegates_resolver=true
+new_path_second_parameter_merge=false
+cli_effective_config_resolve_count=1
+cli_reasoning_override_wired=true
+exact_pricing_snapshot_identity=true
+family_instruction_conflict_rejected=true
+effective_config_manifest_in_orchestration=true
+repair_phase_modified=false
+legacy_modified=false
+provider_transport_modified=false
+real_model_or_vitis_acceptance=false
+```
+
+P1C-F01/F08 are closed. P1C-F02/F03/F04/F07 remain assigned to P1-C3
+Legacy authority migration.
+
 ## 9. 当前下一步
 
 ```text
@@ -549,9 +599,9 @@ Step 1 P1-B4A usage normalization/serialization completed
 Step 1 P1-B4B estimation/native accounting    completed
 Step 1 P1-C unified effective config           active
 Step 1 P1-C1 typed effective resolution        completed
-Step 1 P1-C2 modern consumer migration         active
-Step 1 P1-C3 Legacy authority migration        pending
+Step 1 P1-C2 modern consumer migration         completed
+Step 1 P1-C3 Legacy authority migration        active
 Step 1 P1-C4 deterministic parity acceptance   pending
 ```
 
-P1-C1 已完成。当前只推进 P1-C2 modern consumer migration；P1-C3、P1-C4、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。
+P1-C1、P1-C2 已完成。当前只推进 P1-C3 Legacy authority migration；P1-C4、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。

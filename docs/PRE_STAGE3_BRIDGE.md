@@ -94,7 +94,10 @@ P1-B4B explicit estimation and native-cost accounting completed deterministic ac
 P1-C1 typed effective model resolution completed deterministic acceptance at `3137a9cdbaf0201ed2ee3f5a28225121ceb04d56` with 1089/1089 tests. Evidence is recorded in
 [`P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md`](P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md).
 
-P1-B is complete and P1-C1 established the typed effective configuration foundation. The active package is P1-C2 modern consumer migration only. P1-C3 Legacy authority migration, P1-C4 parity, P1-D real-model smoke, P4, normal CLI migration, P5 output, P0 and Stage 3 remain separate later packages.
+P1-C2 modern consumer migration completed deterministic acceptance at `4a39ed894da4d04e3d46772c7b2f5d400ed98093` with 1119/1119 tests. Evidence is recorded in
+[`P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md`](P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md).
+
+P1-B, P1-C1 and P1-C2 are complete. The active package is P1-C3 Legacy authority migration only. P1-C4 parity, P1-D real-model smoke, P4, normal CLI migration, P5 output, P0 and Stage 3 remain separate later packages.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## Scope control

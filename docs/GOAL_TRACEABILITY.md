@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | TargetProfile | Stage 1/2/5 | 2.7.3 已完成 committed named profile、executable/settings、parser identity、resource schema、per-field provenance；保持 Vitis 2023.2 默认兼容 | Batch B 多版本/设备/platform 与 Stage 5 source/target | [`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md) |
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
-| Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、用户固定模型；P1-B pricing/runtime 已关闭；P1-C1 已建立不可变 EffectiveModelConfig 与 Registry resolver，1089/1089 回归通过 | P1-C2 modern consumers、P1-C3 Legacy authority、P1-C4 parity、P1-D bounded smoke | [`P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md`](P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md) |
+| Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、P1-B pricing/runtime 已关闭；P1-C1 建立 EffectiveModelConfig；P1-C2 已迁移现代 consumers，1119/1119 回归通过 | P1-C3 Legacy authority、P1-C4 parity、P1-D bounded smoke | [`P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md`](P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md) |
 | 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、typed family instruction、formal CLI 与 strict contract 已完成；真实 proposal evidence 未证明需要放宽 | Stage 2 已关闭；后续仅按新真实证据 harden | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
 | 结构化反馈/状态机 | Stage 2 | Public/Hidden、router/state/coordinator、real handlers、formal repair-aware CLI、5/5 blockers 与 final closure 已完成 | Stage 2 已关闭；Stage 3 复用 correctness gate | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
 | Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、7/7 full chains、9/9 faults、16/16 labels，并经 2.7.7/2.8 closure audit | 扩大版本、器件和 kernel 统计覆盖 | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
@@ -63,20 +63,23 @@ P1-B4B deterministic acceptance is complete at `f650478e842e9020c23489adb407b1b5
 P1-C1 deterministic acceptance is complete at `3137a9cdbaf0201ed2ee3f5a28225121ceb04d56` with **1089/1089** tests and patch ID `4a37e161da17664a073761837ce944ea7eff749d`. Evidence:
 [`P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md`](P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md).
 
+P1-C2 deterministic acceptance is complete at `4a39ed894da4d04e3d46772c7b2f5d400ed98093` with **1119/1119** tests and patch ID `01d5e3c292b82e9fb58a8c9f14b02c7a90b5a9c9`. Evidence:
+[`P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md`](P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md).
+
 Current next evidence:
 
 ```text
-P1-C2 modern consumer migration
--> CandidateModelAdapter may consume one pre-resolved EffectiveModelConfig
--> old constructor remains compatible during bounded migration
--> modern repair-aware factories resolve exactly once before Provider execution
--> effective parameters and family instruction come from the same contract
--> exact explicit pricing snapshot identity propagates unchanged
--> no Legacy, normal CLI, P4, P5, P0, real-model smoke or Stage 3 work
+P1-C3 Legacy authority migration
+-> translate the accepted EffectiveModelConfig into LegacyRefactorSettings
+-> Legacy/AG2 receives the same model identity, parameters and family policy
+-> HLSAgentLoader keeps only generic construction responsibilities
+-> DeepSeek-specific hard-coded configuration and price helpers leave authority
+-> observed Legacy usage remains currency-correct and compatibility-safe
+-> no normal CLI, P4, P5, P0, real-model smoke or Stage 3 work
 ```
 
-P1-C3 will later remove duplicate Legacy/AG2 configuration and pricing
-authority. P1-C4 remains the deterministic parity closure.
+P1-C4 remains the deterministic modern/Legacy parity closure. P1-D remains a
+separate bounded network smoke after P1-C is deterministically complete.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## 2. TargetProfile 当前边界
@@ -125,7 +128,7 @@ Stage 2 已关闭，但 Stage 3 仍被 Pre-Stage-3 产品化收尾阻断。权�
 
 ```text
 Step 0  文档冻结与只读 consumer 审计
-Step 1  P1-B 已关闭；P1-C1 typed resolution 已完成；P1-C2 modern consumer migration 当前活跃
+Step 1  P1-B 已关闭；P1-C1、P1-C2 已完成；P1-C3 Legacy authority migration 当前活跃
 Step 2  P4 Public/Hidden 来源与 provenance
 Step 3  P2 source-only bootstrap 与统一 CLI
 Step 4  Execution Identity

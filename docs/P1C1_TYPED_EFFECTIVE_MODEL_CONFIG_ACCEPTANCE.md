@@ -154,21 +154,29 @@ main_targeted_unittest.log  35e1e49c9d327b0f73ff1286c19679266591fa0a5c88a722498f
 staged_stat.txt  86168307ac55397712d66c1dd6ed500437047054be9e6ad6c1fcf56ce0c609f1
 ```
 
+## P1-C2 acceptance linkage
+
+Formal evidence:
+[`P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md`](P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md).
+
+P1-C2 completed deterministic acceptance at `4a39ed894da4d04e3d46772c7b2f5d400ed98093` with
+**1119/1119** tests and patch ID `01d5e3c292b82e9fb58a8c9f14b02c7a90b5a9c9`. Modern consumers now share
+one resolved configuration; P1-C3 Legacy authority migration is active.
+
 ## Ordered continuation
 
 ```text
 P1-C unified effective configuration          active
 P1-C1 typed effective model resolution        completed
-P1-C2 modern consumer migration               active
-P1-C3 Legacy authority migration              pending
+P1-C2 modern consumer migration               completed
+P1-C3 Legacy authority migration              active
 P1-C4 deterministic parity acceptance         pending
 P1-D bounded real-model smoke                  pending
 P4 Public/Hidden source contract               pending
 ```
 
-P1-C2 must make the modern Candidate/repair-aware path consume one
-`EffectiveModelConfig` instead of independently resolving ModelSpec,
-ModelFamilyProfile, effective parameters and pricing options. It must preserve
-the old constructor during bounded migration, preserve the exact pricing
-snapshot identity, and fail invalid family/reasoning configuration before a
-Provider call. P1-C2 must not modify Legacy, normal CLI, P4, P5, P0 or Stage 3.
+P1-C2 completed the modern consumer migration. P1-C3 is active to translate
+the same effective configuration into the Legacy/AG2 compatibility path and
+remove duplicate DeepSeek-specific configuration and pricing authority. P1-C3
+must preserve compatibility and must not begin normal CLI, P4, P5, P0, P1-D or
+Stage 3 work.
