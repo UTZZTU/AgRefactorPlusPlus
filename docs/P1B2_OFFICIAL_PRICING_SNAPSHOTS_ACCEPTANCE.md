@@ -119,14 +119,27 @@ main_targeted_unittest.log  c247c2465489e5e718fd18c469a6b3b2a0245454ed5c43268a30
 staged_stat.txt  37b0496384ddc0f8435accd58b4214a3f076f5b128a2f059402750602ee688ec
 ```
 
+## P1-B3 acceptance linkage
+
+P1-B3 completed deterministic acceptance with implementation commit
+`1c6c7efc9160c104319d4cc01a9b96c3ae0d082e`, correction commit `2296a18f09aa478afcdc5cc9652b4d9166a44149` and final
+**993/993** regression.
+
+Evidence:
+[`P1B3_COST_ESTIMATOR_ACCEPTANCE.md`](P1B3_COST_ESTIMATOR_ACCEPTANCE.md).
+
+The provider-neutral estimator now supports verified, unavailable and explicit
+approximate paths without automatic snapshot selection or Provider, Budget,
+serialization or Legacy wiring. Those migrations remain ordered work.
+
 ## Next package
 
 ```text
 P1-B0 audit/design freeze             completed
 P1-B1 typed pricing schema            completed
 P1-B2 official model-level snapshots  completed
-P1-B3 usage-to-cost estimator         active
-P1-B4 compatibility migration         pending
+P1-B3 usage-to-cost estimator         completed
+P1-B4 compatibility migration         active
 P1-C unified effective config         pending
 P1-D bounded real-model smoke         pending
 ```

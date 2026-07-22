@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | TargetProfile | Stage 1/2/5 | 2.7.3 已完成 committed named profile、executable/settings、parser identity、resource schema、per-field provenance；保持 Vitis 2023.2 默认兼容 | Batch B 多版本/设备/platform 与 Stage 5 source/target | [`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md) |
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
-| Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、用户固定模型；P1-A/P1-B1 已验收；P1-B2 已冻结 5 个官方来源记录、6 个具体模型/部署价格快照和 GLM unreadable 状态，950/950 回归通过 | P1-B3 estimator、P1-B4 migration、P1-C unified config、P1-D smoke | [`P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md`](P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md) |
+| Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、用户固定模型；P1-A/P1-B1 已验收；P1-B2 已冻结官方具体模型价格快照；P1-B3 已完成显式 snapshot + normalized TokenUsage 到 verified/unavailable/approximate CostEstimate 的原生币种估算，993/993 回归通过 | P1-B4 compatibility migration、P1-C unified config、P1-D smoke | [`P1B3_COST_ESTIMATOR_ACCEPTANCE.md`](P1B3_COST_ESTIMATOR_ACCEPTANCE.md) |
 | 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、typed family instruction、formal CLI 与 strict contract 已完成；真实 proposal evidence 未证明需要放宽 | Stage 2 已关闭；后续仅按新真实证据 harden | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
 | 结构化反馈/状态机 | Stage 2 | Public/Hidden、router/state/coordinator、real handlers、formal repair-aware CLI、5/5 blockers 与 final closure 已完成 | Stage 2 已关闭；Stage 3 复用 correctness gate | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
 | Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、7/7 full chains、9/9 faults、16/16 labels，并经 2.7.7/2.8 closure audit | 扩大版本、器件和 kernel 统计覆盖 | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
@@ -49,18 +49,24 @@ P1-B1 deterministic acceptance is complete at `bb219ea9e3049b4f5959c9dbb9c0e5858
 
 P1-B2 deterministic acceptance is complete at `571c51fcc250592a21bf40b3831b7dccfc6400aa` with **950/950** tests, 5 source records and 6 verified concrete-model snapshots. Evidence: [`P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md`](P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md).
 
+P1-B3 deterministic acceptance is complete with implementation commit
+`1c6c7efc9160c104319d4cc01a9b96c3ae0d082e`, correction commit `2296a18f09aa478afcdc5cc9652b4d9166a44149` and
+**993/993** final tests. Evidence:
+[`P1B3_COST_ESTIMATOR_ACCEPTANCE.md`](P1B3_COST_ESTIMATOR_ACCEPTANCE.md).
+
 Current next evidence:
 
 ```text
-P1-B3 provider-neutral usage-to-cost estimator
--> explicit ModelPricingSnapshot + TokenUsage input
--> verified estimate for fully priced usage
--> unavailable estimate for missing categories/rates
--> approximate estimate only with explicit assumptions
--> no Provider, Budget, runtime serialization or Legacy wiring
+P1-B4 compatibility migration
+-> normalize Provider cache/thinking usage into TokenUsageBreakdown
+-> preserve explicit pricing snapshot identity through estimation
+-> serialize estimated_cost without breaking cost_usd consumers
+-> migrate run-level native-currency accounting without a second counter
+-> no Legacy effective-config, CLI, P5, FX or Stage 3 work
 ```
 
-P1-B3 does not include runtime migration, Legacy migration, Budget resolution, normal CLI, P5, P0 or Stage 3.
+P1-B4 does not include Legacy effective-configuration migration, normal CLI,
+P5, P0 or Stage 3.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## 2. TargetProfile 当前边界
@@ -109,7 +115,7 @@ Stage 2 已关闭，但 Stage 3 仍被 Pre-Stage-3 产品化收尾阻断。权�
 
 ```text
 Step 0  文档冻结与只读 consumer 审计
-Step 1  P1-A/P1-B0/P1-B1/P1-B2 已完成；P1-B3 estimator 当前活跃
+Step 1  P1-A/P1-B0/P1-B1/P1-B2/P1-B3 已完成；P1-B4 migration 当前活跃
 Step 2  P4 Public/Hidden 来源与 provenance
 Step 3  P2 source-only bootstrap 与统一 CLI
 Step 4  Execution Identity

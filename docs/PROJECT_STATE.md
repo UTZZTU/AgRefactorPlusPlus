@@ -5,10 +5,10 @@
 ## 1. 当前快照
 
 - 当前开发分支：`stage2-general-feedback`
-- 当前功能代码基线：`571c51fcc250592a21bf40b3831b7dccfc6400aa`
+- 当前功能代码基线：`2296a18f09aa478afcdc5cc9652b4d9166a44149`
 - Stage 2 closure validation baseline：`3f57371c8b58f53449064219c024ab63042a87d4`
 - Stage 2 状态：**closed**；Stage 3：**allowed, not started**
-- 最新确定性测试：**950/950 passed**
+- 最新确定性测试：**993/993 passed**
 - 最新 Stage 2.5 总结：**7 baseline、7/7 real full chains、9 faults、16 labels、23 scenario executions；跨三次独立验收累计 62/36/9/17/0，0 LLM**
 - 最新完整验证链验收仍为：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
@@ -67,7 +67,8 @@ P1-A static model compatibility completed deterministic acceptance at `e9f4a5174
 P1-B0 pricing/cost consumer audit completed at `24918d6fcfe1250043cd6a72082456241fa4679e`: 461 tracked files, 972 occurrences, 8 automated findings, 2 manual amendments, 5 readable official snapshots and 1 unreadable official page. Evidence: [`P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md`](P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md).
 P1-B1 typed pricing/native-currency schema completed deterministic acceptance at `bb219ea9e3049b4f5959c9dbb9c0e585875afd82` with **920/920** tests and patch ID `c793e3d1402bf63977e7a25d3ce829d46416fab2`. Evidence: [`P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md`](P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md).
 P1-B2 official concrete-model pricing snapshots completed deterministic acceptance at `571c51fcc250592a21bf40b3831b7dccfc6400aa` with **950/950** tests, 5 source records, 6 verified snapshots and patch ID `d0babc3b57dbdef9370786b7e11d0cc39b93760e`. Evidence: [`P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md`](P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md).
-Current active implementation is **P1-B3 provider-neutral usage-to-cost estimator**. P1-B4, P1-C and P1-D remain ordered follow-ups.
+P1-B3 provider-neutral usage-to-cost estimator completed deterministic acceptance with implementation commit `1c6c7efc9160c104319d4cc01a9b96c3ae0d082e`, correction commit `2296a18f09aa478afcdc5cc9652b4d9166a44149` and **993/993** final tests. Evidence: [`P1B3_COST_ESTIMATOR_ACCEPTANCE.md`](P1B3_COST_ESTIMATOR_ACCEPTANCE.md).
+Current active implementation is **P1-B4 compatibility migration**. P1-C and P1-D remain ordered follow-ups.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## 2. 已完成
