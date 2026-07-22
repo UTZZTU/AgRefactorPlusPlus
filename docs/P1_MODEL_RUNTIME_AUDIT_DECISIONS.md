@@ -1,6 +1,6 @@
 # P1 模型运行时审计决策账本
 
-> **状态：** P1-A、P1-B0、P1-B1 已完成；P1-B2 official snapshots 为当前唯一活跃实现项
+> **状态：** P1-A、P1-B0、P1-B1、P1-B2 已完成；P1-B3 estimator 为当前唯一活跃实现项
 > **审计基线：** `8b543267a88ed63d343bd633cf29cd6edf9c4127`  
 > **人工复核日期：** 2026-07-22  
 > **作用：** 保存自动审计发现、人工修正、新增发现、阶段归属和关闭证据。  
@@ -368,6 +368,28 @@ partially closed because optional token categories now exist, while Provider
 normalization remains P1-B3. Runtime serialization and native-currency
 consumer migration remain P1-B4/P1-C.
 
+## 8.5 P1-B2 deterministic acceptance
+
+Formal evidence: [`P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md`](P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md)
+
+```text
+implementation_commit=571c51fcc250592a21bf40b3831b7dccfc6400aa
+baseline_unittest=920/920
+p1b2_unittest=950/950
+new_tests=> **状态：** P1-A、P1-B0、P1-B1、P1-B2 已完成；P1-B3 estimator 为当前唯一活跃实现项
+source_records=5
+verified_sources=4
+unreadable_sources=1
+verified_snapshots=6
+patch_id=d0babc3b57dbdef9370786b7e11d0cc39b93760e
+currency_conversion=false
+glm_numeric_price_inferred=false
+provider_budget_legacy_modified=false
+estimator_implemented=false
+```
+
+P1B0-F08 is closed. The official snapshot half of F05/F11 is complete; Legacy authority migration remains P1-C. F12 and Provider token-category normalization advance to P1-B3.
+
 ## 9. 当前下一步
 
 ```text
@@ -377,7 +399,8 @@ Step 0 manual audit review and decision log  completed
 Step 1 P1-A static model compatibility core  completed
 Step 1 P1-B0 pricing consumer audit           completed
 Step 1 P1-B1 typed pricing schema             completed
-Step 1 P1-B2 official model snapshots         active
+Step 1 P1-B2 official model snapshots         completed
+Step 1 P1-B3 usage-to-cost estimator          active
 ```
 
-P1-B1 已完成。当前只推进 P1-B2 official snapshots；P1-B3、P1-B4、P1-C、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。
+P1-B2 已完成。当前只推进 P1-B3 usage-to-cost estimator；P1-B4、P1-C、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。

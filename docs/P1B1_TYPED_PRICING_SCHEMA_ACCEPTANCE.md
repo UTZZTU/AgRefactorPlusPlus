@@ -180,13 +180,19 @@ main_targeted_unittest_recovery.log  edfe4fc5e27fa35539981324701c9b880907c090e12
 staged_stat_recovery.txt  801f80e494e2f59620b2859a83c4fd1a2e7bd47489c84b81d193263cbc7e004f
 ```
 
+## P1-B2 acceptance linkage
+
+P1-B2 completed deterministic acceptance at `571c51fcc250592a21bf40b3831b7dccfc6400aa` with **950/950** tests, 5 source records, 6 verified snapshots and patch ID `d0babc3b57dbdef9370786b7e11d0cc39b93760e`. Evidence: [`P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md`](P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md).
+
+P1B0-F08 is closed at snapshot level. The official-snapshot half of P1B0-F05/F11 is complete; Legacy authority migration remains P1-C.
+
 ## Next package
 
 ```text
 P1-B0 audit/design freeze             completed
 P1-B1 typed pricing schema            completed
-P1-B2 official model-level snapshots  active
-P1-B3 usage-to-cost estimator         pending
+P1-B2 official model-level snapshots  completed
+P1-B3 usage-to-cost estimator         active
 P1-B4 compatibility migration         pending
 P1-C unified effective config         pending
 P1-D bounded real-model smoke         pending

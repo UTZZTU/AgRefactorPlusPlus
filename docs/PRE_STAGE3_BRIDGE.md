@@ -79,7 +79,10 @@ P1-B0 pricing/cost consumer audit is complete. Decisions and the P1-B1 boundary 
 P1-B1 typed pricing/native-currency schema completed deterministic acceptance at `bb219ea9e3049b4f5959c9dbb9c0e585875afd82` with 920/920 tests. Evidence is recorded in
 [`P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md`](P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md).
 
-The active package is P1-B2 official concrete-model pricing snapshots only. Estimator wiring, runtime serialization, Legacy wiring, normal CLI migration, Budget resolution, P5 output, P0 and Stage 3 remain separate later packages.
+P1-B2 official concrete-model pricing snapshots completed deterministic acceptance at `571c51fcc250592a21bf40b3831b7dccfc6400aa` with 950/950 tests. Evidence is recorded in
+[`P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md`](P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md).
+
+The active package is P1-B3 provider-neutral usage-to-cost estimator only. Runtime serialization, Legacy wiring, normal CLI migration, Budget resolution, P5 output, P0 and Stage 3 remain separate later packages.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## Scope control
