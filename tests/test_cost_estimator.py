@@ -2,6 +2,7 @@ import json
 import unittest
 from decimal import Decimal
 
+import agrefactor.models as model_package
 from agrefactor.models import (
     CostEstimationQuality,
     ModelPricingSnapshot,
@@ -128,6 +129,20 @@ def qwen_snapshot():
 
 
 class CostEstimatorTests(unittest.TestCase):
+    def test_model_package_exports_are_unique(self):
+        exports = model_package.__all__
+        self.assertEqual(len(exports), len(set(exports)))
+        self.assertEqual(
+            exports.count("estimate_model_cost"),
+            1,
+        )
+        self.assertEqual(
+            exports.count(
+                "find_official_model_pricing_snapshots"
+            ),
+            1,
+        )
+
     def test_rejects_non_snapshot(self):
         with self.assertRaises(TypeError):
             estimate_model_cost(

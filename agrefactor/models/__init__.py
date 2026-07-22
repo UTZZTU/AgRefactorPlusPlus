@@ -140,7 +140,6 @@ __all__ = [
     "UnknownModelFamilyProfileError",
     "UnknownProviderError",
     "UnsupportedReasoningLevelError",
-    "find_official_model_pricing_snapshots",
     "estimate_model_cost",
     "find_official_model_pricing_snapshots",
     "find_official_pricing_sources",
