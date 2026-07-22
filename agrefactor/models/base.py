@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from math import isfinite
 from typing import Any
 
+from .pricing import CostEstimate, TokenUsageBreakdown
+
 
 def _clean_required(name: str, value: str) -> str:
     if not isinstance(value, str):
@@ -132,6 +134,8 @@ class TokenUsage:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     cost_usd: float | None = None
+    breakdown: TokenUsageBreakdown | None = None
+    estimated_cost: CostEstimate | None = None
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -151,6 +155,30 @@ class TokenUsage:
                 raise ValueError(
                     "cost_usd must be a finite non-negative number or None"
                 )
+
+        if self.breakdown is not None and not isinstance(
+            self.breakdown,
+            TokenUsageBreakdown,
+        ):
+            raise TypeError(
+                "breakdown must be a TokenUsageBreakdown or None"
+            )
+        if self.estimated_cost is not None and not isinstance(
+            self.estimated_cost,
+            CostEstimate,
+        ):
+            raise TypeError(
+                "estimated_cost must be a CostEstimate or None"
+            )
+        if (
+            self.cost_usd is not None
+            and self.estimated_cost is not None
+            and self.estimated_cost.currency not in (None, "USD")
+        ):
+            raise ValueError(
+                "cost_usd must be None when estimated_cost uses "
+                "a non-USD currency"
+            )
 
     @property
     def total_tokens(self) -> int:
