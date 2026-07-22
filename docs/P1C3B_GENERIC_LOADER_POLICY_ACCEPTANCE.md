@@ -159,6 +159,15 @@ main_targeted_unittest.log  bb1c3d7025fad723bd29dcd8f32b501d58710309797fb0a7c85e
 staged_stat.txt  79a8944af19e4daba85f4c4d3efe34214b9c3c18341ce41f359037a183582f42
 ```
 
+## P1-C3C1 acceptance linkage
+
+Formal evidence:
+[`P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md`](P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md).
+
+P1-C3C1 completed deterministic acceptance at `d2f085b3cabefef87e8aa5099bdb1c2a8ce32b7d` with
+**1220/1220** tests and patch ID `f5ecbba1271868d84d1ad5b8482c50926a013c6f`. Currency-unknown framework
+amounts are quarantined from USD/native ledgers; P1-C3C2 is active.
+
 ## Ordered continuation
 
 ```text
@@ -169,13 +178,16 @@ P1-C3 Legacy authority migration              active
 P1-C3A typed Legacy translation               completed
 P1-C3B generic AG2 loader policy migration    completed
 P1-C3C currency-correct Legacy usage bridge   active
+P1-C3C1 typed AG2 usage summary               completed
+P1-C3C2 Legacy native-currency Budget bridge  active
+P1-C3C3 repair config/accounting              pending
 P1-C4 deterministic parity acceptance         pending
 P1-D bounded real-model smoke                  pending
 P4 Public/Hidden source contract               pending
 ```
 
-P1-C3C must replace the currency-implicit Legacy usage/cost bridge with typed
-token and cost provenance, remove the hard-coded usage price fallback from
-authority, record native currency through the existing Budget ledger, and keep
-USD compatibility only for actual USD. It must not modify Loader policy,
-Provider transport, normal CLI, P1-C4, P1-D or Stage 3.
+P1-C3C1 completed the typed AG2 summary and removed hard-coded usage pricing.
+P1-C3C2 is active to translate the summary into validated `TokenUsage`, estimate
+only from the explicit accepted pricing snapshot, and record native currency
+through the existing Budget ledger. Repair-model construction remains P1-C3C3;
+Loader policy, normal CLI, P1-C4, P1-D and Stage 3 must not change.

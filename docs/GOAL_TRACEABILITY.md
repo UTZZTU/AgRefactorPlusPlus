@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | TargetProfile | Stage 1/2/5 | 2.7.3 已完成 committed named profile、executable/settings、parser identity、resource schema、per-field provenance；保持 Vitis 2023.2 默认兼容 | Batch B 多版本/设备/platform 与 Stage 5 source/target | [`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md) |
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
-| Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、P1-C1/P1-C2/P1-C3A 已统一现代与 Legacy typed config；P1-C3B 已移除 Loader 厂商策略，1184/1184 回归通过 | P1-C3C usage bridge、P1-C4 parity、P1-D bounded smoke | [`P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md`](P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md) |
+| Model API Registry | Stage 1/2 | Registry、OpenAI-compatible Provider、P1-C1/P1-C2/P1-C3A/P1-C3B 已统一配置与 Loader；P1-C3C1 已隔离未知币种 AG2 cost，1220/1220 回归通过 | P1-C3C2 native Budget bridge、P1-C3C3 repair accounting、P1-C4 parity、P1-D bounded smoke | [`P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md`](P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md) |
 | 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、typed family instruction、formal CLI 与 strict contract 已完成；真实 proposal evidence 未证明需要放宽 | Stage 2 已关闭；后续仅按新真实证据 harden | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
 | 结构化反馈/状态机 | Stage 2 | Public/Hidden、router/state/coordinator、real handlers、formal repair-aware CLI、5/5 blockers 与 final closure 已完成 | Stage 2 已关闭；Stage 3 复用 correctness gate | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
 | Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、7/7 full chains、9/9 faults、16/16 labels，并经 2.7.7/2.8 closure audit | 扩大版本、器件和 kernel 统计覆盖 | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
@@ -72,21 +72,25 @@ P1-C3A deterministic acceptance is complete at `c14650b2a474478cd82c0a9d1798fdd9
 P1-C3B deterministic acceptance is complete at `343d23c5b811f7c529991450b0952299f460c820` with **1184/1184** tests and patch ID `4e4597fb64f4dc3dab29a6b51228143586cb174c`. Evidence:
 [`P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md`](P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md).
 
+P1-C3C1 deterministic acceptance is complete at `d2f085b3cabefef87e8aa5099bdb1c2a8ce32b7d` with **1220/1220** tests and patch ID `f5ecbba1271868d84d1ad5b8482c50926a013c6f`. Evidence:
+[`P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md`](P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md).
+
 Current next evidence:
 
 ```text
-P1-C3C currency-correct Legacy usage bridge
--> remove hard-coded usage-price fallback from authority
--> distinguish framework-reported cost from typed snapshot estimate
--> carry explicit currency, amount, quality and pricing provenance
--> record native currency through the existing Budget ledger
--> populate cost_usd only when the actual currency is USD
--> resolve the separate testbench-repair model through the shared contract
--> no Loader policy, Provider, normal CLI, P1-C4, P1-D or Stage 3 work
+P1-C3C2 Legacy native-currency Budget bridge
+-> consume the P1-C3C1 typed token/provenance summary
+-> use only the explicit exact-model pricing snapshot from EffectiveModelConfig
+-> create validated TokenUsage for each attributable model bucket
+-> record through BudgetManager.record_model_usage
+-> put non-USD only in costs_by_currency
+-> populate cost_usd only for actual USD
+-> preserve backend-error partial accounting and trace evidence
+-> no repair-model migration, Loader policy, Provider, P1-C4 or Stage 3 work
 ```
 
-P1-C4 remains the deterministic modern/Legacy parity closure. P1-D remains a
-separate bounded network smoke after deterministic P1-C closure.
+P1-C3C3 remains the repair-model config/accounting migration. P1-C4 remains the
+deterministic modern/Legacy parity closure.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## 2. TargetProfile 当前边界
@@ -135,7 +139,7 @@ Stage 2 已关闭，但 Stage 3 仍被 Pre-Stage-3 产品化收尾阻断。权�
 
 ```text
 Step 0  文档冻结与只读 consumer 审计
-Step 1  P1-C3B 已完成；P1-C3C currency-correct Legacy usage bridge 当前活跃
+Step 1  P1-C3C1 已完成；P1-C3C2 Legacy native-currency Budget bridge 当前活跃
 Step 2  P4 Public/Hidden 来源与 provenance
 Step 3  P2 source-only bootstrap 与统一 CLI
 Step 4  Execution Identity

@@ -1,6 +1,6 @@
 # P1 模型运行时审计决策账本
 
-> **状态：** P1-A、P1-B、P1-C1、P1-C2、P1-C3A、P1-C3B 已完成；P1-C3C currency-correct Legacy usage bridge 为当前唯一活跃实现项
+> **状态：** P1-A、P1-B、P1-C1、P1-C2、P1-C3A、P1-C3B、P1-C3C1 已完成；P1-C3C2 Legacy native-currency Budget bridge 为当前唯一活跃实现项
 > **审计基线：** `8b543267a88ed63d343bd633cf29cd6edf9c4127`  
 > **人工复核日期：** 2026-07-22  
 > **作用：** 保存自动审计发现、人工修正、新增发现、阶段归属和关闭证据。  
@@ -691,6 +691,57 @@ P1C3-F05 and the Loader-policy half of P1C3-F06 are closed. The remaining
 hard-coded usage fallback, currency-implicit summary, USD-only Legacy bridge and
 separate repair-model accounting advance to P1-C3C.
 
+## 8.13 P1-C3C audit and P1-C3C1 deterministic acceptance
+
+Read-only currency-correct usage audit:
+
+```text
+artifact_dir=/data/agrefactor_runs/pre_stage3_p1c3c_usage_audit_20260723_024033
+head=4cf848dea1e54128011ca63d67ec6f88e300e8a1
+tracked_files=485
+python_files=188
+python_parse_errors=0
+findings=14
+confirmed_findings=14
+price_helper_definitions=1
+price_helper_consumers=2
+record_model_usage_calls=15
+legacy_cost_usd_consume_calls=1
+production_repair_factory_calls=1
+repository_modified=false
+model_api_called=false
+vitis_run=false
+```
+
+Formal evidence:
+[`P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md`](P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md)
+
+```text
+parent_commit=4cf848dea1e54128011ca63d67ec6f88e300e8a1
+implementation_commit=d2f085b3cabefef87e8aa5099bdb1c2a8ce32b7d
+baseline_unittest=1184/1184
+p1c3c1_unittest=1220/1220
+new_tests=36
+focused_usage_summary=36/36
+baseline_targeted_files=9
+post_targeted_files=10
+patch_id=f5ecbba1271868d84d1ad5b8482c50926a013c6f
+hardcoded_usage_price_helper=false
+hardcoded_deepseek_usage_rates=false
+framework_reported_cost_has_provenance=true
+framework_reported_cost_ledger_eligible=false
+unknown_cost_distinct_from_zero=true
+legacy_total_cost_populated=false
+legacy_cost_usd_populated=false
+native_cost_ledger_modified=false
+legacy_adapter_modified=false
+testbench_repair_modified=false
+real_model_or_vitis_acceptance=false
+```
+
+P1C3C-F01 through F05 and P1C3B-F09 are closed. P1C3C-F06 through
+F09 advance to P1-C3C2. P1C3C-F10 through F13 remain assigned to P1-C3C3.
+
 ## 9. 当前下一步
 
 ```text
@@ -712,7 +763,10 @@ Step 1 P1-C3 Legacy authority migration        active
 Step 1 P1-C3A typed Legacy translation         completed
 Step 1 P1-C3B generic AG2 loader policy        completed
 Step 1 P1-C3C currency-correct usage bridge    active
+Step 1 P1-C3C1 typed AG2 usage summary         completed
+Step 1 P1-C3C2 Legacy native Budget bridge     active
+Step 1 P1-C3C3 repair config/accounting        pending
 Step 1 P1-C4 deterministic parity acceptance   pending
 ```
 
-P1-C3B 已完成。当前只推进 P1-C3C currency-correct Legacy usage bridge；P1-C4、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。
+P1-C3C1 已完成。当前只推进 P1-C3C2 Legacy native-currency Budget bridge；P1-C3C3、P1-C4、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。
