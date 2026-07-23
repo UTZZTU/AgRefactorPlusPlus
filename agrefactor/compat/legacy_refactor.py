@@ -4,13 +4,20 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from decimal import Decimal
 from math import isfinite
 from pathlib import Path
 import sys
 from typing import Any
 
 from agrefactor.config import TaskSpec
-from agrefactor.models import EffectiveModelConfig
+from agrefactor.models import (
+    CostEstimate,
+    CostEstimationQuality,
+    EffectiveModelConfig,
+    TokenUsage,
+    estimate_model_cost,
+)
 from agrefactor.runtime import (
     PhaseResult,
     PhaseStatus,
@@ -130,6 +137,9 @@ class LegacyRefactorSettings:
     reasoning_effort: str | None = None
     base_url: str | None = None
     effective_model_config: EffectiveModelConfig | None = None
+    testbench_repair_effective_config: (
+        EffectiveModelConfig | None
+    ) = None
     enable_testbench_repair: bool = False
     max_testbench_repair_attempts: int = 2
     testbench_repair_model: str | None = None
@@ -183,6 +193,39 @@ class LegacyRefactorSettings:
                     "when effective_model_config is provided"
                 )
 
+        repair_config = self.testbench_repair_effective_config
+        if repair_config is not None:
+            if not isinstance(
+                repair_config,
+                EffectiveModelConfig,
+            ):
+                raise TypeError(
+                    "testbench_repair_effective_config must be an "
+                    "EffectiveModelConfig or None"
+                )
+            if (
+                self.testbench_repair_model is not None
+                and self.testbench_repair_model.strip()
+                != repair_config.model_id
+            ):
+                raise ValueError(
+                    "testbench_repair_model conflicts with "
+                    "testbench_repair_effective_config.model_id"
+                )
+        if (
+            self.enable_testbench_repair
+            and self.effective_model_config is not None
+            and repair_config is None
+            and self.testbench_repair_model is not None
+            and self.testbench_repair_model.strip()
+            != self.effective_model_config.model_id
+        ):
+            raise ValueError(
+                "a dedicated testbench_repair_model requires "
+                "testbench_repair_effective_config when the main "
+                "EffectiveModelConfig is authoritative"
+            )
+
         if self.max_retry_attempts < 0:
             raise ValueError("max_retry_attempts must not be negative")
         if self.max_testbench_repair_attempts < 0:
@@ -211,6 +254,7 @@ class LegacyRefactorSettings:
                 self.testbench_repair_model
                 or self.model
                 or self.effective_model_config is not None
+                or self.testbench_repair_effective_config is not None
             ):
                 raise ValueError(
                     "enabled testbench repair requires "
@@ -279,6 +323,20 @@ def build_legacy_refactor_kwargs(
             "effective_model_config"
         )
 
+    repair_effective_config = (
+        settings.testbench_repair_effective_config
+    )
+    if (
+        repair_effective_config is None
+        and effective_config is not None
+        and (
+            settings.testbench_repair_model is None
+            or settings.testbench_repair_model.strip()
+            == effective_config.model_id
+        )
+    ):
+        repair_effective_config = effective_config
+
     return {
         "kernel_path": task.kernel_path,
         "kernel_name": task.kernel_name,
@@ -297,6 +355,7 @@ def build_legacy_refactor_kwargs(
         "reasoning_effort": resolved_reasoning,
         "base_url": resolved_base_url,
         "llm_config_override": llm_config_override,
+        "effective_model_config": effective_config,
         "effective_model_config_manifest": (
             effective_manifest
         ),
@@ -312,6 +371,9 @@ def build_legacy_refactor_kwargs(
         ),
         "testbench_repair_model": (
             settings.testbench_repair_model
+        ),
+        "testbench_repair_effective_config": (
+            repair_effective_config
         ),
         "testbench_repair_api_key_env": (
             settings.testbench_repair_api_key_env
@@ -483,14 +545,29 @@ class LegacyRefactorAdapter:
         try:
             raw_summary = supplier()
             if not isinstance(raw_summary, Mapping):
-                raise TypeError("usage supplier must return a mapping")
-            metadata = _normalize_usage(raw_summary)
-            repair_usage = _collect_testbench_repair_usage(
+                raise TypeError(
+                    "usage supplier must return a mapping"
+                )
+            (
+                metadata,
+                main_usages,
+                residual_tokens,
+            ) = _normalize_usage(
+                raw_summary,
+                effective_config=(
+                    self._settings.effective_model_config
+                ),
+            )
+            (
+                repair_metadata,
+                repair_fallback_usages,
+                repair_fallback_calls,
+            ) = _collect_testbench_repair_usage(
                 raw_result
             )
             metadata = _merge_testbench_repair_usage(
                 metadata,
-                repair_usage,
+                repair_metadata,
             )
         except Exception as exc:
             metadata = {
@@ -507,11 +584,38 @@ class LegacyRefactorAdapter:
             )
             return metadata
 
-        context.budget.consume(
-            llm_calls=metadata.get("known_llm_calls", 0),
-            tokens=metadata["tokens"],
-            cost_usd=metadata["cost_usd"],
+        budget_before = context.budget.snapshot()
+        for usage in main_usages:
+            context.budget.record_model_usage(usage)
+        if residual_tokens:
+            context.budget.record_observed(
+                tokens=residual_tokens
+            )
+
+        if repair_fallback_calls:
+            context.budget.consume(
+                llm_calls=repair_fallback_calls
+            )
+        for usage in repair_fallback_usages:
+            context.budget.record_model_usage(usage)
+
+        if repair_fallback_calls:
+            metadata["llm_calls_tracked"] = True
+            repair_payload = metadata.get(
+                "testbench_repair_usage"
+            )
+            if isinstance(repair_payload, dict):
+                repair_payload["fallback_replayed"] = True
+
+        budget_after = context.budget.snapshot()
+        metadata["budget_usage_before"] = (
+            budget_before.to_dict()
         )
+        metadata["budget_usage_after"] = (
+            budget_after.to_dict()
+        )
+        metadata["native_ledger_recorded"] = True
+
         context.trace.record(
             "legacy_refactor.usage_recorded",
             phase=RunPhase.REFACTOR.value,
@@ -570,9 +674,136 @@ def _extract_backend_context(
     return None
 
 
+def _decimal_text(value: Decimal) -> str:
+    if value == 0:
+        return "0"
+    return format(value.normalize(), "f")
+
+
+def _cost_map_from_usages(
+    usages: tuple[TokenUsage, ...],
+) -> dict[str, str]:
+    totals: dict[str, Decimal] = {}
+    for usage in usages:
+        estimate = usage.estimated_cost
+        if (
+            estimate is not None
+            and estimate.amount is not None
+            and estimate.currency is not None
+        ):
+            currency = estimate.currency.strip().upper()
+            totals[currency] = (
+                totals.get(currency, Decimal("0"))
+                + estimate.amount
+            )
+            continue
+        if usage.cost_usd is not None:
+            totals["USD"] = (
+                totals.get("USD", Decimal("0"))
+                + Decimal(str(usage.cost_usd))
+            )
+    return {
+        currency: _decimal_text(amount)
+        for currency, amount in sorted(totals.items())
+    }
+
+
+def _usage_with_estimate(
+    usage: TokenUsage,
+    config: EffectiveModelConfig | None,
+) -> TokenUsage:
+    if (
+        config is None
+        or config.pricing_snapshot is None
+    ):
+        return usage
+
+    estimated = estimate_model_cost(
+        config.pricing_snapshot,
+        usage,
+        allow_approximate=(
+            config.allow_approximate_cost
+        ),
+    )
+    cost_usd = None
+    if (
+        estimated.amount is not None
+        and estimated.currency == "USD"
+    ):
+        cost_usd = float(estimated.amount)
+    return TokenUsage(
+        prompt_tokens=usage.prompt_tokens,
+        completion_tokens=usage.completion_tokens,
+        cost_usd=cost_usd,
+        breakdown=usage.breakdown,
+        estimated_cost=estimated,
+    )
+
+
+def _cost_estimate_from_dict(
+    value: Mapping[str, Any],
+) -> CostEstimate:
+    return CostEstimate(
+        quality=CostEstimationQuality(
+            str(
+                value.get(
+                    "quality",
+                    "unavailable",
+                )
+            )
+        ),
+        amount=value.get("amount"),
+        currency=value.get("currency"),
+        pricing_snapshot_sha256=(
+            value.get(
+                "pricing_snapshot_sha256"
+            )
+        ),
+        assumptions=tuple(
+            value.get("assumptions", ())
+        ),
+        unpriced_token_categories=tuple(
+            value.get(
+                "unpriced_token_categories",
+                (),
+            )
+        ),
+    )
+
+
+def _token_usage_from_dict(
+    value: Mapping[str, Any],
+) -> TokenUsage:
+    raw_estimate = value.get("estimated_cost")
+    estimated_cost = (
+        _cost_estimate_from_dict(raw_estimate)
+        if isinstance(raw_estimate, Mapping)
+        else None
+    )
+    raw_cost_usd = value.get("cost_usd")
+    return TokenUsage(
+        prompt_tokens=_nonnegative_int(
+            value.get("prompt_tokens")
+        ),
+        completion_tokens=_nonnegative_int(
+            value.get("completion_tokens")
+        ),
+        cost_usd=(
+            None
+            if raw_cost_usd is None
+            else _nonnegative_float(raw_cost_usd)
+        ),
+        estimated_cost=estimated_cost,
+    )
+
+
 def _collect_testbench_repair_usage(
     raw_result: Any,
-) -> dict[str, Any]:
+) -> tuple[
+    dict[str, Any],
+    tuple[TokenUsage, ...],
+    int,
+]:
     backend_context = _extract_backend_context(raw_result)
     empty = {
         "artifacts": [],
@@ -580,20 +811,25 @@ def _collect_testbench_repair_usage(
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
-        "known_cost_usd": 0.0,
+        "cost_usd": 0.0,
+        "costs_by_currency": {},
         "cost_complete": True,
         "unknown_cost_calls": 0,
         "models": [],
+        "budget_recorded": False,
+        "recording_mode": "none",
     }
     if backend_context is None:
-        return empty
+        return empty, (), 0
 
     candidates: list[Mapping[str, Any]] = []
     top_level = backend_context.get("testbench_repair")
     if isinstance(top_level, Mapping):
         candidates.append(top_level)
 
-    histories = backend_context.get("csynth_csim_history")
+    histories = backend_context.get(
+        "csynth_csim_history"
+    )
     if isinstance(histories, list):
         for history in histories:
             if not isinstance(history, Mapping):
@@ -621,6 +857,11 @@ def _collect_testbench_repair_usage(
 
     result = dict(empty)
     model_names: list[str] = []
+    fallback_usages: list[TokenUsage] = []
+    fallback_calls = 0
+    live_count = 0
+    fallback_count = 0
+    all_usages: list[TokenUsage] = []
 
     for repair in unique:
         usage = repair.get("model_usage")
@@ -653,15 +894,42 @@ def _collect_testbench_repair_usage(
         if artifact:
             result["artifacts"].append(str(artifact))
 
-        raw_cost = usage.get("cost_usd")
-        if raw_cost is None:
-            if calls > 0:
-                result["cost_complete"] = False
-                result["unknown_cost_calls"] += calls
-        else:
-            result["known_cost_usd"] += _nonnegative_float(
-                raw_cost
+        response_usages: list[TokenUsage] = []
+        serialized_responses = usage.get("responses")
+        if isinstance(serialized_responses, list):
+            for response in serialized_responses:
+                if not isinstance(response, Mapping):
+                    continue
+                raw_usage = response.get("usage")
+                if isinstance(raw_usage, Mapping):
+                    response_usages.append(
+                        _token_usage_from_dict(raw_usage)
+                    )
+
+        if not response_usages and calls > 0:
+            raw_cost = usage.get("cost_usd")
+            response_usages.append(
+                TokenUsage(
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    cost_usd=(
+                        None
+                        if raw_cost is None
+                        else _nonnegative_float(raw_cost)
+                    ),
+                )
             )
+
+        all_usages.extend(response_usages)
+        budget_recorded = bool(
+            usage.get("budget_recorded", False)
+        )
+        if budget_recorded:
+            live_count += 1
+        else:
+            fallback_count += 1
+            fallback_calls += calls
+            fallback_usages.extend(response_usages)
 
         models = usage.get("models")
         if isinstance(models, (list, tuple)):
@@ -669,35 +937,103 @@ def _collect_testbench_repair_usage(
                 if isinstance(model, str) and model:
                     model_names.append(model)
 
+        if calls > len(response_usages):
+            result["cost_complete"] = False
+            result["unknown_cost_calls"] += (
+                calls - len(response_usages)
+            )
+        for response_usage in response_usages:
+            if (
+                response_usage.cost_usd is None
+                and (
+                    response_usage.estimated_cost is None
+                    or response_usage.estimated_cost.amount is None
+                )
+            ):
+                result["cost_complete"] = False
+                result["unknown_cost_calls"] += 1
+
     result["models"] = list(dict.fromkeys(model_names))
-    return result
+    result["costs_by_currency"] = (
+        _cost_map_from_usages(tuple(all_usages))
+    )
+    result["cost_usd"] = sum(
+        usage.cost_usd or 0.0
+        for usage in all_usages
+    )
+    result["budget_recorded"] = (
+        live_count > 0 and fallback_count == 0
+    )
+    if live_count and fallback_count:
+        result["recording_mode"] = "mixed"
+    elif live_count:
+        result["recording_mode"] = "live_budget"
+    elif fallback_count:
+        result["recording_mode"] = "post_hoc_fallback"
+
+    return (
+        result,
+        tuple(fallback_usages),
+        fallback_calls,
+    )
+
+
+def _merge_cost_maps(
+    first: Mapping[str, Any],
+    second: Mapping[str, Any],
+) -> dict[str, str]:
+    totals: dict[str, Decimal] = {}
+    for mapping in (first, second):
+        if not isinstance(mapping, Mapping):
+            continue
+        for currency, raw_amount in mapping.items():
+            normalized = str(currency).upper()
+            totals[normalized] = (
+                totals.get(normalized, Decimal("0"))
+                + Decimal(str(raw_amount))
+            )
+    return {
+        currency: _decimal_text(amount)
+        for currency, amount in sorted(totals.items())
+    }
 
 
 def _merge_testbench_repair_usage(
     base: dict[str, Any],
     repair: Mapping[str, Any],
 ) -> dict[str, Any]:
-    repair_tokens = _nonnegative_int(repair.get("total_tokens"))
-    repair_calls = _nonnegative_int(repair.get("calls"))
+    repair_tokens = _nonnegative_int(
+        repair.get("total_tokens")
+    )
+    repair_calls = _nonnegative_int(
+        repair.get("calls")
+    )
 
     if repair_tokens == 0 and repair_calls == 0:
         return base
 
     merged = dict(base)
-    merged["accounting_mode"] = "post_hoc_combined"
+    merged["accounting_mode"] = "native_combined"
     merged["tokens"] = (
         _nonnegative_int(base.get("tokens"))
         + repair_tokens
     )
     merged["cost_usd"] = (
         _nonnegative_float(base.get("cost_usd"))
-        + _nonnegative_float(repair.get("known_cost_usd"))
+        + _nonnegative_float(repair.get("cost_usd"))
+    )
+    merged["costs_by_currency"] = _merge_cost_maps(
+        base.get("costs_by_currency", {}),
+        repair.get("costs_by_currency", {}),
     )
     merged["known_llm_calls"] = repair_calls
     merged["llm_calls_complete"] = False
-    merged["llm_calls_tracked"] = False
+    merged["llm_calls_tracked"] = bool(
+        repair.get("budget_recorded", False)
+    )
     merged["cost_complete"] = bool(
-        repair.get("cost_complete", True)
+        base.get("cost_complete", False)
+        and repair.get("cost_complete", True)
     )
     merged["unknown_cost_calls"] = _nonnegative_int(
         repair.get("unknown_cost_calls")
@@ -705,46 +1041,130 @@ def _merge_testbench_repair_usage(
     merged["model_breakdown_complete"] = False
     merged["testbench_repair_usage"] = dict(repair)
     merged["deduplication"] = (
-        "AutoGen agent usage and provider-backed testbench repair "
+        "AG2 agent usage and provider-backed testbench repair "
         "usage are separate sources; repair artifacts are counted "
-        "once by artifact path."
+        "once by artifact path. Live repair Budget records are not "
+        "replayed post hoc."
     )
     return merged
 
 
-def _normalize_usage(summary: Mapping[str, Any]) -> dict[str, Any]:
+def _normalize_usage(
+    summary: Mapping[str, Any],
+    *,
+    effective_config: EffectiveModelConfig | None = None,
+) -> tuple[
+    dict[str, Any],
+    tuple[TokenUsage, ...],
+    int,
+]:
     models: dict[str, Any] = {}
+    usages: list[TokenUsage] = []
     raw_models = summary.get("models", {})
 
     if isinstance(raw_models, Mapping):
         for model_name, raw_info in raw_models.items():
             if not isinstance(raw_info, Mapping):
                 continue
+            prompt_tokens = _nonnegative_int(
+                raw_info.get("prompt_tokens")
+            )
+            completion_tokens = _nonnegative_int(
+                raw_info.get("completion_tokens")
+            )
+            usage = TokenUsage(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+            )
+
+            attribution = "no_effective_config"
+            if effective_config is not None:
+                if str(model_name) == effective_config.model_id:
+                    attribution = "exact_model_id"
+                    usage = _usage_with_estimate(
+                        usage,
+                        effective_config,
+                    )
+                else:
+                    attribution = "model_id_mismatch"
+
+            usages.append(usage)
             models[str(model_name)] = {
-                "prompt_tokens": _nonnegative_int(
-                    raw_info.get("prompt_tokens")
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": usage.total_tokens,
+                "framework_reported_cost": raw_info.get(
+                    "framework_reported_cost"
                 ),
-                "completion_tokens": _nonnegative_int(
-                    raw_info.get("completion_tokens")
-                ),
-                "total_tokens": _nonnegative_int(
-                    raw_info.get("total_tokens")
-                ),
-                "cost_usd": _nonnegative_float(
-                    raw_info.get("cost", raw_info.get("total_cost"))
-                ),
+                "pricing_attribution": attribution,
+                "token_usage": usage.to_dict(),
             }
 
-    return {
-        "accounting_mode": "post_hoc",
+    reported_total = _nonnegative_int(
+        summary.get("total_tokens")
+    )
+    model_tokens = sum(
+        usage.total_tokens for usage in usages
+    )
+    total_tokens = max(reported_total, model_tokens)
+    residual_tokens = total_tokens - model_tokens
+    costs_by_currency = _cost_map_from_usages(
+        tuple(usages)
+    )
+    usd_total = Decimal(
+        costs_by_currency.get("USD", "0")
+    )
+
+    priced = [
+        usage
+        for usage in usages
+        if usage.total_tokens > 0
+    ]
+    cost_complete = bool(
+        residual_tokens == 0
+        and priced
+        and all(
+            usage.estimated_cost is not None
+            and usage.estimated_cost.amount is not None
+            for usage in priced
+        )
+    )
+
+    metadata = {
+        "accounting_mode": "native_post_hoc",
         "source": str(summary.get("source", "unknown")),
-        "registered_agents": _nonnegative_int(summary.get("agents")),
-        "tokens": _nonnegative_int(summary.get("total_tokens")),
-        "cost_usd": _nonnegative_float(summary.get("total_cost")),
+        "registered_agents": _nonnegative_int(
+            summary.get("agents")
+        ),
+        "tokens": total_tokens,
+        "model_tokens": model_tokens,
+        "unattributed_tokens": residual_tokens,
+        "cost_usd": float(usd_total),
+        "costs_by_currency": costs_by_currency,
         "models": models,
+        "framework_reported_cost": summary.get(
+            "framework_reported_cost"
+        ),
+        "cost_complete": cost_complete,
+        "known_llm_calls": 0,
         "llm_calls_tracked": False,
         "tool_calls_tracked": False,
+        "pricing_snapshot_sha256": (
+            None
+            if effective_config is None
+            else effective_config.pricing_snapshot_sha256
+        ),
+        "effective_model_id": (
+            None
+            if effective_config is None
+            else effective_config.model_id
+        ),
     }
+    return (
+        metadata,
+        tuple(usages),
+        residual_tokens,
+    )
 
 
 def _nonnegative_int(value: Any) -> int:

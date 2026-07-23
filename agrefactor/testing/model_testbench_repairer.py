@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from decimal import Decimal
 from typing import Any
 
 from agrefactor.evaluation.preflight_feedback import (
@@ -16,11 +17,14 @@ from agrefactor.evaluation.preflight_feedback_view import (
 )
 from agrefactor.models import (
     ChatMessage,
+    EffectiveModelConfig,
     ModelFamilyProfile,
     ModelRegistry,
     ModelRequest,
     ModelResponse,
+    estimate_model_cost,
 )
+from agrefactor.runtime.budget import BudgetManager
 from agrefactor.repair.protocol import (
     RepairModelObservation,
 )
@@ -356,16 +360,18 @@ def build_testbench_repair_messages(
 
 
 class ModelTestbenchRepairer:
-    """Use the shared model registry for testbench-only repair."""
+    # One resolved model configuration for testbench-only repair.
 
     def __init__(
         self,
         *,
         registry: ModelRegistry,
-        model_name: str,
+        model_name: str | None = None,
+        effective_config: EffectiveModelConfig | None = None,
         parameters: Mapping[str, Any] | None = None,
         family_instructions: Mapping[str, str] | None = None,
         prompt_builder: SharedLayeredPromptBuilder | None = None,
+        budget: BudgetManager | None = None,
     ) -> None:
         if not isinstance(registry, ModelRegistry):
             raise TypeError("registry must be a ModelRegistry")
@@ -379,23 +385,83 @@ class ModelTestbenchRepairer:
                 "prompt_builder must be a "
                 "SharedLayeredPromptBuilder or None"
             )
+        if budget is not None and not isinstance(
+            budget,
+            BudgetManager,
+        ):
+            raise TypeError(
+                "budget must be a BudgetManager or None"
+            )
 
-        (
-            self._model,
-            self._provider,
-            self._family_profile,
-        ) = registry.resolve_with_profile(model_name)
-        self._parameters = dict(parameters or {})
-        self._family_instructions = dict(
-            family_instructions or {}
+        if effective_config is None:
+            if model_name is None:
+                raise ValueError(
+                    "model_name is required when "
+                    "effective_config is not provided"
+                )
+            (
+                model,
+                provider,
+                family_profile,
+            ) = registry.resolve_with_profile(model_name)
+            raw_parameters = dict(parameters or {})
+            effective_parameters = (
+                family_profile.merge_parameters(
+                    model.default_parameters,
+                    raw_parameters,
+                )
+            )
+            family_instruction = None
+            if model.family:
+                family_instruction = dict(
+                    family_instructions or {}
+                ).get(model.family)
+            resolved_config = None
+        else:
+            if not isinstance(
+                effective_config,
+                EffectiveModelConfig,
+            ):
+                raise TypeError(
+                    "effective_config must be an "
+                    "EffectiveModelConfig or None"
+                )
+            conflicts = []
+            if model_name is not None:
+                conflicts.append("model_name")
+            if parameters is not None:
+                conflicts.append("parameters")
+            if family_instructions is not None:
+                conflicts.append("family_instructions")
+            if conflicts:
+                raise ValueError(
+                    "effective_config is authoritative; "
+                    "remove parallel constructor arguments: "
+                    + ", ".join(conflicts)
+                )
+            resolved_config = effective_config
+            model = resolved_config.to_model_spec()
+            provider = registry.get_provider(
+                resolved_config.provider_name
+            )
+            family_profile = resolved_config.family_profile
+            effective_parameters = resolved_config.parameters
+            family_instruction = (
+                resolved_config.family_instruction
+            )
+            raw_parameters = {}
+
+        self._effective_config = resolved_config
+        self._model = model
+        self._provider = provider
+        self._family_profile = family_profile
+        self._family_instruction = family_instruction
+        self._parameters = raw_parameters
+        self._effective_parameters = dict(
+            effective_parameters
         )
         self._prompt_builder = prompt_builder
-        self._effective_parameters = (
-            self._family_profile.merge_parameters(
-                self._model.default_parameters,
-                self._parameters,
-            )
-        )
+        self._budget = budget
         self._responses: list[ModelResponse] = []
         self._prompts: list[LayeredPrompt] = []
         self._audit_events: list[
@@ -403,7 +469,7 @@ class ModelTestbenchRepairer:
         ] = []
 
         json.dumps(
-            self._parameters,
+            self._effective_parameters,
             ensure_ascii=False,
             sort_keys=True,
         )
@@ -413,58 +479,130 @@ class ModelTestbenchRepairer:
         return self._family_profile
 
     @property
+    def effective_config(
+        self,
+    ) -> EffectiveModelConfig | None:
+        return self._effective_config
+
+    @property
+    def budget(self) -> BudgetManager | None:
+        return self._budget
+
+    @property
+    def records_budget_usage(self) -> bool:
+        return self._budget is not None
+
+    @property
     def effective_parameters(self) -> dict[str, Any]:
         return dict(self._effective_parameters)
 
     @property
     def responses(self) -> tuple[ModelResponse, ...]:
-        """Return normalized responses observed by this adapter."""
-
         return tuple(self._responses)
 
     @property
     def last_response(self) -> ModelResponse | None:
-        """Return the most recent normalized response."""
-
         return self._responses[-1] if self._responses else None
 
     @property
     def prompts(self) -> tuple[LayeredPrompt, ...]:
-        """Return layered prompts built by this adapter."""
-
         return tuple(self._prompts)
 
     @property
     def last_prompt(self) -> LayeredPrompt | None:
-        """Return the most recently built layered prompt."""
-
         return self._prompts[-1] if self._prompts else None
 
     @property
     def audit_events(
         self,
     ) -> tuple[RepairModelObservation, ...]:
-        """Return one safe model observation per repair call."""
-
         return tuple(self._audit_events)
 
-    def repair(self, request: TestbenchRepairRequest) -> str:
-        """Generate and validate one complete repaired testbench."""
+    def _with_estimated_cost(
+        self,
+        response: ModelResponse,
+    ) -> ModelResponse:
+        config = self._effective_config
+        if (
+            config is None
+            or config.pricing_snapshot is None
+        ):
+            return response
 
+        snapshot = config.pricing_snapshot
+        estimated = estimate_model_cost(
+            snapshot,
+            response.usage,
+            allow_approximate=(
+                config.allow_approximate_cost
+            ),
+        )
+        legacy_cost_usd = response.usage.cost_usd
+        if (
+            legacy_cost_usd is not None
+            and estimated.currency not in (None, "USD")
+        ):
+            raise ValueError(
+                "non-USD repair pricing estimate cannot "
+                "be combined with provider cost_usd"
+            )
+        if (
+            estimated.amount is not None
+            and estimated.currency == "USD"
+        ):
+            if legacy_cost_usd is not None:
+                if (
+                    abs(
+                        Decimal(str(legacy_cost_usd))
+                        - estimated.amount
+                    )
+                    > Decimal("1e-12")
+                ):
+                    raise ValueError(
+                        "provider cost_usd conflicts with "
+                        "the explicit repair pricing snapshot"
+                    )
+            legacy_cost_usd = float(estimated.amount)
+
+        usage = replace(
+            response.usage,
+            cost_usd=legacy_cost_usd,
+            estimated_cost=estimated,
+        )
+        metadata = dict(response.metadata)
+        metadata.update(
+            {
+                "pricing_estimation_attempted": True,
+                "pricing_estimation_quality": (
+                    estimated.quality.value
+                ),
+                "pricing_snapshot_sha256": (
+                    snapshot.pricing_snapshot_sha256
+                ),
+                "pricing_currency": estimated.currency,
+                "pricing_amount_available": (
+                    estimated.amount is not None
+                ),
+            }
+        )
+        return replace(
+            response,
+            usage=usage,
+            metadata=metadata,
+        )
+
+    def repair(
+        self,
+        request: TestbenchRepairRequest,
+    ) -> str:
         if not isinstance(request, TestbenchRepairRequest):
             raise TypeError(
                 "request must be a TestbenchRepairRequest"
             )
 
-        family_instruction = None
-        if self._model.family:
-            family_instruction = self._family_instructions.get(
-                self._model.family
-            )
-
         prompt = build_testbench_repair_prompt(
             request,
-            family_instruction=family_instruction,
+            family_instruction=self._family_instruction,
             family_profile=self._family_profile,
             builder=self._prompt_builder,
         )
@@ -476,13 +614,17 @@ class ModelTestbenchRepairer:
             )
         )
 
-        parameters = dict(self._effective_parameters)
+        if self._budget is not None:
+            self._budget.ensure_available(llm_calls=1)
+            self._budget.consume(llm_calls=1)
 
         response = self._provider.generate(
             self._model,
             ModelRequest(
                 messages=prompt.messages,
-                parameters=parameters,
+                parameters=dict(
+                    self._effective_parameters
+                ),
             ),
         )
         if not isinstance(response, ModelResponse):
@@ -490,7 +632,13 @@ class ModelTestbenchRepairer:
                 "model provider must return a ModelResponse"
             )
 
+        response = self._with_estimated_cost(response)
         self._responses.append(response)
+        if self._budget is not None:
+            self._budget.record_model_usage(
+                response.usage
+            )
+
         self._audit_events[-1] = (
             RepairModelObservation.from_response(
                 prompt_manifest=prompt.manifest,
@@ -506,8 +654,7 @@ class ModelTestbenchRepairer:
         issues = contract.validate(proposed)
         if issues:
             raise TestbenchRepairResponseError(
-                "repaired testbench violated deterministic contract: "
-                + "; ".join(issues)
+                "repaired testbench violated deterministic "
+                "contract: " + "; ".join(issues)
             )
-
         return proposed

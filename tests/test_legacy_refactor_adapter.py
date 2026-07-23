@@ -176,10 +176,10 @@ class LegacyRefactorAdapterTests(unittest.TestCase):
         usage = context.budget.snapshot()
 
         self.assertEqual(usage.tokens, 1000)
-        self.assertAlmostEqual(usage.cost_usd, 0.000154)
+        self.assertEqual(usage.cost_usd, 0.0)
         self.assertEqual(
             result.metadata["legacy_usage"]["accounting_mode"],
-            "post_hoc",
+            "native_post_hoc",
         )
         self.assertFalse(
             result.metadata["legacy_usage"]["llm_calls_tracked"]
@@ -240,10 +240,10 @@ class LegacyRefactorAdapterTests(unittest.TestCase):
 
         self.assertEqual(usage.tokens, 1050)
         self.assertEqual(usage.llm_calls, 2)
-        self.assertAlmostEqual(usage.cost_usd, 0.000154)
+        self.assertEqual(usage.cost_usd, 0.0)
         self.assertEqual(
             metadata["accounting_mode"],
-            "post_hoc_combined",
+            "native_combined",
         )
         self.assertEqual(metadata["known_llm_calls"], 2)
         self.assertFalse(metadata["llm_calls_complete"])
@@ -309,8 +309,8 @@ class LegacyRefactorAdapterTests(unittest.TestCase):
 
         self.assertEqual(usage.tokens, 140)
         self.assertEqual(usage.llm_calls, 2)
-        self.assertAlmostEqual(usage.cost_usd, 0.0013)
-        self.assertTrue(metadata["cost_complete"])
+        self.assertAlmostEqual(usage.cost_usd, 0.0003)
+        self.assertFalse(metadata["cost_complete"])
         self.assertEqual(
             metadata["testbench_repair_usage"]["artifacts"],
             ["/tmp/repair-2.json", "/tmp/repair-1.json"],
@@ -371,7 +371,7 @@ class LegacyRefactorAdapterTests(unittest.TestCase):
 
         usage = context.budget.snapshot()
         self.assertEqual(usage.tokens, 320)
-        self.assertAlmostEqual(usage.cost_usd, 0.0000476)
+        self.assertEqual(usage.cost_usd, 0.0)
 
         events = [event.event for event in context.trace.events]
         self.assertIn("legacy_refactor.usage_recorded", events)

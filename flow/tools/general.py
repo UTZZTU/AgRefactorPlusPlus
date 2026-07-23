@@ -1,4 +1,5 @@
 import os, sys, json, dotenv, multiprocessing, re, subprocess, signal, time, requests # type: ignore
+from decimal import Decimal
 from datetime import datetime
 from typing import Optional, Dict, Any
 from autogen.agentchat.group import ContextVariables # type: ignore
@@ -182,12 +183,17 @@ def _collect_testbench_repair_usage(
     start_index: int = 0,
 ):
     responses = tuple(
-        getattr(testbench_repairer, "responses", ())
+        getattr(
+            testbench_repairer,
+            "responses",
+            (),
+        )
     )[start_index:]
     prompt_tokens = 0
     completion_tokens = 0
-    costs = []
     models = []
+    serialized = []
+    costs: dict[str, Decimal] = {}
 
     for response in responses:
         usage = getattr(response, "usage", None)
@@ -199,24 +205,96 @@ def _collect_testbench_repair_usage(
         completion_tokens += int(
             getattr(usage, "completion_tokens", 0)
         )
-        cost = getattr(usage, "cost_usd", None)
-        if cost is not None:
-            costs.append(float(cost))
         model = getattr(response, "model", None)
         if isinstance(model, str) and model:
             models.append(model)
+
+        to_dict = getattr(response, "to_dict", None)
+        if callable(to_dict):
+            serialized.append(to_dict())
+
+        estimate = getattr(
+            usage,
+            "estimated_cost",
+            None,
+        )
+        amount = getattr(estimate, "amount", None)
+        currency = getattr(
+            estimate,
+            "currency",
+            None,
+        )
+        if (
+            amount is not None
+            and isinstance(currency, str)
+            and currency.strip()
+        ):
+            normalized = currency.strip().upper()
+            costs[normalized] = (
+                costs.get(normalized, Decimal("0"))
+                + amount
+            )
+        else:
+            cost_usd = getattr(
+                usage,
+                "cost_usd",
+                None,
+            )
+            if cost_usd is not None:
+                costs["USD"] = (
+                    costs.get("USD", Decimal("0"))
+                    + Decimal(str(cost_usd))
+                )
+
+    cost_complete = (
+        len(responses) == len(serialized)
+        and all(
+            (
+                (
+                    response.get("usage", {})
+                    .get("estimated_cost")
+                )
+                or {}
+            ).get("amount") is not None
+            or response.get(
+                "usage",
+                {},
+            ).get("cost_usd") is not None
+            for response in serialized
+        )
+    )
+    costs_by_currency = {
+        currency: (
+            "0"
+            if amount == 0
+            else format(amount.normalize(), "f")
+        )
+        for currency, amount in sorted(costs.items())
+    }
 
     return {
         "calls": len(responses),
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
-        "total_tokens": prompt_tokens + completion_tokens,
+        "total_tokens": (
+            prompt_tokens + completion_tokens
+        ),
         "cost_usd": (
-            sum(costs)
-            if len(costs) == len(responses)
+            float(costs.get("USD", 0))
+            if "USD" in costs
             else None
         ),
+        "costs_by_currency": costs_by_currency,
+        "cost_complete": cost_complete,
         "models": models,
+        "responses": serialized,
+        "budget_recorded": bool(
+            getattr(
+                testbench_repairer,
+                "records_budget_usage",
+                False,
+            )
+        ),
     }
 
 

@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 import flow.tools as tools
 from flow.rag.rag_integration import KnowledgeManager
 from flow.base_agent import reset_agrefactorpp_usage_registry, print_agrefactorpp_usage_summary
+from agrefactor.models import EffectiveModelConfig
 from agrefactor.runtime.budget import BudgetManager
 from agrefactor.testing import (
     build_openai_compatible_testbench_repairer,
@@ -103,6 +104,7 @@ def hls_refactor_with_rag(
     reasoning_effort: Optional[str] = None,
     base_url: Optional[str] = None,
     llm_config_override: Optional[Dict[str, Any]] = None,
+    effective_model_config: Optional[EffectiveModelConfig] = None,
     effective_model_config_manifest: Optional[Dict[str, Any]] = None,
     family_instruction: Optional[str] = None,
     model_configuration_source: str = "legacy_compatibility",
@@ -111,6 +113,9 @@ def hls_refactor_with_rag(
     enable_testbench_repair: bool = False,
     max_testbench_repair_attempts: int = 2,
     testbench_repair_model: Optional[str] = None,
+    testbench_repair_effective_config: (
+        Optional[EffectiveModelConfig]
+    ) = None,
     testbench_repair_api_key_env: str = "OPENAI_API_KEY",
     external_testbench: Optional[str] = None,
     external_tb_instruction: Optional[str] = None,
@@ -135,6 +140,46 @@ def hls_refactor_with_rag(
         base_url,
         llm_config_override,
     )
+    if (
+        effective_model_config is not None
+        and not isinstance(
+            effective_model_config,
+            EffectiveModelConfig,
+        )
+    ):
+        raise TypeError(
+            "effective_model_config must be an "
+            "EffectiveModelConfig or None"
+        )
+    if (
+        testbench_repair_effective_config is not None
+        and not isinstance(
+            testbench_repair_effective_config,
+            EffectiveModelConfig,
+        )
+    ):
+        raise TypeError(
+            "testbench_repair_effective_config must be an "
+            "EffectiveModelConfig or None"
+        )
+    if (
+        effective_model_config is not None
+        and effective_model_config_manifest is None
+    ):
+        effective_model_config_manifest = (
+            effective_model_config.to_manifest()
+        )
+    if (
+        effective_model_config is not None
+        and effective_model_config_manifest is not None
+        and effective_model_config_manifest
+        != effective_model_config.to_manifest()
+    ):
+        raise ValueError(
+            "effective_model_config_manifest does not "
+            "match effective_model_config"
+        )
+
     if (
         effective_model_config_manifest is not None
         and not isinstance(
@@ -198,19 +243,57 @@ def hls_refactor_with_rag(
                 "enabled testbench repair requires at least "
                 "one repair attempt"
             )
-        repair_model = testbench_repair_model or model
-        if not repair_model:
-            raise ValueError(
-                "enabled testbench repair requires "
-                "testbench_repair_model or model"
-            )
-        testbench_repairer = (
-            build_openai_compatible_testbench_repairer(
-                model=repair_model,
-                base_url=base_url,
-                api_key_env=testbench_repair_api_key_env,
-            )
+
+        resolved_repair_effective_config = (
+            testbench_repair_effective_config
         )
+        if (
+            resolved_repair_effective_config is None
+            and effective_model_config is not None
+            and (
+                testbench_repair_model is None
+                or testbench_repair_model
+                == effective_model_config.model_id
+            )
+        ):
+            resolved_repair_effective_config = (
+                effective_model_config
+            )
+
+        if resolved_repair_effective_config is not None:
+            if (
+                testbench_repair_model is not None
+                and testbench_repair_model
+                != resolved_repair_effective_config.model_id
+            ):
+                raise ValueError(
+                    "testbench_repair_model conflicts with "
+                    "the resolved repair EffectiveModelConfig"
+                )
+            testbench_repairer = (
+                build_openai_compatible_testbench_repairer(
+                    effective_config=(
+                        resolved_repair_effective_config
+                    ),
+                    budget=budget,
+                )
+            )
+        else:
+            repair_model = testbench_repair_model or model
+            if not repair_model:
+                raise ValueError(
+                    "enabled testbench repair requires a model"
+                )
+            testbench_repairer = (
+                build_openai_compatible_testbench_repairer(
+                    model=repair_model,
+                    base_url=base_url,
+                    api_key_env=(
+                        testbench_repair_api_key_env
+                    ),
+                    budget=budget,
+                )
+            )
 
     output_dir = tools.general.create_output_dir(output_dir)
     tools.general.create_log_and_redirect(output_dir)
@@ -228,6 +311,12 @@ def hls_refactor_with_rag(
         "target_profile": dict(target_profile or {}),
         "effective_model_config": copy.deepcopy(
             effective_model_config_manifest
+        ),
+        "testbench_repair_effective_model_config": (
+            None
+            if testbench_repairer is None
+            or testbench_repairer.effective_config is None
+            else testbench_repairer.effective_config.to_manifest()
         ),
         "model_family_instruction": (
             family_instruction or ""
