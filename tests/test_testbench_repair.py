@@ -7,6 +7,7 @@ from agrefactor.config import TargetProfile, TaskSpec
 from agrefactor.evaluation import TestbenchPreflight
 from agrefactor.testing import (
     TestbenchRepairLoop,
+    TestbenchRepairResponseError,
     TestbenchRepairStatus,
 )
 
@@ -275,6 +276,46 @@ class TestbenchRepairLoopTests(unittest.TestCase):
             "temporary failure",
             result.attempts[1].error or "",
         )
+
+    def test_contract_rejection_is_forwarded_to_next_attempt(
+        self,
+    ) -> None:
+        repairer = RecordingRepairer(
+            [
+                TestbenchRepairResponseError(
+                    "repaired testbench violated deterministic "
+                    "contract: missing required declaration for "
+                    "function: insert; missing required declaration "
+                    "for function: dfs_traverse"
+                ),
+                VALID_TB,
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.make_loop(
+                repairer,
+                attempts=2,
+            ).run(
+                work_dir=directory,
+                testbench_code=BROKEN_TB,
+                original_code=ORIGINAL,
+                candidate_code=CANDIDATE,
+            )
+
+        self.assertTrue(result.succeeded)
+        self.assertEqual(len(repairer.requests), 2)
+        self.assertEqual(
+            repairer.requests[0].prior_attempt_summaries,
+            (),
+        )
+        summaries = (
+            repairer.requests[1].prior_attempt_summaries
+        )
+        self.assertEqual(len(summaries), 1)
+        self.assertIn("Attempt 1", summaries[0])
+        self.assertIn("insert", summaries[0])
+        self.assertIn("dfs_traverse", summaries[0])
 
     def test_zero_budget_returns_exhausted(self) -> None:
         repairer = RecordingRepairer([])

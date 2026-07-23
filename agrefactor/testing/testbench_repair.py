@@ -59,6 +59,7 @@ class TestbenchRepairRequest:
     original_code: str
     candidate_code: str
     preflight: TestbenchPreflightResult
+    prior_attempt_summaries: tuple[str, ...] = ()
     task: TaskSpec = field(
         default_factory=_default_testbench_repair_task
     )
@@ -72,6 +73,20 @@ class TestbenchRepairRequest:
             raise TypeError(
                 "TestbenchRepairRequest.task must be a TaskSpec"
             )
+        summaries = tuple(self.prior_attempt_summaries)
+        if not all(
+            isinstance(item, str) and item.strip()
+            for item in summaries
+        ):
+            raise ValueError(
+                "prior_attempt_summaries must contain "
+                "only non-empty strings"
+            )
+        object.__setattr__(
+            self,
+            "prior_attempt_summaries",
+            tuple(item.strip() for item in summaries),
+        )
         for name in (
             "current_testbench",
             "original_code",
@@ -342,6 +357,7 @@ class TestbenchRepairLoop:
 
         latest = initial
         last_repair_error: str | None = None
+        prior_attempt_summaries: list[str] = []
 
         for attempt_number in range(
             1,
@@ -354,6 +370,9 @@ class TestbenchRepairLoop:
                 original_code=original,
                 candidate_code=candidate,
                 preflight=latest,
+                prior_attempt_summaries=tuple(
+                    prior_attempt_summaries
+                ),
                 task=task,
             )
 
@@ -387,6 +406,16 @@ class TestbenchRepairLoop:
                         ),
                     )
                 )
+                prior_attempt_summaries.append(
+                    self._prior_attempt_summary(
+                        attempt_number,
+                        last_repair_error,
+                        include_detail=(
+                            type(exc).__name__
+                            == "TestbenchRepairResponseError"
+                        ),
+                    )
+                )
                 continue
 
             if not isinstance(proposed, str) or not proposed.strip():
@@ -411,6 +440,12 @@ class TestbenchRepairLoop:
                                 observation,
                             )
                         ),
+                    )
+                )
+                prior_attempt_summaries.append(
+                    self._prior_attempt_summary(
+                        attempt_number,
+                        last_repair_error,
                     )
                 )
                 continue
@@ -438,6 +473,12 @@ class TestbenchRepairLoop:
                                 observation,
                             )
                         ),
+                    )
+                )
+                prior_attempt_summaries.append(
+                    self._prior_attempt_summary(
+                        attempt_number,
+                        last_repair_error,
                     )
                 )
                 continue
@@ -541,6 +582,27 @@ class TestbenchRepairLoop:
         if budget is not None:
             kwargs["budget"] = budget
         return self._preflight.compile_and_link(**kwargs)
+
+    @staticmethod
+    def _prior_attempt_summary(
+        attempt_number: int,
+        error: str,
+        *,
+        include_detail: bool = True,
+    ) -> str:
+        prefix = (
+            f"Attempt {attempt_number} was rejected before "
+            "testbench preflight. "
+        )
+        if not include_detail:
+            return (
+                prefix
+                + "The provider failed before producing an "
+                "acceptable replacement; do not repeat the same "
+                "response shape."
+            )
+        compact = " ".join(str(error).split())
+        return prefix + compact[:2000]
 
     @staticmethod
     def _non_repairable_reason(

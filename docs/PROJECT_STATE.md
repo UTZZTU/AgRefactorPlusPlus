@@ -1294,3 +1294,20 @@ P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
 ```
+
+<!-- P0_TESTBENCH_REPAIR_RETRY_FEEDBACK -->
+## P0 observed Testbench repair retry gap
+
+A real DFS run used both Public Testbench repair attempts, but the
+second prompt did not receive the first deterministic contract
+rejection. Repair requests now carry safe prior-attempt summaries,
+and every prompt explicitly lists required declarations, macros and
+minimum call counts. The deterministic contract and two-attempt bound
+remain unchanged. See
+[`P0_TESTBENCH_REPAIR_RETRY_FEEDBACK.md`](P0_TESTBENCH_REPAIR_RETRY_FEEDBACK.md).
+
+```text
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```

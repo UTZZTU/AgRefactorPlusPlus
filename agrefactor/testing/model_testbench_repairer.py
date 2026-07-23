@@ -203,6 +203,39 @@ class TestbenchRepairContract:
 
         return tuple(issues)
 
+    def to_prompt_requirements(self) -> tuple[str, ...]:
+        requirements: list[str] = []
+        if self.required_function_names:
+            requirements.append(
+                "Required function declaration names that must "
+                "remain declared, but must not be defined, stubbed, "
+                "or wrapped in the testbench: "
+                + ", ".join(self.required_function_names)
+                + ". Declaration signatures may change only when "
+                "the supplied compiler/linker evidence requires an "
+                "interface correction."
+            )
+        if self.required_macros:
+            requirements.append(
+                "Required macros that must remain present: "
+                + " | ".join(self.required_macros)
+            )
+        positive_counts = [
+            (name, count)
+            for name, count in self.minimum_call_counts.items()
+            if count > 0
+        ]
+        if positive_counts:
+            requirements.append(
+                "Minimum required function call counts that must "
+                "not be reduced: "
+                + ", ".join(
+                    f"{name}>={count}"
+                    for name, count in positive_counts
+                )
+            )
+        return tuple(requirements)
+
 
 _TESTBENCH_FORBIDDEN_ACTIONS = (
     "Never modify or propose changes to the original program.",
@@ -292,6 +325,9 @@ def build_testbench_repair_prompt(
             ),
         )
     )
+    contract = TestbenchRepairContract.from_testbench(
+        request.current_testbench
+    )
 
     layered_request = LayeredPromptRequest(
         purpose=PromptPurpose.TESTBENCH_REPAIR,
@@ -331,11 +367,15 @@ def build_testbench_repair_prompt(
             commentary_allowed=False,
             additional_requirements=(
                 _TESTBENCH_OUTPUT_REQUIREMENTS
+                + contract.to_prompt_requirements()
             ),
         ),
         attempt=request.attempt,
         max_attempts=request.max_attempts,
         family_instruction=family_instruction,
+        prior_attempt_summaries=(
+            request.prior_attempt_summaries
+        ),
         family_profile=family_profile,
     )
 

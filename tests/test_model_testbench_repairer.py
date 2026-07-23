@@ -125,7 +125,7 @@ def make_preflight_result():
         )
 
 
-def make_request():
+def make_request(*, prior_attempt_summaries=()):
     return TestbenchRepairRequest(
         attempt=1,
         max_attempts=2,
@@ -133,6 +133,9 @@ def make_request():
         original_code=ORIGINAL,
         candidate_code=CANDIDATE,
         preflight=make_preflight_result(),
+        prior_attempt_summaries=(
+            prior_attempt_summaries
+        ),
         task=TASK,
     )
 
@@ -266,6 +269,41 @@ class ModelTestbenchRepairerTests(unittest.TestCase):
         self.assertEqual(
             prompt.manifest["target_profile"],
             "test-target",
+        )
+
+    def test_prompt_exposes_contract_and_prior_rejection(
+        self,
+    ) -> None:
+        prior = (
+            "Attempt 1 was rejected: missing required "
+            "declaration for function: process_top_hls",
+        )
+        prompt = build_testbench_repair_prompt(
+            make_request(
+                prior_attempt_summaries=prior
+            )
+        )
+        system = prompt.messages[0].content
+        user = prompt.messages[1].content
+
+        self.assertIn(
+            "Required function declaration names",
+            system,
+        )
+        self.assertIn("process_top", system)
+        self.assertIn("process_top_hls", system)
+        self.assertIn("Required macros", system)
+        self.assertIn("#define N 2", system)
+        self.assertIn(
+            "Minimum required function call counts",
+            system,
+        )
+        self.assertIn("process_top>=1", system)
+        self.assertIn("process_top_hls>=1", system)
+        self.assertIn(prior[0], user)
+        self.assertEqual(
+            prompt.manifest["prior_attempt_count"],
+            1,
         )
 
     def test_contract_rejects_removed_macro_or_public_call(self) -> None:
