@@ -400,3 +400,19 @@ Normal source commands now use one stable product summary across default,
 `--json`, `--verbose`, and `--debug`. Complete evidence remains in artifacts;
 ordinary output contains no Hidden paths or operator-only details.
 <!-- P5_CONCISE_OUTPUT_CLOSURE:END -->
+
+<!-- P0_COST_BUDGET_CURRENCY_BLOCKER_CORRECTION -->
+## P0 observed blocker: optional Cost budget currency
+
+The first real P0 driver found that the ordinary source CLI passed the
+selected model's pricing currency even when `--cost-budget` was omitted,
+violating `EffectiveRunBudget`'s paired optional-field invariant. The
+correction persists a Cost-budget currency only when the user declares a
+Cost budget. Deterministic and zero-LLM CLI evidence is recorded in
+[`P0_COST_BUDGET_CURRENCY_BLOCKER_ACCEPTANCE.md`](P0_COST_BUDGET_CURRENCY_BLOCKER_ACCEPTANCE.md).
+
+```text
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```

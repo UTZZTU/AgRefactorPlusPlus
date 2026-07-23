@@ -1246,7 +1246,11 @@ def _budget_from_cli(args, selection: ModelRuntimeSelection) -> EffectiveRunBudg
         user_requested=requested,
         token_budget=args.token_budget,
         cost_budget=args.cost_budget,
-        cost_budget_currency=currency,
+        cost_budget_currency=(
+            currency
+            if args.cost_budget is not None
+            else None
+        ),
     )
 
 
