@@ -43,6 +43,28 @@ STAGE3_STARTED=false
 ```
 <!-- P2_RUNTIME_BUDGET_CORRECTION:END -->
 
+<!-- EXECUTION_IDENTITY_CLOSURE:BEGIN -->
+## Execution Identity and reproducibility closure
+
+```text
+base=e65676fe6c77fe21dbae7b2ee7b7e0cf5b1ffb3d
+full=1362/1362
+new_tests=10
+source/task/model/prompt/target/suite/candidate identity=closed
+actual Vitis evidence fingerprint=closed
+budget/pricing/cache identity=closed
+credential persistence=false
+Execution Identity frozen contract=closed
+P5=active next objective
+P0=not run
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```
+
+Evidence:
+[`EXECUTION_IDENTITY_ACCEPTANCE.md`](EXECUTION_IDENTITY_ACCEPTANCE.md).
+<!-- EXECUTION_IDENTITY_CLOSURE:END -->
+
 > **新对话或恢复开发时首先阅读本文档。** 权威范围见 [`ROADMAP.md`](ROADMAP.md)，目标追踪见 [`GOAL_TRACEABILITY.md`](GOAL_TRACEABILITY.md)。
 
 ## 1. 当前快照
@@ -79,7 +101,7 @@ Evidence:
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
 - Testbench Reliability 验收：[`stage2_acceptance.md`](stage2_acceptance.md)
 - Stage 2.3 Runtime Evidence 验收：[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)
-- 当前关键任务：**按冻结顺序继续完成 Execution Identity、P5 简洁输出，再用最终普通入口完成 P0 真实 DFS，随后清理并关闭 Pre-Stage-3**
+- 当前关键任务：**Execution Identity 已关闭；下一步完成 P5 简洁输出与日志捕获，再用最终普通入口完成 P0 真实 DFS，随后清理并关闭 Pre-Stage-3**
 
 <!-- PRE_STAGE3_PRODUCTIZATION_PLAN:BEGIN -->
 ## 1.1 Frozen Pre-Stage-3 productization plan
@@ -143,7 +165,7 @@ P1-C3C1 typed AG2 usage summary completed deterministic acceptance at `d2f085b3c
 P1-C3C2 integrated Legacy usage accounting completed at `f0c06c32771916bb6ad3bd68eb4ac21473dcd41b` with **1250/1250** tests and patch ID `6f77f6146e64a341623ac9e21a591f5a7e4cd7bd`. P1-C4 parity then closed P1-C with **1275/1275** tests. Evidence: [`P1C_RUNTIME_CLOSURE_ACCEPTANCE.md`](P1C_RUNTIME_CLOSURE_ACCEPTANCE.md).
 P1-D bounded DeepSeek network smoke completed for `deepseek-v4-flash` with one real API call, native CNY accounting and a verified second-call hard block. P1 is now complete. Evidence: [`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md).
 P4 Public/Hidden test-source provenance completed with **1312/1312** deterministic tests and patch ID `bd85479221d8729c9aad23df6a91ccfaf4d7333b`. Evidence: [`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md).
-Current active package is **Execution Identity and reproducibility closure**.
+Current active package is **P5 concise output and log capture**.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## 2. 已完成

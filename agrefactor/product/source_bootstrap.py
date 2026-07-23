@@ -47,7 +47,12 @@ from agrefactor.runtime import (
     RunResult,
     TraceRecorder,
     UnifiedRunner,
+    RunArtifactWriter,
     build_candidate_repair_phase,
+    build_execution_identity_bundle,
+    execution_identity_summary,
+    validate_execution_identity_bundle,
+    write_execution_identity_bundle,
 )
 from agrefactor.runtime.budget_profile import (
     DEFAULT_SOURCE_RUN_BUDGET_PROFILE,
@@ -304,6 +309,7 @@ class SourceBootstrapRequest:
     budget_contract: EffectiveRunBudget
     max_candidate_repairs: int
     run_id: str
+    require_complete_execution_identity: bool = False
 
     def __post_init__(self) -> None:
         source = Path(self.source_path).expanduser().resolve()
@@ -361,11 +367,21 @@ class SourceBootstrapRequest:
             "run_id",
             _clean_required("run_id", self.run_id),
         )
+        if not isinstance(
+            self.require_complete_execution_identity,
+            bool,
+        ):
+            raise TypeError(
+                "require_complete_execution_identity must be boolean"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema_version": 1,
             "run_id": self.run_id,
+            "require_complete_execution_identity": (
+                self.require_complete_execution_identity
+            ),
             "source_path": str(self.source_path),
             "source_sha256": _sha256_file(self.source_path),
             "top_function": self.top_function,
@@ -483,6 +499,16 @@ class SourceBootstrapPhase:
         generation_prompt_sha = _sha256_file(
             generation_contract_path
         )
+        self._write_execution_identity(
+            context=context,
+            normalized_task=context.task,
+            suites=(),
+            execution_status="running",
+            initial_candidate_path=None,
+            final_candidate_path=None,
+            require_accepted_ready=False,
+            hard_budget_exhaustion=None,
+        )
 
         generation_task = TaskSpec(
             task_id=f"{self._request.run_id}.generation",
@@ -502,6 +528,23 @@ class SourceBootstrapPhase:
             generation_context
         )
         if not generation_result.succeeded:
+            identity_summary = self._write_execution_identity(
+                context=context,
+                normalized_task=context.task,
+                suites=(),
+                execution_status=generation_result.status.value,
+                initial_candidate_path=None,
+                final_candidate_path=None,
+                require_accepted_ready=False,
+                hard_budget_exhaustion=(
+                    {
+                        "resource": generation_result.metadata.get("resource"),
+                        "stage": "initial_generation",
+                    }
+                    if generation_result.metadata.get("resource")
+                    else None
+                ),
+            )
             return PhaseResult(
                 phase=RunPhase.REFACTOR,
                 status=generation_result.status,
@@ -513,6 +556,7 @@ class SourceBootstrapPhase:
                     "source_bootstrap": True,
                     "generation_only": True,
                     "formal_validation_started": False,
+                    "execution_identity": identity_summary,
                 },
             )
 
@@ -620,6 +664,51 @@ class SourceBootstrapPhase:
                 "formal phase builder must return a PhaseResult handler"
             )
         metadata = dict(formal_result.metadata)
+        accepted = bool(metadata.get("accepted", False))
+        final_candidate_path = (
+            self._layout.artifact_root
+            / RunPhase.REFACTOR.value
+            / "final_candidate.cpp"
+        )
+        if (
+            self._request.require_complete_execution_identity
+            and accepted
+            and not final_candidate_path.is_file()
+        ):
+            raise FileNotFoundError(
+                "accepted formal validation did not persist final_candidate.cpp"
+            )
+        if not final_candidate_path.is_file():
+            final_candidate_path = (
+                bootstrap_root / "initial_candidate.cpp"
+            )
+        identity_summary = self._write_execution_identity(
+            context=context,
+            normalized_task=formal_task,
+            suites=suites,
+            execution_status=(
+                "accepted" if accepted else formal_result.status.value
+            ),
+            initial_candidate_path=(
+                bootstrap_root / "initial_candidate.cpp"
+            ),
+            final_candidate_path=final_candidate_path,
+            require_accepted_ready=(
+                self._request.require_complete_execution_identity
+                and accepted
+            ),
+            hard_budget_exhaustion=(
+                {
+                    "resource": metadata.get("resource"),
+                    "stage": metadata.get(
+                        "failed_stage",
+                        "formal_validation",
+                    ),
+                }
+                if metadata.get("resource")
+                else None
+            ),
+        )
         metadata.update(
             {
                 "source_bootstrap": True,
@@ -639,6 +728,7 @@ class SourceBootstrapPhase:
                 "bootstrap_manifest": (
                     "bootstrap/source_request.json"
                 ),
+                "execution_identity": identity_summary,
             }
         )
         return PhaseResult(
@@ -647,6 +737,64 @@ class SourceBootstrapPhase:
             summary=formal_result.summary,
             metadata=metadata,
         )
+
+    def _write_execution_identity(
+        self,
+        *,
+        context: RunContext,
+        normalized_task: TaskSpec,
+        suites: Sequence[TestSuiteSpec],
+        execution_status: str,
+        initial_candidate_path: Path | None,
+        final_candidate_path: Path | None,
+        require_accepted_ready: bool,
+        hard_budget_exhaustion: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        bootstrap_root = self._layout.artifact_root / "bootstrap"
+        prompt_hashes: dict[str, str] = {}
+        for name in (
+            "initial_generation_request",
+            "formal_validation_request",
+        ):
+            path = bootstrap_root / f"{name}.json"
+            if path.is_file():
+                prompt_hashes[name] = _sha256_file(path)
+        if not prompt_hashes:
+            raise RuntimeError(
+                "execution identity requires at least one persisted prompt contract"
+            )
+        try:
+            usage = context.budget.snapshot().to_dict()
+        except Exception:
+            usage = None
+        bundle = build_execution_identity_bundle(
+            run_id=context.run_id,
+            source_path=self._request.source_path,
+            top_function=self._request.top_function,
+            normalized_task=normalized_task.to_dict(),
+            model_manifest=(
+                self._request.effective_model_config.to_manifest()
+            ),
+            prompt_hashes=prompt_hashes,
+            target_manifest=self._request.target.to_effective_dict(),
+            suite_manifests=[suite.to_dict() for suite in suites],
+            initial_candidate_path=initial_candidate_path,
+            final_candidate_path=final_candidate_path,
+            budget_contract=self._request.budget_contract.to_dict(),
+            budget_usage=usage,
+            artifact_schema_version=RunArtifactWriter.schema_version,
+            execution_status=execution_status,
+            repository_root=Path(__file__).resolve().parents[2],
+            toolchain_evidence_root=self._layout.work_root,
+            hard_budget_exhaustion=hard_budget_exhaustion,
+        )
+        validate_execution_identity_bundle(
+            bundle,
+            require_accepted_ready=require_accepted_ready,
+        )
+        path = self._layout.artifact_root / "execution_identity.json"
+        write_execution_identity_bundle(path, bundle)
+        return execution_identity_summary(bundle)
 
     def _first_public_provided_path(self) -> str | None:
         public = self._request.test_source_plan.public
@@ -906,6 +1054,7 @@ def run_source_command(args) -> SourceBootstrapRunResult:
         budget_contract=budget,
         max_candidate_repairs=args.max_candidate_repairs,
         run_id=run_id,
+        require_complete_execution_identity=True,
     )
 
     public_auto = (
@@ -984,7 +1133,7 @@ def run_source_command(args) -> SourceBootstrapRunResult:
             "work_root": str(layout.work_root),
             "test_source_mode": plan.overall_mode.value,
             "budget_contract": budget.to_dict(),
-            "pre_stage3_step": "P2",
+            "pre_stage3_step": "Execution Identity",
         },
     )
     return SourceBootstrapRunResult(

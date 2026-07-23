@@ -21,6 +21,12 @@ from .budget import (
     BudgetManager,
     BudgetUsage,
 )
+from .execution_identity import (
+    execution_identity_summary,
+    finalize_execution_identity_bundle,
+    validate_execution_identity_bundle,
+    write_execution_identity_bundle,
+)
 from .trace import TraceRecorder
 
 
@@ -294,6 +300,15 @@ class RunArtifactWriter:
                 ),
                 "legacy_mode": legacy_mode,
                 "evidence_view": "agent_safe",
+                **(
+                    {
+                        "execution_identity": result.metadata[
+                            "execution_identity"
+                        ]
+                    }
+                    if "execution_identity" in result.metadata
+                    else {}
+                ),
                 "files": [
                     item.to_dict()
                     for item in files
@@ -318,6 +333,34 @@ class RunArtifactWriter:
 
 
 PhaseHandler = Callable[[RunContext], PhaseResult]
+
+
+def _finalize_execution_identity_artifact(
+    artifact_root: Path | None,
+    *,
+    budget_usage: BudgetUsage | None,
+    execution_status: str,
+    hard_budget_exhaustion: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    if artifact_root is None:
+        return None
+    path = artifact_root / "execution_identity.json"
+    if not path.is_file():
+        return None
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, Mapping):
+        raise TypeError("execution_identity.json must contain an object")
+    finalized = finalize_execution_identity_bundle(
+        raw,
+        budget_usage=(
+            None if budget_usage is None else budget_usage.to_dict()
+        ),
+        execution_status=execution_status,
+        hard_budget_exhaustion=hard_budget_exhaustion,
+    )
+    validate_execution_identity_bundle(finalized)
+    write_execution_identity_bundle(path, finalized)
+    return execution_identity_summary(finalized)
 
 
 class UnifiedRunner:
@@ -434,18 +477,43 @@ class UnifiedRunner:
                 )
                 break
 
+        hard_budget_exhaustion: dict[str, Any] | None = None
+        if phase_results:
+            last_metadata = phase_results[-1].metadata
+            resource = last_metadata.get("resource")
+            if resource is not None:
+                hard_budget_exhaustion = {
+                    "resource": resource,
+                    "stage": phase_results[-1].phase.value,
+                }
+
         budget_usage: BudgetUsage | None
         try:
             budget_usage = budget.snapshot()
         except BudgetExceededError as exc:
             budget_usage = None
             run_status = RunStatus.ERROR
+            hard_budget_exhaustion = {
+                "resource": exc.resource,
+                "stage": "run_finalize",
+                "limit": exc.limit,
+                "attempted": exc.attempted,
+            }
             trace.record(
                 "budget.exceeded",
                 status="error",
                 message=str(exc),
                 metadata={"resource": exc.resource},
             )
+
+        identity_summary = _finalize_execution_identity_artifact(
+            resolved_artifact_root,
+            budget_usage=budget_usage,
+            execution_status=run_status.value,
+            hard_budget_exhaustion=hard_budget_exhaustion,
+        )
+        if identity_summary is not None:
+            metadata["execution_identity"] = identity_summary
 
         trace.record(
             "run.finished",
@@ -641,6 +709,8 @@ def _run_record_type(
 ) -> str:
     if relative == "run_result.json":
         return "run_result"
+    if relative == "execution_identity.json":
+        return "execution_identity_operator_full"
     if relative == "trace.jsonl":
         return "trace"
     if relative.endswith(

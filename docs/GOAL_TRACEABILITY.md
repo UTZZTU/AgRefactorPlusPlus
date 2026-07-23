@@ -29,6 +29,23 @@ Before Stage 3:
 - P0 validates the complete contract through the normal source-only entry.
 <!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:END -->
 
+<!-- EXECUTION_IDENTITY_CLOSURE:BEGIN -->
+## Execution Identity closure evidence
+
+```text
+base=e65676fe6c77fe21dbae7b2ee7b7e0cf5b1ffb3d
+full=1362/1362
+material changes produce distinct cache identity=true
+actual tool version/effective values recorded=true
+budget and pricing changes enter identity=true
+credential persistence=false
+Execution Identity frozen contract=closed
+NEXT=P5 concise output and log capture
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```
+<!-- EXECUTION_IDENTITY_CLOSURE:END -->
+
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:BEGIN -->
 ## 1.2 P1 audit closure and active evidence
 
@@ -94,11 +111,10 @@ P4 Public/Hidden test-source provenance completed with
 Current next evidence:
 
 ```text
-Execution Identity and reproducibility closure
--> build on the completed source-only CLI and shared budget contract
--> internal TaskSpec construction
--> no public legacy/repair-aware selector
--> refactor / optimize / full only
+P5 concise output and log capture
+-> default / --json / --verbose / --debug boundaries
+-> full evidence remains in artifacts
+-> no Hidden leakage in ordinary output
 -> no P0 or Stage 3 work yet
 ```
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
@@ -152,8 +168,8 @@ Step 0  文档冻结与只读 consumer 审计
 Step 1  P1-A/P1-B/P1-C/P1-D 已完成；P1 整体完成
 Step 2  P4 Public/Hidden 来源与 provenance 已完成
 Step 3  P2 source-only bootstrap、统一 CLI 与调用前预算闭环已完成
-Step 4  Execution Identity
-Step 5  P5 简洁输出
+Step 4  Execution Identity 已完成
+Step 5  P5 简洁输出当前活跃
 Step 6  P0 真实 DFS source-only accepted
 Step 7  清理、弃用与 Pre-Stage-3 Closure
 Step 8  Stage 3 Safe Three-Level Optimizer

@@ -17,6 +17,16 @@ from .budget_profile import (
     EffectiveRunBudget,
     RunBudgetProfile,
 )
+from .execution_identity import (
+    EXECUTION_IDENTITY_SCHEMA_VERSION,
+    build_execution_identity_bundle,
+    canonical_json_sha256,
+    execution_identity_summary,
+    file_sha256,
+    finalize_execution_identity_bundle,
+    validate_execution_identity_bundle,
+    write_execution_identity_bundle,
+)
 from .runner import (
     PhaseHandler,
     PhaseResult,
@@ -154,6 +164,14 @@ __all__ = [
     "EffectiveRunBudget",
     "HARD_BUDGET_FIELDS",
     "RunBudgetProfile",
+    "EXECUTION_IDENTITY_SCHEMA_VERSION",
+    "build_execution_identity_bundle",
+    "canonical_json_sha256",
+    "execution_identity_summary",
+    "file_sha256",
+    "finalize_execution_identity_bundle",
+    "validate_execution_identity_bundle",
+    "write_execution_identity_bundle",
     "CandidateRepairOrchestrationRequest",
     "CandidateRepairOrchestrationResult",
     "CandidateRepairOrchestrationStatus",
