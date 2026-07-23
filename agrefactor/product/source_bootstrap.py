@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
-from typing import Any, Protocol
+from typing import Any, Protocol, TextIO
 from uuid import uuid4
 
 from agrefactor.compat import (
@@ -62,6 +62,12 @@ from agrefactor.runtime.budget_profile import (
     DEFAULT_SOURCE_RUN_BUDGET_PROFILE,
     HARD_BUDGET_FIELDS,
     EffectiveRunBudget,
+)
+
+from .run_output import (
+    capture_product_streams,
+    finalize_product_artifacts,
+    write_rejection_support_artifacts,
 )
 
 
@@ -415,6 +421,21 @@ class SourceBootstrapRunResult:
             raise TypeError("result must be RunResult")
         if not isinstance(self.layout, SourceRunLayout):
             raise TypeError("layout must be SourceRunLayout")
+
+
+class SourceCommandRejected(ValueError):
+    """Structured pre-launch rejection with persisted product artifacts."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        artifact_root: Path,
+        rejection: Mapping[str, Any],
+    ) -> None:
+        self.artifact_root = Path(artifact_root).expanduser().resolve()
+        self.rejection = dict(rejection)
+        super().__init__(message)
 
 
 class FormalPhaseBuilder(Protocol):
@@ -1325,6 +1346,10 @@ def _write_request_rejection_artifacts(
         layout.artifact_root / "execution_identity.json",
         bundle,
     )
+    write_rejection_support_artifacts(
+        layout.artifact_root,
+        rejection=rejection,
+    )
     files = []
     for path in sorted(layout.artifact_root.iterdir()):
         if path.is_file() and path.name != "run_artifact_manifest.json":
@@ -1350,7 +1375,12 @@ def _write_request_rejection_artifacts(
     )
 
 
-def run_source_command(args) -> SourceBootstrapRunResult:
+def run_source_command(
+    args,
+    *,
+    stdout: TextIO | None = None,
+    stderr: TextIO | None = None,
+) -> SourceBootstrapRunResult:
     """Execute one normal source command using internally managed paths."""
 
     mode = RunMode(args.command)
@@ -1399,11 +1429,13 @@ def run_source_command(args) -> SourceBootstrapRunResult:
             args=args,
             rejection=rejection,
         )
-        raise ValueError(
+        raise SourceCommandRejected(
             f"{rejection['resource']}={rejection['user_requested']} "
             f"exceeds system safety ceiling "
             f"{rejection['system_safety_ceiling']}; "
-            f"rejection artifacts: {layout.artifact_root}"
+            f"rejection artifacts: {layout.artifact_root}",
+            artifact_root=layout.artifact_root,
+            rejection=rejection,
         )
     budget = _budget_from_cli(args, model_runtime)
 
@@ -1430,7 +1462,7 @@ def run_source_command(args) -> SourceBootstrapRunResult:
         effective_model_config=model_runtime.effective_config,
         output_dir=str(layout.work_root / "generation"),
         max_retry_attempts=0,
-        debug=False,
+        debug=bool(getattr(args, "debug", False)),
         generation_only=True,
         external_kernel_name=f"{request.top_function}_hls",
         enable_tb_coverage_loop=public_auto,
@@ -1480,24 +1512,36 @@ def run_source_command(args) -> SourceBootstrapRunResult:
         {RunPhase.REFACTOR: phase},
         budget_limits=budget.to_budget_limits(),
     )
-    result = runner.run(
-        source_task,
-        run_id=run_id,
-        trace_path=layout.artifact_root / "trace.jsonl",
+    with capture_product_streams(
+        layout.work_root,
+        stdout=stdout,
+        stderr=stderr,
+        tee_debug=bool(getattr(args, "debug", False)),
+    ) as captured:
+        result = runner.run(
+            source_task,
+            run_id=run_id,
+            trace_path=layout.artifact_root / "trace.jsonl",
+            artifact_root=layout.artifact_root,
+            run_metadata={
+                "execution_mode": "source_bootstrap",
+                "legacy_mode": False,
+                "model_selection": "user_fixed",
+                "model_defaults_source": (
+                    model_runtime.defaults_source
+                ),
+                "artifact_root": str(layout.artifact_root),
+                "work_root": str(layout.work_root),
+                "test_source_mode": plan.overall_mode.value,
+                "budget_contract": budget.to_dict(),
+                "pre_stage3_step": "P5 concise output",
+            },
+        )
+    finalize_product_artifacts(
+        result,
         artifact_root=layout.artifact_root,
-        run_metadata={
-            "execution_mode": "source_bootstrap",
-            "legacy_mode": False,
-            "model_selection": "user_fixed",
-            "model_defaults_source": (
-                model_runtime.defaults_source
-            ),
-            "artifact_root": str(layout.artifact_root),
-            "work_root": str(layout.work_root),
-            "test_source_mode": plan.overall_mode.value,
-            "budget_contract": budget.to_dict(),
-            "pre_stage3_step": "Execution Identity",
-        },
+        work_root=layout.work_root,
+        captured=captured,
     )
     return SourceBootstrapRunResult(
         result=result,

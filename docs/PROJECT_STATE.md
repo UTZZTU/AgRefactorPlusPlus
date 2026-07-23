@@ -1207,3 +1207,25 @@ requested 与 actual 不一致时，系统会在 csynth 前阻断。完整命令
 20. docs/USAGE.md
 21. git log
 ```
+
+<!-- P5_CONCISE_OUTPUT_CLOSURE:BEGIN -->
+## P5 concise output and log capture
+
+```text
+base=0a1d816fa1d7f738dd3757a19a243df22020caf5
+full=1391/1391
+new_tests=19
+default/json/verbose/debug=implemented
+full_result/trace/model_calls/tool_calls/stdout/stderr/manifest=implemented
+Token/Cost=soft_observed_only
+call_counts/wall_time=hard_effective_limits
+Hidden ordinary-output leakage=false
+P5 frozen contract=closed
+P0=active next objective, not run
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```
+
+Evidence:
+[`P5_CONCISE_OUTPUT_ACCEPTANCE.md`](P5_CONCISE_OUTPUT_ACCEPTANCE.md).
+<!-- P5_CONCISE_OUTPUT_CLOSURE:END -->

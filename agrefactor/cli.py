@@ -366,6 +366,26 @@ def build_parser() -> argparse.ArgumentParser:
             "--run-id",
             help="Optional stable run identifier.",
         )
+        output_group = source_parser.add_mutually_exclusive_group()
+        output_group.add_argument(
+            "--json",
+            dest="json_output",
+            action="store_true",
+            help="Emit one stable machine-readable product summary.",
+        )
+        output_group.add_argument(
+            "--verbose",
+            action="store_true",
+            help="Emit phase-level progress and the concise summary.",
+        )
+        output_group.add_argument(
+            "--debug",
+            action="store_true",
+            help=(
+                "Tee complete safe model/tool diagnostics while retaining "
+                "all captured logs in artifacts."
+            ),
+        )
 
     return parser
 
@@ -830,20 +850,43 @@ def main(
 
     try:
         if args.command in ("refactor", "optimize", "full"):
-            from agrefactor.product import run_source_command
-
-            execution = run_source_command(args)
-            artifact_manifest = (
-                execution.layout.artifact_root
-                / "run_artifact_manifest.json"
+            from agrefactor.product import (
+                ProductOutputMode,
+                SourceCommandRejected,
+                build_product_summary,
+                build_rejection_summary,
+                render_product_output,
+                resolve_output_mode,
+                run_source_command,
             )
-            _write_run_result(
+
+            output_mode = resolve_output_mode(args)
+            if output_mode in {
+                ProductOutputMode.VERBOSE,
+                ProductOutputMode.DEBUG,
+            }:
+                stdout.write(f"Phase {args.command}: started\n")
+            try:
+                execution = run_source_command(
+                    args,
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+            except SourceCommandRejected as exc:
+                render_product_output(
+                    build_rejection_summary(exc.artifact_root),
+                    mode=output_mode,
+                    stdout=stdout,
+                )
+                return 2
+            summary = build_product_summary(
                 execution.result,
-                stdout,
-                execution_mode=(
-                    "source_" + args.command
-                ),
-                artifact_manifest=artifact_manifest,
+                artifact_root=execution.layout.artifact_root,
+            )
+            render_product_output(
+                summary,
+                mode=output_mode,
+                stdout=stdout,
             )
             return 0 if execution.result.succeeded else 1
 

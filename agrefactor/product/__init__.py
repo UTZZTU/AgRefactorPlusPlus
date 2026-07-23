@@ -1,20 +1,44 @@
 
 """Normal-user product entrypoints built above internal task contracts."""
 
+from .run_output import (
+    PRODUCT_RUN_SUMMARY_SCHEMA_VERSION,
+    CapturedProductStreams,
+    ProductOutputMode,
+    build_product_summary,
+    build_rejection_summary,
+    capture_product_streams,
+    finalize_product_artifacts,
+    render_product_output,
+    resolve_output_mode,
+    write_rejection_support_artifacts,
+)
 from .source_bootstrap import (
     SourceBootstrapPhase,
     SourceBootstrapRequest,
     SourceBootstrapRunResult,
+    SourceCommandRejected,
     SourceRunLayout,
     build_test_source_plan,
     run_source_command,
 )
 
 __all__ = [
+    "PRODUCT_RUN_SUMMARY_SCHEMA_VERSION",
+    "CapturedProductStreams",
+    "ProductOutputMode",
     "SourceBootstrapPhase",
     "SourceBootstrapRequest",
     "SourceBootstrapRunResult",
+    "SourceCommandRejected",
     "SourceRunLayout",
+    "build_product_summary",
+    "build_rejection_summary",
     "build_test_source_plan",
+    "capture_product_streams",
+    "finalize_product_artifacts",
+    "render_product_output",
+    "resolve_output_mode",
     "run_source_command",
+    "write_rejection_support_artifacts",
 ]

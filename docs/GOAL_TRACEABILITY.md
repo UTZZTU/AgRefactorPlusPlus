@@ -222,3 +222,20 @@ Evidence:
 Initial acceptance: `1346/1346`; runtime-budget correction: `1352/1352`. Patch
 `af57008cd7db13e88400418fc95ac47baf157dc7`. Next objective: Execution Identity.
 <!-- P2_SOURCE_ONLY_BOOTSTRAP:END -->
+
+<!-- P5_CONCISE_OUTPUT_CLOSURE:BEGIN -->
+## P5 concise output closure evidence
+
+```text
+base=0a1d816fa1d7f738dd3757a19a243df22020caf5
+full=1391/1391
+default/json/verbose/debug=true
+complete_product_artifacts=true
+soft_vs_hard_budget_labels=true
+Hidden ordinary-output isolation=true
+P5=closed
+P0=next, not run
+```
+
+Evidence: [`P5_CONCISE_OUTPUT_ACCEPTANCE.md`](P5_CONCISE_OUTPUT_ACCEPTANCE.md).
+<!-- P5_CONCISE_OUTPUT_CLOSURE:END -->
