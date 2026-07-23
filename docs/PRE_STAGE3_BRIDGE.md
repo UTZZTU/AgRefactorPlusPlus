@@ -109,7 +109,10 @@ P1-C3C1 typed AG2 usage summary completed deterministic acceptance at `d2f085b3c
 P1-C3C2 integrated accounting completed at `f0c06c32771916bb6ad3bd68eb4ac21473dcd41b` with 1250/1250 tests. P1-C4 parity closed P1-C with 1275/1275 tests. Evidence is recorded in
 [`P1C_RUNTIME_CLOSURE_ACCEPTANCE.md`](P1C_RUNTIME_CLOSURE_ACCEPTANCE.md).
 
-P1-A, P1-B and P1-C are complete. The active package is P1-D bounded real-model smoke only. P4, normal CLI migration, Execution Identity, P5 output, P0 and Stage 3 remain separate later packages.
+P1-D bounded DeepSeek network smoke completed for `deepseek-v4-flash` with one real API call, native CNY cost provenance, no credential persistence and a verified `max_llm_calls=1` block. Evidence is recorded in
+[`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md).
+
+P1 is complete. The active package is P4 Public/Hidden test-source contract and provenance. Normal CLI migration, Execution Identity, P5 output, P0 and Stage 3 remain separate later packages.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## Scope control

@@ -76,7 +76,8 @@ P1-C3A typed Legacy translation completed deterministic acceptance at `c14650b2a
 P1-C3B generic AG2 loader policy completed deterministic acceptance at `343d23c5b811f7c529991450b0952299f460c820` with **1184/1184** tests and patch ID `4e4597fb64f4dc3dab29a6b51228143586cb174c`. Evidence: [`P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md`](P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md).
 P1-C3C1 typed AG2 usage summary completed deterministic acceptance at `d2f085b3cabefef87e8aa5099bdb1c2a8ce32b7d` with **1220/1220** tests and patch ID `f5ecbba1271868d84d1ad5b8482c50926a013c6f`. Evidence: [`P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md`](P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md).
 P1-C3C2 integrated Legacy usage accounting completed at `f0c06c32771916bb6ad3bd68eb4ac21473dcd41b` with **1250/1250** tests and patch ID `6f77f6146e64a341623ac9e21a591f5a7e4cd7bd`. P1-C4 parity then closed P1-C with **1275/1275** tests. Evidence: [`P1C_RUNTIME_CLOSURE_ACCEPTANCE.md`](P1C_RUNTIME_CLOSURE_ACCEPTANCE.md).
-Current active package is **P1-D bounded real-model smoke**. P4 and later Pre-Stage-3 packages remain ordered follow-ups.
+P1-D bounded DeepSeek network smoke completed for `deepseek-v4-flash` with one real API call, native CNY accounting and a verified second-call hard block. P1 is now complete. Evidence: [`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md).
+Current active package is **P4 Public/Hidden test-source contract and provenance**.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## 2. 已完成

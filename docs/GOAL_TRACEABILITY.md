@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | TargetProfile | Stage 1/2/5 | 2.7.3 已完成 committed named profile、executable/settings、parser identity、resource schema、per-field provenance；保持 Vitis 2023.2 默认兼容 | Batch B 多版本/设备/platform 与 Stage 5 source/target | [`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md) |
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
-| Model API Registry | Stage 1/2 | P1-A/B/C 已完成：Modern、Legacy、repair 共享 EffectiveModelConfig、pricing snapshot、TokenUsage 与 native Budget ledger；1275/1275 回归通过 | P1-D bounded network smoke | [`P1C_RUNTIME_CLOSURE_ACCEPTANCE.md`](P1C_RUNTIME_CLOSURE_ACCEPTANCE.md) |
+| Model API Registry | Stage 1/2 | P1-A/B/C/D 已完成：Modern、Legacy、repair 统一运行时，且 `deepseek-v4-flash` 已完成单次有界真实网络 smoke、native CNY accounting 与第二次调用硬阻断 | 无；后续由 P4/P2/P5/P0 消费 | [`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md) |
 | 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、typed family instruction、formal CLI 与 strict contract 已完成；真实 proposal evidence 未证明需要放宽 | Stage 2 已关闭；后续仅按新真实证据 harden | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
 | 结构化反馈/状态机 | Stage 2 | Public/Hidden、router/state/coordinator、real handlers、formal repair-aware CLI、5/5 blockers 与 final closure 已完成 | Stage 2 已关闭；Stage 3 复用 correctness gate | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
 | Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、7/7 full chains、9/9 faults、16/16 labels，并经 2.7.7/2.8 closure audit | 扩大版本、器件和 kernel 统计覆盖 | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
@@ -81,17 +81,20 @@ P1-C4 deterministic parity closed P1-C with **1275/1275** tests.
 Evidence:
 [`P1C_RUNTIME_CLOSURE_ACCEPTANCE.md`](P1C_RUNTIME_CLOSURE_ACCEPTANCE.md).
 
+P1-D bounded network smoke completed for `deepseek-v4-flash` with one real
+DeepSeek API call. The concrete model is `network_smoke_verified`; observed
+TokenUsage, native CNY estimated cost, credential exclusion and the prospective
+second-call hard block are recorded in
+[`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md).
+
 Current next evidence:
 
 ```text
-P1-D bounded real-model smoke
--> one explicitly selected concrete model
--> one accepted EffectiveModelConfig
--> hard max_llm_calls bound
--> no credentials in artifacts
--> observed TokenUsage and native cost provenance
--> no C/C++, CSIM, CSYNTH or Vitis
--> no P4, P2, P0 or Stage 3 work
+P4 Public/Hidden test-source contract and provenance
+-> independent Public and Hidden source selection
+-> multiple suites
+-> explicit source identity and provenance
+-> no source-only CLI, P0 or Stage 3 work yet
 ```
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
@@ -141,8 +144,8 @@ Stage 2 已关闭，但 Stage 3 仍被 Pre-Stage-3 产品化收尾阻断。权�
 
 ```text
 Step 0  文档冻结与只读 consumer 审计
-Step 1  P1-A/P1-B/P1-C 已完成；P1-D bounded real-model smoke 当前活跃
-Step 2  P4 Public/Hidden 来源与 provenance
+Step 1  P1-A/P1-B/P1-C/P1-D 已完成；P1 整体完成
+Step 2  P4 Public/Hidden 来源与 provenance 当前活跃
 Step 3  P2 source-only bootstrap 与统一 CLI
 Step 4  Execution Identity
 Step 5  P5 简洁输出

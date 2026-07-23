@@ -1,6 +1,6 @@
 # P1 模型运行时审计决策账本
 
-> **状态：** P1-A、P1-B、P1-C 已完成；P1-D bounded real-model smoke 为当前唯一活跃项
+> **状态：** P1-A、P1-B、P1-C、P1-D 已完成；P1 整体完成，P4 Public/Hidden test-source contract 当前活跃
 > **审计基线：** `8b543267a88ed63d343bd633cf29cd6edf9c4127`  
 > **人工复核日期：** 2026-07-22  
 > **作用：** 保存自动审计发现、人工修正、新增发现、阶段归属和关闭证据。  
@@ -225,7 +225,7 @@ P1-C4 deterministic parity closed P1-C with **1275/1275** tests.
 Evidence:
 [`P1C_RUNTIME_CLOSURE_ACCEPTANCE.md`](P1C_RUNTIME_CLOSURE_ACCEPTANCE.md).
 
-### P1-D：验收与真实 smoke
+### P1-D：验收与真实 smoke——completed
 
 顺序：
 
@@ -235,8 +235,27 @@ targeted deterministic tests
 → one bounded DeepSeek network smoke
 ```
 
-静态声明不等于网络验证。只有真实 smoke 通过的具体模型/profile 才能标记
-`network_smoke_verified`。
+`deepseek-v4-flash` 已在 `70c802270ed2af60e7af360e526d57b49b728528` 上完成一次真实 DeepSeek OpenAI-compatible
+Chat Completions 调用。调用前由 `max_llm_calls=1` 限制，调用后记录
+TokenUsage、原生 CNY CostEstimate 和统一 Budget ledger；第二次预期调用被
+硬阻断。凭证值未进入日志或 artifacts，且未运行 C/C++、CSIM、CSYNTH 或
+Vitis。
+
+具体模型状态：
+
+```text
+concrete_model=deepseek-v4-flash
+verification_status=network_smoke_verified
+family_profile_status=official_docs_reviewed
+model_api_call_count=1
+full_deterministic_regression=1275/1275
+```
+
+Evidence:
+[`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md).
+
+只标记该具体模型的网络 smoke，不把一次运行扩展成整个 DeepSeek family
+或任意 endpoint 的网络保证。
 
 ## 6. P1-A 验收门槛
 
