@@ -5,17 +5,20 @@ llm_config:
 identifier_config: &identifier_config
   api_type: openai
   model: gpt-5-mini
-  response_format: flow.tools.identifying.IdentifierResult
+  response_format:
+    type: json_object
 
 deduplicator_config: &deduplicator_config
   api_type: openai
   model: gpt-5-mini
-  response_format: flow.tools.identifying.DeduplicatorResult
+  response_format:
+    type: json_object
 
 filter_config: &filter_config
   api_type: openai
   model: gpt-5-mini
-  response_format: flow.tools.identifying.FilterResult
+  response_format:
+    type: json_object
 
 agents:
   system_identifier:
@@ -30,6 +33,8 @@ agents:
       When given a piece of code, identify all non-synthesizable runtime OS calls, I/O calls, or system calls in its device kernel code, each with a less than 10 words description.
       Do NOT worry about other non-synthesizable constructs, such as recursion, heap-based constructs, dynamic memory, stack-based constructs, or illegal pointer usage.
       Return an empty list ([]) if no items identified, otherwise return a list of items where each item should be like 'item_identified: a less than 10 words description'.
+      Respond with one JSON object only, using exactly this shape:
+      {"identified_items": ["item_identified: description", "..."]}
 
   recursion_identifier:
     description: an agent that identifies recursion in the code
@@ -38,6 +43,8 @@ agents:
       You are an HLS coding expert who specializes in identifying non-synthesizable recursion in code.
       When given a piece of code, identify any recursion present, and provide a less than 10 words description.
       Return an empty list ([]) if no recursion identified, otherwise return a list of recursion(s) where each should be like 'item_identified: a less than 10 words description'.
+      Respond with one JSON object only, using exactly this shape:
+      {"identified_items": ["item_identified: description", "..."]}
 
   heap_based_identifier:
     description: an agent that identifies heap-based constructs in the code
@@ -53,6 +60,8 @@ agents:
       When given a piece of code, identify all non-synthesizable heap-based constructs and dynamic memory in its device kernel code, each with a less than 10 words description.
       Do NOT worry about other non-synthesizable constructs, such as some stack-based constructs or illegal pointer usage.
       Return an empty list ([]) if no items identified, otherwise return a list of items where each item should be like 'item_identified: a less than 10 words description'.
+      Respond with one JSON object only, using exactly this shape:
+      {"identified_items": ["item_identified: description", "..."]}
 
   stack_based_identifier:
     description: an agent that identifies non-synthesizable stack-based constructs in the code
@@ -67,6 +76,8 @@ agents:
       When given a piece of code, identify all non-synthesizable stack-based constructs in its device kernel code, each with a less than 10 words description.
       Do NOT worry about other non-synthesizable constructs, such as some heap-based constructs, dynamic memory, or illegal pointer usage.
       Return an empty list ([]) if no items identified, otherwise return a list of items where each item should be like 'item_identified: a less than 10 words description'.
+      Respond with one JSON object only, using exactly this shape:
+      {"identified_items": ["item_identified: description", "..."]}
 
   pointer_identifier:
     description: an agent that identifies non-synthesizable pointer usage in the code
@@ -83,6 +94,8 @@ agents:
       When given a piece of code, identify all non-synthesizable pointer usage in its device kernel code, each with a less than 10 words description.
       Do NOT worry about other non-synthesizable constructs, such as some stack-based constructs, heap-based constructs, or dynamic memory.
       Return an empty list ([]) if no items identified, otherwise return a list of items where each item should be like 'item_identified: a less than 10 words description'.
+      Respond with one JSON object only, using exactly this shape:
+      {"identified_items": ["item_identified: description", "..."]}
 
   others_identifier:
     description: an agent that identifies miscellaneous non-synthesizable constructs in the code
@@ -100,6 +113,8 @@ agents:
         - Illegal HLS pragmas, global constructors/destructors with dynamic actions.
       When given a piece of code, identify all these miscellaneous non-synthesizable constructs in its device kernel code, each with a less than 10 words description.
       Return an empty list ([]) if no items identified, otherwise return a list of items where each item should be like 'item_identified: a less than 10 words description'.
+      Respond with one JSON object only, using exactly this shape:
+      {"identified_items": ["item_identified: description", "..."]}
 
   deduplicator:
     description: an agent that deduplicates the identified non-synthesizable items and add other necessary items

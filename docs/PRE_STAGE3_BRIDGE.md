@@ -416,3 +416,19 @@ P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
 ```
+
+<!-- P0_PORTABLE_IDENTIFYING_JSON_BLOCKER_CORRECTION -->
+## P0 observed blocker: portable identifying JSON output
+
+The real DFS run exposed a typed structured-output request unsupported
+by the selected OpenAI-compatible endpoint. Because identification is
+already consumed through `json.loads()`, its static AG2 agent contract
+now uses portable `json_object` output with explicit JSON shapes. The
+`HLSAgentLoader` remains vendor-neutral. Evidence is recorded in
+[`P0_PORTABLE_IDENTIFYING_JSON_BLOCKER_ACCEPTANCE.md`](P0_PORTABLE_IDENTIFYING_JSON_BLOCKER_ACCEPTANCE.md).
+
+```text
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```
