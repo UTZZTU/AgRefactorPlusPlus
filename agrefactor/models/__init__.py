@@ -69,6 +69,13 @@ from .registry import (
     UnknownModelFamilyProfileError,
     UnknownProviderError,
 )
+from .runtime_selection import (
+    CONCRETE_MODEL_RUNTIME_DEFAULTS,
+    ConcreteModelRuntimeDefaults,
+    ModelRuntimeSelection,
+    infer_model_family,
+    resolve_model_runtime,
+)
 
 _CANDIDATE_ADAPTER_EXPORTS = frozenset(
     {
@@ -100,6 +107,8 @@ __all__ = [
     "ChatMessage",
     "CostEstimate",
     "CostEstimationQuality",
+    "CONCRETE_MODEL_RUNTIME_DEFAULTS",
+    "ConcreteModelRuntimeDefaults",
     "DEEPSEEK_MODEL_FAMILY_PROFILE",
     "EffectiveModelConfig",
     "GENERIC_OPENAI_COMPATIBLE_MODEL_FAMILY_PROFILE",
@@ -121,6 +130,7 @@ __all__ = [
     "ModelProvider",
     "ModelRegistry",
     "ModelRegistryError",
+    "ModelRuntimeSelection",
     "ModelRequest",
     "ModelResponse",
     "ModelSpec",
@@ -150,6 +160,8 @@ __all__ = [
     "UnsupportedReasoningLevelError",
     "estimate_model_cost",
     "find_official_model_pricing_snapshots",
+    "infer_model_family",
     "find_official_pricing_sources",
     "official_pricing_manifest",
+    "resolve_model_runtime",
 ]

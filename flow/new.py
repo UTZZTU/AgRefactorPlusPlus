@@ -110,6 +110,7 @@ def hls_refactor_with_rag(
     model_configuration_source: str = "legacy_compatibility",
     target_profile: Optional[Dict[str, Any]] = None,
     budget: Optional[BudgetManager] = None,
+    generation_only: bool = False,
     enable_testbench_repair: bool = False,
     max_testbench_repair_attempts: int = 2,
     testbench_repair_model: Optional[str] = None,
@@ -220,6 +221,8 @@ def hls_refactor_with_rag(
         BudgetManager,
     ):
         raise TypeError("budget must be a BudgetManager or None")
+    if not isinstance(generation_only, bool):
+        raise TypeError("generation_only must be boolean")
     if remote and budget is not None and (
         budget.limits.max_tool_calls is not None
         or budget.limits.max_compile_calls is not None
@@ -358,6 +361,32 @@ def hls_refactor_with_rag(
     debug_print(debug, f"Reset knowledge DB: {reset_knowledge_db}")
     debug_print(debug, f"Knowledge DB path: {knowledge_db_path}")
 
+    if enable_hidden_tb_eval and external_testbench:
+        debug_print(
+            debug,
+            "Loading/generating independent hidden testbench",
+        )
+        independent_hidden = tools.tb_optimizer.make_golden_hidden_tb(
+            orig_code=cv["orig_code"],
+            kernel_name=cv["kernel_name"],
+            M=hidden_tb_trajectories,
+            K=hidden_tb_rounds,
+            target_pct=hidden_tb_target,
+            llm_config=llm_config,
+            cache_dir=golden_tb_cache_dir,
+            cache_key=golden_tb_cache_key,
+        )
+        cv["generated_hidden_testbench"] = independent_hidden.get(
+            "hidden_tb",
+            "",
+        )
+        cv["generated_hidden_coverage"] = independent_hidden.get(
+            "hidden_cov"
+        )
+        cv["generated_hidden_signature"] = independent_hidden.get(
+            "hidden_sig_spec"
+        )
+
     if external_testbench:
         # Use provided testbench instead of generating one
         cv["testbench"] = external_testbench
@@ -426,6 +455,16 @@ def hls_refactor_with_rag(
                 cache_dir=golden_tb_cache_dir,
                 cache_key=golden_tb_cache_key,
             )
+            cv["generated_hidden_testbench"] = golden.get(
+                "hidden_tb",
+                "",
+            )
+            cv["generated_hidden_coverage"] = golden.get(
+                "hidden_cov"
+            )
+            cv["generated_hidden_signature"] = golden.get(
+                "hidden_sig_spec"
+            )
             hidden_sig_spec_for_public = golden.get("hidden_sig_spec")
             pinned_hls_decl_for_public = golden.get("hidden_hls_decl_verbatim")
             debug_print(debug, f"Hidden TB cov={golden.get('hidden_cov')}, sig_spec_len={len(hidden_sig_spec_for_public or '')}, pinned_decl_len={len(pinned_hls_decl_for_public or '')}")
@@ -456,6 +495,16 @@ def hls_refactor_with_rag(
     debug_print(debug, "Refactoring")
     cv["curr_code"], cv["code_for_hetero"] = tools.refactoring.refactor_code(cv, hetero_enabled, llm_config)
     tools.general.save_context("refactoring", cv, output_dir)
+
+    if generation_only:
+        cv["generation_only"] = True
+        cv["legacy_validation_executed"] = False
+        tools.general.save_context(
+            "generation_only_final",
+            cv,
+            output_dir,
+        )
+        return True, cv
 
     debug_print(debug, "Synthesis & Simulation & Iteration")
     retry_count = 0

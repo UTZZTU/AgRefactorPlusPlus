@@ -245,6 +245,128 @@ def build_parser() -> argparse.ArgumentParser:
         help="Enable legacy flow debug output.",
     )
 
+
+    for source_command in ("refactor", "optimize", "full"):
+        source_parser = subparsers.add_parser(
+            source_command,
+            help=(
+                "Run the normal source-only product entrypoint. "
+                "Optimize/full execution remains gated until Stage 3."
+            ),
+        )
+        source_parser.add_argument(
+            "source",
+            type=Path,
+            help="Input C/C++ source file.",
+        )
+        source_parser.add_argument(
+            "--top",
+            required=True,
+            help="Explicit source top function name.",
+        )
+        source_parser.add_argument(
+            "--model",
+            required=True,
+            help="Exact fixed model identifier selected by the user.",
+        )
+        source_parser.add_argument(
+            "--model-family",
+            help="Optional explicit static model-family profile.",
+        )
+        source_parser.add_argument(
+            "--base-url",
+            help="Optional transport base URL override.",
+        )
+        source_parser.add_argument(
+            "--api-key-env",
+            help="Optional credential environment-variable override.",
+        )
+        source_parser.add_argument(
+            "--reasoning-effort",
+            choices=("low", "medium", "high"),
+        )
+        source_parser.add_argument(
+            "--target",
+            default="vitis-2023.2-default",
+            help="Named TargetProfile. Default: vitis-2023.2-default.",
+        )
+        source_parser.add_argument(
+            "--part",
+            help="Optional device/part override.",
+        )
+        source_parser.add_argument(
+            "--clock-period",
+            type=float,
+            help="Optional target clock period in nanoseconds.",
+        )
+        source_parser.add_argument(
+            "--compile-flag",
+            dest="compile_flags",
+            action="append",
+            default=[],
+            help="Repeatable compile flag override.",
+        )
+        source_parser.add_argument(
+            "--public-tests",
+            choices=("auto", "none"),
+            default=None,
+            help=(
+                "Public source mode when --public-test is absent. "
+                "Default: auto."
+            ),
+        )
+        source_parser.add_argument(
+            "--public-test",
+            dest="public_tests_provided",
+            action="append",
+            default=[],
+            help="Repeatable provided Public testbench path.",
+        )
+        source_parser.add_argument(
+            "--hidden-tests",
+            choices=("auto", "none"),
+            default=None,
+            help=(
+                "Hidden source mode when --hidden-test is absent. "
+                "Default: auto."
+            ),
+        )
+        source_parser.add_argument(
+            "--hidden-test",
+            dest="hidden_tests_provided",
+            action="append",
+            default=[],
+            help="Repeatable provided Hidden testbench path.",
+        )
+        source_parser.add_argument(
+            "--max-candidate-repairs",
+            type=int,
+            default=2,
+            help="Bounded formal candidate-repair attempts. Default: 2.",
+        )
+        source_parser.add_argument("--max-llm-calls", type=int)
+        source_parser.add_argument("--max-tool-calls", type=int)
+        source_parser.add_argument("--max-compile-calls", type=int)
+        source_parser.add_argument("--max-csim-calls", type=int)
+        source_parser.add_argument("--max-csynth-calls", type=int)
+        source_parser.add_argument("--max-wall-time-s", type=float)
+        source_parser.add_argument(
+            "--token-budget",
+            type=int,
+            help="Observed-only soft token budget.",
+        )
+        source_parser.add_argument(
+            "--cost-budget",
+            help=(
+                "Observed-only soft cost budget in the selected "
+                "pricing snapshot currency."
+            ),
+        )
+        source_parser.add_argument(
+            "--run-id",
+            help="Optional stable run identifier.",
+        )
+
     return parser
 
 
@@ -707,6 +829,24 @@ def main(
     args = parser.parse_args(argv)
 
     try:
+        if args.command in ("refactor", "optimize", "full"):
+            from agrefactor.product import run_source_command
+
+            execution = run_source_command(args)
+            artifact_manifest = (
+                execution.layout.artifact_root
+                / "run_artifact_manifest.json"
+            )
+            _write_run_result(
+                execution.result,
+                stdout,
+                execution_mode=(
+                    "source_" + args.command
+                ),
+                artifact_manifest=artifact_manifest,
+            )
+            return 0 if execution.result.succeeded else 1
+
         if args.command == "validate-task":
             task = load_task_file(args.task_file)
             _write_normalized_task(

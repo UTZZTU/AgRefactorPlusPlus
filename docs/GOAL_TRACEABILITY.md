@@ -187,3 +187,22 @@ STAGE3_STARTED=false
 Evidence:
 [`P1_P4_FROZEN_CONTRACT_RECONCILIATION.md`](P1_P4_FROZEN_CONTRACT_RECONCILIATION.md).
 <!-- P1_P4_FROZEN_CONTRACT_RECONCILIATION:END -->
+
+<!-- P2_SOURCE_ONLY_BOOTSTRAP:BEGIN -->
+## P2 source-only bootstrap trace
+
+| Frozen objective | Implemented evidence |
+|---|---|
+| Ordinary source input with explicit top/model | `agrefactor.cli refactor SOURCE --top TOP --model MODEL` |
+| No ordinary task/candidate/work/artifact inputs | Internally managed `SourceRunLayout` and generated TaskSpec |
+| P4 source selection reuse | `TestSourcePlan` mapping with repeated provided suites and inferred overall mode |
+| Reuse rather than duplicate | Existing refactor backend runs in generation-only mode |
+| Formal verdict | Generated candidate enters `CandidateRepairPhase` / Stage-2 orchestration |
+| Shared hard budget | One `BudgetManager` object is reused by generation and formal validation |
+| Soft Token/Cost | Separate observed-only nonblocking contract |
+| Advanced reproduction | Existing `run task.json` remains |
+| Stage-3 boundary | optimize/full reject rather than fabricate optimizer success |
+
+Acceptance: `1346/1346`, patch
+`af57008cd7db13e88400418fc95ac47baf157dc7`. Next objective: Execution Identity.
+<!-- P2_SOURCE_ONLY_BOOTSTRAP:END -->

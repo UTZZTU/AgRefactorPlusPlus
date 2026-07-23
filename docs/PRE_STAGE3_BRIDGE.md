@@ -343,3 +343,16 @@ STAGE3_STARTED=false
 Evidence:
 [`P1_P4_FROZEN_CONTRACT_RECONCILIATION.md`](P1_P4_FROZEN_CONTRACT_RECONCILIATION.md).
 <!-- P1_P4_FROZEN_CONTRACT_RECONCILIATION:END -->
+
+<!-- P2_SOURCE_ONLY_BOOTSTRAP:BEGIN -->
+## P2 source-only product bridge
+
+The normal `refactor SOURCE --top TOP --model MODEL` entry now constructs the
+internal TaskSpec, target, model configuration, Public/Hidden source plan,
+managed directories, budget contract, initial generation request and formal
+Stage-2 validation request. Legacy code is reused only for generation and its
+success is never treated as the final verdict.
+
+Deterministic acceptance: `1346/1346`; patch
+`af57008cd7db13e88400418fc95ac47baf157dc7`. The next frozen item is Execution Identity.
+<!-- P2_SOURCE_ONLY_BOOTSTRAP:END -->

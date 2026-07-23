@@ -11,6 +11,12 @@ from .budget import (
     BudgetManager,
     BudgetUsage,
 )
+from .budget_profile import (
+    DEFAULT_SOURCE_RUN_BUDGET_PROFILE,
+    HARD_BUDGET_FIELDS,
+    EffectiveRunBudget,
+    RunBudgetProfile,
+)
 from .runner import (
     PhaseHandler,
     PhaseResult,
@@ -144,6 +150,10 @@ __all__ = [
     "BudgetLimits",
     "BudgetManager",
     "BudgetUsage",
+    "DEFAULT_SOURCE_RUN_BUDGET_PROFILE",
+    "EffectiveRunBudget",
+    "HARD_BUDGET_FIELDS",
+    "RunBudgetProfile",
     "CandidateRepairOrchestrationRequest",
     "CandidateRepairOrchestrationResult",
     "CandidateRepairOrchestrationStatus",
