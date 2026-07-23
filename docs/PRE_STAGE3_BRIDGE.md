@@ -432,3 +432,20 @@ P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
 ```
+
+<!-- P0_PUBLIC_TESTBENCH_REPAIR_AND_OUTPUT_LIMITS -->
+## P0 observed blocker: Public Testbench repair routing
+
+A real DFS run reached formal validation with a synthesizable Candidate,
+but the generated Public Testbench depended on implementation-private
+globals. Source bootstrap now executes the independent Public Testbench
+repair loop, records derived provenance, and keeps Hidden content out
+of prompts. The four known-family artifact output limits are 32768 with
+the existing 65536 safety ceiling. Evidence is recorded in
+[`P0_PUBLIC_TESTBENCH_REPAIR_AND_OUTPUT_LIMITS_ACCEPTANCE.md`](P0_PUBLIC_TESTBENCH_REPAIR_AND_OUTPUT_LIMITS_ACCEPTANCE.md).
+
+```text
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```

@@ -141,7 +141,7 @@ class HLSAgentLoaderPolicyTests(unittest.TestCase):
             base_agent_module.HLSAgentLoader
         )
         self.assertNotIn(
-            "setdefault('max_tokens', 8192)",
+            "setdefault('max_tokens', 32768)",
             source,
         )
 

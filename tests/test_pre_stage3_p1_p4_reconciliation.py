@@ -106,7 +106,7 @@ class FrozenProfileContractTests(unittest.TestCase):
         effective = profile.merge_parameters(
             artifact_kind=ModelArtifactKind.CANDIDATE_REPAIR,
         )
-        self.assertEqual(effective["max_tokens"], 16384)
+        self.assertEqual(effective["max_tokens"], 32768)
 
     def test_explicit_output_override_beats_artifact_default(self):
         profile = GENERIC_OPENAI_COMPATIBLE_MODEL_FAMILY_PROFILE

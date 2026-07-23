@@ -140,7 +140,7 @@ class KnownModelProfilesTests(unittest.TestCase):
             DEEPSEEK_MODEL_FAMILY_PROFILE.merge_parameters(
                 call_overrides={
                     "max_completion_tokens": 4096,
-                    "max_tokens": 8192,
+                    "max_tokens": 32768,
                 }
             )
 

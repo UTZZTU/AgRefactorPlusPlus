@@ -32,6 +32,11 @@ from agrefactor.config import (
     TestSuiteSpec,
     resolve_target_profile,
 )
+from agrefactor.evaluation import TestbenchPreflight
+from agrefactor.testing import (
+    TestbenchRepairLoop,
+    build_openai_compatible_testbench_repairer,
+)
 from agrefactor.models import (
     CandidateModelAdapter,
     EffectiveModelConfig,
@@ -423,6 +428,184 @@ class SourceBootstrapRunResult:
             raise TypeError("layout must be SourceRunLayout")
 
 
+
+@dataclass(frozen=True, slots=True)
+class PublicTestbenchPreparationResult:
+    'Safe summary plus the prepared Public Testbench source.'
+
+    status: str
+    testbench_code: str
+    reason: str
+    repair_attempts_used: int
+    prompt_sha256: str | None
+    trajectory_id: str | None
+    artifact_path: str
+    repair_artifact_manifest_path: str
+    cost_observations: tuple[Mapping[str, Any], ...] = ()
+
+    @property
+    def succeeded(self) -> bool:
+        return self.status == "passed"
+
+    @property
+    def changed(self) -> bool:
+        return self.succeeded and self.repair_attempts_used > 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": 1,
+            "status": self.status,
+            "reason": self.reason,
+            "repair_attempts_used": self.repair_attempts_used,
+            "changed": self.changed,
+            "prompt_sha256": self.prompt_sha256,
+            "trajectory_id": self.trajectory_id,
+            "artifact_path": self.artifact_path,
+            "repair_artifact_manifest_path": (
+                self.repair_artifact_manifest_path
+            ),
+            "cost_observation_count": len(self.cost_observations),
+            "hidden_testbench_exposed_to_model": False,
+        }
+
+
+def _prepare_public_testbench(
+    *,
+    task: TaskSpec,
+    testbench_code: str,
+    original_code: str,
+    candidate_code: str,
+    effective_model_config: EffectiveModelConfig,
+    budget: BudgetManager,
+    work_dir: Path,
+    max_repair_attempts: int = 2,
+) -> PublicTestbenchPreparationResult:
+    'Preflight and, when necessary, repair one Public Testbench.'
+
+    repairer = build_openai_compatible_testbench_repairer(
+        effective_config=effective_model_config,
+        budget=budget,
+    )
+    loop = TestbenchRepairLoop(
+        preflight=TestbenchPreflight(),
+        repairer=repairer,
+        max_repair_attempts=max_repair_attempts,
+    )
+    result = loop.run(
+        work_dir=work_dir,
+        testbench_code=testbench_code,
+        original_code=original_code,
+        candidate_code=candidate_code,
+        budget=budget,
+        task=task,
+    )
+
+    prompt_sha256 = None
+    trajectory_id = None
+    if result.repair_attempts_used > 0:
+        prompt = getattr(repairer, "last_prompt", None)
+        if prompt is None:
+            raise RuntimeError(
+                "testbench repair used a model call without "
+                "retaining its prompt manifest"
+            )
+        prompt_sha256 = str(
+            prompt.manifest.get("message_sequence_sha256", "")
+        )
+        if re.fullmatch(r"[0-9a-f]{64}", prompt_sha256) is None:
+            raise RuntimeError(
+                "testbench repair prompt manifest lacks a valid SHA-256"
+            )
+        trajectory_id = f"{task.task_id}.public-testbench-repair"
+
+    cost_observations: list[dict[str, Any]] = []
+    for response in getattr(repairer, "responses", ()):
+        usage = getattr(response, "usage", None)
+        estimate = getattr(usage, "estimated_cost", None)
+        if estimate is not None:
+            cost_observations.append(estimate.to_dict())
+
+    return PublicTestbenchPreparationResult(
+        status=result.status.value,
+        testbench_code=result.testbench_code,
+        reason=result.reason,
+        repair_attempts_used=result.repair_attempts_used,
+        prompt_sha256=prompt_sha256,
+        trajectory_id=trajectory_id,
+        artifact_path=result.artifact_path,
+        repair_artifact_manifest_path=(
+            result.repair_artifact_manifest_path
+        ),
+        cost_observations=tuple(cost_observations),
+    )
+
+
+def _apply_repaired_public_suite(
+    *,
+    suites: Sequence[TestSuiteSpec],
+    suite_codes: Mapping[str, str],
+    public_suite: TestSuiteSpec,
+    preparation: PublicTestbenchPreparationResult,
+    effective_model_config: EffectiveModelConfig,
+) -> tuple[
+    tuple[TestSuiteSpec, ...],
+    dict[str, str],
+    TestSuiteSpec,
+]:
+    'Persist a repaired Public suite with derived provenance.'
+
+    if public_suite.split is not EvaluationSplit.PUBLIC:
+        raise ValueError("only a Public suite may be repaired")
+    if not preparation.changed:
+        return tuple(suites), dict(suite_codes), public_suite
+    if preparation.prompt_sha256 is None:
+        raise ValueError(
+            "changed Public Testbench requires prompt provenance"
+        )
+    if public_suite.testbench_path is None:
+        raise ValueError("Public suite requires a materialized path")
+
+    target_path = Path(public_suite.testbench_path)
+    normalized_code = preparation.testbench_code.rstrip() + "\n"
+    _atomic_text(target_path, normalized_code)
+    persisted_code = target_path.read_text(encoding="utf-8")
+    digest = _sha256_file(target_path)
+
+    derived_source = TestSourceSpec(
+        source_id=f"public-derived-{digest[:16]}",
+        source_revision=str(preparation.repair_attempts_used),
+        source_kind=TestSourceKind.DERIVED,
+        expected_content_sha256=digest,
+        operator_artifact_path=str(target_path),
+        generation_model=effective_model_config.model_id,
+        generation_profile=(
+            effective_model_config.family_profile_name
+        ),
+        prompt_sha256=preparation.prompt_sha256,
+        trajectory_id=preparation.trajectory_id,
+        round_index=preparation.repair_attempts_used,
+    )
+    replacement = TestSuiteSpec(
+        suite_id=public_suite.suite_id,
+        suite_version=(
+            f"{public_suite.suite_version or '1'}"
+            f"+tb-repair-{preparation.repair_attempts_used}"
+        ),
+        split=EvaluationSplit.PUBLIC,
+        case_count=public_suite.case_count,
+        testbench_path=str(target_path),
+        source=derived_source,
+    )
+
+    updated_suites = tuple(
+        replacement if suite.suite_id == public_suite.suite_id else suite
+        for suite in suites
+    )
+    updated_codes = dict(suite_codes)
+    updated_codes[public_suite.suite_id] = persisted_code
+    return updated_suites, updated_codes, replacement
+
+
 class SourceCommandRejected(ValueError):
     """Structured pre-launch rejection with persisted product artifacts."""
 
@@ -472,6 +655,9 @@ class SourceBootstrapPhase:
         self._formal_phase_builder = formal_phase_builder
         self._last_generation_result: PhaseResult | None = None
         self._last_formal_phase: Any = None
+        self._public_testbench_cost_observations: tuple[
+            Mapping[str, Any], ...
+        ] = ()
 
     def __call__(self, context: RunContext) -> PhaseResult:
         if self._request.mode is not RunMode.REFACTOR:
@@ -643,6 +829,128 @@ class SourceBootstrapPhase:
             testbench_path=preflight_suite.testbench_path,
             test_suites=suites,
         )
+
+        public_preparation = None
+        if (
+            self._request.test_source_plan.public.mode
+            is TestSourceSelectionMode.AUTO
+        ):
+            context.trace.record(
+                "public_testbench.preparation.started",
+                phase="preflight",
+                status="running",
+                metadata={
+                    "suite_id": preflight_suite.suite_id,
+                    "max_repair_attempts": 2,
+                    "hidden_testbench_exposed_to_model": False,
+                },
+            )
+            public_preparation = _prepare_public_testbench(
+                task=formal_task,
+                testbench_code=preflight_code,
+                original_code=original_code,
+                candidate_code=candidate_code,
+                effective_model_config=(
+                    self._request.effective_model_config
+                ),
+                budget=context.budget,
+                work_dir=(
+                    bootstrap_root / "public_testbench_repair"
+                ),
+                max_repair_attempts=2,
+            )
+            self._public_testbench_cost_observations = (
+                public_preparation.cost_observations
+            )
+            _atomic_json(
+                bootstrap_root
+                / "public_testbench_preparation.json",
+                public_preparation.to_dict(),
+            )
+            context.trace.record(
+                "public_testbench.preparation.finished",
+                phase="preflight",
+                status=(
+                    "passed"
+                    if public_preparation.succeeded
+                    else "failed"
+                ),
+                metadata=public_preparation.to_dict(),
+            )
+            if not public_preparation.succeeded:
+                identity_summary = self._write_execution_identity(
+                    context=context,
+                    normalized_task=formal_task,
+                    suites=suites,
+                    execution_status="failed",
+                    initial_candidate_path=(
+                        bootstrap_root / "initial_candidate.cpp"
+                    ),
+                    final_candidate_path=(
+                        bootstrap_root / "initial_candidate.cpp"
+                    ),
+                    require_accepted_ready=False,
+                    hard_budget_exhaustion=None,
+                )
+                return PhaseResult(
+                    phase=RunPhase.REFACTOR,
+                    status=PhaseStatus.FAILED,
+                    summary=(
+                        "Auto-generated Public Testbench could not "
+                        "be prepared for formal validation: "
+                        + public_preparation.reason
+                    ),
+                    metadata={
+                        "source_bootstrap": True,
+                        "generation_only": True,
+                        "formal_validation_started": False,
+                        "failed_stage": (
+                            "public_testbench_preparation"
+                        ),
+                        "public_testbench_repair_status": (
+                            public_preparation.status
+                        ),
+                        "public_testbench_repair_attempts": (
+                            public_preparation.repair_attempts_used
+                        ),
+                        "hidden_testbench_exposed_to_model": False,
+                        "execution_identity": identity_summary,
+                    },
+                )
+            if public_preparation.changed:
+                (
+                    suites,
+                    suite_codes,
+                    preflight_suite,
+                ) = _apply_repaired_public_suite(
+                    suites=suites,
+                    suite_codes=suite_codes,
+                    public_suite=preflight_suite,
+                    preparation=public_preparation,
+                    effective_model_config=(
+                        self._request.effective_model_config
+                    ),
+                )
+                public_suites = tuple(
+                    suite
+                    for suite in suites
+                    if suite.split is EvaluationSplit.PUBLIC
+                )
+                preflight_code = suite_codes[
+                    preflight_suite.suite_id
+                ]
+                formal_task = TaskSpec(
+                    task_id=f"{self._request.run_id}.formal",
+                    kernel_path=str(self._request.source_path),
+                    kernel_name=candidate_top,
+                    target=self._request.target,
+                    mode=RunMode.REFACTOR,
+                    testbench_path=(
+                        preflight_suite.testbench_path
+                    ),
+                    test_suites=suites,
+                )
+
         _atomic_json(
             bootstrap_root / "normalized_task.json",
             formal_task.to_dict(),
@@ -675,6 +983,11 @@ class SourceBootstrapPhase:
                 },
                 "max_candidate_repairs": (
                     self._request.max_candidate_repairs
+                ),
+                "public_testbench_preparation": (
+                    None
+                    if public_preparation is None
+                    else public_preparation.to_dict()
                 ),
                 "shared_budget": True,
                 "shared_trace": True,
@@ -758,6 +1071,17 @@ class SourceBootstrapPhase:
                 ),
                 "public_suite_count": len(public_suites),
                 "hidden_suite_count": len(suites) - len(public_suites),
+                "public_testbench_repair_status": (
+                    None
+                    if public_preparation is None
+                    else public_preparation.status
+                ),
+                "public_testbench_repair_attempts": (
+                    0
+                    if public_preparation is None
+                    else public_preparation.repair_attempts_used
+                ),
+                "hidden_testbench_exposed_to_model": False,
                 "shared_budget": True,
                 "shared_trace": True,
                 "bootstrap_manifest": (
@@ -984,6 +1308,15 @@ class SourceBootstrapPhase:
                         token_usage.get("estimated_cost"),
                         f"legacy:{model_name}",
                     )
+
+        for index, estimate in enumerate(
+            self._public_testbench_cost_observations,
+            start=1,
+        ):
+            add_estimate(
+                estimate,
+                f"testbench_repair:{index}",
+            )
 
         formal_result = getattr(
             self._last_formal_phase,

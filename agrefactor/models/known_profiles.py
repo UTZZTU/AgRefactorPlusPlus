@@ -58,10 +58,10 @@ _OUTPUT_POLICY = ModelOutputPolicy(
     parameter_name="max_tokens",
     safety_ceiling=65536,
     per_artifact_limits={
-        ModelArtifactKind.CANDIDATE: 16384,
-        ModelArtifactKind.TESTBENCH: 8192,
-        ModelArtifactKind.CANDIDATE_REPAIR: 16384,
-        ModelArtifactKind.TESTBENCH_REPAIR: 8192,
+        ModelArtifactKind.CANDIDATE: 32768,
+        ModelArtifactKind.TESTBENCH: 32768,
+        ModelArtifactKind.CANDIDATE_REPAIR: 32768,
+        ModelArtifactKind.TESTBENCH_REPAIR: 32768,
     },
 )
 
