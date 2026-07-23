@@ -10,7 +10,7 @@
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
 | Model API Registry | Stage 1/2 | P1-A/B/C/D 已完成：Modern、Legacy、repair 统一运行时，且 `deepseek-v4-flash` 已完成单次有界真实网络 smoke、native CNY accounting 与第二次调用硬阻断 | 无；后续由 P4/P2/P5/P0 消费 | [`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md) |
 | 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、typed family instruction、formal CLI 与 strict contract 已完成；真实 proposal evidence 未证明需要放宽 | Stage 2 已关闭；后续仅按新真实证据 harden | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
-| 结构化反馈/状态机 | Stage 2 | Public/Hidden、router/state/coordinator、real handlers、formal repair-aware CLI、5/5 blockers 与 final closure 已完成 | Stage 2 已关闭；Stage 3 复用 correctness gate | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
+| 结构化反馈/状态机 | Stage 2 | Public/Hidden 路由、终态隔离与 agent-safe redaction 已完成；P4 进一步接入明确 source identity、revision、SHA-256、运行内容一致性和多 suite provenance | P0 经最终 source-only 入口做真实 DFS 复验 | [`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md) |
 | Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、7/7 full chains、9/9 faults、16/16 labels，并经 2.7.7/2.8 closure audit | 扩大版本、器件和 kernel 统计覆盖 | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
 | 安全三级优化器 | Stage 3 | legacy `simple_iter` baseline | hypothesis、3 levels、checkpoint、rollback、cache、best_correct | 多 kernel 与 baseline 对照 |
 | Memory Applicability Gate | Stage 4 | legacy RAG 正负 trial | schema、score、abstention、off/gated/always | 负迁移与弃权实验 |
@@ -87,14 +87,19 @@ TokenUsage, native CNY estimated cost, credential exclusion and the prospective
 second-call hard block are recorded in
 [`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md).
 
+P4 Public/Hidden test-source provenance completed with
+**1312/1312** deterministic tests and patch ID `bd85479221d8729c9aad23df6a91ccfaf4d7333b`. Evidence:
+[`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md).
+
 Current next evidence:
 
 ```text
-P4 Public/Hidden test-source contract and provenance
--> independent Public and Hidden source selection
--> multiple suites
--> explicit source identity and provenance
--> no source-only CLI, P0 or Stage 3 work yet
+P2 source-only bootstrap and unified normal-user CLI
+-> user supplies source, --top and model
+-> internal TaskSpec construction
+-> no public legacy/repair-aware selector
+-> refactor / optimize / full only
+-> no P0 or Stage 3 work yet
 ```
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
@@ -145,8 +150,8 @@ Stage 2 已关闭，但 Stage 3 仍被 Pre-Stage-3 产品化收尾阻断。权�
 ```text
 Step 0  文档冻结与只读 consumer 审计
 Step 1  P1-A/P1-B/P1-C/P1-D 已完成；P1 整体完成
-Step 2  P4 Public/Hidden 来源与 provenance 当前活跃
-Step 3  P2 source-only bootstrap 与统一 CLI
+Step 2  P4 Public/Hidden 来源与 provenance 已完成
+Step 3  P2 source-only bootstrap 与统一 CLI 当前活跃
 Step 4  Execution Identity
 Step 5  P5 简洁输出
 Step 6  P0 真实 DFS source-only accepted

@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from .test_source import TestSourceSpec
+
 
 class EvaluationSplit(str, Enum):
     """Control whether evaluation details may be shown to an agent."""
@@ -29,6 +31,7 @@ _ALLOWED_TEST_SUITE_FIELDS = frozenset(
         "case_count",
         "testbench_path",
         "feedback_visible_to_agent",
+        "source",
     }
 )
 
@@ -42,6 +45,7 @@ class TestSuiteSpec:
     suite_version: str | None = None
     case_count: int | None = None
     testbench_path: str | None = None
+    source: TestSourceSpec | None = None
 
     def __post_init__(self) -> None:
         suite_id = self._clean_required(
@@ -84,11 +88,29 @@ class TestSuiteSpec:
                     "TestSuiteSpec.case_count must be positive when set"
                 )
 
+        source = self.source
+        if source is not None and not isinstance(
+            source,
+            TestSourceSpec,
+        ):
+            if isinstance(source, Mapping):
+                source = TestSourceSpec.from_dict(source)
+            else:
+                raise TypeError(
+                    "TestSuiteSpec.source must be a "
+                    "TestSourceSpec, mapping or null"
+                )
+        if source is not None and testbench_path is None:
+            raise ValueError(
+                "TestSuiteSpec.source requires testbench_path"
+            )
+
         object.__setattr__(self, "suite_id", suite_id)
         object.__setattr__(self, "split", split)
         object.__setattr__(self, "suite_version", suite_version)
         object.__setattr__(self, "case_count", case_count)
         object.__setattr__(self, "testbench_path", testbench_path)
+        object.__setattr__(self, "source", source)
 
     @property
     def feedback_visible_to_agent(self) -> bool:
@@ -120,7 +142,7 @@ class TestSuiteSpec:
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable suite description."""
 
-        return {
+        payload = {
             "suite_id": self.suite_id,
             "suite_version": self.suite_version,
             "split": self.split.value,
@@ -130,6 +152,9 @@ class TestSuiteSpec:
                 self.feedback_visible_to_agent
             ),
         }
+        if self.source is not None:
+            payload["source"] = self.source.to_dict()
+        return payload
 
     @classmethod
     def from_dict(
@@ -155,6 +180,7 @@ class TestSuiteSpec:
             ),
             case_count=data.get("case_count"),
             testbench_path=data.get("testbench_path"),
+            source=data.get("source"),
         )
 
         if "feedback_visible_to_agent" in data:

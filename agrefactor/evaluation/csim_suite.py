@@ -8,7 +8,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from agrefactor.config import TestSuiteSpec
+from agrefactor.config import (
+    TestSourceProvenance,
+    TestSuiteSpec,
+    resolve_test_source,
+)
 from agrefactor.evidence import (
     TestEvaluationEvidence,
     TestEvaluationStatus,
@@ -60,7 +64,7 @@ class CsimSuiteEvaluator:
         budget: BudgetManager | None = None,
         trace: TraceRecorder | None = None,
     ) -> CsimSuiteEvaluationResult:
-        """Execute csim and attach suite identity without changing budgets."""
+        """Execute csim and attach verified suite source identity."""
 
         if not isinstance(suite, TestSuiteSpec):
             raise TypeError("suite must be a TestSuiteSpec")
@@ -72,6 +76,11 @@ class CsimSuiteEvaluator:
             raise TypeError("budget must be a BudgetManager or null")
         if trace is not None and not isinstance(trace, TraceRecorder):
             raise TypeError("trace must be a TraceRecorder or null")
+
+        source_provenance = self._resolve_source(
+            suite,
+            context_variables,
+        )
 
         executor = self._executor or self._load_default_executor()
         raw_result = executor(
@@ -92,6 +101,7 @@ class CsimSuiteEvaluator:
             diagnostic=diagnostic,
             invocation=invocation,
             invocation_path=invocation_path,
+            source_provenance=source_provenance,
         )
 
         if trace is not None:
@@ -101,6 +111,34 @@ class CsimSuiteEvaluator:
             legacy_status=legacy_status,
             diagnostic=diagnostic,
             evidence=evidence,
+        )
+
+    @staticmethod
+    def _resolve_source(
+        suite: TestSuiteSpec,
+        context_variables: Any,
+    ) -> TestSourceProvenance | None:
+        if suite.source is None:
+            return None
+        if suite.testbench_path is None:
+            raise ValueError(
+                "suite source provenance requires testbench_path"
+            )
+        try:
+            execution_content = context_variables["testbench"]
+        except (KeyError, TypeError) as exc:
+            raise ValueError(
+                "context_variables must contain the exact "
+                "testbench source for a provenance-enabled suite"
+            ) from exc
+        if not isinstance(execution_content, str):
+            raise TypeError(
+                "context_variables['testbench'] must be a string"
+            )
+        return resolve_test_source(
+            suite.source,
+            suite.testbench_path,
+            execution_content=execution_content,
         )
 
     @staticmethod
@@ -149,6 +187,7 @@ class CsimSuiteEvaluator:
         diagnostic: str,
         invocation: Mapping[str, Any] | None,
         invocation_path: Path,
+        source_provenance: TestSourceProvenance | None,
     ) -> TestEvaluationEvidence:
         status, summary = cls._normalize_status(legacy_status)
 
@@ -205,6 +244,7 @@ class CsimSuiteEvaluator:
             summary=summary,
             details=details,
             artifacts=artifacts,
+            source_provenance=source_provenance,
         )
 
     @staticmethod

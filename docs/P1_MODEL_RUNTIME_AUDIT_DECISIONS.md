@@ -1,6 +1,6 @@
 # P1 模型运行时审计决策账本
 
-> **状态：** P1-A、P1-B、P1-C、P1-D 已完成；P1 整体完成，P4 Public/Hidden test-source contract 当前活跃
+> **状态：** P1 整体完成；P4 Public/Hidden test-source provenance 已完成，P2 source-only bootstrap 当前活跃
 > **审计基线：** `8b543267a88ed63d343bd633cf29cd6edf9c4127`  
 > **人工复核日期：** 2026-07-22  
 > **作用：** 保存自动审计发现、人工修正、新增发现、阶段归属和关闭证据。  
@@ -795,3 +795,5 @@ Step 1 P1-C4 deterministic parity acceptance   pending
 ```
 
 P1-C3C1 已完成。当前只推进 P1-C3C2 Legacy native-currency Budget bridge；P1-C3C3、P1-C4、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。
+
+P4 closure evidence: [`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md).

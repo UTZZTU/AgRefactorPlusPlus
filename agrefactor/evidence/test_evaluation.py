@@ -8,7 +8,11 @@ from enum import Enum
 import json
 from typing import Any
 
-from agrefactor.config import EvaluationSplit, TestSuiteSpec
+from agrefactor.config import (
+    EvaluationSplit,
+    TestSourceProvenance,
+    TestSuiteSpec,
+)
 
 
 class TestEvaluationStatus(str, Enum):
@@ -32,6 +36,7 @@ _ALLOWED_EVIDENCE_FIELDS = frozenset(
         "details",
         "artifacts",
         "redacted",
+        "source_provenance",
     }
 )
 
@@ -49,6 +54,7 @@ class TestEvaluationEvidence:
     summary: str = "Test evaluation completed"
     details: Mapping[str, Any] = field(default_factory=dict)
     artifacts: tuple[str, ...] = ()
+    source_provenance: TestSourceProvenance | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.suite, TestSuiteSpec):
@@ -109,12 +115,32 @@ class TestEvaluationEvidence:
         details = self._normalize_details(self.details)
         artifacts = self._normalize_artifacts(self.artifacts)
 
+        provenance = self.source_provenance
+        if provenance is not None and not isinstance(
+            provenance,
+            TestSourceProvenance,
+        ):
+            if isinstance(provenance, Mapping):
+                provenance = TestSourceProvenance.from_dict(
+                    provenance
+                )
+            else:
+                raise TypeError(
+                    "source_provenance must be a "
+                    "TestSourceProvenance, mapping or null"
+                )
+
         object.__setattr__(self, "status", status)
         object.__setattr__(self, "passed_cases", passed_cases)
         object.__setattr__(self, "failed_cases", failed_cases)
         object.__setattr__(self, "summary", summary)
         object.__setattr__(self, "details", details)
         object.__setattr__(self, "artifacts", artifacts)
+        object.__setattr__(
+            self,
+            "source_provenance",
+            provenance,
+        )
 
     @property
     def evaluated_cases(self) -> int:
@@ -183,7 +209,7 @@ class TestEvaluationEvidence:
     def to_dict(self) -> dict[str, Any]:
         """Return complete operator/evaluator evidence."""
 
-        return {
+        payload = {
             "suite": self.suite.to_dict(),
             "status": self.status.value,
             "passed_cases": self.passed_cases,
@@ -196,6 +222,11 @@ class TestEvaluationEvidence:
             "artifacts": list(self.artifacts),
             "redacted": False,
         }
+        if self.source_provenance is not None:
+            payload["source_provenance"] = (
+                self.source_provenance.to_dict()
+            )
+        return payload
 
     def to_agent_dict(self) -> dict[str, Any]:
         """Return evidence safe to include in an agent prompt."""
@@ -203,7 +234,7 @@ class TestEvaluationEvidence:
         if self.feedback_visible_to_agent:
             return self.to_dict()
 
-        return {
+        payload = {
             "suite": {
                 "suite_id": self.suite.suite_id,
                 "suite_version": self.suite.suite_version,
@@ -222,6 +253,11 @@ class TestEvaluationEvidence:
             "artifacts": [],
             "redacted": True,
         }
+        if self.source_provenance is not None:
+            payload["source_provenance"] = (
+                self.source_provenance.to_hidden_agent_dict()
+            )
+        return payload
 
     @classmethod
     def from_dict(
@@ -252,6 +288,22 @@ class TestEvaluationEvidence:
             else TestSuiteSpec.from_dict(suite_data)
         )
 
+        provenance_data = data.get("source_provenance")
+        provenance = (
+            None
+            if provenance_data is None
+            else (
+                provenance_data
+                if isinstance(
+                    provenance_data,
+                    TestSourceProvenance,
+                )
+                else TestSourceProvenance.from_dict(
+                    provenance_data
+                )
+            )
+        )
+
         evidence = cls(
             suite=suite,
             status=data["status"],
@@ -265,6 +317,7 @@ class TestEvaluationEvidence:
             ),
             details=data.get("details", {}),
             artifacts=tuple(data.get("artifacts", ())),
+            source_provenance=provenance,
         )
 
         if "evaluated_cases" in data:

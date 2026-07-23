@@ -112,7 +112,10 @@ P1-C3C2 integrated accounting completed at `f0c06c32771916bb6ad3bd68eb4ac21473dc
 P1-D bounded DeepSeek network smoke completed for `deepseek-v4-flash` with one real API call, native CNY cost provenance, no credential persistence and a verified `max_llm_calls=1` block. Evidence is recorded in
 [`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md).
 
-P1 is complete. The active package is P4 Public/Hidden test-source contract and provenance. Normal CLI migration, Execution Identity, P5 output, P0 and Stage 3 remain separate later packages.
+P1 is complete. P4 Public/Hidden test-source provenance completed with 1312/1312 deterministic tests and patch ID `bd85479221d8729c9aad23df6a91ccfaf4d7333b`. Evidence is recorded in
+[`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md).
+
+The active package is P2 source-only bootstrap and unified normal-user CLI. Execution Identity, P5 output, P0 and Stage 3 remain separate later packages.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## Scope control

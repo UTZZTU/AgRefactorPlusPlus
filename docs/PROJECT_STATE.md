@@ -8,7 +8,7 @@
 - 当前功能代码基线：`f0c06c32771916bb6ad3bd68eb4ac21473dcd41b`
 - Stage 2 closure validation baseline：`3f57371c8b58f53449064219c024ab63042a87d4`
 - Stage 2 状态：**closed**；Stage 3：**allowed, not started**
-- 最新确定性测试：**1275/1275 passed**
+- 最新确定性测试：**1312/1312 passed**
 - 最新 Stage 2.5 总结：**7 baseline、7/7 real full chains、9 faults、16 labels、23 scenario executions；跨三次独立验收累计 62/36/9/17/0，0 LLM**
 - 最新完整验证链验收仍为：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)
@@ -77,7 +77,8 @@ P1-C3B generic AG2 loader policy completed deterministic acceptance at `343d23c5
 P1-C3C1 typed AG2 usage summary completed deterministic acceptance at `d2f085b3cabefef87e8aa5099bdb1c2a8ce32b7d` with **1220/1220** tests and patch ID `f5ecbba1271868d84d1ad5b8482c50926a013c6f`. Evidence: [`P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md`](P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md).
 P1-C3C2 integrated Legacy usage accounting completed at `f0c06c32771916bb6ad3bd68eb4ac21473dcd41b` with **1250/1250** tests and patch ID `6f77f6146e64a341623ac9e21a591f5a7e4cd7bd`. P1-C4 parity then closed P1-C with **1275/1275** tests. Evidence: [`P1C_RUNTIME_CLOSURE_ACCEPTANCE.md`](P1C_RUNTIME_CLOSURE_ACCEPTANCE.md).
 P1-D bounded DeepSeek network smoke completed for `deepseek-v4-flash` with one real API call, native CNY accounting and a verified second-call hard block. P1 is now complete. Evidence: [`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md).
-Current active package is **P4 Public/Hidden test-source contract and provenance**.
+P4 Public/Hidden test-source provenance completed with **1312/1312** deterministic tests and patch ID `bd85479221d8729c9aad23df6a91ccfaf4d7333b`. Evidence: [`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md).
+Current active package is **P2 source-only bootstrap and unified normal-user CLI**.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## 2. 已完成
