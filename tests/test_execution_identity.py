@@ -70,6 +70,20 @@ class ExecutionIdentityTests(unittest.TestCase):
                 "verification_status": "official_verified",
             },
             "allow_approximate_cost": True,
+            "actual_cost_estimation": {
+                "schema_version": 1,
+                "quality": "approximate",
+                "observations": [
+                    {
+                        "quality": "approximate",
+                        "amount": "0.01",
+                        "currency": "CNY",
+                        "pricing_snapshot_sha256": "1" * 64,
+                    }
+                ],
+                "amounts_by_currency": {"CNY": "0.01"},
+                "is_invoice": False,
+            },
         }
         target = {
             "schema_version": 2,
@@ -165,15 +179,39 @@ class ExecutionIdentityTests(unittest.TestCase):
                 "formal_validation_request": "3" * 64,
             },
             "target_manifest": target,
+            "prompt_evidence": {
+                "schema_version": 1,
+                "actual_call_count": 1,
+                "aggregate_sha256": "4" * 64,
+                "calls": [
+                    {
+                        "schema_version": 1,
+                        "call_index": 1,
+                        "template_id": "ag2:test:refactor",
+                        "template_version": 1,
+                        "system_message_sha256": "5" * 64,
+                        "invocation_sha256": "6" * 64,
+                        "message_sequence_sha256": "7" * 64,
+                        "provider_call_observed": True,
+                        "metadata": {"agent_name": "refactor"},
+                    }
+                ],
+            },
             "suite_manifests": [
                 {
                     "suite_id": "public-001",
                     "suite_version": "1",
                     "split": "public",
                     "testbench_path": str(testbench),
+                    "evaluation_status": "passed",
                     "source": {
                         "source_kind": "provided",
                         "expected_content_sha256": file_sha256(testbench),
+                        "qualification_status": "qualified",
+                        "coverage": {
+                            "compile_attempted": True,
+                            "simulation_attempted": True,
+                        },
                     },
                 }
             ],

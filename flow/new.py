@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 import flow.tools as tools
 from flow.rag.rag_integration import KnowledgeManager
 from flow.base_agent import reset_agrefactorpp_usage_registry, print_agrefactorpp_usage_summary
+from agrefactor.runtime.prompt_evidence import reset_model_prompt_evidence
 from agrefactor.models import EffectiveModelConfig
 from agrefactor.runtime.budget import BudgetManager
 from agrefactor.testing import (
@@ -135,6 +136,7 @@ def hls_refactor_with_rag(
     use_cached_tb_as_public: bool = False,  # Skip TB gen entirely; use cached hidden TB as the agent's testbench.
 ):
     reset_agrefactorpp_usage_registry()
+    reset_model_prompt_evidence()
     llm_config = resolve_runtime_llm_config(
         model,
         reasoning_effort,

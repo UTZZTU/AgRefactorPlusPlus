@@ -1,58 +1,33 @@
-# Execution Identity and Reproducibility Acceptance
+# Execution Identity Authority Reconciliation Acceptance
 
 ## Authority and scope
 
-The sole implementation authority is
-[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md),
-Step 4. This package does not implement P5, run P0, close Pre-Stage-3, or start
-Stage 3.
+The sole authority is `PRE_STAGE3_PRODUCTIZATION_PLAN.md`, Step 4 and section 8.
+This correction does not implement P5, run P0, close Pre-Stage-3, or start Stage 3.
 
-## Prerequisite authority audit
+## Reconciled contract
 
 ```text
-P1=complete
-P4=complete
-P2=complete
+actual rendered AG2 and repair Prompt template/version/message hashes
+post-run Public/Hidden suite qualification and coverage provenance
+actual per-run CostEstimate quality/amount/currency with is_invoice=false
+structured safety-ceiling request-rejection identity before model/tool launch
+material Prompt/suite/cost/budget/target/tool changes enter cache identity
+credentials and Hidden plaintext are never persisted in ordinary summaries
 ```
 
-P1 has static family profiles, provider-launch validation, persisted effective
-non-sensitive configuration, official pricing identity and the bounded real
-`deepseek-v4-flash` network smoke. P4 has independent Public/Hidden selection,
-multiple suites, full provenance, generated-source qualification and Hidden
-isolation. P2 has the normal source-only CLI, internal TaskSpec/bootstrap,
-Stage-2 formal adjudication and one shared pre-call run budget.
-
-## Accepted identity contract
-
-```text
-run id
-source path/hash and explicit top
-normalized TaskSpec and hash
-model/profile/provider and effective non-sensitive parameters
-pricing snapshot/hash/status/currency
-prompt-contract hashes
-effective TargetProfile and per-field provenance
-observed Vitis executable/version fingerprint from real CSYNTH evidence
-Public/Hidden suite hashes and provenance
-initial/final Candidate hashes
-budget defaults/ceilings/requested/effective/usage/remaining/exhaustion
-artifact schema version
-repository commit/clean-state identity
-request/cache identity and execution identity
-```
-
-The operator-full bundle is `execution_identity.json`. Only its secret-free
-summary is promoted into `run_result.json` and `run_artifact_manifest.json`.
-No additional unbudgeted Vitis probe is launched; the identity consumes the
-existing `csynth_invocation.json` evidence.
+Accepted runs require actual prompt calls, qualified and passed suites, initial/final
+Candidate identity, actual Vitis version evidence and final BudgetUsage. The operator-full
+bundle remains `execution_identity.json`; only its secret-free summary enters the run result
+and artifact manifest.
 
 ## Evidence
 
 ```text
-base_head=e65676fe6c77fe21dbae7b2ee7b7e0cf5b1ffb3d
-full_regression=1362/1362
+base_head=bc6b1b3a82b2ece0930391981f5cc9a238cd8046
+full_regression=1372/1372
 new_tests=10
-artifact_dir=/data/agrefactor_runs/pre_stage3_execution_identity_20260724_002030
+artifact_dir=/data/agrefactor_runs/pre_stage3_execution_identity_authority_20260724_013130
 model_api_called=false
 vitis_run=false
 Execution Identity frozen contract=closed

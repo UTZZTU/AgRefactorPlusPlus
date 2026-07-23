@@ -44,16 +44,16 @@ STAGE3_STARTED=false
 <!-- P2_RUNTIME_BUDGET_CORRECTION:END -->
 
 <!-- EXECUTION_IDENTITY_CLOSURE:BEGIN -->
-## Execution Identity and reproducibility closure
+## Execution Identity authority reconciliation
 
 ```text
-base=e65676fe6c77fe21dbae7b2ee7b7e0cf5b1ffb3d
-full=1362/1362
+base=bc6b1b3a82b2ece0930391981f5cc9a238cd8046
+full=1372/1372
 new_tests=10
-source/task/model/prompt/target/suite/candidate identity=closed
-actual Vitis evidence fingerprint=closed
-budget/pricing/cache identity=closed
-credential persistence=false
+actual rendered Prompt identity=closed
+post-run suite qualification/coverage identity=closed
+actual CostEstimate quality identity=closed
+safety-ceiling rejection identity=closed
 Execution Identity frozen contract=closed
 P5=active next objective
 P0=not run

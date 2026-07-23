@@ -9,6 +9,8 @@ from autogen.agentchat import initiate_group_chat # type: ignore
 from autogen.agentchat.group import ContextVariables # type: ignore
 from autogen.agentchat.group.patterns import AutoPattern # type: ignore
 
+from agrefactor.runtime.prompt_evidence import record_model_prompt_call
+
 def yaml_load_file(file_path: Union[str, Path]) -> Dict[str, Any]:
     with open(file_path, 'r', encoding='utf-8') as f:
         return yaml.safe_load(f)
@@ -876,19 +878,42 @@ class HLSAgentLoader:
         return filtered_config, extra_config
 
     def _attach_budgeted_run(self, agent: ConversableAgent) -> ConversableAgent:
-        if self._budget is None:
+        if getattr(agent, '_agrefactorpp_prompt_recorded_run', False):
             return agent
-        if getattr(agent, '_agrefactorpp_budgeted_run', False):
+        original_run = getattr(agent, 'run', None)
+        if not callable(original_run):
             return agent
-        original_run = agent.run
 
         @wraps(original_run)
         def budgeted_run(*args, **kwargs):
-            self._budget.consume(llm_calls=1)
+            if self._budget is not None:
+                self._budget.consume(llm_calls=1)
+            system_message = getattr(agent, 'system_message', None)
+            if system_message is not None and not isinstance(system_message, str):
+                system_message = str(system_message)
+            record_model_prompt_call(
+                template_id=(
+                    f"ag2:{self.config_path.name}:"
+                    f"{getattr(agent, 'name', 'agent')}"
+                ),
+                template_version=1,
+                system_message=system_message,
+                invocation={
+                    "args": args,
+                    "kwargs": kwargs,
+                },
+                provider_call_observed=True,
+                metadata={
+                    "agent_name": str(getattr(agent, 'name', 'agent')),
+                    "config_file": self.config_path.name,
+                    "source": "ag2_agent_run",
+                },
+            )
             return original_run(*args, **kwargs)
 
         agent.run = budgeted_run
-        setattr(agent, '_agrefactorpp_budgeted_run', True)
+        setattr(agent, '_agrefactorpp_budgeted_run', self._budget is not None)
+        setattr(agent, '_agrefactorpp_prompt_recorded_run', True)
         return agent
 
     def load_agent(self, agent_name: str, **overrides) -> ConversableAgent:

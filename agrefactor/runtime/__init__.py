@@ -20,12 +20,18 @@ from .budget_profile import (
 from .execution_identity import (
     EXECUTION_IDENTITY_SCHEMA_VERSION,
     build_execution_identity_bundle,
+    build_rejected_execution_identity_bundle,
     canonical_json_sha256,
     execution_identity_summary,
     file_sha256,
     finalize_execution_identity_bundle,
     validate_execution_identity_bundle,
     write_execution_identity_bundle,
+)
+from .prompt_evidence import (
+    get_model_prompt_evidence,
+    record_model_prompt_call,
+    reset_model_prompt_evidence,
 )
 from .runner import (
     PhaseHandler,
@@ -166,12 +172,16 @@ __all__ = [
     "RunBudgetProfile",
     "EXECUTION_IDENTITY_SCHEMA_VERSION",
     "build_execution_identity_bundle",
+    "build_rejected_execution_identity_bundle",
     "canonical_json_sha256",
     "execution_identity_summary",
     "file_sha256",
     "finalize_execution_identity_bundle",
     "validate_execution_identity_bundle",
     "write_execution_identity_bundle",
+    "get_model_prompt_evidence",
+    "record_model_prompt_call",
+    "reset_model_prompt_evidence",
     "CandidateRepairOrchestrationRequest",
     "CandidateRepairOrchestrationResult",
     "CandidateRepairOrchestrationStatus",

@@ -64,11 +64,12 @@ actual usage.
 <!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:END -->
 
 <!-- EXECUTION_IDENTITY_CLOSURE:BEGIN -->
-## Execution Identity closure
+## Execution Identity authority reconciliation
 
 ```text
-base=e65676fe6c77fe21dbae7b2ee7b7e0cf5b1ffb3d
-full=1362/1362
+base=bc6b1b3a82b2ece0930391981f5cc9a238cd8046
+full=1372/1372
+actual Prompt/suite/cost/rejection evidence=closed
 Execution Identity frozen contract=closed
 P5=active next objective
 P0=not run
@@ -129,7 +130,7 @@ P1-D bounded DeepSeek network smoke completed for `deepseek-v4-flash` with one r
 P1 is complete. P4 Public/Hidden test-source provenance completed with 1312/1312 deterministic tests and patch ID `bd85479221d8729c9aad23df6a91ccfaf4d7333b`. Evidence is recorded in
 [`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md).
 
-P1, P4, P2 and Execution Identity are closed. The active package is P5 concise output and log capture; P0 and Stage 3 remain separate later packages.
+P1, P4, P2 and the authority-reconciled Execution Identity contract are closed. The active package is P5 concise output and log capture; P0 and Stage 3 remain separate later packages.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## Scope control

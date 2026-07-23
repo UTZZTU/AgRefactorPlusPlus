@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import tempfile
 from typing import Any
 
 from autogen.agentchat.group import ContextVariables
@@ -340,6 +341,10 @@ class CsimValidationStageHandler:
                     exception_type=type(exc).__name__,
                 )
             else:
+                self._write_suite_identity_evidence(
+                    suite_work_dir,
+                    result,
+                )
                 report = self._result_report(
                     result,
                     report_id=component_id,
@@ -420,6 +425,56 @@ class CsimValidationStageHandler:
             source_evidence=source_evidence,
             metadata=metadata,
         )
+
+    @staticmethod
+    def _write_suite_identity_evidence(
+        work_dir: Path,
+        result: CsimSuiteEvaluationResult,
+    ) -> None:
+        evidence = result.evidence
+        provenance = evidence.source_provenance
+        payload = {
+            "schema_version": 1,
+            "evidence_view": "operator_full",
+            "suite_id": evidence.suite.suite_id,
+            "suite_version": evidence.suite.suite_version,
+            "split": evidence.suite.split.value,
+            "evaluation_status": evidence.status.value,
+            "source_provenance": (
+                None if provenance is None else provenance.to_dict()
+            ),
+        }
+        path = work_dir / "suite_identity_evidence.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            try:
+                json.dump(
+                    payload,
+                    handle,
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                    allow_nan=False,
+                )
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            except Exception:
+                temporary.unlink(missing_ok=True)
+                raise
+        try:
+            os.replace(temporary, path)
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise
 
     def _result_report(
         self,

@@ -67,6 +67,7 @@ def build_execution_identity_bundle(
     model_manifest: Mapping[str, Any],
     prompt_hashes: Mapping[str, str],
     target_manifest: Mapping[str, Any],
+    prompt_evidence: Mapping[str, Any] | None = None,
     suite_manifests: Sequence[Mapping[str, Any]],
     initial_candidate_path: str | os.PathLike[str] | None,
     final_candidate_path: str | os.PathLike[str] | None,
@@ -110,6 +111,10 @@ def build_execution_identity_bundle(
         else _copy_mapping(budget_usage, "budget_usage")
     )
     prompt_value = _normalize_prompt_hashes(prompt_hashes)
+    prompt_identity = _prompt_identity(
+        prompt_value,
+        prompt_evidence,
+    )
     suite_value = [
         _suite_identity(item)
         for item in suite_manifests
@@ -132,6 +137,8 @@ def build_execution_identity_bundle(
     )
     pricing = _pricing_identity(model_value)
 
+    model_cache = dict(model_value)
+    model_cache.pop("actual_cost_estimation", None)
     task_cache = dict(task_value)
     task_cache.pop("task_id", None)
     task_cache.pop("kernel_path", None)
@@ -166,13 +173,17 @@ def build_execution_identity_bundle(
         "schema_version": EXECUTION_IDENTITY_SCHEMA_VERSION,
         "source": source_identity,
         "normalized_task": task_cache,
-        "model": model_value,
-        "prompt_hashes": prompt_value,
+        "model": model_cache,
+        "prompt_identity": prompt_identity,
         "target": target_value,
         "toolchain": toolchain_cache,
         "suites": suite_cache,
         "budget_contract": budget_value,
-        "pricing": pricing,
+        "pricing_snapshot": {
+            "snapshot_sha256": pricing.get("snapshot_sha256"),
+            "source_status": pricing.get("source_status"),
+            "currency": pricing.get("currency"),
+        },
         "repository": repository_cache,
         "artifact_schema_version": artifact_schema_version,
     }
@@ -189,9 +200,18 @@ def build_execution_identity_bundle(
             budget_value,
         )
     ) and bool(prompt_value)
+    suites_qualified = bool(
+        suite_value
+        and all(
+            item.get("qualification_status") == "qualified"
+            and item.get("evaluation_status") == "passed"
+            for item in suite_value
+        )
+    )
     accepted_ready = bool(
         required_fields_present
-        and suite_value
+        and prompt_identity["actual_call_count"] > 0
+        and suites_qualified
         and candidates["initial"] is not None
         and candidates["final"] is not None
         and usage_value is not None
@@ -218,6 +238,7 @@ def build_execution_identity_bundle(
             "pricing": pricing,
         },
         "prompt_hashes": prompt_value,
+        "prompt_identity": prompt_identity,
         "target": {
             "sha256": canonical_json_sha256(target_value),
             "value": target_value,
@@ -242,6 +263,10 @@ def build_execution_identity_bundle(
                 candidates["final"] is not None
             ),
             "budget_usage_recorded": usage_value is not None,
+            "actual_prompt_calls_recorded": (
+                prompt_identity["actual_call_count"] > 0
+            ),
+            "all_required_suites_qualified": suites_qualified,
             "accepted_ready": accepted_ready,
         },
     }
@@ -270,9 +295,130 @@ def validate_execution_identity_bundle(
         raise ValueError("execution identity completeness is missing")
     if require_accepted_ready and not completeness.get("accepted_ready", False):
         raise ValueError(
-            "accepted execution identity is incomplete: actual toolchain, "
-            "suite, or candidate identity is missing"
+            "accepted execution identity is incomplete: actual prompt, "
+            "toolchain, qualified suite, candidate, or budget identity "
+            "is missing"
         )
+
+
+def build_rejected_execution_identity_bundle(
+    *,
+    run_id: str,
+    source_path: str | os.PathLike[str],
+    top_function: str,
+    normalized_task: Mapping[str, Any],
+    model_manifest: Mapping[str, Any],
+    target_manifest: Mapping[str, Any],
+    test_source_plan: Mapping[str, Any],
+    budget_request: Mapping[str, Any],
+    rejection: Mapping[str, Any],
+    artifact_schema_version: int,
+    repository_root: str | os.PathLike[str] | None = None,
+) -> dict[str, Any]:
+    """Build a reproducible identity for a request rejected before launch."""
+
+    source = Path(source_path).expanduser().resolve()
+    if not source.is_file():
+        raise FileNotFoundError(f"source file not found: {source}")
+    cleaned_run_id = _required_text(run_id, "run_id")
+    cleaned_top = _required_text(top_function, "top_function")
+    task_value = _copy_mapping(normalized_task, "normalized_task")
+    model_value = _copy_mapping(model_manifest, "model_manifest")
+    target_value = _copy_mapping(target_manifest, "target_manifest")
+    plan_value = _copy_mapping(test_source_plan, "test_source_plan")
+    budget_value = _copy_mapping(budget_request, "budget_request")
+    rejection_value = _copy_mapping(rejection, "request_rejection")
+    repository = _repository_identity(repository_root)
+    request_material = {
+        "schema_version": EXECUTION_IDENTITY_SCHEMA_VERSION,
+        "source_sha256": file_sha256(source),
+        "top_function": cleaned_top,
+        "normalized_task": task_value,
+        "model": model_value,
+        "target": target_value,
+        "test_source_plan": plan_value,
+        "budget_request": budget_value,
+        "rejection": rejection_value,
+        "repository": {
+            "status": repository.get("status"),
+            "commit": repository.get("commit"),
+            "clean": repository.get("clean"),
+            "dirty_state_sha256": repository.get(
+                "dirty_state_sha256"
+            ),
+        },
+        "artifact_schema_version": artifact_schema_version,
+    }
+    request_identity = canonical_json_sha256(request_material)
+    bundle: dict[str, Any] = {
+        "schema_version": EXECUTION_IDENTITY_SCHEMA_VERSION,
+        "evidence_view": "operator_full",
+        "execution_id": None,
+        "run_id": cleaned_run_id,
+        "task_id": task_value.get("task_id"),
+        "execution_status": "request_rejected",
+        "request_identity_sha256": request_identity,
+        "cache_identity_sha256": request_identity,
+        "source": {
+            "path": str(source),
+            "sha256": file_sha256(source),
+            "size_bytes": source.stat().st_size,
+            "top_function": cleaned_top,
+        },
+        "normalized_task": {
+            "sha256": canonical_json_sha256(task_value),
+            "value": task_value,
+        },
+        "model": {
+            "sha256": canonical_json_sha256(model_value),
+            "value": model_value,
+            "pricing": _pricing_identity(model_value),
+        },
+        "prompt_hashes": {},
+        "prompt_identity": {
+            "schema_version": 1,
+            "actual_call_count": 0,
+            "calls": [],
+            "aggregate_sha256": canonical_json_sha256([]),
+            "contract_hashes": {},
+        },
+        "target": {
+            "sha256": canonical_json_sha256(target_value),
+            "value": target_value,
+            "toolchain": _toolchain_identity(target_value, None),
+        },
+        "test_source_plan": plan_value,
+        "suites": [],
+        "candidates": {"initial": None, "final": None},
+        "budget": {
+            "contract": budget_value,
+            "usage": None,
+            "remaining_hard_budget": {},
+            "soft_budget_exceeded": {
+                "tokens": False,
+                "cost": False,
+            },
+            "hard_budget_exhaustion": None,
+        },
+        "request_rejection": rejection_value,
+        "repository": repository,
+        "artifact_schema_version": artifact_schema_version,
+        "completeness": {
+            "required_non_sensitive_fields_present": True,
+            "actual_toolchain_version_recorded": False,
+            "initial_candidate_recorded": False,
+            "final_candidate_recorded": False,
+            "budget_usage_recorded": False,
+            "actual_prompt_calls_recorded": False,
+            "all_required_suites_qualified": False,
+            "accepted_ready": False,
+        },
+    }
+    bundle["execution_id"] = _execution_id(bundle)
+    _reject_secret_keys(bundle, "execution_identity")
+    bundle["bundle_sha256"] = canonical_json_sha256(bundle)
+    validate_execution_identity_bundle(bundle)
+    return bundle
 
 
 def finalize_execution_identity_bundle(
@@ -453,6 +599,7 @@ def _suite_identity(value: Mapping[str, Any]) -> dict[str, Any]:
             "qualification_status",
             "declared",
         ),
+        "evaluation_status": suite.get("evaluation_status"),
         "feedback_visibility": (
             "public"
             if split == "public"
@@ -649,23 +796,43 @@ def _budget_identity(
 
 def _pricing_identity(model_manifest: Mapping[str, Any]) -> dict[str, Any]:
     snapshot = model_manifest.get("pricing_snapshot")
-    if not isinstance(snapshot, Mapping):
-        return {
-            "snapshot_sha256": None,
-            "source_status": "unavailable",
-            "cost_estimation_quality": "unavailable",
-            "currency": None,
+    snapshot_value = (
+        dict(snapshot)
+        if isinstance(snapshot, Mapping)
+        else {}
+    )
+    actual = model_manifest.get("actual_cost_estimation")
+    actual_value = (
+        _copy_mapping(actual, "actual_cost_estimation")
+        if isinstance(actual, Mapping)
+        else {
+            "schema_version": 1,
+            "quality": "unavailable",
+            "observations": [],
+            "amounts_by_currency": {},
+            "is_invoice": False,
         }
-    status = snapshot.get("verification_status")
+    )
+    quality = str(
+        actual_value.get("quality", "unavailable")
+    )
+    if quality not in {"verified", "approximate", "unavailable"}:
+        raise ValueError(
+            "actual cost estimation quality must be verified, "
+            "approximate, or unavailable"
+        )
     return {
-        "snapshot_sha256": snapshot.get("pricing_snapshot_sha256"),
-        "source_status": status,
-        "cost_estimation_quality": (
-            "verified_snapshot"
-            if status == "official_verified"
-            else "unverified_snapshot"
+        "snapshot_sha256": snapshot_value.get(
+            "pricing_snapshot_sha256"
         ),
-        "currency": snapshot.get("currency"),
+        "source_status": snapshot_value.get(
+            "verification_status",
+            "unavailable",
+        ),
+        "cost_estimation_quality": quality,
+        "currency": snapshot_value.get("currency"),
+        "actual_estimation": actual_value,
+        "is_invoice": False,
     }
 
 
@@ -731,6 +898,68 @@ def _optional_file_identity(value: object) -> dict[str, Any] | None:
         "path": str(resolved),
         "sha256": file_sha256(resolved),
         "size_bytes": resolved.stat().st_size,
+    }
+
+
+def _prompt_identity(
+    contract_hashes: Mapping[str, str],
+    evidence: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    calls: list[dict[str, Any]] = []
+    if evidence is not None:
+        copied = _copy_mapping(evidence, "prompt_evidence")
+        raw_calls = copied.get("calls", [])
+        if not isinstance(raw_calls, list):
+            raise TypeError("prompt_evidence.calls must be a list")
+        for raw in raw_calls:
+            call = _copy_mapping(raw, "prompt call evidence")
+            observed = call.get("provider_call_observed")
+            if not isinstance(observed, bool):
+                raise TypeError(
+                    "prompt call provider_call_observed must be boolean"
+                )
+            template_id = call.get("template_id")
+            if not isinstance(template_id, str) or not template_id.strip():
+                raise ValueError(
+                    "prompt call template_id must be a non-empty string"
+                )
+            template_version = call.get("template_version")
+            if (
+                isinstance(template_version, bool)
+                or not isinstance(template_version, int)
+                or template_version < 1
+            ):
+                raise ValueError(
+                    "prompt call template_version must be a positive integer"
+                )
+            digest = call.get("message_sequence_sha256")
+            if not isinstance(digest, str):
+                raise ValueError(
+                    "prompt call message_sequence_sha256 is invalid"
+                )
+            digest = digest.lower()
+            if _SHA256_RE.fullmatch(digest) is None:
+                raise ValueError(
+                    "prompt call message_sequence_sha256 is invalid"
+                )
+            call["message_sequence_sha256"] = digest
+            calls.append(call)
+    calls.sort(
+        key=lambda item: (
+            str(item.get("source", "")),
+            int(item.get("call_index", item.get("sequence_index", 0))),
+            str(item.get("template_id", "")),
+        )
+    )
+    actual_count = sum(
+        1 for item in calls if item["provider_call_observed"]
+    )
+    return {
+        "schema_version": 1,
+        "actual_call_count": actual_count,
+        "calls": calls,
+        "aggregate_sha256": canonical_json_sha256(calls),
+        "contract_hashes": dict(contract_hashes),
     }
 
 

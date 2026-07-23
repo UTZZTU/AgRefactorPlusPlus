@@ -30,15 +30,15 @@ Before Stage 3:
 <!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:END -->
 
 <!-- EXECUTION_IDENTITY_CLOSURE:BEGIN -->
-## Execution Identity closure evidence
+## Execution Identity authority reconciliation evidence
 
 ```text
-base=e65676fe6c77fe21dbae7b2ee7b7e0cf5b1ffb3d
-full=1362/1362
-material changes produce distinct cache identity=true
-actual tool version/effective values recorded=true
-budget and pricing changes enter identity=true
-credential persistence=false
+base=bc6b1b3a82b2ece0930391981f5cc9a238cd8046
+full=1372/1372
+actual rendered Prompt changes enter identity=true
+post-run qualified suite provenance enters identity=true
+actual CostEstimate quality enters identity=true
+safety-ceiling rejected requests persist identity=true
 Execution Identity frozen contract=closed
 NEXT=P5 concise output and log capture
 PRE_STAGE3_CLOSED=false

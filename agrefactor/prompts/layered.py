@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from hashlib import sha256
 from enum import Enum
 import json
 import re
@@ -578,7 +579,7 @@ def _compose_family_instruction(
 class SharedLayeredPromptBuilder:
     """Build deterministic prompts from safe structured inputs."""
 
-    builder_version = 1
+    builder_version = 2
 
     def build(
         self,
@@ -604,8 +605,31 @@ class SharedLayeredPromptBuilder:
             artifacts=request.artifacts,
         )
 
+        message_sequence = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
         manifest = {
             "builder_version": self.builder_version,
+            "prompt_template_id": (
+                "shared_layered_prompt:" + request.purpose.value
+            ),
+            "prompt_template_version": self.builder_version,
+            "rendered_system_message_sha256": sha256(
+                system_prompt.encode("utf-8")
+            ).hexdigest(),
+            "rendered_user_message_sha256": sha256(
+                user_prompt.encode("utf-8")
+            ).hexdigest(),
+            "message_sequence_sha256": sha256(
+                json.dumps(
+                    message_sequence,
+                    ensure_ascii=False,
+                    allow_nan=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest(),
             "purpose": request.purpose.value,
             "task_id": request.task.task_id,
             "kernel_name": request.task.kernel_name,

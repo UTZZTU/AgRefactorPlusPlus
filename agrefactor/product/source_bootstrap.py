@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 import json
 import os
@@ -50,12 +51,16 @@ from agrefactor.runtime import (
     RunArtifactWriter,
     build_candidate_repair_phase,
     build_execution_identity_bundle,
+    build_rejected_execution_identity_bundle,
     execution_identity_summary,
+    get_model_prompt_evidence,
+    reset_model_prompt_evidence,
     validate_execution_identity_bundle,
     write_execution_identity_bundle,
 )
 from agrefactor.runtime.budget_profile import (
     DEFAULT_SOURCE_RUN_BUDGET_PROFILE,
+    HARD_BUDGET_FIELDS,
     EffectiveRunBudget,
 )
 
@@ -444,6 +449,8 @@ class SourceBootstrapPhase:
         self._layout = layout
         self._generation_adapter = generation_adapter
         self._formal_phase_builder = formal_phase_builder
+        self._last_generation_result: PhaseResult | None = None
+        self._last_formal_phase: Any = None
 
     def __call__(self, context: RunContext) -> PhaseResult:
         if self._request.mode is not RunMode.REFACTOR:
@@ -527,6 +534,7 @@ class SourceBootstrapPhase:
         generation_result = self._generation_adapter(
             generation_context
         )
+        self._last_generation_result = generation_result
         if not generation_result.succeeded:
             identity_summary = self._write_execution_identity(
                 context=context,
@@ -583,6 +591,11 @@ class SourceBootstrapPhase:
             bootstrap_root / "initial_candidate.cpp",
             candidate_code,
         )
+        actual_generation_prompts = get_model_prompt_evidence()
+        if actual_generation_prompts.get("actual_call_count", 0) > 0:
+            generation_prompt_sha = str(
+                actual_generation_prompts["aggregate_sha256"]
+            )
         suites, suite_codes = self._materialize_suites(
             bootstrap_root=bootstrap_root,
             generated=generated,
@@ -652,6 +665,7 @@ class SourceBootstrapPhase:
             formal_task,
             formal_request,
         )
+        self._last_formal_phase = formal_phase
         formal_context = RunContext(
             run_id=context.run_id,
             task=formal_task,
@@ -767,17 +781,22 @@ class SourceBootstrapPhase:
             usage = context.budget.snapshot().to_dict()
         except Exception:
             usage = None
+        model_manifest = (
+            self._request.effective_model_config.to_manifest()
+        )
+        model_manifest["actual_cost_estimation"] = (
+            self._actual_cost_estimation()
+        )
         bundle = build_execution_identity_bundle(
             run_id=context.run_id,
             source_path=self._request.source_path,
             top_function=self._request.top_function,
             normalized_task=normalized_task.to_dict(),
-            model_manifest=(
-                self._request.effective_model_config.to_manifest()
-            ),
+            model_manifest=model_manifest,
             prompt_hashes=prompt_hashes,
             target_manifest=self._request.target.to_effective_dict(),
-            suite_manifests=[suite.to_dict() for suite in suites],
+            prompt_evidence=self._collect_prompt_evidence(),
+            suite_manifests=self._qualified_suite_manifests(suites),
             initial_candidate_path=initial_candidate_path,
             final_candidate_path=final_candidate_path,
             budget_contract=self._request.budget_contract.to_dict(),
@@ -795,6 +814,209 @@ class SourceBootstrapPhase:
         path = self._layout.artifact_root / "execution_identity.json"
         write_execution_identity_bundle(path, bundle)
         return execution_identity_summary(bundle)
+
+    def _collect_prompt_evidence(self) -> dict[str, Any]:
+        payload = get_model_prompt_evidence()
+        calls = list(payload.get("calls", []))
+        formal_result = getattr(
+            self._last_formal_phase,
+            "last_result",
+            None,
+        )
+        repair_result = getattr(formal_result, "repair_result", None)
+        attempts = getattr(repair_result, "attempts", ())
+        for attempt in attempts:
+            manifest = dict(getattr(attempt, "prompt_manifest", {}) or {})
+            sequence_hash = manifest.get("message_sequence_sha256")
+            template_id = manifest.get("prompt_template_id")
+            template_version = manifest.get("prompt_template_version")
+            if not (
+                isinstance(sequence_hash, str)
+                and isinstance(template_id, str)
+                and isinstance(template_version, int)
+            ):
+                continue
+            calls.append(
+                {
+                    "schema_version": 1,
+                    "call_index": len(calls) + 1,
+                    "template_id": template_id,
+                    "template_version": template_version,
+                    "system_message_sha256": manifest.get(
+                        "rendered_system_message_sha256"
+                    ),
+                    "invocation_sha256": manifest.get(
+                        "rendered_user_message_sha256"
+                    ),
+                    "message_sequence_sha256": sequence_hash,
+                    "provider_call_observed": (
+                        str(getattr(attempt, "status", ""))
+                        != "CandidateRepairAttemptStatus.BUDGET_BLOCKED"
+                        and getattr(
+                            getattr(attempt, "status", None),
+                            "value",
+                            None,
+                        ) != "budget_blocked"
+                    ),
+                    "metadata": {
+                        "source": "candidate_repair",
+                        "attempt": getattr(attempt, "attempt", None),
+                    },
+                }
+            )
+        return {
+            "schema_version": 1,
+            "actual_call_count": sum(
+                1
+                for item in calls
+                if item.get("provider_call_observed") is True
+            ),
+            "calls": calls,
+            "aggregate_sha256": _sha256_text(
+                json.dumps(
+                    calls,
+                    ensure_ascii=False,
+                    allow_nan=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            ),
+        }
+
+    def _qualified_suite_manifests(
+        self,
+        suites: Sequence[TestSuiteSpec],
+    ) -> list[dict[str, Any]]:
+        observed: dict[tuple[str, str], Mapping[str, Any]] = {}
+        for path in sorted(
+            self._layout.work_root.rglob(
+                "suite_identity_evidence.json"
+            ),
+            key=lambda item: (item.stat().st_mtime_ns, str(item)),
+        ):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(payload, Mapping):
+                continue
+            suite_id = payload.get("suite_id")
+            split = payload.get("split")
+            if isinstance(suite_id, str) and isinstance(split, str):
+                observed[(split, suite_id)] = payload
+        result: list[dict[str, Any]] = []
+        for suite in suites:
+            manifest = suite.to_dict()
+            evidence = observed.get((suite.split.value, suite.suite_id))
+            if evidence is not None:
+                manifest["evaluation_status"] = evidence.get(
+                    "evaluation_status"
+                )
+                provenance = evidence.get("source_provenance")
+                if isinstance(provenance, Mapping):
+                    source = dict(manifest.get("source") or {})
+                    source.update(dict(provenance))
+                    manifest["source"] = source
+            result.append(manifest)
+        return result
+
+    def _actual_cost_estimation(self) -> dict[str, Any]:
+        observations: list[dict[str, Any]] = []
+
+        def add_estimate(value: object, source: str) -> None:
+            if not isinstance(value, Mapping):
+                return
+            quality = str(value.get("quality", "unavailable"))
+            if quality not in {"verified", "approximate", "unavailable"}:
+                quality = "unavailable"
+            observations.append(
+                {
+                    "source": source,
+                    "quality": quality,
+                    "amount": value.get("amount"),
+                    "currency": value.get("currency"),
+                    "pricing_snapshot_sha256": value.get(
+                        "pricing_snapshot_sha256"
+                    ),
+                    "assumptions": list(value.get("assumptions", ())),
+                }
+            )
+
+        generation = self._last_generation_result
+        legacy_usage = (
+            generation.metadata.get("legacy_usage", {})
+            if isinstance(generation, PhaseResult)
+            else {}
+        )
+        models = (
+            legacy_usage.get("models", {})
+            if isinstance(legacy_usage, Mapping)
+            else {}
+        )
+        if isinstance(models, Mapping):
+            for model_name, info in models.items():
+                if not isinstance(info, Mapping):
+                    continue
+                token_usage = info.get("token_usage")
+                if isinstance(token_usage, Mapping):
+                    add_estimate(
+                        token_usage.get("estimated_cost"),
+                        f"legacy:{model_name}",
+                    )
+
+        formal_result = getattr(
+            self._last_formal_phase,
+            "last_result",
+            None,
+        )
+        repair_result = getattr(formal_result, "repair_result", None)
+        for attempt in getattr(repair_result, "attempts", ()):
+            response = getattr(attempt, "model_response", None)
+            usage = getattr(response, "usage", None)
+            estimate = getattr(usage, "estimated_cost", None)
+            if estimate is not None:
+                add_estimate(
+                    estimate.to_dict(),
+                    f"candidate_repair:{getattr(attempt, 'attempt', 0)}",
+                )
+
+        priced = [
+            item
+            for item in observations
+            if item.get("amount") is not None
+            and isinstance(item.get("currency"), str)
+        ]
+        if not observations or any(
+            item.get("quality") == "unavailable"
+            for item in observations
+        ):
+            quality = "unavailable"
+        elif any(
+            item.get("quality") == "approximate"
+            for item in observations
+        ):
+            quality = "approximate"
+        else:
+            quality = "verified"
+        amounts: dict[str, Decimal] = {}
+        for item in priced:
+            try:
+                amount = Decimal(str(item["amount"]))
+            except (InvalidOperation, ValueError):
+                continue
+            currency = str(item["currency"]).upper()
+            amounts[currency] = amounts.get(currency, Decimal("0")) + amount
+        return {
+            "schema_version": 1,
+            "quality": quality,
+            "observations": observations,
+            "amounts_by_currency": {
+                currency: format(amount.normalize(), "f")
+                for currency, amount in sorted(amounts.items())
+            },
+            "complete": bool(observations) and len(priced) == len(observations),
+            "is_invoice": False,
+        }
 
     def _first_public_provided_path(self) -> str | None:
         public = self._request.test_source_plan.public
@@ -1007,6 +1229,127 @@ def _budget_from_cli(args, selection: ModelRuntimeSelection) -> EffectiveRunBudg
     )
 
 
+def _budget_request_identity(args) -> dict[str, Any]:
+    defaults = DEFAULT_SOURCE_RUN_BUDGET_PROFILE.system_defaults
+    ceilings = DEFAULT_SOURCE_RUN_BUDGET_PROFILE.system_safety_ceilings
+    return {
+        "schema_version": 1,
+        "system_defaults": {
+            name: getattr(defaults, name)
+            for name in HARD_BUDGET_FIELDS
+        },
+        "system_safety_ceilings": {
+            name: getattr(ceilings, name)
+            for name in HARD_BUDGET_FIELDS
+        },
+        "user_requested": {
+            name: getattr(args, name)
+            for name in HARD_BUDGET_FIELDS
+        },
+        "effective_hard_limits": None,
+        "soft_usage_budgets": {
+            "token_budget": args.token_budget,
+            "cost_budget": args.cost_budget,
+            "enforcement": "observed_only",
+            "blocking": False,
+        },
+    }
+
+
+def _safety_ceiling_rejection(args) -> dict[str, Any] | None:
+    ceilings = DEFAULT_SOURCE_RUN_BUDGET_PROFILE.system_safety_ceilings
+    for name in HARD_BUDGET_FIELDS:
+        requested = getattr(args, name)
+        ceiling = getattr(ceilings, name)
+        if requested is not None and ceiling is not None and requested > ceiling:
+            return {
+                "schema_version": 1,
+                "kind": "safety_ceiling_exceeded",
+                "resource": name,
+                "user_requested": requested,
+                "system_safety_ceiling": ceiling,
+                "effective_budget": None,
+                "credential_persisted": False,
+            }
+    return None
+
+
+def _write_request_rejection_artifacts(
+    *,
+    layout: SourceRunLayout,
+    source: Path,
+    top_function: str,
+    mode: RunMode,
+    model_runtime: ModelRuntimeSelection,
+    plan: TestSourcePlan,
+    target: TargetProfile,
+    args,
+    rejection: Mapping[str, Any],
+) -> None:
+    layout.artifact_root.mkdir(parents=True, exist_ok=True)
+    task = TaskSpec(
+        task_id=f"{layout.run_id}.source",
+        kernel_path=str(source),
+        kernel_name=top_function,
+        target=target,
+        mode=mode,
+    )
+    model_manifest = model_runtime.effective_config.to_manifest()
+    model_manifest["actual_cost_estimation"] = {
+        "schema_version": 1,
+        "quality": "unavailable",
+        "observations": [],
+        "amounts_by_currency": {},
+        "complete": False,
+        "is_invoice": False,
+    }
+    budget_request = _budget_request_identity(args)
+    bundle = build_rejected_execution_identity_bundle(
+        run_id=layout.run_id,
+        source_path=source,
+        top_function=top_function,
+        normalized_task=task.to_dict(),
+        model_manifest=model_manifest,
+        target_manifest=target.to_effective_dict(),
+        test_source_plan=plan.to_operator_dict(),
+        budget_request=budget_request,
+        rejection=rejection,
+        artifact_schema_version=RunArtifactWriter.schema_version,
+        repository_root=Path(__file__).resolve().parents[2],
+    )
+    _atomic_json(
+        layout.artifact_root / "request_rejection.json",
+        dict(rejection),
+    )
+    write_execution_identity_bundle(
+        layout.artifact_root / "execution_identity.json",
+        bundle,
+    )
+    files = []
+    for path in sorted(layout.artifact_root.iterdir()):
+        if path.is_file() and path.name != "run_artifact_manifest.json":
+            files.append(
+                {
+                    "relative_path": path.name,
+                    "sha256": _sha256_file(path),
+                    "size_bytes": path.stat().st_size,
+                }
+            )
+    _atomic_json(
+        layout.artifact_root / "run_artifact_manifest.json",
+        {
+            "schema_version": RunArtifactWriter.schema_version,
+            "run_id": layout.run_id,
+            "status": "request_rejected",
+            "execution_mode": "source_bootstrap",
+            "legacy_mode": False,
+            "evidence_view": "agent_safe",
+            "execution_identity": execution_identity_summary(bundle),
+            "files": files,
+        },
+    )
+
+
 def run_source_command(args) -> SourceBootstrapRunResult:
     """Execute one normal source command using internally managed paths."""
 
@@ -1027,6 +1370,7 @@ def run_source_command(args) -> SourceBootstrapRunResult:
             + uuid4().hex
         )
     )
+    reset_model_prompt_evidence()
     model_runtime = resolve_model_runtime(
         args.model,
         family=args.model_family,
@@ -1041,8 +1385,27 @@ def run_source_command(args) -> SourceBootstrapRunResult:
         hidden_paths=args.hidden_tests_provided,
     )
     target = _target_from_cli(args)
-    budget = _budget_from_cli(args, model_runtime)
     layout = SourceRunLayout.create(run_id)
+    rejection = _safety_ceiling_rejection(args)
+    if rejection is not None:
+        _write_request_rejection_artifacts(
+            layout=layout,
+            source=source,
+            top_function=args.top,
+            mode=mode,
+            model_runtime=model_runtime,
+            plan=plan,
+            target=target,
+            args=args,
+            rejection=rejection,
+        )
+        raise ValueError(
+            f"{rejection['resource']}={rejection['user_requested']} "
+            f"exceeds system safety ceiling "
+            f"{rejection['system_safety_ceiling']}; "
+            f"rejection artifacts: {layout.artifact_root}"
+        )
+    budget = _budget_from_cli(args, model_runtime)
 
     request = SourceBootstrapRequest(
         source_path=source,
