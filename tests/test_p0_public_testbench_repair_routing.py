@@ -24,6 +24,7 @@ from agrefactor.models import (
 from agrefactor.testing import (
     build_testbench_repair_prompt,
 )
+from agrefactor.repair.protocol import RepairModelObservation
 from agrefactor.product import source_bootstrap as module
 from agrefactor.runtime import BudgetLimits, BudgetManager
 
@@ -31,6 +32,7 @@ from agrefactor.runtime import BudgetLimits, BudgetManager
 class DeterministicPublicTestbenchRepairer:
     def __init__(self):
         self.last_prompt = None
+        self.prompts = ()
         self.responses = ()
         self.audit_events = ()
 
@@ -39,6 +41,13 @@ class DeterministicPublicTestbenchRepairer:
             request,
             family_profile=(
                 DEEPSEEK_MODEL_FAMILY_PROFILE
+            ),
+        )
+        self.prompts = (self.last_prompt,)
+        self.audit_events = (
+            RepairModelObservation(
+                prompt_manifest=self.last_prompt.manifest,
+                model_call_observed=True,
             ),
         )
         return request.current_testbench.replace(
@@ -180,6 +189,27 @@ class P0PublicTestbenchRepairRoutingTests(unittest.TestCase):
                 result.prompt_sha256 or "",
                 r"^[0-9a-f]{64}$",
             )
+            self.assertEqual(len(result.prompt_evidence), 1)
+            evidence = dict(result.prompt_evidence[0])
+            self.assertEqual(
+                evidence["metadata"]["source"],
+                "testbench_repair",
+            )
+            self.assertEqual(
+                evidence["metadata"]["attempt"],
+                1,
+            )
+            self.assertTrue(
+                evidence["provider_call_observed"]
+            )
+            self.assertEqual(
+                evidence["message_sequence_sha256"],
+                result.prompt_sha256,
+            )
+            self.assertEqual(
+                result.to_dict()["prompt_evidence_count"],
+                1,
+            )
             rendered = "\n".join(
                 message.content
                 for message
@@ -193,6 +223,50 @@ class P0PublicTestbenchRepairRoutingTests(unittest.TestCase):
                 budget.snapshot().compile_calls,
                 1,
             )
+
+    def test_prompt_identity_aggregates_testbench_repair_call(self):
+        phase = object.__new__(module.SourceBootstrapPhase)
+        phase._last_formal_phase = None
+        phase._public_testbench_prompt_evidence = (
+            {
+                "schema_version": 1,
+                "template_id": "layered:testbench_repair",
+                "template_version": 1,
+                "system_message_sha256": "a" * 64,
+                "invocation_sha256": "b" * 64,
+                "message_sequence_sha256": "c" * 64,
+                "provider_call_observed": True,
+                "metadata": {
+                    "source": "testbench_repair",
+                    "attempt": 1,
+                },
+            },
+        )
+
+        with patch.object(
+            module,
+            "get_model_prompt_evidence",
+            return_value={
+                "schema_version": 1,
+                "actual_call_count": 0,
+                "calls": [],
+                "aggregate_sha256": "d" * 64,
+            },
+        ):
+            payload = phase._collect_prompt_evidence()
+
+        self.assertEqual(payload["actual_call_count"], 1)
+        self.assertEqual(len(payload["calls"]), 1)
+        call = payload["calls"][0]
+        self.assertEqual(call["call_index"], 1)
+        self.assertEqual(
+            call["metadata"]["source"],
+            "testbench_repair",
+        )
+        self.assertEqual(
+            call["message_sequence_sha256"],
+            "c" * 64,
+        )
 
     def test_repaired_public_suite_gets_derived_provenance(self):
         with tempfile.TemporaryDirectory() as temp:

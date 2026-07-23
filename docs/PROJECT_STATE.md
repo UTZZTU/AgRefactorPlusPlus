@@ -1278,3 +1278,19 @@ P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
 ```
+
+<!-- P0_PROMPT_IDENTITY_RECONCILIATION -->
+## P0 observed evidence gap: Testbench repair Prompt Identity
+
+A real DFS run accepted the Candidate with CSYNTH, Public and Hidden
+passing, but Prompt Identity recorded 29 calls while the shared budget
+correctly recorded 30. The missing call was the single Public Testbench
+repair. Source bootstrap now adds every safe Testbench repair audit event
+to the unified Prompt Identity without persisting plaintext or Hidden
+content. See [`P0_PROMPT_IDENTITY_RECONCILIATION.md`](P0_PROMPT_IDENTITY_RECONCILIATION.md).
+
+```text
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```

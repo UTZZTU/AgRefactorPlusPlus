@@ -442,6 +442,7 @@ class PublicTestbenchPreparationResult:
     artifact_path: str
     repair_artifact_manifest_path: str
     cost_observations: tuple[Mapping[str, Any], ...] = ()
+    prompt_evidence: tuple[Mapping[str, Any], ...] = ()
 
     @property
     def succeeded(self) -> bool:
@@ -465,6 +466,7 @@ class PublicTestbenchPreparationResult:
                 self.repair_artifact_manifest_path
             ),
             "cost_observation_count": len(self.cost_observations),
+            "prompt_evidence_count": len(self.prompt_evidence),
             "hidden_testbench_exposed_to_model": False,
         }
 
@@ -500,22 +502,73 @@ def _prepare_public_testbench(
         task=task,
     )
 
+    prompt_evidence: list[dict[str, Any]] = []
+    for attempt_index, observation in enumerate(
+        getattr(repairer, "audit_events", ()),
+        start=1,
+    ):
+        manifest = dict(
+            getattr(observation, "prompt_manifest", {}) or {}
+        )
+        sequence_hash = manifest.get("message_sequence_sha256")
+        template_id = manifest.get("prompt_template_id")
+        template_version = manifest.get("prompt_template_version")
+        if not (
+            isinstance(sequence_hash, str)
+            and re.fullmatch(r"[0-9a-f]{64}", sequence_hash)
+            and isinstance(template_id, str)
+            and template_id
+            and isinstance(template_version, int)
+            and not isinstance(template_version, bool)
+        ):
+            raise RuntimeError(
+                "testbench repair audit event lacks a complete "
+                "safe prompt identity"
+            )
+        prompt_evidence.append(
+            {
+                "schema_version": 1,
+                "template_id": template_id,
+                "template_version": template_version,
+                "system_message_sha256": manifest.get(
+                    "rendered_system_message_sha256"
+                ),
+                "invocation_sha256": manifest.get(
+                    "rendered_user_message_sha256"
+                ),
+                "message_sequence_sha256": sequence_hash,
+                "provider_call_observed": bool(
+                    getattr(
+                        observation,
+                        "model_call_observed",
+                        False,
+                    )
+                ),
+                "metadata": {
+                    "source": "testbench_repair",
+                    "attempt": attempt_index,
+                },
+            }
+        )
+
     prompt_sha256 = None
     trajectory_id = None
     if result.repair_attempts_used > 0:
-        prompt = getattr(repairer, "last_prompt", None)
-        if prompt is None:
+        if len(prompt_evidence) != result.repair_attempts_used:
             raise RuntimeError(
-                "testbench repair used a model call without "
-                "retaining its prompt manifest"
+                "testbench repair attempt count does not match "
+                "retained prompt evidence"
+            )
+        if not all(
+            item["provider_call_observed"] is True
+            for item in prompt_evidence
+        ):
+            raise RuntimeError(
+                "completed testbench repair lacks an observed model call"
             )
         prompt_sha256 = str(
-            prompt.manifest.get("message_sequence_sha256", "")
+            prompt_evidence[-1]["message_sequence_sha256"]
         )
-        if re.fullmatch(r"[0-9a-f]{64}", prompt_sha256) is None:
-            raise RuntimeError(
-                "testbench repair prompt manifest lacks a valid SHA-256"
-            )
         trajectory_id = f"{task.task_id}.public-testbench-repair"
 
     cost_observations: list[dict[str, Any]] = []
@@ -537,6 +590,7 @@ def _prepare_public_testbench(
             result.repair_artifact_manifest_path
         ),
         cost_observations=tuple(cost_observations),
+        prompt_evidence=tuple(prompt_evidence),
     )
 
 
@@ -656,6 +710,9 @@ class SourceBootstrapPhase:
         self._last_generation_result: PhaseResult | None = None
         self._last_formal_phase: Any = None
         self._public_testbench_cost_observations: tuple[
+            Mapping[str, Any], ...
+        ] = ()
+        self._public_testbench_prompt_evidence: tuple[
             Mapping[str, Any], ...
         ] = ()
 
@@ -861,6 +918,9 @@ class SourceBootstrapPhase:
             )
             self._public_testbench_cost_observations = (
                 public_preparation.cost_observations
+            )
+            self._public_testbench_prompt_evidence = (
+                public_preparation.prompt_evidence
             )
             _atomic_json(
                 bootstrap_root
@@ -1163,6 +1223,11 @@ class SourceBootstrapPhase:
     def _collect_prompt_evidence(self) -> dict[str, Any]:
         payload = get_model_prompt_evidence()
         calls = list(payload.get("calls", []))
+        for raw_evidence in self._public_testbench_prompt_evidence:
+            evidence = dict(raw_evidence)
+            evidence["call_index"] = len(calls) + 1
+            calls.append(evidence)
+
         formal_result = getattr(
             self._last_formal_phase,
             "last_result",
