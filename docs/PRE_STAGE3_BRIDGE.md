@@ -106,7 +106,10 @@ P1-C3B generic AG2 loader policy completed deterministic acceptance at `343d23c5
 P1-C3C1 typed AG2 usage summary completed deterministic acceptance at `d2f085b3cabefef87e8aa5099bdb1c2a8ce32b7d` with 1220/1220 tests. Evidence is recorded in
 [`P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md`](P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md).
 
-P1-B, P1-C1, P1-C2, P1-C3A, P1-C3B and P1-C3C1 are complete. The active package is P1-C3C2 Legacy native-currency Budget bridge only. P1-C3C3, P1-C4 parity, P1-D real-model smoke, P4, normal CLI migration, P5 output, P0 and Stage 3 remain separate later packages.
+P1-C3C2 integrated accounting completed at `f0c06c32771916bb6ad3bd68eb4ac21473dcd41b` with 1250/1250 tests. P1-C4 parity closed P1-C with 1275/1275 tests. Evidence is recorded in
+[`P1C_RUNTIME_CLOSURE_ACCEPTANCE.md`](P1C_RUNTIME_CLOSURE_ACCEPTANCE.md).
+
+P1-A, P1-B and P1-C are complete. The active package is P1-D bounded real-model smoke only. P4, normal CLI migration, Execution Identity, P5 output, P0 and Stage 3 remain separate later packages.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
 
 ## Scope control

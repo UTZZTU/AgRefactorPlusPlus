@@ -1,6 +1,6 @@
 # P1 模型运行时审计决策账本
 
-> **状态：** P1-A、P1-B、P1-C1、P1-C2、P1-C3A、P1-C3B、P1-C3C1 已完成；P1-C3C2 Legacy native-currency Budget bridge 为当前唯一活跃实现项
+> **状态：** P1-A、P1-B、P1-C 已完成；P1-D bounded real-model smoke 为当前唯一活跃项
 > **审计基线：** `8b543267a88ed63d343bd633cf29cd6edf9c4127`  
 > **人工复核日期：** 2026-07-22  
 > **作用：** 保存自动审计发现、人工修正、新增发现、阶段归属和关闭证据。  
@@ -218,6 +218,12 @@ one EffectiveModelConfig
 
 先建立 parity 证据，再删除或降级 Legacy DeepSeek patch。不得先删 consumer
 仍在使用的代码。
+
+P1-C3C2 integrated accounting completed at `f0c06c32771916bb6ad3bd68eb4ac21473dcd41b` with
+**1250/1250** tests and patch ID `6f77f6146e64a341623ac9e21a591f5a7e4cd7bd`.
+P1-C4 deterministic parity closed P1-C with **1275/1275** tests.
+Evidence:
+[`P1C_RUNTIME_CLOSURE_ACCEPTANCE.md`](P1C_RUNTIME_CLOSURE_ACCEPTANCE.md).
 
 ### P1-D：验收与真实 smoke
 
