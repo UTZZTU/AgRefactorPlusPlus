@@ -1,3 +1,10 @@
+> **Scope correction:** This remains valid concrete-model network evidence for
+> `deepseek-v4-flash`. It does not by itself close the broader frozen P1
+> Profile-schema contract. The family profile is now
+> `deterministically_tested`; `network_smoke_verified` remains attached to the
+> exact concrete-model evidence only. See
+> [`P1_P4_FROZEN_CONTRACT_RECONCILIATION.md`](P1_P4_FROZEN_CONTRACT_RECONCILIATION.md).
+
 # P1-D Bounded DeepSeek Network Smoke Acceptance
 
 ## Status
@@ -22,7 +29,7 @@ stage3_started=false
 
 P1-D is accepted for the exact concrete model `deepseek-v4-flash` against the official
 DeepSeek OpenAI-compatible endpoint. This does not promote every model in the
-DeepSeek family; the family profile retains its documentation-review status,
+DeepSeek family; the family profile records deterministic contract verification,
 while this concrete model receives `network_smoke_verified` evidence.
 
 ## Accepted chain

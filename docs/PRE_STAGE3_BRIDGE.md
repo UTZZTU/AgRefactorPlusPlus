@@ -321,3 +321,25 @@ process-isolation framework.
 
 Do not start a later step until the current step has focused evidence and no
 regression.
+
+<!-- P1_P4_FROZEN_CONTRACT_RECONCILIATION:BEGIN -->
+## P1/P4 frozen-contract reconciliation
+
+The previous `completed` labels used narrower acceptance scopes than
+[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md).
+The mismatch is now corrected in one integrated package:
+
+```text
+baseline=1312
+full=1334/1334
+patch_id=c7dacd1afe4ad4e67a635f9e63d225a847aaf326
+P1 frozen contract=reconciled
+P4 frozen contract=reconciled
+P2=next, not completed
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```
+
+Evidence:
+[`P1_P4_FROZEN_CONTRACT_RECONCILIATION.md`](P1_P4_FROZEN_CONTRACT_RECONCILIATION.md).
+<!-- P1_P4_FROZEN_CONTRACT_RECONCILIATION:END -->

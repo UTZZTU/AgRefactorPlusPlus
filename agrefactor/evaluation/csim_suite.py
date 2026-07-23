@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 from typing import Any
 
 from agrefactor.config import (
+    EvaluationSplit,
+    TestFeedbackVisibility,
+    TestQualificationStatus,
     TestSourceProvenance,
     TestSuiteSpec,
     resolve_test_source,
@@ -139,6 +142,15 @@ class CsimSuiteEvaluator:
             suite.source,
             suite.testbench_path,
             execution_content=execution_content,
+            suite_id=suite.suite_id,
+            suite_version=suite.suite_version,
+            split=suite.split.value,
+            qualification_status=TestQualificationStatus.PENDING,
+            feedback_visibility=(
+                TestFeedbackVisibility.PUBLIC
+                if suite.split is EvaluationSplit.PUBLIC
+                else TestFeedbackVisibility.OPERATOR_ONLY
+            ),
         )
 
     @staticmethod
@@ -233,6 +245,32 @@ class CsimSuiteEvaluator:
             if invocation_path.is_file()
             else ()
         )
+
+        if source_provenance is not None:
+            source_provenance = replace(
+                source_provenance,
+                coverage={
+                    "declared_case_count": suite.case_count,
+                    "passed_cases": passed_cases,
+                    "failed_cases": (
+                        0
+                        if status is TestEvaluationStatus.PASSED
+                        else (
+                            suite.case_count
+                            if suite.case_count is not None
+                            else 0
+                        )
+                    ),
+                    "case_counts_complete": case_counts_complete,
+                    "compile_attempted": bool(compile_execution),
+                    "simulation_attempted": bool(simulation_execution),
+                },
+                qualification_status=(
+                    TestQualificationStatus.QUALIFIED
+                    if status is TestEvaluationStatus.PASSED
+                    else TestQualificationStatus.REJECTED
+                ),
+            )
 
         return TestEvaluationEvidence(
             suite=suite,

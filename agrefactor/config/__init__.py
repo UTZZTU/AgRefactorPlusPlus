@@ -13,10 +13,18 @@ from .target_profiles import (
 )
 from .task import RunMode, TaskSpec
 from .test_source import (
+    TestFeedbackVisibility,
+    TestQualificationStatus,
     TestSourceKind,
     TestSourceProvenance,
     TestSourceSpec,
     resolve_test_source,
+)
+from .test_source_plan import (
+    OverallTestSourceMode,
+    TestSourcePlan,
+    TestSourceSelection,
+    TestSourceSelectionMode,
 )
 from .test_suite import EvaluationSplit, TestSuiteSpec
 
@@ -27,9 +35,15 @@ __all__ = [
     "TargetProfile",
     "TargetResourceLimits",
     "TaskSpec",
+    "OverallTestSourceMode",
+    "TestFeedbackVisibility",
+    "TestQualificationStatus",
     "TestSourceKind",
     "TestSourceProvenance",
     "TestSourceSpec",
+    "TestSourcePlan",
+    "TestSourceSelection",
+    "TestSourceSelectionMode",
     "TestSuiteSpec",
     "available_target_profile_names",
     "default_target_profile",

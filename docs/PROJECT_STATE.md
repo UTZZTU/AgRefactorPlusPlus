@@ -4,11 +4,33 @@
 
 ## 1. 当前快照
 
+<!-- P1_P4_FROZEN_CONTRACT_RECONCILIATION:BEGIN -->
+## P1/P4 frozen-contract reconciliation
+
+The previous `completed` labels used narrower acceptance scopes than
+[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md).
+The mismatch is now corrected in one integrated package:
+
+```text
+baseline=1312
+full=1334/1334
+patch_id=c7dacd1afe4ad4e67a635f9e63d225a847aaf326
+P1 frozen contract=reconciled
+P4 frozen contract=reconciled
+P2=next, not completed
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```
+
+Evidence:
+[`P1_P4_FROZEN_CONTRACT_RECONCILIATION.md`](P1_P4_FROZEN_CONTRACT_RECONCILIATION.md).
+<!-- P1_P4_FROZEN_CONTRACT_RECONCILIATION:END -->
+
 - 当前开发分支：`stage2-general-feedback`
-- 当前功能代码基线：`f0c06c32771916bb6ad3bd68eb4ac21473dcd41b`
+- 当前功能代码基线：以 `stage2-general-feedback` 当前 HEAD 为准；不再在本状态文档复制容易过期的功能 SHA
 - Stage 2 closure validation baseline：`3f57371c8b58f53449064219c024ab63042a87d4`
-- Stage 2 状态：**closed**；Stage 3：**allowed, not started**
-- 最新确定性测试：**1312/1312 passed**
+- Stage 2 状态：**closed**；Stage 3：**not allowed, not started**
+- 最新确定性测试：**1334/1334 passed**
 - 最新 Stage 2.5 总结：**7 baseline、7/7 real full chains、9 faults、16 labels、23 scenario executions；跨三次独立验收累计 62/36/9/17/0，0 LLM**
 - 最新完整验证链验收仍为：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)

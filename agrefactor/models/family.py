@@ -99,8 +99,11 @@ class ModelCapabilityTag(str, Enum):
 
 class ModelProfileVerificationStatus(str, Enum):
     DECLARED = "declared"
-    OFFICIAL_DOCS_REVIEWED = "official_docs_reviewed"
+    DETERMINISTICALLY_TESTED = "deterministically_tested"
     NETWORK_SMOKE_VERIFIED = "network_smoke_verified"
+    # Historical compatibility only; frozen profiles no longer use this as
+    # a substitute for deterministic or network verification.
+    OFFICIAL_DOCS_REVIEWED = "official_docs_reviewed"
 
 
 class ReasoningLevel(str, Enum):
@@ -353,6 +356,138 @@ _CAPABILITY_INSTRUCTIONS = {
 }
 
 
+
+class ModelArtifactKind(str, Enum):
+    CANDIDATE = "candidate"
+    TESTBENCH = "testbench"
+    CANDIDATE_REPAIR = "candidate_repair"
+    TESTBENCH_REPAIR = "testbench_repair"
+
+
+@dataclass(frozen=True, slots=True)
+class ModelOutputPolicy:
+    """Typed maximum-output contract for one model family."""
+
+    parameter_name: str = "max_tokens"
+    default_limit: int | None = None
+    safety_ceiling: int | None = None
+    per_artifact_limits: Mapping[
+        str | ModelArtifactKind,
+        int,
+    ] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        parameter_name = _clean_required(
+            "ModelOutputPolicy.parameter_name",
+            self.parameter_name,
+        )
+
+        def validate(name: str, value: int | None) -> int | None:
+            if value is None:
+                return None
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an integer or None")
+            if value <= 0:
+                raise ValueError(f"{name} must be positive")
+            return value
+
+        default_limit = validate("default_limit", self.default_limit)
+        ceiling = validate("safety_ceiling", self.safety_ceiling)
+        if (
+            default_limit is not None
+            and ceiling is not None
+            and default_limit > ceiling
+        ):
+            raise ValueError(
+                "default output limit must not exceed safety ceiling"
+            )
+        if not isinstance(self.per_artifact_limits, Mapping):
+            raise TypeError("per_artifact_limits must be a mapping")
+        normalized: dict[str, int] = {}
+        for raw_kind, raw_limit in self.per_artifact_limits.items():
+            try:
+                kind = (
+                    raw_kind
+                    if isinstance(raw_kind, ModelArtifactKind)
+                    else ModelArtifactKind(str(raw_kind))
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    f"unsupported model artifact kind: {raw_kind!r}"
+                ) from exc
+            item = validate(
+                f"per_artifact_limits[{kind.value}]",
+                raw_limit,
+            )
+            assert item is not None
+            if ceiling is not None and item > ceiling:
+                raise ValueError(
+                    f"{kind.value} output limit exceeds safety ceiling"
+                )
+            normalized[kind.value] = item
+        object.__setattr__(self, "parameter_name", parameter_name)
+        object.__setattr__(self, "default_limit", default_limit)
+        object.__setattr__(self, "safety_ceiling", ceiling)
+        object.__setattr__(self, "per_artifact_limits", normalized)
+
+    def limit_for(
+        self,
+        artifact_kind: str | ModelArtifactKind | None,
+    ) -> int | None:
+        if artifact_kind is None:
+            return self.default_limit
+        kind = (
+            artifact_kind
+            if isinstance(artifact_kind, ModelArtifactKind)
+            else ModelArtifactKind(str(artifact_kind))
+        )
+        return self.per_artifact_limits.get(
+            kind.value,
+            self.default_limit,
+        )
+
+    def apply(
+        self,
+        parameters: Mapping[str, Any],
+        artifact_kind: str | ModelArtifactKind | None,
+    ) -> dict[str, Any]:
+        effective = _copy_json_mapping(
+            "output-policy parameters",
+            parameters,
+        )
+        selected = self.limit_for(artifact_kind)
+        if self.parameter_name not in effective:
+            if selected is not None:
+                effective[self.parameter_name] = selected
+            return effective
+        value = effective[self.parameter_name]
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise TypeError(f"{self.parameter_name} must be an integer")
+        if value <= 0:
+            raise ValueError(f"{self.parameter_name} must be positive")
+        if (
+            self.safety_ceiling is not None
+            and value > self.safety_ceiling
+        ):
+            raise ValueError(
+                f"{self.parameter_name} exceeds model-family "
+                "output safety ceiling"
+            )
+        return effective
+
+    def to_manifest(self) -> dict[str, Any]:
+        return {
+            "parameter_name": self.parameter_name,
+            "default_limit": self.default_limit,
+            "safety_ceiling": self.safety_ceiling,
+            "per_artifact_limits": dict(self.per_artifact_limits),
+        }
+
+
+class UnsupportedModelParameterError(ModelParameterPolicyError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class ModelFamilyProfile:
     name: str
@@ -373,6 +508,18 @@ class ModelFamilyProfile:
     rejected_parameters: frozenset[str] = field(
         default_factory=frozenset
     )
+    supported_parameters: frozenset[str] = field(
+        default_factory=frozenset
+    )
+    artifact_default_parameters: Mapping[
+        str | ModelArtifactKind,
+        Mapping[str, Any],
+    ] = field(default_factory=dict)
+    output_policy: ModelOutputPolicy = field(
+        default_factory=ModelOutputPolicy
+    )
+    request_timeout_s: float = 120.0
+    prompt_profile: str | None = None
 
     def __post_init__(self) -> None:
         name = _clean_required("name", self.name)
@@ -456,6 +603,72 @@ class ModelFamilyProfile:
                 + ", ".join(conflicts)
             )
 
+        supported = _clean_name_set(
+            "supported_parameters",
+            self.supported_parameters,
+        )
+        if supported:
+            unknown_defaults = sorted(set(parameters) - set(supported))
+            if unknown_defaults:
+                raise ValueError(
+                    "safe defaults are absent from supported_parameters: "
+                    + ", ".join(unknown_defaults)
+                )
+            unknown_targets = sorted(
+                set(aliases.values()) - set(supported)
+            )
+            if unknown_targets:
+                raise ValueError(
+                    "alias targets are absent from supported_parameters: "
+                    + ", ".join(unknown_targets)
+                )
+
+        if not isinstance(self.artifact_default_parameters, Mapping):
+            raise TypeError("artifact_default_parameters must be a mapping")
+        artifact_defaults: dict[str, dict[str, Any]] = {}
+        for raw_kind, raw_defaults in (
+            self.artifact_default_parameters.items()
+        ):
+            try:
+                kind = (
+                    raw_kind
+                    if isinstance(raw_kind, ModelArtifactKind)
+                    else ModelArtifactKind(str(raw_kind))
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    f"unsupported model artifact kind: {raw_kind!r}"
+                ) from exc
+            defaults = _copy_json_mapping(
+                f"artifact_default_parameters[{kind.value}]",
+                raw_defaults,
+            )
+            _reject_secret_keys(
+                defaults,
+                f"artifact_default_parameters[{kind.value}]",
+            )
+            if supported:
+                unknown = sorted(set(defaults) - set(supported))
+                if unknown:
+                    raise ValueError(
+                        f"{kind.value} defaults are absent from "
+                        "supported_parameters: " + ", ".join(unknown)
+                    )
+            artifact_defaults[kind.value] = defaults
+
+        if not isinstance(self.output_policy, ModelOutputPolicy):
+            raise TypeError("output_policy must be a ModelOutputPolicy")
+        timeout = self.request_timeout_s
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or float(timeout) <= 0
+        ):
+            raise ValueError("request_timeout_s must be positive")
+        prompt_profile = (
+            _clean_optional("prompt_profile", self.prompt_profile) or name
+        )
+
         object.__setattr__(self, "name", name)
         object.__setattr__(
             self,
@@ -482,6 +695,14 @@ class ModelFamilyProfile:
         )
         object.__setattr__(self, "parameter_aliases", aliases)
         object.__setattr__(self, "rejected_parameters", rejected)
+        object.__setattr__(self, "supported_parameters", supported)
+        object.__setattr__(
+            self,
+            "artifact_default_parameters",
+            artifact_defaults,
+        )
+        object.__setattr__(self, "request_timeout_s", float(timeout))
+        object.__setattr__(self, "prompt_profile", prompt_profile)
 
     @property
     def capability_tags(self) -> tuple[str, ...]:
@@ -547,8 +768,19 @@ class ModelFamilyProfile:
         self,
         model_defaults: Mapping[str, Any] | None = None,
         call_overrides: Mapping[str, Any] | None = None,
+        *,
+        artifact_kind: str | ModelArtifactKind | None = None,
     ) -> dict[str, Any]:
         merged = dict(self.safe_default_parameters)
+        if artifact_kind is not None:
+            kind = (
+                artifact_kind
+                if isinstance(artifact_kind, ModelArtifactKind)
+                else ModelArtifactKind(str(artifact_kind))
+            )
+            merged.update(
+                self.artifact_default_parameters.get(kind.value, {})
+            )
         if model_defaults is not None:
             merged.update(
                 _copy_json_mapping(
@@ -568,6 +800,11 @@ class ModelFamilyProfile:
         effective = self._apply_aliases(merged)
         self._reject_parameters(effective)
         effective = self.reasoning_policy.apply(effective)
+        effective = self.output_policy.apply(effective, artifact_kind)
+        # supported_parameters is declarative and intentionally non-exhaustive.
+        # Compatible endpoints frequently require provider/model-specific
+        # extension objects. Explicit hard rejection remains the responsibility
+        # of rejected_parameters and the typed reasoning/output policies.
         _reject_secret_keys(effective, "effective_parameters")
         return _copy_json_mapping(
             "effective_parameters",
@@ -584,8 +821,15 @@ class ModelFamilyProfile:
             "verification_status": self.verification_status.value,
             "verification_note": self.verification_note,
             "reasoning_policy": self.reasoning_policy.to_manifest(),
+            "supported_parameters": sorted(self.supported_parameters),
             "parameter_aliases": sorted(self.parameter_aliases),
             "rejected_parameters": sorted(self.rejected_parameters),
+            "artifact_default_kinds": sorted(
+                self.artifact_default_parameters
+            ),
+            "output_policy": self.output_policy.to_manifest(),
+            "request_timeout_s": self.request_timeout_s,
+            "prompt_profile": self.prompt_profile,
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -596,6 +840,10 @@ class ModelFamilyProfile:
             ),
             "reasoning_policy": self.reasoning_policy.to_dict(),
             "parameter_aliases": dict(self.parameter_aliases),
+            "artifact_default_parameters": {
+                key: dict(value)
+                for key, value in self.artifact_default_parameters.items()
+            },
         }
 
 

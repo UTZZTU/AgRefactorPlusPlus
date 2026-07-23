@@ -165,3 +165,25 @@ Step 8  Stage 3 Safe Three-Level Optimizer
 P0 只有在最终 source-only 入口内部生成 TaskSpec、测试和初始 Candidate，
 并由 Stage 2 的 Preflight → CSYNTH → Public → Hidden → bounded repair
 正式链返回 `accepted` 时才完成。Legacy flow 自身的成功不能替代该证据。
+
+<!-- P1_P4_FROZEN_CONTRACT_RECONCILIATION:BEGIN -->
+## P1/P4 frozen-contract reconciliation
+
+The previous `completed` labels used narrower acceptance scopes than
+[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md).
+The mismatch is now corrected in one integrated package:
+
+```text
+baseline=1312
+full=1334/1334
+patch_id=c7dacd1afe4ad4e67a635f9e63d225a847aaf326
+P1 frozen contract=reconciled
+P4 frozen contract=reconciled
+P2=next, not completed
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```
+
+Evidence:
+[`P1_P4_FROZEN_CONTRACT_RECONCILIATION.md`](P1_P4_FROZEN_CONTRACT_RECONCILIATION.md).
+<!-- P1_P4_FROZEN_CONTRACT_RECONCILIATION:END -->

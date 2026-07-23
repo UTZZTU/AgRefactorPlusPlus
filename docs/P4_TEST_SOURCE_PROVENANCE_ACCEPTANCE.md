@@ -1,3 +1,9 @@
+> **Scope correction:** This document is retained as historical evidence for
+> the narrower source-identity implementation. Full P4 status is governed by
+> `PRE_STAGE3_PRODUCTIZATION_PLAN.md` and is reconciled by
+> [`P1_P4_FROZEN_CONTRACT_RECONCILIATION.md`](P1_P4_FROZEN_CONTRACT_RECONCILIATION.md).
+> Do not use the old `p4_status=completed` line alone as current authority.
+
 # P4 Public/Hidden Test Source Provenance Acceptance
 
 ## Status

@@ -41,29 +41,24 @@ class KnownModelProfilesTests(unittest.TestCase):
             EXPECTED_NAMES,
         )
 
-    def test_known_profiles_do_not_claim_network_smoke(self):
-        profiles = (
+    def test_known_profiles_use_frozen_verification_states(self):
+        for profile in (
             DEEPSEEK_MODEL_FAMILY_PROFILE,
             KIMI_MODEL_FAMILY_PROFILE,
             GLM_MODEL_FAMILY_PROFILE,
             MINIMAX_MODEL_FAMILY_PROFILE,
             QWEN_MODEL_FAMILY_PROFILE,
-        )
-        for profile in profiles:
+            GENERIC_OPENAI_COMPATIBLE_MODEL_FAMILY_PROFILE,
+        ):
             with self.subTest(profile=profile.name):
                 self.assertEqual(
                     profile.verification_status,
-                    ModelProfileVerificationStatus.OFFICIAL_DOCS_REVIEWED,
+                    ModelProfileVerificationStatus.DETERMINISTICALLY_TESTED,
                 )
                 self.assertNotEqual(
                     profile.verification_status,
                     ModelProfileVerificationStatus.NETWORK_SMOKE_VERIFIED,
                 )
-        self.assertEqual(
-            GENERIC_OPENAI_COMPATIBLE_MODEL_FAMILY_PROFILE
-            .verification_status,
-            ModelProfileVerificationStatus.DECLARED,
-        )
 
     def test_deepseek_maps_stable_levels_conservatively(self):
         for requested in ("low", "medium", "high"):

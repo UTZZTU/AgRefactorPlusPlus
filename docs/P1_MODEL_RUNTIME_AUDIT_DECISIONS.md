@@ -1,6 +1,6 @@
 # P1 模型运行时审计决策账本
 
-> **状态：** P1 整体完成；P4 Public/Hidden test-source provenance 已完成，P2 source-only bootstrap 当前活跃
+> **状态修正：** P1/P4 冻结合同已按上位合同重新对齐；P2 是下一包，尚未开始；Stage 3 仍不允许开始
 > **审计基线：** `8b543267a88ed63d343bd633cf29cd6edf9c4127`  
 > **人工复核日期：** 2026-07-22  
 > **作用：** 保存自动审计发现、人工修正、新增发现、阶段归属和关闭证据。  
@@ -246,7 +246,7 @@ Vitis。
 ```text
 concrete_model=deepseek-v4-flash
 verification_status=network_smoke_verified
-family_profile_status=official_docs_reviewed
+family_profile_status=deterministically_tested
 model_api_call_count=1
 full_deterministic_regression=1275/1275
 ```
@@ -797,3 +797,25 @@ Step 1 P1-C4 deterministic parity acceptance   pending
 P1-C3C1 已完成。当前只推进 P1-C3C2 Legacy native-currency Budget bridge；P1-C3C3、P1-C4、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。
 
 P4 closure evidence: [`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md).
+
+<!-- P1_P4_FROZEN_CONTRACT_RECONCILIATION:BEGIN -->
+## P1/P4 frozen-contract reconciliation
+
+The previous `completed` labels used narrower acceptance scopes than
+[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md).
+The mismatch is now corrected in one integrated package:
+
+```text
+baseline=1312
+full=1334/1334
+patch_id=c7dacd1afe4ad4e67a635f9e63d225a847aaf326
+P1 frozen contract=reconciled
+P4 frozen contract=reconciled
+P2=next, not completed
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```
+
+Evidence:
+[`P1_P4_FROZEN_CONTRACT_RECONCILIATION.md`](P1_P4_FROZEN_CONTRACT_RECONCILIATION.md).
+<!-- P1_P4_FROZEN_CONTRACT_RECONCILIATION:END -->

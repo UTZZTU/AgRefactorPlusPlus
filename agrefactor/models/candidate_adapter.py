@@ -11,7 +11,11 @@ import re
 from typing import Any
 
 from agrefactor.config import TaskSpec
-from agrefactor.prompts import LayeredPrompt, PromptPurpose
+from agrefactor.prompts import (
+    LayeredPrompt,
+    PromptPurpose,
+    assert_hidden_test_sources_absent,
+)
 
 from .base import ModelRequest, ModelResponse, ModelSpec
 from .cost_estimator import estimate_model_cost
@@ -564,6 +568,10 @@ class CandidateModelAdapter:
         )
         parameters = self._effective_config.parameters
 
+        assert_hidden_test_sources_absent(
+            task=request.task,
+            messages=request.prompt.messages,
+        )
         self._prompts.append(request.prompt)
         if before_provider_call is not None:
             before_provider_call()

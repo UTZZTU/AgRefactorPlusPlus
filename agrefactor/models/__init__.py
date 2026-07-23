@@ -11,8 +11,10 @@ from .base import (
 from .cost_estimator import estimate_model_cost
 from .effective_config import EffectiveModelConfig
 from .family import (
+    ModelArtifactKind,
     ModelCapabilityTag,
     ModelFamilyProfile,
+    ModelOutputPolicy,
     ModelParameterAliasConflictError,
     ModelParameterPolicyError,
     ModelProfileVerificationStatus,
@@ -22,6 +24,7 @@ from .family import (
     ReasoningPolicy,
     ReasoningPolicyAction,
     RejectedModelParameterError,
+    UnsupportedModelParameterError,
     UnsupportedReasoningLevelError,
 )
 from .known_profiles import (
@@ -107,8 +110,10 @@ __all__ = [
     "KNOWN_MODEL_FAMILY_PROFILES",
     "MINIMAX_MODEL_FAMILY_PROFILE",
     "MissingModelCredentialError",
+    "ModelArtifactKind",
     "ModelCapabilityTag",
     "ModelFamilyProfile",
+    "ModelOutputPolicy",
     "ModelParameterAliasConflictError",
     "ModelParameterPolicyError",
     "ModelProfileVerificationStatus",
@@ -141,6 +146,7 @@ __all__ = [
     "UnknownModelError",
     "UnknownModelFamilyProfileError",
     "UnknownProviderError",
+    "UnsupportedModelParameterError",
     "UnsupportedReasoningLevelError",
     "estimate_model_cost",
     "find_official_model_pricing_snapshots",

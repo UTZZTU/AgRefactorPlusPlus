@@ -1,14 +1,15 @@
-"""Static known-family profiles reviewed against official API docs."""
+"""Static known-family profiles reviewed and deterministically tested."""
 
 from __future__ import annotations
 
 from .family import (
+    ModelArtifactKind,
     ModelCapabilityTag,
     ModelFamilyProfile,
+    ModelOutputPolicy,
     ModelProfileVerificationStatus,
     ReasoningPolicy,
 )
-
 
 _REASONING_CODE_CAPABILITIES = frozenset(
     {
@@ -20,98 +21,147 @@ _REASONING_CODE_CAPABILITIES = frozenset(
     }
 )
 
+# This is a declarative known-supported vocabulary, not an exhaustive runtime
+# allowlist. Compatible providers may carry extension objects/fields.
+# Hard rejection remains explicit in rejected_parameters; family reasoning
+# policy still maps/omits/rejects the unstable reasoning field.
+_COMMON_PARAMETERS = frozenset(
+    {
+        "temperature",
+        "top_p",
+        "max_tokens",
+        "stop",
+        "seed",
+        "frequency_penalty",
+        "presence_penalty",
+        "n",
+        "stream",
+        "response_format",
+        "tools",
+        "tool_choice",
+        "reasoning_effort",
+        "thinking",
+        "enable_thinking",
+        "extra_body",
+    }
+)
 
-DEEPSEEK_MODEL_FAMILY_PROFILE = ModelFamilyProfile(
+# Artifact identities are explicit even when a family deliberately has no
+# extra scalar defaults. The typed output policy supplies per-artifact limits.
+_ARTIFACT_DEFAULTS = {
+    ModelArtifactKind.CANDIDATE: {},
+    ModelArtifactKind.TESTBENCH: {},
+    ModelArtifactKind.CANDIDATE_REPAIR: {},
+    ModelArtifactKind.TESTBENCH_REPAIR: {},
+}
+_OUTPUT_POLICY = ModelOutputPolicy(
+    parameter_name="max_tokens",
+    safety_ceiling=65536,
+    per_artifact_limits={
+        ModelArtifactKind.CANDIDATE: 16384,
+        ModelArtifactKind.TESTBENCH: 8192,
+        ModelArtifactKind.CANDIDATE_REPAIR: 16384,
+        ModelArtifactKind.TESTBENCH_REPAIR: 8192,
+    },
+)
+
+
+def _profile(
+    *,
+    name: str,
+    status: ModelProfileVerificationStatus,
+    note: str,
+    reasoning_policy: ReasoningPolicy,
+    aliases=None,
+    prompt_profile: str,
+) -> ModelFamilyProfile:
+    return ModelFamilyProfile(
+        name=name,
+        capabilities=_REASONING_CODE_CAPABILITIES,
+        verification_status=status,
+        verification_note=note,
+        reasoning_policy=reasoning_policy,
+        parameter_aliases={} if aliases is None else aliases,
+        supported_parameters=_COMMON_PARAMETERS,
+        artifact_default_parameters=_ARTIFACT_DEFAULTS,
+        output_policy=_OUTPUT_POLICY,
+        request_timeout_s=120.0,
+        prompt_profile=prompt_profile,
+    )
+
+
+DEEPSEEK_MODEL_FAMILY_PROFILE = _profile(
     name="deepseek",
-    capabilities=_REASONING_CODE_CAPABILITIES,
-    verification_status=(
-        ModelProfileVerificationStatus.OFFICIAL_DOCS_REVIEWED
-    ),
-    verification_note=(
-        "DeepSeek V4 reasoning-effort documentation reviewed "
-        "2026-07-22; this family policy does not claim a network smoke."
+    status=ModelProfileVerificationStatus.DETERMINISTICALLY_TESTED,
+    note=(
+        "The family contract passed deterministic tests. The separate "
+        "deepseek-v4-flash concrete-model record completed the bounded "
+        "P1-D real-network smoke; that claim is not widened to the family."
     ),
     reasoning_policy=ReasoningPolicy.mapped(
         low="high",
         medium="high",
         high="high",
     ),
-    parameter_aliases={
-        "max_completion_tokens": "max_tokens",
-    },
+    aliases={"max_completion_tokens": "max_tokens"},
+    prompt_profile="deepseek-chat-completions",
 )
-
-
-KIMI_MODEL_FAMILY_PROFILE = ModelFamilyProfile(
+KIMI_MODEL_FAMILY_PROFILE = _profile(
     name="kimi",
-    capabilities=_REASONING_CODE_CAPABILITIES,
-    verification_status=(
-        ModelProfileVerificationStatus.OFFICIAL_DOCS_REVIEWED
-    ),
-    verification_note=(
-        "Kimi Chat Completions documents a thinking object rather "
-        "than a stable family-wide low/medium/high effort field; "
-        "the generic effort field is omitted."
+    status=ModelProfileVerificationStatus.DETERMINISTICALLY_TESTED,
+    note=(
+        "Official behavior was reviewed and the family contract passed "
+        "deterministic tests; no network-smoke claim is made."
     ),
     reasoning_policy=ReasoningPolicy.omit_all(),
+    prompt_profile="kimi-chat-completions",
 )
-
-
-GLM_MODEL_FAMILY_PROFILE = ModelFamilyProfile(
+GLM_MODEL_FAMILY_PROFILE = _profile(
     name="glm",
-    capabilities=_REASONING_CODE_CAPABILITIES,
-    verification_status=(
-        ModelProfileVerificationStatus.OFFICIAL_DOCS_REVIEWED
-    ),
-    verification_note=(
-        "GLM reasoning-effort support varies by concrete model "
-        "version; the family-level policy preserves provider defaults "
-        "until a concrete ModelSpec policy is selected."
+    status=ModelProfileVerificationStatus.DETERMINISTICALLY_TESTED,
+    note=(
+        "Concrete-model reasoning support varies; deterministic family "
+        "tests preserve provider defaults."
     ),
     reasoning_policy=ReasoningPolicy.omit_all(),
+    prompt_profile="glm-chat-completions",
 )
-
-
-MINIMAX_MODEL_FAMILY_PROFILE = ModelFamilyProfile(
+MINIMAX_MODEL_FAMILY_PROFILE = _profile(
     name="minimax",
-    capabilities=_REASONING_CODE_CAPABILITIES,
-    verification_status=(
-        ModelProfileVerificationStatus.OFFICIAL_DOCS_REVIEWED
-    ),
-    verification_note=(
-        "MiniMax Chat Completions documents model-specific thinking "
-        "controls rather than a stable family-wide three-level effort "
-        "field; the generic effort field is omitted."
+    status=ModelProfileVerificationStatus.DETERMINISTICALLY_TESTED,
+    note=(
+        "Model-specific thinking controls are not generalized; the family "
+        "contract passed deterministic compatibility tests."
     ),
     reasoning_policy=ReasoningPolicy.omit_all(),
+    prompt_profile="minimax-chat-completions",
 )
-
-
-QWEN_MODEL_FAMILY_PROFILE = ModelFamilyProfile(
+QWEN_MODEL_FAMILY_PROFILE = _profile(
     name="qwen",
-    capabilities=_REASONING_CODE_CAPABILITIES,
-    verification_status=(
-        ModelProfileVerificationStatus.OFFICIAL_DOCS_REVIEWED
-    ),
-    verification_note=(
-        "Qwen reasoning controls differ between Chat Completions, "
-        "Responses, deployment region, and concrete model; the "
-        "family-level Chat Completions policy omits reasoning_effort."
+    status=ModelProfileVerificationStatus.DETERMINISTICALLY_TESTED,
+    note=(
+        "Reasoning controls differ by API and deployment; deterministic "
+        "family tests omit the unstable family-wide effort field."
     ),
     reasoning_policy=ReasoningPolicy.omit_all(),
+    prompt_profile="qwen-chat-completions",
 )
-
-
 GENERIC_OPENAI_COMPATIBLE_MODEL_FAMILY_PROFILE = ModelFamilyProfile(
     name="generic-openai-compatible",
-    verification_status=ModelProfileVerificationStatus.DECLARED,
+    verification_status=(
+        ModelProfileVerificationStatus.DETERMINISTICALLY_TESTED
+    ),
     verification_note=(
-        "Transport compatibility alone does not prove support for "
-        "vendor-specific reasoning parameters."
+        "Transport compatibility does not prove vendor reasoning support; "
+        "deterministic tests enforce rejection."
     ),
     reasoning_policy=ReasoningPolicy.reject_all(),
+    supported_parameters=_COMMON_PARAMETERS,
+    artifact_default_parameters=_ARTIFACT_DEFAULTS,
+    output_policy=_OUTPUT_POLICY,
+    request_timeout_s=120.0,
+    prompt_profile="generic-openai-compatible",
 )
-
 
 KNOWN_MODEL_FAMILY_PROFILES = (
     DEEPSEEK_MODEL_FAMILY_PROFILE,
@@ -121,14 +171,9 @@ KNOWN_MODEL_FAMILY_PROFILES = (
     QWEN_MODEL_FAMILY_PROFILE,
     GENERIC_OPENAI_COMPATIBLE_MODEL_FAMILY_PROFILE,
 )
-
 KNOWN_MODEL_FAMILY_PROFILE_NAMES = tuple(
     profile.name for profile in KNOWN_MODEL_FAMILY_PROFILES
 )
-
-# Existing factory code historically emits "openai" for GPT/O-series
-# identifiers. Keep that spelling as a compatibility alias while the
-# canonical profile remains vendor-neutral.
 KNOWN_MODEL_FAMILY_ALIASES = {
     "openai": "generic-openai-compatible",
 }

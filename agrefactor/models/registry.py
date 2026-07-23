@@ -8,6 +8,7 @@ from typing import Any
 from .base import ModelProvider, ModelSpec
 from .effective_config import EffectiveModelConfig
 from .family import (
+    ModelArtifactKind,
     ModelFamilyProfile,
     NEUTRAL_MODEL_FAMILY_PROFILE,
 )
@@ -220,6 +221,7 @@ class ModelRegistry:
         model_name: str,
         *,
         parameters: Mapping[str, Any] | None = None,
+        artifact_kind: str | ModelArtifactKind | None = None,
         pricing_snapshot: ModelPricingSnapshot | None = None,
         allow_approximate_cost: bool = False,
     ) -> EffectiveModelConfig:
@@ -232,6 +234,7 @@ class ModelRegistry:
             family_profile.merge_parameters(
                 spec.default_parameters,
                 parameters,
+                artifact_kind=artifact_kind,
             )
         )
         return EffectiveModelConfig(

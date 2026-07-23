@@ -16,6 +16,7 @@ from agrefactor.evidence import (
     FeedbackStage,
 )
 from agrefactor.models import ChatMessage
+from .test_source_isolation import assert_hidden_test_sources_absent
 
 
 _POSIX_PATH_RE = re.compile(
@@ -597,6 +598,11 @@ class SharedLayeredPromptBuilder:
             family_instruction=family_instruction,
         )
         user_prompt = self._build_user_prompt(request)
+        assert_hidden_test_sources_absent(
+            task=request.task,
+            messages=(system_prompt, user_prompt),
+            artifacts=request.artifacts,
+        )
 
         manifest = {
             "builder_version": self.builder_version,
@@ -637,6 +643,7 @@ class SharedLayeredPromptBuilder:
             "feedback_projection": (
                 "agent_safe_items_only"
             ),
+            "hidden_test_source_isolation": "verified",
         }
 
         return LayeredPrompt(
