@@ -11,7 +11,8 @@ def generate_plan(
     enable_rag: bool,
     hetero_enabled: bool,
     debug: int,
-    llm_config: Optional[Dict[str, Any]] = None
+    llm_config: Optional[Dict[str, Any]] = None,
+    budget: Any = None,
 ) -> tuple[str, str]:
     planning_loader = create_rag_agent_loader(
         config_path="flow/agents/planning.yaml",
@@ -20,7 +21,8 @@ def generate_plan(
         enable_rag=enable_rag,
         reset_db=False,
         debug=debug,
-        llm_config_override=llm_config
+        llm_config_override=llm_config,
+        budget=budget,
     )
     if hetero_enabled:
         planning_loader_heterorefactor = create_rag_agent_loader(
@@ -30,7 +32,8 @@ def generate_plan(
             enable_rag=enable_rag,
             reset_db=False,
             debug=debug,
-            llm_config_override=llm_config
+            llm_config_override=llm_config,
+            budget=budget,
         )
     if enable_rag:
         planner = planning_loader.load_planner_with_rag(context_variables=cv)

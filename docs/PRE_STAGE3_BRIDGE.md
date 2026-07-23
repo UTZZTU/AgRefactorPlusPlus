@@ -356,3 +356,15 @@ success is never treated as the final verdict.
 Deterministic acceptance: `1346/1346`; patch
 `af57008cd7db13e88400418fc95ac47baf157dc7`. The next frozen item is Execution Identity.
 <!-- P2_SOURCE_ONLY_BOOTSTRAP:END -->
+
+## P2 runtime-budget correction
+
+```text
+base=f2e325c7e0302e7166b647ad30f509d538b8182c
+full=1352/1352
+legacy_generation_pre_call_budget=closed
+P2_FROZEN_CONTRACT=closed
+NEXT=Execution Identity
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```

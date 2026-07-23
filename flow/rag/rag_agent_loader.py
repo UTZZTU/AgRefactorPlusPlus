@@ -13,9 +13,14 @@ class RAGAgentLoader(HLSAgentLoader):
         knowledge_manager: Optional[KnowledgeManager] = None,
         enable_rag: bool = True,
         debug: int = 0,
-        llm_config_override: Optional[Dict[str, Any]] = None
+        llm_config_override: Optional[Dict[str, Any]] = None,
+        budget: Any = None,
     ):
-        super().__init__(config_path, llm_config_override=llm_config_override)
+        super().__init__(
+            config_path,
+            llm_config_override=llm_config_override,
+            budget=budget,
+        )
         
         self.enable_rag = enable_rag
         self.debug = debug
@@ -170,7 +175,8 @@ def create_rag_agent_loader(
     enable_rag: bool = True,
     reset_db: bool = False,
     debug: int = 0,
-    llm_config_override: Optional[Dict[str, Any]] = None
+    llm_config_override: Optional[Dict[str, Any]] = None,
+    budget: Any = None,
 ) -> RAGAgentLoader:
     knowledge_manager = None
     if enable_rag:
@@ -187,5 +193,6 @@ def create_rag_agent_loader(
         knowledge_manager=knowledge_manager,
         enable_rag=enable_rag,
         debug=debug,
-        llm_config_override=llm_config_override
+        llm_config_override=llm_config_override,
+        budget=budget,
     )

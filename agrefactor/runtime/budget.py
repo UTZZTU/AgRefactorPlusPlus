@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from threading import RLock
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
@@ -233,6 +234,7 @@ class BudgetManager:
     ) -> None:
         self._limits = limits or BudgetLimits()
         self._clock = clock
+        self._lock = RLock()
         self._started_at = clock()
         self._llm_calls = 0
         self._tool_calls = 0
@@ -249,25 +251,26 @@ class BudgetManager:
     def snapshot(self) -> BudgetUsage:
         "Return current usage and check the wall-clock limit."
 
-        elapsed_s = self._elapsed_s()
-        self._check_limit(
-            "wall_time_s",
-            elapsed_s,
-            self._limits.max_wall_time_s,
-        )
-        return BudgetUsage(
-            llm_calls=self._llm_calls,
-            tool_calls=self._tool_calls,
-            compile_calls=self._compile_calls,
-            csim_calls=self._csim_calls,
-            csynth_calls=self._csynth_calls,
-            tokens=self._tokens,
-            cost_usd=self._cost_usd_total(),
-            elapsed_s=elapsed_s,
-            costs_by_currency=dict(
-                self._costs_by_currency
-            ),
-        )
+        with self._lock:
+            elapsed_s = self._elapsed_s()
+            self._check_limit(
+                "wall_time_s",
+                elapsed_s,
+                self._limits.max_wall_time_s,
+            )
+            return BudgetUsage(
+                llm_calls=self._llm_calls,
+                tool_calls=self._tool_calls,
+                compile_calls=self._compile_calls,
+                csim_calls=self._csim_calls,
+                csynth_calls=self._csynth_calls,
+                tokens=self._tokens,
+                cost_usd=self._cost_usd_total(),
+                elapsed_s=elapsed_s,
+                costs_by_currency=dict(
+                    self._costs_by_currency
+                ),
+            )
 
     def ensure_available(
         self,
@@ -344,28 +347,29 @@ class BudgetManager:
     ) -> BudgetUsage:
         "Atomically record usage after checking all configured limits."
 
-        self.ensure_available(
-            llm_calls=llm_calls,
-            tool_calls=tool_calls,
-            compile_calls=compile_calls,
-            csim_calls=csim_calls,
-            csynth_calls=csynth_calls,
-            tokens=tokens,
-            cost_usd=cost_usd,
-        )
+        with self._lock:
+            self.ensure_available(
+                llm_calls=llm_calls,
+                tool_calls=tool_calls,
+                compile_calls=compile_calls,
+                csim_calls=csim_calls,
+                csynth_calls=csynth_calls,
+                tokens=tokens,
+                cost_usd=cost_usd,
+            )
 
-        self._llm_calls += llm_calls
-        self._tool_calls += tool_calls
-        self._compile_calls += compile_calls
-        self._csim_calls += csim_calls
-        self._csynth_calls += csynth_calls
-        cost_increment = self._cost_increment(
-            cost_usd=cost_usd,
-            estimated_cost=None,
-        )
-        self._tokens += tokens
-        self._apply_cost_increment(cost_increment)
-        return self.snapshot()
+            self._llm_calls += llm_calls
+            self._tool_calls += tool_calls
+            self._compile_calls += compile_calls
+            self._csim_calls += csim_calls
+            self._csynth_calls += csynth_calls
+            cost_increment = self._cost_increment(
+                cost_usd=cost_usd,
+                estimated_cost=None,
+            )
+            self._tokens += tokens
+            self._apply_cost_increment(cost_increment)
+            return self.snapshot()
 
     def record_observed(
         self,
@@ -381,26 +385,27 @@ class BudgetManager:
         not pretend to block the completed call.
         """
 
-        self._validate_increment("tokens", tokens)
-        cost_increment = self._cost_increment(
-            cost_usd=cost_usd,
-            estimated_cost=estimated_cost,
-        )
-        self._tokens += tokens
-        self._apply_cost_increment(cost_increment)
-        return BudgetUsage(
-            llm_calls=self._llm_calls,
-            tool_calls=self._tool_calls,
-            compile_calls=self._compile_calls,
-            csim_calls=self._csim_calls,
-            csynth_calls=self._csynth_calls,
-            tokens=self._tokens,
-            cost_usd=self._cost_usd_total(),
-            elapsed_s=self._elapsed_s(),
-            costs_by_currency=dict(
-                self._costs_by_currency
-            ),
-        )
+        with self._lock:
+            self._validate_increment("tokens", tokens)
+            cost_increment = self._cost_increment(
+                cost_usd=cost_usd,
+                estimated_cost=estimated_cost,
+            )
+            self._tokens += tokens
+            self._apply_cost_increment(cost_increment)
+            return BudgetUsage(
+                llm_calls=self._llm_calls,
+                tool_calls=self._tool_calls,
+                compile_calls=self._compile_calls,
+                csim_calls=self._csim_calls,
+                csynth_calls=self._csynth_calls,
+                tokens=self._tokens,
+                cost_usd=self._cost_usd_total(),
+                elapsed_s=self._elapsed_s(),
+                costs_by_currency=dict(
+                    self._costs_by_currency
+                ),
+            )
 
     def record_model_usage(
         self,

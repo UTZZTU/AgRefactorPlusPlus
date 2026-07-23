@@ -13,7 +13,7 @@ patch_id=af57008cd7db13e88400418fc95ac47baf157dc7
 normal_refactor_command=implemented
 advanced_run_task_json=preserved
 public_hidden_plan_mapping=implemented
-shared_run_budget=implemented
+shared_run_budget=implemented_and_precall_closed
 token_cost_soft_budget=observed_only
 optimize_full_execution=gated_until_stage3
 Execution Identity=next
@@ -24,6 +24,24 @@ STAGE3_STARTED=false
 Evidence:
 [`P2_SOURCE_ONLY_BOOTSTRAP_ACCEPTANCE.md`](P2_SOURCE_ONLY_BOOTSTRAP_ACCEPTANCE.md).
 <!-- P2_SOURCE_ONLY_BOOTSTRAP:END -->
+
+<!-- P2_RUNTIME_BUDGET_CORRECTION:BEGIN -->
+## P2 runtime-budget correction
+
+```text
+base=f2e325c7e0302e7166b647ad30f509d538b8182c
+full=1352/1352
+AG2 model launches=pre-call hard-budgeted
+coverage compile/CSIM/gcov=pre-call hard-budgeted
+TB signature CSYNTH=shared hard budget
+concurrent reservations=atomic
+post-hoc Token/Cost=no launch double count
+P2 frozen contract=closed
+Execution Identity=active next objective
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```
+<!-- P2_RUNTIME_BUDGET_CORRECTION:END -->
 
 > **新对话或恢复开发时首先阅读本文档。** 权威范围见 [`ROADMAP.md`](ROADMAP.md)，目标追踪见 [`GOAL_TRACEABILITY.md`](GOAL_TRACEABILITY.md)。
 
@@ -55,7 +73,7 @@ Evidence:
 - 当前功能代码基线：以 `stage2-general-feedback` 当前 HEAD 为准；不再在本状态文档复制容易过期的功能 SHA
 - Stage 2 closure validation baseline：`3f57371c8b58f53449064219c024ab63042a87d4`
 - Stage 2 状态：**closed**；Stage 3：**not allowed, not started**
-- 最新确定性测试：**1334/1334 passed**
+- 最新确定性测试：**1352/1352 passed**
 - 最新 Stage 2.5 总结：**7 baseline、7/7 real full chains、9 faults、16 labels、23 scenario executions；跨三次独立验收累计 62/36/9/17/0，0 LLM**
 - 最新完整验证链验收仍为：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**
 - Stage 1 Core 验收：[`stage1_core_acceptance.md`](stage1_core_acceptance.md)

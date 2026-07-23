@@ -67,3 +67,28 @@ P0 final real DFS=not run
 PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
 ```
+
+## Runtime budget correction
+
+The integrated P2 package received one contract correction against the same
+authority document. Legacy generation now reserves every AG2 model launch before
+`agent.run`, coverage compilation/CSIM/gcov launches are budgeted before process
+start, testbench signature CSYNTH receives the same run budget, and
+`BudgetManager` reservations are thread-safe for concurrent generation.
+Post-hoc usage normalization records Token/Cost only and does not replay LLM
+launch counts.
+
+```text
+correction_base_head=f2e325c7e0302e7166b647ad30f509d538b8182c
+full_regression=1352/1352
+artifact_dir=/data/agrefactor_runs/pre_stage3_p2_runtime_budget_20260723_232420
+legacy_generation_pre_call_llm_budget=closed
+coverage_compile_csim_tool_budget=closed
+tb_signature_csynth_budget=closed
+concurrent_budget_reservation=atomic
+posthoc_llm_double_count=false
+P2 frozen contract=closed
+Execution Identity=next, not started
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```

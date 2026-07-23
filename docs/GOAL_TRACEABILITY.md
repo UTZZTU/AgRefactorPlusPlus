@@ -94,8 +94,8 @@ P4 Public/Hidden test-source provenance completed with
 Current next evidence:
 
 ```text
-P2 source-only bootstrap and unified normal-user CLI
--> user supplies source, --top and model
+Execution Identity and reproducibility closure
+-> build on the completed source-only CLI and shared budget contract
 -> internal TaskSpec construction
 -> no public legacy/repair-aware selector
 -> refactor / optimize / full only
@@ -151,7 +151,7 @@ Stage 2 已关闭，但 Stage 3 仍被 Pre-Stage-3 产品化收尾阻断。权�
 Step 0  文档冻结与只读 consumer 审计
 Step 1  P1-A/P1-B/P1-C/P1-D 已完成；P1 整体完成
 Step 2  P4 Public/Hidden 来源与 provenance 已完成
-Step 3  P2 source-only bootstrap 与统一 CLI 当前活跃
+Step 3  P2 source-only bootstrap、统一 CLI 与调用前预算闭环已完成
 Step 4  Execution Identity
 Step 5  P5 简洁输出
 Step 6  P0 真实 DFS source-only accepted
@@ -179,7 +179,7 @@ full=1334/1334
 patch_id=c7dacd1afe4ad4e67a635f9e63d225a847aaf326
 P1 frozen contract=reconciled
 P4 frozen contract=reconciled
-P2=next, not completed
+P2=completed and runtime-budget-corrected
 PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
 ```
@@ -203,6 +203,6 @@ Evidence:
 | Advanced reproduction | Existing `run task.json` remains |
 | Stage-3 boundary | optimize/full reject rather than fabricate optimizer success |
 
-Acceptance: `1346/1346`, patch
+Initial acceptance: `1346/1346`; runtime-budget correction: `1352/1352`. Patch
 `af57008cd7db13e88400418fc95ac47baf157dc7`. Next objective: Execution Identity.
 <!-- P2_SOURCE_ONLY_BOOTSTRAP:END -->

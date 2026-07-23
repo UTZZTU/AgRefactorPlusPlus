@@ -4,8 +4,17 @@ import flow.tools as tools
 import concurrent.futures
 from typing import Optional, Dict, Any
 
-def refactor_code(cv: ContextVariables, hetero_enabled: bool, llm_config: Optional[Dict[str, Any]] = None) -> tuple[str, str]:
-    refactoring_loader = HLSAgentLoader("flow/agents/refactoring.yaml", llm_config_override=llm_config)
+def refactor_code(
+    cv: ContextVariables,
+    hetero_enabled: bool,
+    llm_config: Optional[Dict[str, Any]] = None,
+    budget: Any = None,
+) -> tuple[str, str]:
+    refactoring_loader = HLSAgentLoader(
+        "flow/agents/refactoring.yaml",
+        llm_config_override=llm_config,
+        budget=budget,
+    )
     refactoring_worker = refactoring_loader.load_agent("refactoring_worker")
     if hetero_enabled:
         refactoring_heterorefactor_worker = refactoring_loader.load_agent("refactoring_heterorefactor_worker")

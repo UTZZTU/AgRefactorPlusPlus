@@ -449,6 +449,7 @@ class LegacyRefactorAdapter:
             },
         )
 
+        budget_before_backend = context.budget.snapshot()
         try:
             raw_result = _call_backend_preserving_standard_streams(
                 backend,
@@ -470,6 +471,28 @@ class LegacyRefactorAdapter:
         usage_metadata = self._record_usage(
             context,
             raw_result=raw_result,
+        )
+        budget_after_backend = context.budget.snapshot()
+        precall_llm_calls = (
+            budget_after_backend.llm_calls - budget_before_backend.llm_calls
+        )
+        precall_tool_calls = (
+            budget_after_backend.tool_calls - budget_before_backend.tool_calls
+        )
+        usage_metadata["precall_budgeted_llm_calls"] = precall_llm_calls
+        usage_metadata["precall_budgeted_tool_calls"] = precall_tool_calls
+        usage_metadata["llm_calls_tracked"] = bool(
+            usage_metadata.get("llm_calls_tracked", False)
+            or precall_llm_calls > 0
+        )
+        usage_metadata["tool_calls_tracked"] = bool(
+            usage_metadata.get("tool_calls_tracked", False)
+            or precall_tool_calls > 0
+        )
+        usage_metadata["launch_accounting"] = (
+            "precall_shared_budget"
+            if precall_llm_calls > 0 or precall_tool_calls > 0
+            else "posthoc_observation_only"
         )
 
         context.trace.record(

@@ -375,6 +375,7 @@ def hls_refactor_with_rag(
             llm_config=llm_config,
             cache_dir=golden_tb_cache_dir,
             cache_key=golden_tb_cache_key,
+            budget=budget,
         )
         cv["generated_hidden_testbench"] = independent_hidden.get(
             "hidden_tb",
@@ -396,7 +397,7 @@ def hls_refactor_with_rag(
         with concurrent.futures.ThreadPoolExecutor() as executor:
             debug_print(debug, "Identification")
             identification_future = tools.identifying.identify_non_synthesizable_items(
-                cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, reset_knowledge_db, executor, debug, llm_config
+                cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, reset_knowledge_db, executor, debug, llm_config, budget
             )
             cv["identified_items"], cv["items_hetero"] = identification_future.result()
     elif use_cached_tb_as_public:
@@ -435,7 +436,7 @@ def hls_refactor_with_rag(
         with concurrent.futures.ThreadPoolExecutor() as executor:
             debug_print(debug, "Identification")
             identification_future = tools.identifying.identify_non_synthesizable_items(
-                cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, reset_knowledge_db, executor, debug, llm_config
+                cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, reset_knowledge_db, executor, debug, llm_config, budget
             )
             cv["identified_items"], cv["items_hetero"] = identification_future.result()
     else:
@@ -454,6 +455,7 @@ def hls_refactor_with_rag(
                 llm_config=llm_config,
                 cache_dir=golden_tb_cache_dir,
                 cache_key=golden_tb_cache_key,
+                budget=budget,
             )
             cv["generated_hidden_testbench"] = golden.get(
                 "hidden_tb",
@@ -474,13 +476,18 @@ def hls_refactor_with_rag(
             if enable_tb_coverage_loop:
                 tb_future = executor.submit(
                     tools.tb_optimizer.gen_tb_with_coverage,
-                    cv, llm_config, public_tb_rounds, public_tb_target, hidden_sig_spec_for_public, pinned_hls_decl_for_public,
+                    cv, llm_config, public_tb_rounds, public_tb_target, hidden_sig_spec_for_public, pinned_hls_decl_for_public, budget,
                 )
             else:
-                tb_future = executor.submit(tools.testbench.gen_tb_prior, cv, llm_config)
+                tb_future = executor.submit(
+                    tools.testbench.gen_tb_prior,
+                    cv,
+                    llm_config,
+                    budget,
+                )
             debug_print(debug, "Identification")
             identification_future = tools.identifying.identify_non_synthesizable_items(
-                cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, reset_knowledge_db, executor, debug, llm_config
+                cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, reset_knowledge_db, executor, debug, llm_config, budget
             )
             cv["testbench"], cv["tb_aligned_instruction"], cv["new_kernel_name"] = tb_future.result()
             cv["identified_items"], cv["items_hetero"] = identification_future.result()
@@ -488,12 +495,17 @@ def hls_refactor_with_rag(
 
     debug_print(debug, "Planning")
     cv["plan"], cv["plan_hetero"] = tools.planning.generate_plan(
-        cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, debug, llm_config
+        cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, debug, llm_config, budget
     )
     tools.general.save_context("planning", cv, output_dir)
 
     debug_print(debug, "Refactoring")
-    cv["curr_code"], cv["code_for_hetero"] = tools.refactoring.refactor_code(cv, hetero_enabled, llm_config)
+    cv["curr_code"], cv["code_for_hetero"] = tools.refactoring.refactor_code(
+        cv,
+        hetero_enabled,
+        llm_config,
+        budget,
+    )
     tools.general.save_context("refactoring", cv, output_dir)
 
     if generation_only:

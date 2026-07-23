@@ -3,8 +3,16 @@ from autogen.agentchat.group import ContextVariables # type: ignore
 import flow.tools as tools
 from typing import Optional, Dict, Any
 
-def gen_tb_prior(cv: ContextVariables, llm_config: Optional[Dict[str, Any]] = None):
-    loader = HLSAgentLoader("flow/agents/testbench.yaml", llm_config_override=llm_config)
+def gen_tb_prior(
+    cv: ContextVariables,
+    llm_config: Optional[Dict[str, Any]] = None,
+    budget: Any = None,
+):
+    loader = HLSAgentLoader(
+        "flow/agents/testbench.yaml",
+        llm_config_override=llm_config,
+        budget=budget,
+    )
     agent = loader.load_agent("tb_creator")
     fix_message = (
         "Original code:\n"

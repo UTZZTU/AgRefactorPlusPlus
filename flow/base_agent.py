@@ -1,4 +1,5 @@
 import logging, copy, yaml, importlib
+from functools import wraps
 from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -563,6 +564,7 @@ class HLSAgentLoader:
         self,
         config_path: Union[str, Path],
         llm_config_override: Union[Dict[str, Any], LLMConfig, None] = None,
+        budget: Any = None,
     ):
         self.config_path = Path(config_path)
         self.config_data = yaml_load_file(self.config_path)
@@ -571,6 +573,9 @@ class HLSAgentLoader:
         self._runtime_llm_config = llm_config_override
         self._global_llm_config = None
         self._context_variables = None
+        if budget is not None and not callable(getattr(budget, 'consume', None)):
+            raise TypeError('budget must provide consume() or be None')
+        self._budget = budget
         self._process_global_config()
         
     @staticmethod
@@ -870,6 +875,22 @@ class HLSAgentLoader:
 
         return filtered_config, extra_config
 
+    def _attach_budgeted_run(self, agent: ConversableAgent) -> ConversableAgent:
+        if self._budget is None:
+            return agent
+        if getattr(agent, '_agrefactorpp_budgeted_run', False):
+            return agent
+        original_run = agent.run
+
+        @wraps(original_run)
+        def budgeted_run(*args, **kwargs):
+            self._budget.consume(llm_calls=1)
+            return original_run(*args, **kwargs)
+
+        agent.run = budgeted_run
+        setattr(agent, '_agrefactorpp_budgeted_run', True)
+        return agent
+
     def load_agent(self, agent_name: str, **overrides) -> ConversableAgent:
         if 'agents' not in self.config_data:
             raise ValueError("No 'agents' section found in configuration")
@@ -885,6 +906,7 @@ class HLSAgentLoader:
         config.update(overrides)
         
         agent = ConversableAgent(**config)
+        agent = self._attach_budgeted_run(agent)
         register_agrefactorpp_usage_agent(agent)
         
         self.agents[agent_name] = agent

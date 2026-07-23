@@ -164,7 +164,12 @@ def _hls_friendly_rewrite_message(hls_name: str, csynth_err: str) -> str:
     )
 
 
-def _synth_check(empty_stub_code: str, hls_name: str, work_dir: str) -> Tuple[bool, str]:
+def _synth_check(
+    empty_stub_code: str,
+    hls_name: str,
+    work_dir: str,
+    budget: Any = None,
+) -> Tuple[bool, str]:
     """Run csynth on an empty stub. Returns (passed, error_tail_chars)."""
     os.makedirs(work_dir, exist_ok=True)
     cv = ContextVariables(data={
@@ -172,7 +177,12 @@ def _synth_check(empty_stub_code: str, hls_name: str, work_dir: str) -> Tuple[bo
         "new_kernel_name": hls_name,
     })
     try:
-        status, error_msg = tools.csynth.run_csynth(work_dir, cv, timelimit=SYNTH_CHECK_TIMEOUT)
+        status, error_msg = tools.csynth.run_csynth(
+            work_dir,
+            cv,
+            timelimit=SYNTH_CHECK_TIMEOUT,
+            budget=budget,
+        )
     except Exception as e:
         return False, f"exception: {type(e).__name__}: {e}"[:1500]
     return status == "succeeded", (error_msg or "")[-1500:]
@@ -769,10 +779,16 @@ def _measure_qualified_coverage(
     tb_code: str,
     stub_code: str,
     kernel_name: str,
+    budget: Any = None,
 ) -> Dict[str, Any]:
     # Keep the text-heuristic helpers for later reference, but do not let
     # capacity, linkage, or persistent-state guesses block real tools.
-    result = measure_coverage(orig_code, tb_code, stub_code)
+    result = measure_coverage(
+        orig_code,
+        tb_code,
+        stub_code,
+        budget=budget,
+    )
     result.setdefault("qualification_errors", [])
     return result
 
@@ -892,12 +908,14 @@ def run_trajectory(
     want_sig_spec: bool,
     trajectory_idx: int = 0,
     pinned_hls_decl: Optional[str] = None,
+    budget: Any = None,
 ) -> Dict[str, Any]:
     if isinstance(K, bool) or not isinstance(K, int) or K < 1:
         raise ValueError("K must be a positive integer")
     loader = HLSAgentLoader(
         AGENT_YAML,
         llm_config_override=llm_config,
+        budget=budget,
     )
     agent = loader.load_agent(AGENT_NAME)
     hls_name = f"{kernel_name}_hls"
@@ -935,6 +953,7 @@ def run_trajectory(
         tb_code,
         stub_code,
         kernel_name,
+        budget=budget,
     )
     _append_round(
         rounds,
@@ -1007,6 +1026,7 @@ def run_trajectory(
             tb_code,
             stub_code,
             kernel_name,
+            budget=budget,
         )
         _append_round(
             rounds,
@@ -1025,6 +1045,7 @@ def run_trajectory(
         expected_hls_name=hls_name,
         orig_code=orig_code,
         sig_spec_constraint=sig_spec_constraint,
+        budget=budget,
     )
 
 
@@ -1038,6 +1059,7 @@ def _finalize_trajectory(
     orig_code: Optional[str] = None,
     sig_spec_constraint: Optional[str] = None,
     synth_retry_budget: int = 1,
+    budget: Any = None,
 ) -> Dict[str, Any]:
     del sig_spec_constraint
     ok_rounds = [
@@ -1101,6 +1123,7 @@ def _finalize_trajectory(
                     empty_stub,
                     expected_hls_name,
                     work_dir,
+                    budget=budget,
                 )
             if synth_ok or retries_left <= 0:
                 break
@@ -1143,6 +1166,7 @@ def _finalize_trajectory(
                 new_tb,
                 new_stub,
                 original_name,
+                budget=budget,
             )
             new_record = _append_round(
                 rounds,
@@ -1225,6 +1249,7 @@ def optimize_tb_public(
     target_pct: float = 80.0,
     llm_config: Optional[Dict[str, Any]] = None,
     pinned_hls_decl: Optional[str] = None,
+    budget: Any = None,
 ) -> Dict[str, Any]:
     trajectory = run_trajectory(
         orig_code=orig_code,
@@ -1236,6 +1261,7 @@ def optimize_tb_public(
         want_sig_spec=False,
         trajectory_idx=0,
         pinned_hls_decl=pinned_hls_decl,
+        budget=budget,
     )
     if not trajectory.get("qualified"):
         raise RuntimeError(
@@ -1455,6 +1481,7 @@ def gen_tb_with_coverage(
     target_pct: float = 80.0,
     hidden_sig_spec: Optional[str] = None,
     pinned_hls_decl: Optional[str] = None,
+    budget: Any = None,
 ) -> Tuple[str, str, str]:
     """Drop-in replacement for tools.testbench.gen_tb_prior with the coverage loop.
 
@@ -1470,6 +1497,7 @@ def gen_tb_with_coverage(
         target_pct=target_pct,
         llm_config=llm_config,
         pinned_hls_decl=pinned_hls_decl,
+        budget=budget,
     )
     return result["best_tb"], result["instruction"], result["new_kernel_name"]
 
@@ -1483,6 +1511,7 @@ def make_golden_hidden_tb(
     llm_config: Optional[Dict[str, Any]] = None,
     cache_dir: Optional[str] = None,
     cache_key: Optional[str] = None,
+    budget: Any = None,
 ) -> Dict[str, Any]:
     orig_sha = hashlib.sha256(orig_code.encode("utf-8")).hexdigest()
     cache_key = cache_key or kernel_name
@@ -1508,6 +1537,7 @@ def make_golden_hidden_tb(
                 llm_config=llm_config,
                 want_sig_spec=True,
                 trajectory_idx=index,
+                budget=budget,
             ): index
             for index in range(M)
         }

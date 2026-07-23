@@ -61,7 +61,8 @@ def identify_non_synthesizable_items(
     reset_knowledge_db: bool,
     executor: Optional[concurrent.futures.Executor] = None,
     debug: int = 0,
-    llm_config: Optional[Dict[str, Any]] = None
+    llm_config: Optional[Dict[str, Any]] = None,
+    budget: Any = None,
 ) -> concurrent.futures.Future[list[str]]:
     identifying_loader = create_rag_agent_loader(
         config_path="flow/agents/identifying.yaml",
@@ -70,7 +71,8 @@ def identify_non_synthesizable_items(
         enable_rag=enable_rag,
         reset_db=reset_knowledge_db,
         debug=debug,
-        llm_config_override=llm_config
+        llm_config_override=llm_config,
+        budget=budget,
     )
     if enable_rag:
         identifying_agents = [identifying_loader.load_agent_with_rag(agent, cv) for agent in IDENTIFIER_LIST]

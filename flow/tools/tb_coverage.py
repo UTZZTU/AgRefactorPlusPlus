@@ -18,7 +18,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from typing import Optional
+from typing import Any, Optional
 
 SOURCES = ["testbench.cpp", "orig_code.cpp", "refactor_code.cpp"]
 
@@ -40,6 +40,21 @@ RUN_TIMEOUT = 180
 GCOV_TIMEOUT = 60
 
 _LINES_RE = re.compile(r"Lines executed:\s*([\d.]+)%\s+of\s+(\d+)")
+
+
+def _consume_tool_launch(
+    budget: Any,
+    *,
+    compile_calls: int = 0,
+    csim_calls: int = 0,
+) -> None:
+    if budget is None:
+        return
+    budget.consume(
+        tool_calls=1,
+        compile_calls=compile_calls,
+        csim_calls=csim_calls,
+    )
 
 
 def _parse_gcov_n_stdout(stdout: str) -> dict[str, tuple[int, int]]:
@@ -97,6 +112,7 @@ def measure_coverage(
     stub_code: str,
     target_source: str = "orig_code.cpp",
     keep_dir: Optional[str] = None,
+    budget: Any = None,
 ) -> dict:
     """Compile+run testbench against orig+stub; return coverage of target_source.
 
@@ -154,6 +170,7 @@ def measure_coverage(
             if include_flag is not None:
                 cmd.insert(1, include_flag)
             try:
+                _consume_tool_launch(budget, compile_calls=1)
                 r = subprocess.run(
                     cmd, cwd=tmp, capture_output=True, text=True, timeout=COMPILE_TIMEOUT
                 )
@@ -171,6 +188,7 @@ def measure_coverage(
 
         # Run.
         try:
+            _consume_tool_launch(budget, csim_calls=1)
             r = subprocess.run(
                 ["./csim_cov"], cwd=tmp, capture_output=True, text=True, timeout=RUN_TIMEOUT
             )
@@ -204,6 +222,7 @@ def measure_coverage(
 
         # First pass: gcov -n for summary.
         try:
+            _consume_tool_launch(budget)
             g = subprocess.run(
                 ["gcov", "-n", target_gcda],
                 cwd=tmp, capture_output=True, text=True, timeout=GCOV_TIMEOUT,
@@ -227,6 +246,7 @@ def measure_coverage(
 
         # Second pass: gcov (without -n) to emit per-line .gcov file, parse uncovered.
         try:
+            _consume_tool_launch(budget)
             subprocess.run(
                 ["gcov", target_gcda],
                 cwd=tmp, capture_output=True, text=True, timeout=GCOV_TIMEOUT,
