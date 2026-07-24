@@ -986,3 +986,16 @@ repository-level migration
 ```
 
 这些能力可以预留扩展点，但不得扩张当前 Pre-Stage-3 收尾范围。
+<!-- P0_GENERATION_REPAIR_STABILIZATION_PLAN -->
+## P0 生成与修复稳定化执行计划
+
+P0 真实 DFS 运行暴露出的生成、Hidden、启发式与 repair 问题，已冻结到
+[`P0_GENERATION_REPAIR_STABILIZATION_PLAN.md`](P0_GENERATION_REPAIR_STABILIZATION_PLAN.md)。
+
+```text
+ACTIVE_STEP=A
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+DEFAULT_LLM_CALLS=32
+```
