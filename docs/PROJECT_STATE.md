@@ -1324,3 +1324,20 @@ PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
 DEFAULT_LLM_CALLS=32
 ```
+
+
+<!-- P0_STEP_A_HEURISTIC_AUTHORITY_REMOVAL -->
+## P0 Step A completed
+
+Heuristic failure fingerprints, private-dependency guesses and broad
+failing-Testbench preservation rules no longer block real tools.
+See [`P0_HEURISTIC_AUTHORITY_REMOVAL.md`](P0_HEURISTIC_AUTHORITY_REMOVAL.md).
+
+```text
+STEP_A=completed
+ACTIVE_STEP=B
+DEFAULT_LLM_CALLS=32
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```

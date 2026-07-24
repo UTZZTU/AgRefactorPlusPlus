@@ -525,34 +525,83 @@ class CoverageLoopHardeningTests(unittest.TestCase):
         )
         self.assertEqual(value, stub)
 
-    def test_identical_failures_are_detected(self):
+    def test_failure_fingerprint_is_stable_diagnostic_metadata(self):
         record = {
             "status": "compile_failed",
             "compile_stderr": "same error",
             "run_stderr": "",
         }
-        self.assertTrue(
-            tb_optimizer._repeated_failure(
-                [dict(record), dict(record)]
-            )
+        self.assertEqual(
+            tb_optimizer._coverage_failure_fingerprint(record),
+            tb_optimizer._coverage_failure_fingerprint(dict(record)),
         )
 
-    def test_different_failures_are_not_collapsed(self):
-        self.assertFalse(
-            tb_optimizer._repeated_failure(
-                [
-                    {
-                        "status": "compile_failed",
-                        "compile_stderr": "error A",
-                        "run_stderr": "",
-                    },
-                    {
-                        "status": "compile_failed",
-                        "compile_stderr": "error B",
-                        "run_stderr": "",
-                    },
-                ]
+    def test_repeated_failures_do_not_stop_configured_rounds(self):
+        failed = {
+            "status": "compile_failed",
+            "cov_pct": None,
+            "lines_total": None,
+            "lines_hit": None,
+            "uncovered_lines": [],
+            "compile_stderr": "same repeated compiler error",
+            "run_stderr": "",
+        }
+        testbench = (
+            "void process_top_hls();\n"
+            "int main(){process_top_hls();return 0;}\n"
+        )
+        stub = "void process_top_hls(){}\n"
+        loader = Mock()
+        loader.load_agent.return_value = object()
+
+        with (
+            patch.object(
+                tb_optimizer,
+                "HLSAgentLoader",
+                return_value=loader,
+            ),
+            patch.object(
+                tb_optimizer,
+                "_request_cpp_artifact",
+                side_effect=[
+                    testbench,
+                    stub,
+                    testbench,
+                    stub,
+                    testbench,
+                    stub,
+                ],
+            ) as request_artifact,
+            patch.object(
+                tb_optimizer,
+                "_ensure_original_forward_declaration",
+                side_effect=lambda code, *_: code,
+            ),
+            patch.object(
+                tb_optimizer,
+                "measure_coverage",
+                side_effect=[dict(failed), dict(failed), dict(failed)],
+            ) as measure,
+        ):
+            result = tb_optimizer.run_trajectory(
+                orig_code="void process_top(){}\n",
+                kernel_name="process_top",
+                K=3,
+                target_pct=100.0,
+                sig_spec_constraint=None,
+                llm_config=None,
+                want_sig_spec=False,
             )
+
+        self.assertEqual(measure.call_count, 3)
+        self.assertEqual(len(result["rounds"]), 3)
+        self.assertFalse(result["qualified"])
+        self.assertFalse(
+            any("early_stop_reason" in record for record in result["rounds"])
+        )
+        self.assertEqual(
+            [call.kwargs["artifact_kind"] for call in request_artifact.call_args_list],
+            ["testbench", "stub", "testbench", "stub", "testbench", "stub"],
         )
 
     def test_debug_artifacts_are_persisted(self):

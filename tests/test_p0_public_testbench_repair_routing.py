@@ -51,7 +51,7 @@ class DeterministicPublicTestbenchRepairer:
             ),
         )
         return request.current_testbench.replace(
-            "extern int private_state;\n",
+            "extern node *root;\n",
             "",
         )
 
@@ -96,7 +96,10 @@ class P0PublicTestbenchRepairRoutingTests(unittest.TestCase):
             original_path = root / "original.cpp"
             hidden_path = root / "hidden.cpp"
             original_code = (
-                "int private_state = 0;\n"
+                "struct btnode { int value; btnode *left; "
+                "btnode *right; };\n"
+                "typedef struct btnode node;\n"
+                "node *root = nullptr;\n"
                 "void process_top(int *in, int *out) { "
                 "out[0] = in[0]; }\n"
             )
@@ -105,7 +108,7 @@ class P0PublicTestbenchRepairRoutingTests(unittest.TestCase):
                 "out[0] = in[0]; }\n"
             )
             public_code = (
-                "extern int private_state;\n"
+                "extern node *root;\n"
                 "void process_top(int *in, int *out);\n"
                 "void process_top_hls(int *in, int *out);\n"
                 "int main() {\n"
@@ -182,7 +185,7 @@ class P0PublicTestbenchRepairRoutingTests(unittest.TestCase):
                 1,
             )
             self.assertNotIn(
-                "extern int private_state;",
+                "extern node *root;",
                 result.testbench_code,
             )
             self.assertRegex(
@@ -221,7 +224,7 @@ class P0PublicTestbenchRepairRoutingTests(unittest.TestCase):
             )
             self.assertEqual(
                 budget.snapshot().compile_calls,
-                1,
+                2,
             )
 
     def test_prompt_identity_aggregates_testbench_repair_call(self):

@@ -132,109 +132,73 @@ def _call_count(source: str, function_name: str) -> int:
 
 @dataclass(frozen=True, slots=True)
 class TestbenchRepairContract:
-    """Deterministic obligations a compile-only repair must preserve."""
-
-    required_function_names: tuple[str, ...]
-    required_macros: tuple[str, ...]
-    minimum_call_counts: Mapping[str, int]
+    # Minimal structural obligations for a testbench repair.
+    required_top_function_names: tuple[str, ...]
 
     @classmethod
-    def from_testbench(
+    def from_request(
         cls,
-        source: str,
+        request: TestbenchRepairRequest,
     ) -> "TestbenchRepairContract":
-        function_names = _extract_declared_function_names(source)
-        call_counts = {
-            name: _call_count(source, name)
-            for name in function_names
-        }
+        if not isinstance(request, TestbenchRepairRequest):
+            raise TypeError("request must be a TestbenchRepairRequest")
 
+        candidate_name = request.task.kernel_name.strip()
+        names: list[str] = []
+        if candidate_name.endswith("_hls") and candidate_name != "_hls":
+            names.append(candidate_name[:-4])
+        names.append(candidate_name)
         return cls(
-            required_function_names=function_names,
-            required_macros=_extract_macros(source),
-            minimum_call_counts=call_counts,
+            required_top_function_names=tuple(dict.fromkeys(names))
         )
 
     def validate(self, proposed: str) -> tuple[str, ...]:
         issues: list[str] = []
+        if not re.search(r"\b(?:int|auto)\s+main\s*\(", proposed):
+            issues.append("missing main(...) entry point")
 
-        if not re.search(r"\bint\s+main\s*\(", proposed):
-            issues.append("missing int main(...) entry point")
-
-        proposed_names = set(
-            _extract_declared_function_names(proposed)
-        )
-        for function_name in self.required_function_names:
-            if function_name not in proposed_names:
+        for function_name in self.required_top_function_names:
+            if _call_count(proposed, function_name) < 1:
                 issues.append(
-                    "missing required declaration for function: "
+                    "missing required public top-level call: "
                     + function_name
                 )
-
             definition_pattern = re.compile(
                 rf"^\s*(?:extern\s+\"C\"\s+)?"
-                rf"(?:[A-Za-z_]\w*(?:::\w+)*"
-                rf"(?:\s*[*&]\s*|\s+))+"
+                rf"(?:[A-Za-z_]\w*(?:::\w+)*(?:\s*[*&]\s*|\s+))+"
                 rf"{re.escape(function_name)}\s*"
                 rf"\([^;{{}}]*\)\s*\{{",
                 re.MULTILINE,
             )
             if definition_pattern.search(proposed):
                 issues.append(
-                    "testbench must not define, stub, or wrap function: "
+                    "testbench must not define, stub, or wrap "
+                    "public top-level function: "
                     + function_name
                 )
-
-        proposed_macros = set(_extract_macros(proposed))
-        for macro in self.required_macros:
-            if macro not in proposed_macros:
-                issues.append(
-                    "missing required macro: "
-                    + macro
-                )
-
-        for function_name, minimum in self.minimum_call_counts.items():
-            actual = _call_count(proposed, function_name)
-            if actual < minimum:
-                issues.append(
-                    f"reduced call count for {function_name}: "
-                    f"expected at least {minimum}, got {actual}"
-                )
-
         return tuple(issues)
 
     def to_prompt_requirements(self) -> tuple[str, ...]:
-        requirements: list[str] = []
-        if self.required_function_names:
-            requirements.append(
-                "Required function declaration names that must "
-                "remain declared, but must not be defined, stubbed, "
-                "or wrapped in the testbench: "
-                + ", ".join(self.required_function_names)
-                + ". Declaration signatures may change only when "
-                "the supplied compiler/linker evidence requires an "
-                "interface correction."
-            )
-        if self.required_macros:
-            requirements.append(
-                "Required macros that must remain present: "
-                + " | ".join(self.required_macros)
-            )
-        positive_counts = [
-            (name, count)
-            for name, count in self.minimum_call_counts.items()
-            if count > 0
-        ]
-        if positive_counts:
-            requirements.append(
-                "Minimum required function call counts that must "
-                "not be reduced: "
-                + ", ".join(
-                    f"{name}>={count}"
-                    for name, count in positive_counts
-                )
-            )
-        return tuple(requirements)
+        calls = ", ".join(
+            f"{name}>=1" for name in self.required_top_function_names
+        )
+        return (
+            (
+                "Required public top-level function calls that must "
+                "remain present: "
+                + calls
+                + ". Do not define, stub, wrap, or reimplement "
+                "these functions in the testbench."
+            ),
+            (
+                "Helper declarations, helper call counts, and macros "
+                "copied from the current failing testbench are not "
+                "deterministic preservation obligations. They may be "
+                "removed or corrected when required by real compiler/"
+                "linker evidence, provided the golden-vs-candidate "
+                "comparison remains meaningful."
+            ),
+        )
 
 
 _TESTBENCH_FORBIDDEN_ACTIONS = (
@@ -258,9 +222,11 @@ _TESTBENCH_FORBIDDEN_ACTIONS = (
 
 _TESTBENCH_OUTPUT_REQUIREMENTS = (
     (
-        "Preserve all existing test cases, seeds, comparisons, "
-        "assertions, macros, required top-level calls, and return "
-        "semantics."
+        "Preserve the meaningful golden-vs-candidate comparison, "
+        "existing checks, deterministic inputs, required public "
+        "top-level calls, and failure/return semantics. Helper "
+        "declarations, private-state accesses, and macros may be "
+        "removed or corrected when real tool evidence requires it."
     ),
     (
         "Existing testbench declarations are not authoritative. "
@@ -325,9 +291,7 @@ def build_testbench_repair_prompt(
             ),
         )
     )
-    contract = TestbenchRepairContract.from_testbench(
-        request.current_testbench
-    )
+    contract = TestbenchRepairContract.from_request(request)
 
     layered_request = LayeredPromptRequest(
         purpose=PromptPurpose.TESTBENCH_REPAIR,
@@ -688,9 +652,7 @@ class ModelTestbenchRepairer:
         )
         proposed = extract_complete_cpp_block(response.text)
 
-        contract = TestbenchRepairContract.from_testbench(
-            request.current_testbench
-        )
+        contract = TestbenchRepairContract.from_request(request)
         issues = contract.validate(proposed)
         if issues:
             raise TestbenchRepairResponseError(

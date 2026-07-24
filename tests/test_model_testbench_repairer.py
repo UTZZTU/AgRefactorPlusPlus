@@ -1,3 +1,4 @@
+from dataclasses import replace
 import tempfile
 import unittest
 
@@ -271,66 +272,82 @@ class ModelTestbenchRepairerTests(unittest.TestCase):
             "test-target",
         )
 
-    def test_prompt_exposes_contract_and_prior_rejection(
+    def test_prompt_exposes_minimal_top_contract_and_prior_rejection(
         self,
     ) -> None:
-        prior = (
-            "Attempt 1 was rejected: missing required "
-            "declaration for function: process_top_hls",
-        )
+        prior = ("Attempt 1 was rejected: invalid response shape",)
         prompt = build_testbench_repair_prompt(
-            make_request(
-                prior_attempt_summaries=prior
-            )
+            make_request(prior_attempt_summaries=prior)
         )
         system = prompt.messages[0].content
         user = prompt.messages[1].content
 
+        self.assertIn("Required public top-level function calls", system)
+        self.assertIn("process_top>=1", system)
+        self.assertIn("process_top_hls>=1", system)
         self.assertIn(
-            "Required function declaration names",
+            "not deterministic preservation obligations",
             system,
         )
-        self.assertIn("process_top", system)
-        self.assertIn("process_top_hls", system)
-        self.assertIn("Required macros", system)
-        self.assertIn("#define N 2", system)
-        self.assertIn(
+        self.assertNotIn(
+            "Required macros that must remain present",
+            system,
+        )
+        self.assertNotIn(
             "Minimum required function call counts",
             system,
         )
-        self.assertIn("process_top>=1", system)
-        self.assertIn("process_top_hls>=1", system)
         self.assertIn(prior[0], user)
-        self.assertEqual(
-            prompt.manifest["prior_attempt_count"],
-            1,
+        self.assertEqual(prompt.manifest["prior_attempt_count"], 1)
+
+    def test_contract_allows_helper_and_macro_cleanup_but_requires_tops(
+        self,
+    ) -> None:
+        helper_heavy = BROKEN_TB.replace(
+            "extern node *root;",
+            (
+                "extern node *root;\n"
+                "void insert(int);\n"
+                "void dfs_traverse();"
+            ),
+        )
+        request = replace(
+            make_request(),
+            current_testbench=helper_heavy,
+        )
+        contract = TestbenchRepairContract.from_request(request)
+        cleaned = (
+            FIXED_TB
+            .replace("#define N 2", "#define M 2")
+            .replace("[N]", "[M]")
+            .replace("(N,", "(M,")
         )
 
-    def test_contract_rejects_removed_macro_or_public_call(self) -> None:
-        contract = TestbenchRepairContract.from_testbench(
-            BROKEN_TB
+        self.assertEqual(contract.validate(cleaned), ())
+        self.assertNotIn(
+            "insert",
+            contract.required_top_function_names,
         )
-        weakened = FIXED_TB.replace(
-            "#define N 2",
-            "",
-        ).replace(
-            "process_top_hls(N, input, candidate);",
-            "",
+        self.assertNotIn(
+            "dfs_traverse",
+            contract.required_top_function_names,
         )
 
+        weakened = cleaned.replace(
+            "process_top_hls(M, input, candidate);",
+            "",
+        )
         issues = contract.validate(weakened)
-
         self.assertTrue(
-            any("missing required macro" in issue for issue in issues)
-        )
-        self.assertTrue(
-            any("reduced call count" in issue for issue in issues)
+            any(
+                "missing required public top-level call: process_top_hls"
+                in issue
+                for issue in issues
+            )
         )
 
     def test_contract_allows_linkage_correction(self) -> None:
-        contract = TestbenchRepairContract.from_testbench(
-            BROKEN_TB
-        )
+        contract = TestbenchRepairContract.from_request(make_request())
         corrected = FIXED_TB.replace('extern "C" ', '')
 
         self.assertEqual(
@@ -339,9 +356,7 @@ class ModelTestbenchRepairerTests(unittest.TestCase):
         )
 
     def test_contract_rejects_top_function_stub(self) -> None:
-        contract = TestbenchRepairContract.from_testbench(
-            BROKEN_TB
-        )
+        contract = TestbenchRepairContract.from_request(make_request())
         stubbed = FIXED_TB.replace(
             'extern "C" void process_top(int, int *, int *);',
             (

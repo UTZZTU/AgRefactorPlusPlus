@@ -65,7 +65,7 @@ class PreflightCompileBudgetTests(unittest.TestCase):
             budget=budget,
         )
 
-    def test_static_check_does_not_consume_compile(
+    def test_advisory_private_dependency_respects_zero_tool_budget(
         self,
     ) -> None:
         budget = BudgetManager(
@@ -80,27 +80,30 @@ class PreflightCompileBudgetTests(unittest.TestCase):
                 testbench_preflight.subprocess,
                 "run",
             ) as launch:
-                result = TestbenchPreflight().compile_and_link(
-                    work_dir=directory,
-                    testbench_code=STATIC_TB,
-                    original_code=STATIC_ORIGINAL,
-                    candidate_code=CANDIDATE,
-                    budget=budget,
-                )
+                with self.assertRaises(
+                    BudgetExceededError
+                ) as caught:
+                    TestbenchPreflight().compile_and_link(
+                        work_dir=directory,
+                        testbench_code=STATIC_TB,
+                        original_code=STATIC_ORIGINAL,
+                        candidate_code=CANDIDATE,
+                        budget=budget,
+                    )
             invocation = self.read_invocation(directory)
 
+        self.assertEqual(caught.exception.resource, "tool_calls")
         launch.assert_not_called()
-        self.assertEqual(
-            result.failure_kind,
-            TestbenchFailureKind
-            .FORBIDDEN_INTERNAL_DEPENDENCY,
-        )
         usage = budget.snapshot()
         self.assertEqual(usage.tool_calls, 0)
         self.assertEqual(usage.compile_calls, 0)
         self.assertEqual(
             invocation["budget"]["status"],
-            "not_consumed_static_check",
+            "blocked",
+        )
+        self.assertEqual(
+            invocation["execution"]["status"],
+            "blocked_by_budget",
         )
 
     def test_zero_compile_limit_blocks_before_launch(

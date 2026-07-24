@@ -347,60 +347,9 @@ class TestbenchPreflight:
         }
         _write_json(invocation_path, invocation)
 
-        forbidden = find_forbidden_internal_dependencies(
-            testbench_code=testbench_code,
-            original_code=original_code,
-            candidate_code=candidate_code,
-        )
-        if forbidden:
-            invocation["budget"]["status"] = (
-                "not_configured"
-                if budget is None
-                else "not_consumed_static_check"
-            )
-            invocation["execution"] = {
-                "status": "skipped_by_static_check",
-                "returncode": None,
-                "timeout": False,
-            }
-            _write_json(invocation_path, invocation)
-
-            diagnostics = tuple(
-                TestbenchDiagnostic(
-                    kind=(
-                        TestbenchFailureKind
-                        .FORBIDDEN_INTERNAL_DEPENDENCY
-                    ),
-                    message=(
-                        "testbench declares implementation-private "
-                        f"file-scope variable: {name}"
-                    ),
-                    file="testbench.cpp",
-                    line=line,
-                    raw=raw,
-                )
-                for name, line, raw in forbidden
-            )
-            return TestbenchPreflightResult(
-                status=TestbenchPreflightStatus.FAILED,
-                stage=TestbenchStage.STATIC_CHECK,
-                failure_kind=(
-                    TestbenchFailureKind
-                    .FORBIDDEN_INTERNAL_DEPENDENCY
-                ),
-                failure_owner=TestbenchFailureOwner.TESTBENCH,
-                return_code=None,
-                command=(),
-                diagnostics=diagnostics,
-                stderr="\n".join(
-                    item.message for item in diagnostics
-                ),
-                artifacts=tuple(
-                    str(directory / name) for name in sources
-                ),
-                duration_s=0.0,
-            )
-
+        # Private-dependency text heuristics are advisory-only. They
+        # must not skip the real compiler/linker, which remains the
+        # authoritative preflight decision source.
         command = [
             self._compiler,
             "-D__SYNTHESIS__",

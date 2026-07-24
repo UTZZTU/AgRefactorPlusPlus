@@ -318,7 +318,6 @@ _PROMPT_ECHO_MARKERS = (
     "userOriginal kernel source code",
 )
 _ARTIFACT_RESPONSE_RETRIES = 1
-_REPEATED_FAILURE_LIMIT = 2
 
 
 def _extract_one_cpp_block(
@@ -792,6 +791,7 @@ def _measure_qualified_coverage(
     result.setdefault("qualification_errors", [])
     return result
 
+# Diagnostic-only fingerprint. It must never control trajectory termination.
 def _coverage_failure_fingerprint(record: Dict[str, Any]) -> str:
     diagnostic = (
         str(record.get("status") or "unknown")
@@ -804,19 +804,6 @@ def _coverage_failure_fingerprint(record: Dict[str, Any]) -> str:
     diagnostic = re.sub(r"\s+", " ", diagnostic).strip()
     return hashlib.sha256(diagnostic.encode("utf-8")).hexdigest()
 
-
-def _repeated_failure(rounds: List[Dict[str, Any]]) -> bool:
-    failed = [
-        record
-        for record in rounds
-        if record.get("status") != "ok"
-    ]
-    if len(failed) < _REPEATED_FAILURE_LIMIT:
-        return False
-    recent = failed[-_REPEATED_FAILURE_LIMIT:]
-    return len(
-        {_coverage_failure_fingerprint(record) for record in recent}
-    ) == 1
 
 
 def _persist_round_artifacts(
@@ -966,11 +953,6 @@ def run_trajectory(
 
     for round_index in range(2, K + 1):
         if (rounds[-1].get("cov_pct") or 0.0) >= target_pct:
-            break
-        if _repeated_failure(rounds):
-            rounds[-1]["early_stop_reason"] = (
-                "repeated_identical_coverage_failure"
-            )
             break
         previous = rounds[-1]
         previous_status = previous.get("status") or "unknown"

@@ -369,12 +369,30 @@ PRE_STAGE3_CLOSED=true
 ## 5. 当前执行指针
 
 ```text
-ACTIVE_STEP=A
-ACTIVE_SUBSTEP=A1/A2/A3 audit and minimal correction
+ACTIVE_STEP=B
+ACTIVE_SUBSTEP=B1/B2 Hidden boundary correction
 P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
 DEFAULT_LLM_CALLS=32
 LIGHTWEIGHT_STATUS=not_implemented
 COVERAGE_ENHANCED_STATUS=existing_unstable_path_requires_rework
+```
+
+
+<!-- P0_STEP_A_HEURISTIC_AUTHORITY_REMOVAL -->
+## Step A completion
+
+Repeated failure fingerprints no longer terminate trajectories;
+private-dependency guesses no longer skip the compiler; and Testbench
+repair no longer preserves every helper, macro and helper call count.
+See [`P0_HEURISTIC_AUTHORITY_REMOVAL.md`](P0_HEURISTIC_AUTHORITY_REMOVAL.md).
+
+```text
+STEP_A=completed
+ACTIVE_STEP=B
+DEFAULT_LLM_CALLS=32
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
 ```
