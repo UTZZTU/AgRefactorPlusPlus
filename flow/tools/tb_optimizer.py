@@ -1,18 +1,9 @@
-"""Iterative testbench optimization loops (public + hidden).
+"""Public Testbench generation and held-out evaluator generation.
 
-Both loops follow the same shape:
-  1. Initialize a tb_engineer agent (single conversation, clear_history=False).
-  2. Round k: ask for a testbench → ask for a matching stub → measure coverage
-     → feed back uncovered-line summary in next round's request.
-  3. After K rounds, pick max-cov round; ask agent for either an instruction
-     (public TB, downstream refactor agent consumes) or a sig_spec (hidden TB,
-     constrains future public TB generation).
-
-The hidden loop runs M trajectories in parallel via ThreadPoolExecutor and
-picks the best trajectory by max-cov-within-trajectory.
-
-All artifacts (per-round TB, stub, coverage stats, final pick) are returned as
-plain dicts so callers can log/cache them without depending on autogen types.
+The data direction is one-way. Public generation sees only Original source and
+Public feedback. Candidate generation consumes only Public-derived evidence.
+Held-out generation runs after Candidate generation and receives only Original
+source plus the frozen Public-derived Candidate ABI.
 """
 
 import concurrent.futures
@@ -41,21 +32,27 @@ SYNTH_CHECK_TIMEOUT = 300  # seconds for csynth on empty stub
 MAX_LISTED_UNCOVERED = 60
 
 
+def extract_hls_decl_from_testbench(
+    testbench_code: str,
+    hls_name: str,
+) -> str:
+    """Extract one normalized Candidate declaration from a Public Testbench."""
+
+    declaration = _extract_seed_hls_decl(testbench_code, hls_name)
+    if not declaration:
+        return ""
+    return declaration.strip().rstrip(";") + ";"
+
+
 # -------------------------- prompt builders --------------------------
 
 def _initial_user_message(
     orig_code: str,
     kernel_name: str,
-    sig_spec_constraint: Optional[str],
-    pinned_hls_decl: Optional[str] = None,
+    pinned_public_hls_decl: Optional[str] = None,
 ) -> str:
-    """Build the round-1 user prompt.
+    """Build a prompt with no held-out-derived input."""
 
-    If `pinned_hls_decl` is provided, it is injected as a "PINNED DECLARATION"
-    block that the LLM MUST reproduce character-for-character — this is the
-    canonical signature extracted from the hidden TB and is what downstream
-    eval (hidden TB eval, refactor agent) will use.
-    """
     hls_name = f"{kernel_name}_hls"
     parts = [
         "Original kernel source code:",
@@ -65,34 +62,64 @@ def _initial_user_message(
         "",
         f"Top function name (original / golden reference): {kernel_name}",
         f"HLS-side function name you MUST use VERBATIM: {hls_name}",
-        "  (i.e. the original name with `_hls` appended verbatim. Do NOT drop or shorten any prefix/suffix of the original name, even if it contains tokens like `_orig`, `_ref`, `_v1`, etc. The downstream synthesis flow uses this exact name as the top function.)",
+        (
+            "Use the original name with `_hls` appended verbatim. "
+            "Do not drop or shorten any prefix or suffix."
+        ),
     ]
-    if pinned_hls_decl:
-        parts.extend([
+    if pinned_public_hls_decl:
+        parts.extend(
+            [
+                "",
+                "CRITICAL — FROZEN PUBLIC-DERIVED `_hls` ABI:",
+                (
+                    "The Public Testbench established the declaration below. "
+                    "Preserve it character-for-character. Do not alter language "
+                    "linkage, return type, parameter order/types, qualifiers, "
+                    "pointer/array notation, typedef spelling, or function name."
+                ),
+                "",
+                "```cpp",
+                pinned_public_hls_decl.rstrip().rstrip(";") + ";",
+                "```",
+            ]
+        )
+    parts.extend(
+        [
             "",
-            "CRITICAL — PINNED `_hls` DECLARATION (use character-for-character):",
-            "Your testbench MUST contain the following forward declaration of `_hls` EXACTLY as written below. Do NOT change whitespace, do NOT add or remove `const`, do NOT change pointer/array notation (`T*` vs `T[N]`), do NOT add or remove `extern \"C\"`, do NOT reorder parameters, do NOT rename a typedef to its underlying type. The downstream refactor agent and hidden-TB evaluator will use this exact declaration — any deviation causes link failure.",
-            "",
-            "```cpp",
-            pinned_hls_decl.rstrip(),
-            ";",
-            "```",
-        ])
-    if sig_spec_constraint:
-        parts.extend([
-            "",
-            "Additional MACROs and types you MUST preserve from the canonical hidden testbench (this constraint downstream evaluation will use). The `_hls` function name in the spec below MUST already be `{hls_name}`; if it is not, the PINNED DECLARATION above takes priority:",
-            "",
-            sig_spec_constraint.strip(),
-        ])
-    parts.extend([
-        "",
-        "Generate one complete, normal-strength testbench now; do not emit a preliminary or simplified version. Aim for high line coverage while respecting every explicit macro, fixed array capacity, memory limit, and interface constraint in the source.",
-        "Before writing calls, inspect the original for mutable global/static state, heap-backed structures, allocator state, counters, and other state that survives a return. The original and `_hls` sides must start from equivalent clean logical states and must use separate mutable input/output storage.",
-        "Reset all relevant explicit state immediately before EACH side is invoked. If a complete reset cannot be established, do not call the original repeatedly; use one representative original invocation and design the testbench for a non-delegating matching stub. State safety takes priority over testcase count or marginal coverage.",
-        "When declaring the original golden function, preserve its C/C++ language linkage exactly as shown in the source. Never add or remove `extern \"C\"`; a linkage mismatch causes an undefined reference even when the parameter list looks identical.",
-        "Reply with one ```cpp ... ``` block containing the complete testbench, no commentary outside it.",
-    ])
+            (
+                "Generate one complete, normal-strength testbench now; do not "
+                "emit a preliminary or simplified version. Aim for high line "
+                "coverage while respecting explicit capacities, memory limits, "
+                "and interface constraints in the source."
+            ),
+            (
+                "Before writing calls, inspect the original for mutable global/"
+                "static state, heap-backed structures, allocator state, counters, "
+                "and other state that survives a return. The original and `_hls` "
+                "sides must start from equivalent clean logical states and use "
+                "separate mutable input/output storage."
+            ),
+            (
+                "Reset relevant explicit state immediately before EACH side is "
+                "invoked. If a complete reset cannot be established, do not call "
+                "the original repeatedly; use one representative original "
+                "invocation and a non-delegating matching stub. State "
+                "safety takes priority over testcase count or marginal "
+                "coverage."
+            ),
+            (
+                "When declaring the original golden function, preserve its C/C++ "
+                "language linkage exactly as shown in the source. Never add or "
+                "remove `extern \"C\"`; a linkage mismatch causes an undefined "
+                "reference even when the parameter list looks identical."
+            ),
+            (
+                "Reply with one ```cpp ... ``` block containing the complete "
+                "testbench, with no commentary outside it."
+            ),
+        ]
+    )
     return "\n".join(parts)
 
 
@@ -890,11 +917,11 @@ def run_trajectory(
     kernel_name: str,
     K: int,
     target_pct: float,
-    sig_spec_constraint: Optional[str],
     llm_config: Optional[Dict[str, Any]],
     want_sig_spec: bool,
     trajectory_idx: int = 0,
     pinned_hls_decl: Optional[str] = None,
+    emit_final_text: bool = True,
     budget: Any = None,
 ) -> Dict[str, Any]:
     if isinstance(K, bool) or not isinstance(K, int) or K < 1:
@@ -913,8 +940,7 @@ def run_trajectory(
         _initial_user_message(
             orig_code,
             kernel_name,
-            sig_spec_constraint,
-            pinned_hls_decl=pinned_hls_decl,
+            pinned_public_hls_decl=pinned_hls_decl,
         ),
         first_turn=True,
         artifact_kind="testbench",
@@ -1026,7 +1052,7 @@ def run_trajectory(
         trajectory_idx,
         expected_hls_name=hls_name,
         orig_code=orig_code,
-        sig_spec_constraint=sig_spec_constraint,
+        emit_final_text=emit_final_text,
         budget=budget,
     )
 
@@ -1039,11 +1065,10 @@ def _finalize_trajectory(
     trajectory_idx: int,
     expected_hls_name: Optional[str] = None,
     orig_code: Optional[str] = None,
-    sig_spec_constraint: Optional[str] = None,
+    emit_final_text: bool = True,
     synth_retry_budget: int = 1,
     budget: Any = None,
 ) -> Dict[str, Any]:
-    del sig_spec_constraint
     ok_rounds = [
         record
         for record in rounds
@@ -1188,6 +1213,23 @@ def _finalize_trajectory(
             "trajectory_status": "synth_failed",
         }
 
+    if not emit_final_text:
+        return {
+            "trajectory_idx": trajectory_idx,
+            "best_round": best["round"],
+            "best_cov": best.get("cov_pct") or 0.0,
+            "best_tb": best["tb_code"],
+            "best_stub": best["stub_code"],
+            "best_empty_stub": empty_stub,
+            "best_uncovered_lines": best.get("uncovered_lines", []),
+            "final_text": "",
+            "rounds": rounds,
+            "synth_ok": True,
+            "synth_error": "",
+            "qualified": True,
+            "trajectory_status": "qualified",
+        }
+
     final_raw = _agent_run_once(
         agent,
         _final_text_request(
@@ -1226,23 +1268,22 @@ def _finalize_trajectory(
 def optimize_tb_public(
     orig_code: str,
     kernel_name: str,
-    hidden_sig_spec: Optional[str],
     K: int = 3,
     target_pct: float = 80.0,
     llm_config: Optional[Dict[str, Any]] = None,
-    pinned_hls_decl: Optional[str] = None,
     budget: Any = None,
 ) -> Dict[str, Any]:
+    """Generate Public evidence without held-out-derived constraints."""
+
     trajectory = run_trajectory(
         orig_code=orig_code,
         kernel_name=kernel_name,
         K=K,
         target_pct=target_pct,
-        sig_spec_constraint=hidden_sig_spec,
         llm_config=llm_config,
         want_sig_spec=False,
         trajectory_idx=0,
-        pinned_hls_decl=pinned_hls_decl,
+        emit_final_text=True,
         budget=budget,
     )
     if not trajectory.get("qualified"):
@@ -1250,25 +1291,16 @@ def optimize_tb_public(
             "public testbench generation produced no qualified trajectory: "
             f"{trajectory.get('trajectory_status')}"
         )
-    instruction = trajectory["final_text"]
-    if pinned_hls_decl:
-        instruction = (
-            (instruction or "").rstrip()
-            + "\n\nPINNED `_hls` DECLARATION:\n```cpp\n"
-            + pinned_hls_decl.rstrip()
-            + ";\n```\n"
-        )
     return {
         "best_tb": trajectory["best_tb"],
         "best_stub": trajectory["best_stub"],
         "best_cov": trajectory["best_cov"],
         "best_round": trajectory["best_round"],
-        "instruction": instruction,
+        "instruction": trajectory["final_text"],
         "new_kernel_name": f"{kernel_name}_hls",
         "rounds": trajectory["rounds"],
         "qualified": True,
     }
-
 
 
 def optimize_tb_seeded(
@@ -1461,32 +1493,29 @@ def gen_tb_with_coverage(
     llm_config: Optional[Dict[str, Any]] = None,
     K: int = 3,
     target_pct: float = 80.0,
-    hidden_sig_spec: Optional[str] = None,
-    pinned_hls_decl: Optional[str] = None,
     budget: Any = None,
 ) -> Tuple[str, str, str]:
-    """Drop-in replacement for tools.testbench.gen_tb_prior with the coverage loop.
+    """Coverage-enhanced Public generation with no held-out input channel."""
 
-    Returns (testbench, refactor_instruction, new_kernel_name) matching the
-    existing gen_tb_prior signature so the call site in flow/new.py can swap
-    behind a flag.
-    """
     result = optimize_tb_public(
         orig_code=cv["orig_code"],
         kernel_name=cv["kernel_name"],
-        hidden_sig_spec=hidden_sig_spec,
         K=K,
         target_pct=target_pct,
         llm_config=llm_config,
-        pinned_hls_decl=pinned_hls_decl,
         budget=budget,
     )
-    return result["best_tb"], result["instruction"], result["new_kernel_name"]
+    return (
+        result["best_tb"],
+        result["instruction"],
+        result["new_kernel_name"],
+    )
 
 
 def make_golden_hidden_tb(
     orig_code: str,
     kernel_name: str,
+    pinned_public_hls_decl: str,
     M: int = 3,
     K: int = 6,
     target_pct: float = 90.0,
@@ -1495,6 +1524,18 @@ def make_golden_hidden_tb(
     cache_key: Optional[str] = None,
     budget: Any = None,
 ) -> Dict[str, Any]:
+    if not isinstance(pinned_public_hls_decl, str) or not (
+        pinned_public_hls_decl.strip()
+    ):
+        raise ValueError(
+            "held-out generation requires a frozen Public-derived ABI"
+        )
+    normalized_public_decl = (
+        pinned_public_hls_decl.strip().rstrip(";") + ";"
+    )
+    public_decl_sha = hashlib.sha256(
+        normalized_public_decl.encode("utf-8")
+    ).hexdigest()
     orig_sha = hashlib.sha256(orig_code.encode("utf-8")).hexdigest()
     cache_key = cache_key or kernel_name
     if cache_dir is not None:
@@ -1503,7 +1544,8 @@ def make_golden_hidden_tb(
             cached is not None
             and cached.get("synth_ok")
             and cached.get("hidden_tb")
-            and cached.get("hidden_sig_spec")
+            and cached.get("public_hls_decl_sha256")
+            == public_decl_sha
         ):
             return cached
 
@@ -1515,10 +1557,11 @@ def make_golden_hidden_tb(
                 kernel_name=kernel_name,
                 K=K,
                 target_pct=target_pct,
-                sig_spec_constraint=None,
                 llm_config=llm_config,
-                want_sig_spec=True,
+                want_sig_spec=False,
                 trajectory_idx=index,
+                pinned_hls_decl=normalized_public_decl,
+                emit_final_text=False,
                 budget=budget,
             ): index
             for index in range(M)
@@ -1551,7 +1594,6 @@ def make_golden_hidden_tb(
         if trajectory.get("qualified")
         and trajectory.get("synth_ok")
         and trajectory.get("best_tb")
-        and trajectory.get("final_text")
     ]
     if not qualified:
         reasons = [
@@ -1578,8 +1620,9 @@ def make_golden_hidden_tb(
         "hidden_tb": best["best_tb"],
         "hidden_stub": best["best_stub"],
         "hidden_empty_stub": best.get("best_empty_stub", ""),
-        "hidden_sig_spec": best["final_text"],
         "hidden_cov": best["best_cov"],
+        "public_hls_decl": normalized_public_decl,
+        "public_hls_decl_sha256": public_decl_sha,
         "best_trajectory": best.get("trajectory_idx", -1),
         "best_round": best["best_round"],
         "synth_ok": True,

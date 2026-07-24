@@ -87,7 +87,6 @@ class PromptStateSafetyTests(unittest.TestCase):
         message = tb_optimizer._initial_user_message(
             orig_code="int state; void process_top(){}\n",
             kernel_name="process_top",
-            sig_spec_constraint=None,
         )
         self.assertIn("complete, normal-strength testbench", message)
         self.assertIn("do not emit a preliminary or simplified", message)
@@ -588,8 +587,7 @@ class CoverageLoopHardeningTests(unittest.TestCase):
                 kernel_name="process_top",
                 K=3,
                 target_pct=100.0,
-                sig_spec_constraint=None,
-                llm_config=None,
+                    llm_config=None,
                 want_sig_spec=False,
             )
 
@@ -709,8 +707,7 @@ class CoverageLoopHardeningTests(unittest.TestCase):
                 kernel_name="process_top",
                 K=2,
                 target_pct=100.0,
-                sig_spec_constraint=None,
-                llm_config=None,
+                    llm_config=None,
                 want_sig_spec=False,
             )
         kinds = [
@@ -743,6 +740,9 @@ class HiddenQualificationTests(unittest.TestCase):
             tb_optimizer.make_golden_hidden_tb(
                 orig_code="void process_top(){}\n",
                 kernel_name="process_top",
+                pinned_public_hls_decl=(
+                    "void process_top_hls();"
+                ),
                 M=1,
                 K=1,
             )
@@ -768,6 +768,9 @@ class HiddenQualificationTests(unittest.TestCase):
             result = tb_optimizer.make_golden_hidden_tb(
                 orig_code="void process_top(){}\n",
                 kernel_name="process_top",
+                pinned_public_hls_decl=(
+                    "void process_top_hls();"
+                ),
                 M=1,
                 K=1,
             )

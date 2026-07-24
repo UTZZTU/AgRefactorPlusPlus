@@ -369,8 +369,8 @@ PRE_STAGE3_CLOSED=true
 ## 5. 当前执行指针
 
 ```text
-ACTIVE_STEP=B
-ACTIVE_SUBSTEP=B1/B2 Hidden boundary correction
+ACTIVE_STEP=C
+ACTIVE_SUBSTEP=C1/C2 dual generation profiles
 P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
@@ -391,6 +391,25 @@ See [`P0_HEURISTIC_AUTHORITY_REMOVAL.md`](P0_HEURISTIC_AUTHORITY_REMOVAL.md).
 ```text
 STEP_A=completed
 ACTIVE_STEP=B
+DEFAULT_LLM_CALLS=32
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```
+
+
+<!-- P0_STEP_B_HIDDEN_BOUNDARY_CORRECTION -->
+## Step B completion: one-way Hidden boundary
+
+Public and Candidate generation no longer accept Hidden-derived inputs. The
+Public ABI is frozen before Candidate generation, held-out generation runs only
+after Candidate generation, and exposure metadata is derived from fail-closed
+boundary evidence. See
+[`P0_HIDDEN_BOUNDARY_CORRECTION.md`](P0_HIDDEN_BOUNDARY_CORRECTION.md).
+
+```text
+STEP_B=completed
+ACTIVE_STEP=C
 DEFAULT_LLM_CALLS=32
 P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false

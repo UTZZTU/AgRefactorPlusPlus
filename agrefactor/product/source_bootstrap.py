@@ -182,6 +182,40 @@ def _sha256_file(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest()
 
 
+def _hidden_exposure_from_boundary(value: object) -> bool:
+    """Fail closed: True means exposure or incomplete evidence."""
+
+    if not isinstance(value, Mapping):
+        return True
+    if value.get("complete") is not True:
+        return True
+    forbidden = (
+        "public_generation_hidden_inputs",
+        "candidate_generation_hidden_inputs",
+        "public_repair_hidden_inputs",
+        "candidate_repair_hidden_inputs",
+    )
+    if any(value.get(name) not in ([], ()) for name in forbidden):
+        return True
+    if value.get("hidden_testbench_exposed_to_generation_model") is not False:
+        return True
+    if value.get("hidden_generation_enabled") is True:
+        if value.get("hidden_generation_after_candidate") is not True:
+            return True
+        order = value.get("generation_event_order")
+        if not isinstance(order, Sequence) or isinstance(order, (str, bytes)):
+            return True
+        try:
+            public_index = list(order).index("public_generation")
+            candidate_index = list(order).index("candidate_generation")
+            hidden_index = list(order).index("hidden_generation")
+        except ValueError:
+            return True
+        if not (public_index < candidate_index < hidden_index):
+            return True
+    return False
+
+
 def _mapping_get(value: object, key: str, default=None):
     if isinstance(value, Mapping):
         return value.get(key, default)
@@ -838,6 +872,18 @@ class SourceBootstrapPhase:
             None,
         )
         generated = self._extract_generation_result(raw_result)
+        model_data_boundary = generated["model_data_boundary"]
+        hidden_testbench_exposed_to_model = (
+            _hidden_exposure_from_boundary(model_data_boundary)
+        )
+        if hidden_testbench_exposed_to_model:
+            raise ValueError(
+                "generation returned incomplete or exposed Hidden boundary evidence"
+            )
+        _atomic_json(
+            bootstrap_root / "model_data_boundary.json",
+            model_data_boundary,
+        )
         original_code = _read_code(
             self._request.source_path,
             "source file",
@@ -973,7 +1019,9 @@ class SourceBootstrapPhase:
                         "public_testbench_repair_attempts": (
                             public_preparation.repair_attempts_used
                         ),
-                        "hidden_testbench_exposed_to_model": False,
+                        "hidden_testbench_exposed_to_model": (
+                            hidden_testbench_exposed_to_model
+                        ),
                         "execution_identity": identity_summary,
                     },
                 )
@@ -1051,6 +1099,10 @@ class SourceBootstrapPhase:
                 ),
                 "shared_budget": True,
                 "shared_trace": True,
+                "model_data_boundary_path": "model_data_boundary.json",
+                "model_data_boundary_sha256": _sha256_file(
+                    bootstrap_root / "model_data_boundary.json"
+                ),
                 "legacy_success_is_final_verdict": False,
             },
         )
@@ -1141,7 +1193,9 @@ class SourceBootstrapPhase:
                     if public_preparation is None
                     else public_preparation.repair_attempts_used
                 ),
-                "hidden_testbench_exposed_to_model": False,
+                "hidden_testbench_exposed_to_model": (
+                    hidden_testbench_exposed_to_model
+                ),
                 "shared_budget": True,
                 "shared_trace": True,
                 "bootstrap_manifest": (
@@ -1444,7 +1498,7 @@ class SourceBootstrapPhase:
         return public.provided_paths[0]
 
     @staticmethod
-    def _extract_generation_result(raw_result: object) -> dict[str, str]:
+    def _extract_generation_result(raw_result: object) -> dict[str, Any]:
         if (
             not isinstance(raw_result, tuple)
             or len(raw_result) < 2
@@ -1474,6 +1528,18 @@ class SourceBootstrapPhase:
             context_variables,
             "generated_hidden_testbench",
         )
+        public_hls_decl = _mapping_get(
+            context_variables,
+            "public_hls_decl_verbatim",
+        )
+        public_hls_decl_sha256 = _mapping_get(
+            context_variables,
+            "public_hls_decl_sha256",
+        )
+        model_data_boundary = _mapping_get(
+            context_variables,
+            "model_data_boundary",
+        )
         for name, value in (
             ("candidate_code", candidate),
             ("candidate_top", candidate_top),
@@ -1482,6 +1548,24 @@ class SourceBootstrapPhase:
                 raise ValueError(
                     f"generation-only backend returned no {name}"
                 )
+        if not isinstance(public_hls_decl, str) or not public_hls_decl.strip():
+            raise ValueError(
+                "generation-only backend returned no frozen Public ABI"
+            )
+        if not isinstance(public_hls_decl_sha256, str) or not public_hls_decl_sha256.strip():
+            raise ValueError(
+                "generation-only backend returned no Public ABI hash"
+            )
+        if _sha256_text(public_hls_decl) != public_hls_decl_sha256:
+            raise ValueError("Public ABI hash does not match declaration")
+        if not isinstance(model_data_boundary, Mapping):
+            raise ValueError(
+                "generation-only backend returned no model-data boundary"
+            )
+        copied_boundary = json.loads(
+            json.dumps(dict(model_data_boundary), sort_keys=True)
+        )
+
         return {
             "candidate_code": candidate,
             "candidate_top": candidate_top.strip(),
@@ -1495,13 +1579,16 @@ class SourceBootstrapPhase:
                 if isinstance(hidden_testbench, str)
                 else ""
             ),
+            "public_hls_decl": public_hls_decl,
+            "public_hls_decl_sha256": public_hls_decl_sha256,
+            "model_data_boundary": copied_boundary,
         }
 
     def _materialize_suites(
         self,
         *,
         bootstrap_root: Path,
-        generated: Mapping[str, str],
+        generated: Mapping[str, Any],
         generation_prompt_sha: str,
     ) -> tuple[tuple[TestSuiteSpec, ...], dict[str, str]]:
         suites: list[TestSuiteSpec] = []

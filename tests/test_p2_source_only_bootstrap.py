@@ -1,6 +1,7 @@
 
 import io
 import json
+from hashlib import sha256
 from pathlib import Path
 import tempfile
 import unittest
@@ -54,6 +55,37 @@ HIDDEN = (
     'extern "C" int top_hls(int);\n'
     "int main() { return top_hls(2) >= top(2) ? 0 : 1; }\n"
 )
+PUBLIC_HLS_DECL = 'extern "C" int top_hls(int);'
+PUBLIC_HLS_DECL_SHA256 = sha256(
+    PUBLIC_HLS_DECL.encode("utf-8")
+).hexdigest()
+
+
+def make_model_data_boundary(include_hidden: bool):
+    order = ["public_generation", "candidate_generation"]
+    if include_hidden:
+        order.append("hidden_generation")
+    return {
+        "schema_version": 1,
+        "boundary": "public_to_hidden_one_way",
+        "complete": True,
+        "generation_event_order": order,
+        "public_generation_hidden_inputs": [],
+        "candidate_generation_hidden_inputs": [],
+        "public_repair_hidden_inputs": [],
+        "candidate_repair_hidden_inputs": [],
+        "hidden_generation_inputs": (
+            ["original_source", "public_hls_decl"]
+            if include_hidden
+            else []
+        ),
+        "hidden_generation_enabled": include_hidden,
+        "hidden_generation_after_candidate": (
+            True if include_hidden else None
+        ),
+        "public_hls_decl_sha256": PUBLIC_HLS_DECL_SHA256,
+        "hidden_testbench_exposed_to_generation_model": False,
+    }
 
 
 class FakeGenerationAdapter:
@@ -76,6 +108,13 @@ class FakeGenerationAdapter:
                 "testbench": PUBLIC if self.include_public else "",
                 "generated_hidden_testbench": (
                     HIDDEN if self.include_hidden else ""
+                ),
+                "public_hls_decl_verbatim": PUBLIC_HLS_DECL,
+                "public_hls_decl_sha256": (
+                    PUBLIC_HLS_DECL_SHA256
+                ),
+                "model_data_boundary": make_model_data_boundary(
+                    self.include_hidden
                 ),
             },
         )

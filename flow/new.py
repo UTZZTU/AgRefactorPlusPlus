@@ -1,4 +1,4 @@
-import os, dotenv, concurrent.futures, argparse, copy  # type: ignore
+import os, dotenv, concurrent.futures, argparse, copy, hashlib  # type: ignore
 from autogen.agentchat.group import ContextVariables  # type: ignore
 from typing import Optional, Dict, Any
 import flow.tools as tools
@@ -87,6 +87,57 @@ def resolve_runtime_llm_config(
 def debug_print(debug: int, msg: str):
     if debug >= 1:
         print(f"=============== {msg} ===============")
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _build_model_data_boundary(
+    *,
+    event_order,
+    public_hls_decl: str,
+    hidden_generation_enabled: bool,
+):
+    order = list(event_order)
+    public_index = order.index("public_generation") if "public_generation" in order else -1
+    candidate_index = order.index("candidate_generation") if "candidate_generation" in order else -1
+    hidden_index = order.index("hidden_generation") if "hidden_generation" in order else -1
+    hidden_after_candidate = (
+        None
+        if not hidden_generation_enabled
+        else (
+            public_index >= 0
+            and candidate_index > public_index
+            and hidden_index > candidate_index
+        )
+    )
+    return {
+        "schema_version": 1,
+        "boundary": "public_to_hidden_one_way",
+        "complete": (
+            public_index >= 0
+            and candidate_index > public_index
+            and (
+                not hidden_generation_enabled
+                or hidden_after_candidate is True
+            )
+        ),
+        "generation_event_order": order,
+        "public_generation_hidden_inputs": [],
+        "candidate_generation_hidden_inputs": [],
+        "public_repair_hidden_inputs": [],
+        "candidate_repair_hidden_inputs": [],
+        "hidden_generation_inputs": (
+            ["original_source", "public_hls_decl"]
+            if hidden_generation_enabled
+            else []
+        ),
+        "hidden_generation_enabled": hidden_generation_enabled,
+        "hidden_generation_after_candidate": hidden_after_candidate,
+        "public_hls_decl_sha256": _sha256_text(public_hls_decl),
+        "hidden_testbench_exposed_to_generation_model": False,
+    }
 
 def hls_refactor_with_rag(
     kernel_path: str,
@@ -225,6 +276,11 @@ def hls_refactor_with_rag(
         raise TypeError("budget must be a BudgetManager or None")
     if not isinstance(generation_only, bool):
         raise TypeError("generation_only must be boolean")
+    if use_cached_tb_as_public:
+        raise ValueError(
+            "using a held-out Testbench as Public violates the "
+            "one-way evaluation boundary"
+        )
     if remote and budget is not None and (
         budget.limits.max_tool_calls is not None
         or budget.limits.max_compile_calls is not None
@@ -337,6 +393,10 @@ def hls_refactor_with_rag(
         "plan_hetero": "",            # generated plan for hetero tool
         "csynth_csim_history": [],    # history of synthesis and simulation results
         "csynth_error_msg": "",       # error message
+        "generation_event_order": [],
+        "public_hls_decl_verbatim": "",
+        "public_hls_decl_sha256": "",
+        "model_data_boundary": {},
     })
 
     if hetero_enabled:
@@ -363,33 +423,6 @@ def hls_refactor_with_rag(
     debug_print(debug, f"Reset knowledge DB: {reset_knowledge_db}")
     debug_print(debug, f"Knowledge DB path: {knowledge_db_path}")
 
-    if enable_hidden_tb_eval and external_testbench:
-        debug_print(
-            debug,
-            "Loading/generating independent hidden testbench",
-        )
-        independent_hidden = tools.tb_optimizer.make_golden_hidden_tb(
-            orig_code=cv["orig_code"],
-            kernel_name=cv["kernel_name"],
-            M=hidden_tb_trajectories,
-            K=hidden_tb_rounds,
-            target_pct=hidden_tb_target,
-            llm_config=llm_config,
-            cache_dir=golden_tb_cache_dir,
-            cache_key=golden_tb_cache_key,
-            budget=budget,
-        )
-        cv["generated_hidden_testbench"] = independent_hidden.get(
-            "hidden_tb",
-            "",
-        )
-        cv["generated_hidden_coverage"] = independent_hidden.get(
-            "hidden_cov"
-        )
-        cv["generated_hidden_signature"] = independent_hidden.get(
-            "hidden_sig_spec"
-        )
-
     if external_testbench:
         # Use provided testbench instead of generating one
         cv["testbench"] = external_testbench
@@ -402,83 +435,17 @@ def hls_refactor_with_rag(
                 cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, reset_knowledge_db, executor, debug, llm_config, budget
             )
             cv["identified_items"], cv["items_hetero"] = identification_future.result()
-    elif use_cached_tb_as_public:
-        # Load the cached hidden TB (e.g. from golden_tb_rater_flow/) and use it
-        # directly as the agent's public testbench. Skips the testbench generation
-        # phase entirely (no LLM call, deterministic).
-        import json as _json
-        if not golden_tb_cache_dir or not golden_tb_cache_key:
-            raise ValueError("--use_cached_tb_as_public requires both --golden_tb_cache_dir and --golden_tb_cache_key")
-        cache_path = os.path.join(golden_tb_cache_dir, f"{golden_tb_cache_key}.json")
-        debug_print(debug, f"Loading cached hidden TB as public TB from: {cache_path}")
-        with open(cache_path) as _f:
-            _golden = _json.load(_f)
-        cv["testbench"] = _golden.get("hidden_tb", "")
-        # Derive new_kernel_name from the canonical _hls decl in the cache,
-        # falling back to <kernel_name>_hls.
-        _decl = _golden.get("hidden_hls_decl_verbatim", "")
-        import re as _re
-        _m = _re.search(r'\b(\w+_hls)\s*\(', _decl)
-        cv["new_kernel_name"] = _m.group(1) if _m else f"{kernel_name}_hls"
-        # Build a minimal instruction so the refactor agent knows what to do.
-        cv["tb_aligned_instruction"] = (
-            f"Implement `{cv['new_kernel_name']}` matching the forward declaration "
-            f"in the provided testbench. The testbench will pass golden vs your "
-            f"implementation through csim; your function must produce outputs "
-            f"that match the golden invocation on the same inputs.\n\n"
-            f"Pinned `_hls` declaration (use this signature character-for-character):\n"
-            f"```cpp\n{_decl}\n```"
-        ) if _decl else (
-            f"Implement `{cv['new_kernel_name']}` matching the forward declaration "
-            f"in the provided testbench."
-        )
-        debug_print(debug, f"Cached TB loaded: cov={_golden.get('hidden_cov')}, "
-                          f"new_kernel_name={cv['new_kernel_name']}, "
-                          f"tb_len={len(cv['testbench'])}")
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            debug_print(debug, "Identification")
-            identification_future = tools.identifying.identify_non_synthesizable_items(
-                cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, reset_knowledge_db, executor, debug, llm_config, budget
-            )
-            cv["identified_items"], cv["items_hetero"] = identification_future.result()
     else:
-        # If hidden TB eval is enabled, ensure golden hidden TB is available before TB gen
-        # so we can propagate its sig spec into public TB generation.
-        hidden_sig_spec_for_public: Optional[str] = None
-        pinned_hls_decl_for_public: Optional[str] = None
-        if enable_hidden_tb_eval:
-            debug_print(debug, "Loading/generating golden hidden TB")
-            golden = tools.tb_optimizer.make_golden_hidden_tb(
-                orig_code=cv["orig_code"],
-                kernel_name=cv["kernel_name"],
-                M=hidden_tb_trajectories,
-                K=hidden_tb_rounds,
-                target_pct=hidden_tb_target,
-                llm_config=llm_config,
-                cache_dir=golden_tb_cache_dir,
-                cache_key=golden_tb_cache_key,
-                budget=budget,
-            )
-            cv["generated_hidden_testbench"] = golden.get(
-                "hidden_tb",
-                "",
-            )
-            cv["generated_hidden_coverage"] = golden.get(
-                "hidden_cov"
-            )
-            cv["generated_hidden_signature"] = golden.get(
-                "hidden_sig_spec"
-            )
-            hidden_sig_spec_for_public = golden.get("hidden_sig_spec")
-            pinned_hls_decl_for_public = golden.get("hidden_hls_decl_verbatim")
-            debug_print(debug, f"Hidden TB cov={golden.get('hidden_cov')}, sig_spec_len={len(hidden_sig_spec_for_public or '')}, pinned_decl_len={len(pinned_hls_decl_for_public or '')}")
-
         with concurrent.futures.ThreadPoolExecutor() as executor:
             debug_print(debug, "Testbench Generation")
             if enable_tb_coverage_loop:
                 tb_future = executor.submit(
                     tools.tb_optimizer.gen_tb_with_coverage,
-                    cv, llm_config, public_tb_rounds, public_tb_target, hidden_sig_spec_for_public, pinned_hls_decl_for_public, budget,
+                    cv,
+                    llm_config,
+                    public_tb_rounds,
+                    public_tb_target,
+                    budget,
                 )
             else:
                 tb_future = executor.submit(
@@ -493,6 +460,17 @@ def hls_refactor_with_rag(
             )
             cv["testbench"], cv["tb_aligned_instruction"], cv["new_kernel_name"] = tb_future.result()
             cv["identified_items"], cv["items_hetero"] = identification_future.result()
+    cv["generation_event_order"].append("public_generation")
+    public_hls_decl = tools.tb_optimizer.extract_hls_decl_from_testbench(
+        cv["testbench"],
+        cv["new_kernel_name"],
+    )
+    if not public_hls_decl:
+        raise RuntimeError(
+            "Public Testbench did not expose a valid Candidate ABI"
+        )
+    cv["public_hls_decl_verbatim"] = public_hls_decl
+    cv["public_hls_decl_sha256"] = _sha256_text(public_hls_decl)
     tools.general.save_context("tbgen_and_identifying", cv, output_dir)
 
     debug_print(debug, "Planning")
@@ -509,6 +487,38 @@ def hls_refactor_with_rag(
         budget,
     )
     tools.general.save_context("refactoring", cv, output_dir)
+    cv["generation_event_order"].append("candidate_generation")
+
+    if enable_hidden_tb_eval:
+        debug_print(
+            debug,
+            "Generating held-out evaluator after Candidate generation",
+        )
+        held_out = tools.tb_optimizer.make_golden_hidden_tb(
+            orig_code=cv["orig_code"],
+            kernel_name=cv["kernel_name"],
+            pinned_public_hls_decl=cv["public_hls_decl_verbatim"],
+            M=hidden_tb_trajectories,
+            K=hidden_tb_rounds,
+            target_pct=hidden_tb_target,
+            llm_config=llm_config,
+            cache_dir=golden_tb_cache_dir,
+            cache_key=golden_tb_cache_key,
+            budget=budget,
+        )
+        cv["generated_hidden_testbench"] = held_out["hidden_tb"]
+        cv["generated_hidden_coverage"] = held_out["hidden_cov"]
+        cv["generation_event_order"].append("hidden_generation")
+
+    cv["model_data_boundary"] = _build_model_data_boundary(
+        event_order=cv["generation_event_order"],
+        public_hls_decl=cv["public_hls_decl_verbatim"],
+        hidden_generation_enabled=enable_hidden_tb_eval,
+    )
+    if not cv["model_data_boundary"]["complete"]:
+        raise RuntimeError(
+            "model data boundary evidence is incomplete or out of order"
+        )
 
     if generation_only:
         cv["generation_only"] = True
@@ -602,21 +612,16 @@ def hls_refactor_with_rag(
     )
     if enable_hidden_tb_eval and final_succeeded:
         debug_print(debug, "Hidden TB eval")
-        golden = tools.tb_optimizer.make_golden_hidden_tb(
-            orig_code=cv["orig_code"],
-            kernel_name=cv["kernel_name"],
-            M=hidden_tb_trajectories,
-            K=hidden_tb_rounds,
-            target_pct=hidden_tb_target,
-            llm_config=llm_config,
-            cache_dir=golden_tb_cache_dir,
-            cache_key=golden_tb_cache_key,  # ← FIX: must use same cache_key as first call
-        )
+        hidden_tb = cv.get("generated_hidden_testbench", "")
+        if not hidden_tb:
+            raise RuntimeError(
+                "held-out evaluation enabled without generated evaluator"
+            )
         hidden_eval_dir = os.path.join(output_dir, "hidden_eval")
         eval_result = tools.tb_hidden_eval.eval_against_hidden_tb(
             orig_code=cv["orig_code"],
             refactor_code=cv["curr_code"],
-            hidden_tb=golden["hidden_tb"],
+            hidden_tb=hidden_tb,
             work_dir=hidden_eval_dir,
         )
         cv["pass_hidden"] = eval_result["passed"]

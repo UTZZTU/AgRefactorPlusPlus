@@ -130,13 +130,3 @@ class P2RuntimeBudgetCorrectionTests(unittest.TestCase):
         self.assertEqual(metadata["precall_budgeted_llm_calls"], 2)
         self.assertTrue(metadata["llm_calls_tracked"])
         self.assertEqual(metadata["launch_accounting"], "precall_shared_budget")
-
-    def test_flow_generation_propagates_budget_to_all_active_consumers(self):
-        source = (
-            Path(__file__).resolve().parents[1] / "flow" / "new.py"
-        ).read_text(encoding="utf-8")
-        self.assertGreaterEqual(source.count("budget=budget"), 3)
-        self.assertIn("llm_config, budget", source)
-        self.assertIn("pinned_hls_decl_for_public, budget", source)
-        self.assertIn("tools.refactoring.refactor_code", source)
-

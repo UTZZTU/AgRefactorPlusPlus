@@ -1341,3 +1341,21 @@ P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
 ```
+
+
+<!-- P0_STEP_B_HIDDEN_BOUNDARY_CORRECTION -->
+## P0 Step B completed
+
+The data direction is now Public-to-Hidden only. Candidate generation precedes
+held-out generation, and `model_data_boundary.json` provides fail-closed
+evidence. See
+[`P0_HIDDEN_BOUNDARY_CORRECTION.md`](P0_HIDDEN_BOUNDARY_CORRECTION.md).
+
+```text
+STEP_B=completed
+ACTIVE_STEP=C
+DEFAULT_LLM_CALLS=32
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```
