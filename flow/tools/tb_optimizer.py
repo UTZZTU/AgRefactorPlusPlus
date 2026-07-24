@@ -836,8 +836,9 @@ def _coverage_failure_fingerprint(record: Dict[str, Any]) -> str:
 def _persist_round_artifacts(
     trajectory_idx: int,
     record: Dict[str, Any],
+    artifact_root: Optional[str] = None,
 ) -> None:
-    root = os.getenv("AGREFACTOR_TB_DEBUG_DIR")
+    root = artifact_root or os.getenv("AGREFACTOR_TB_DEBUG_DIR")
     if not root:
         return
     round_root = os.path.join(
@@ -885,6 +886,7 @@ def _append_round(
     tb_code: str,
     stub_code: str,
     cov: Dict[str, Any],
+    artifact_root: Optional[str] = None,
     **extra: Any,
 ) -> Dict[str, Any]:
     record = {
@@ -905,7 +907,11 @@ def _append_round(
         **extra,
     }
     rounds.append(record)
-    _persist_round_artifacts(trajectory_idx, record)
+    _persist_round_artifacts(
+        trajectory_idx,
+        record,
+        artifact_root=artifact_root,
+    )
     return record
 
 
@@ -923,6 +929,7 @@ def run_trajectory(
     pinned_hls_decl: Optional[str] = None,
     emit_final_text: bool = True,
     budget: Any = None,
+    artifact_root: Optional[str] = None,
 ) -> Dict[str, Any]:
     if isinstance(K, bool) or not isinstance(K, int) or K < 1:
         raise ValueError("K must be a positive integer")
@@ -975,6 +982,7 @@ def run_trajectory(
         tb_code=tb_code,
         stub_code=stub_code,
         cov=coverage,
+        artifact_root=artifact_root,
     )
 
     for round_index in range(2, K + 1):
@@ -1043,6 +1051,7 @@ def run_trajectory(
             tb_code=tb_code,
             stub_code=stub_code,
             cov=coverage,
+            artifact_root=artifact_root,
         )
 
     return _finalize_trajectory(
@@ -1054,6 +1063,7 @@ def run_trajectory(
         orig_code=orig_code,
         emit_final_text=emit_final_text,
         budget=budget,
+        artifact_root=artifact_root,
     )
 
 
@@ -1068,6 +1078,7 @@ def _finalize_trajectory(
     emit_final_text: bool = True,
     synth_retry_budget: int = 1,
     budget: Any = None,
+    artifact_root: Optional[str] = None,
 ) -> Dict[str, Any]:
     ok_rounds = [
         record
@@ -1182,6 +1193,7 @@ def _finalize_trajectory(
                 tb_code=new_tb,
                 stub_code=new_stub,
                 cov=new_coverage,
+                artifact_root=artifact_root,
                 synth_retry=True,
             )
             if (
@@ -1272,33 +1284,113 @@ def optimize_tb_public(
     target_pct: float = 80.0,
     llm_config: Optional[Dict[str, Any]] = None,
     budget: Any = None,
+    M: int = 1,
+    artifact_root: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Generate Public evidence without held-out-derived constraints."""
+    """Generate Public evidence across one or more independent trajectories."""
 
-    trajectory = run_trajectory(
-        orig_code=orig_code,
-        kernel_name=kernel_name,
-        K=K,
-        target_pct=target_pct,
-        llm_config=llm_config,
-        want_sig_spec=False,
-        trajectory_idx=0,
-        emit_final_text=True,
-        budget=budget,
+    if isinstance(M, bool) or not isinstance(M, int) or M < 1:
+        raise ValueError("M must be a positive integer")
+
+    if M == 1:
+        trajectories = [
+            run_trajectory(
+                orig_code=orig_code,
+                kernel_name=kernel_name,
+                K=K,
+                target_pct=target_pct,
+                llm_config=llm_config,
+                want_sig_spec=False,
+                trajectory_idx=0,
+                emit_final_text=True,
+                budget=budget,
+                artifact_root=artifact_root,
+            )
+        ]
+    else:
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=M
+        ) as executor:
+            futures = {
+                executor.submit(
+                    run_trajectory,
+                    orig_code=orig_code,
+                    kernel_name=kernel_name,
+                    K=K,
+                    target_pct=target_pct,
+                    llm_config=llm_config,
+                    want_sig_spec=False,
+                    trajectory_idx=index,
+                    emit_final_text=True,
+                    budget=budget,
+                    artifact_root=artifact_root,
+                ): index
+                for index in range(M)
+            }
+            trajectories = []
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    trajectories.append(future.result())
+                except Exception as exc:
+                    trajectories.append(
+                        {
+                            "trajectory_idx": futures[future],
+                            "best_cov": 0.0,
+                            "best_tb": "",
+                            "best_stub": "",
+                            "best_round": -1,
+                            "final_text": "",
+                            "rounds": [],
+                            "synth_ok": False,
+                            "qualified": False,
+                            "trajectory_status": "exception",
+                            "error": f"{type(exc).__name__}: {exc}",
+                        }
+                    )
+
+    trajectories.sort(
+        key=lambda item: int(item.get("trajectory_idx", 0))
     )
-    if not trajectory.get("qualified"):
+    qualified = [
+        trajectory
+        for trajectory in trajectories
+        if trajectory.get("qualified")
+        and trajectory.get("synth_ok")
+        and trajectory.get("best_tb")
+        and trajectory.get("final_text")
+    ]
+    if not qualified:
+        reasons = [
+            str(
+                trajectory.get("error")
+                or trajectory.get("synth_error")
+                or trajectory.get("trajectory_status")
+                or "unknown"
+            )[-500:]
+            for trajectory in trajectories
+        ]
         raise RuntimeError(
             "public testbench generation produced no qualified trajectory: "
-            f"{trajectory.get('trajectory_status')}"
+            + " | ".join(reasons)
         )
+
+    best = max(
+        qualified,
+        key=lambda trajectory: (
+            float(trajectory.get("best_cov", 0.0)),
+            -int(trajectory.get("trajectory_idx", 0)),
+        ),
+    )
     return {
-        "best_tb": trajectory["best_tb"],
-        "best_stub": trajectory["best_stub"],
-        "best_cov": trajectory["best_cov"],
-        "best_round": trajectory["best_round"],
-        "instruction": trajectory["final_text"],
+        "best_tb": best["best_tb"],
+        "best_stub": best["best_stub"],
+        "best_cov": best["best_cov"],
+        "best_round": best["best_round"],
+        "best_trajectory": best.get("trajectory_idx", 0),
+        "instruction": best["final_text"],
         "new_kernel_name": f"{kernel_name}_hls",
-        "rounds": trajectory["rounds"],
+        "rounds": best["rounds"],
+        "trajectories": trajectories,
         "qualified": True,
     }
 
@@ -1494,9 +1586,14 @@ def gen_tb_with_coverage(
     K: int = 3,
     target_pct: float = 80.0,
     budget: Any = None,
+    M: int = 1,
 ) -> Tuple[str, str, str]:
     """Coverage-enhanced Public generation with no held-out input channel."""
 
+    artifact_root = None
+    getter = getattr(cv, "get", None)
+    if callable(getter):
+        artifact_root = getter("public_tb_artifact_dir")
     result = optimize_tb_public(
         orig_code=cv["orig_code"],
         kernel_name=cv["kernel_name"],
@@ -1504,7 +1601,25 @@ def gen_tb_with_coverage(
         target_pct=target_pct,
         llm_config=llm_config,
         budget=budget,
+        M=M,
+        artifact_root=artifact_root,
     )
+    cv["public_testbench_coverage"] = {
+        "schema_version": 1,
+        "profile": (
+            getter("test_generation_profile")
+            if callable(getter)
+            else "coverage-enhanced"
+        ),
+        "requested_rounds": K,
+        "requested_trajectories": M,
+        "trajectory_count": len(result["trajectories"]),
+        "best_trajectory": result["best_trajectory"],
+        "best_round": result["best_round"],
+        "best_cov": result["best_cov"],
+        "artifact_root": artifact_root,
+        "trajectories": result["trajectories"],
+    }
     return (
         result["best_tb"],
         result["instruction"],
@@ -1523,6 +1638,7 @@ def make_golden_hidden_tb(
     cache_dir: Optional[str] = None,
     cache_key: Optional[str] = None,
     budget: Any = None,
+    artifact_root: Optional[str] = None,
 ) -> Dict[str, Any]:
     if not isinstance(pinned_public_hls_decl, str) or not (
         pinned_public_hls_decl.strip()
@@ -1563,6 +1679,7 @@ def make_golden_hidden_tb(
                 pinned_hls_decl=normalized_public_decl,
                 emit_final_text=False,
                 budget=budget,
+                artifact_root=artifact_root,
             ): index
             for index in range(M)
         }

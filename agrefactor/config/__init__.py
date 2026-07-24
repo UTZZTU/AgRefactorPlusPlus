@@ -11,6 +11,13 @@ from .target_profiles import (
     available_target_profile_names,
     target_profile_config_dir,
 )
+from .test_generation import (
+    DEFAULT_HIDDEN_COVERAGE_ROUNDS,
+    DEFAULT_PUBLIC_COVERAGE_ROUNDS,
+    DEFAULT_TEST_GENERATION_TRAJECTORIES,
+    TestGenerationProfile,
+    resolve_test_generation_profile,
+)
 from .task import RunMode, TaskSpec
 from .test_source import (
     TestFeedbackVisibility,
@@ -30,6 +37,9 @@ from .test_suite import EvaluationSplit, TestSuiteSpec
 
 __all__ = [
     "DEFAULT_TARGET_PROFILE_NAME",
+    "DEFAULT_HIDDEN_COVERAGE_ROUNDS",
+    "DEFAULT_PUBLIC_COVERAGE_ROUNDS",
+    "DEFAULT_TEST_GENERATION_TRAJECTORIES",
     "EvaluationSplit",
     "RunMode",
     "TargetProfile",
@@ -37,6 +47,7 @@ __all__ = [
     "TaskSpec",
     "OverallTestSourceMode",
     "TestFeedbackVisibility",
+    "TestGenerationProfile",
     "TestQualificationStatus",
     "TestSourceKind",
     "TestSourceProvenance",
@@ -48,6 +59,7 @@ __all__ = [
     "available_target_profile_names",
     "default_target_profile",
     "resolve_target_profile",
+    "resolve_test_generation_profile",
     "resolve_test_source",
     "target_profile_config_dir",
 ]

@@ -10,7 +10,10 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from agrefactor.config import TaskSpec
+from agrefactor.config import (
+    TaskSpec,
+    resolve_test_generation_profile,
+)
 from agrefactor.models import (
     CostEstimate,
     CostEstimationQuality,
@@ -147,8 +150,10 @@ class LegacyRefactorSettings:
     testbench_repair_api_key_env: str = "OPENAI_API_KEY"
     external_tb_instruction: str | None = None
     external_kernel_name: str | None = None
+    test_generation_profile: str | None = None
     enable_tb_coverage_loop: bool = False
     public_tb_rounds: int = 3
+    public_tb_trajectories: int = 1
     public_tb_target: float = 80.0
     enable_hidden_tb_eval: bool = False
     hidden_tb_rounds: int = 6
@@ -263,8 +268,16 @@ class LegacyRefactorSettings:
                     "enabled testbench repair requires "
                     "testbench_repair_model or model"
                 )
+        if self.test_generation_profile is not None:
+            resolve_test_generation_profile(
+                self.test_generation_profile
+            )
         if self.public_tb_rounds < 1:
             raise ValueError("public_tb_rounds must be at least 1")
+        if self.public_tb_trajectories < 1:
+            raise ValueError(
+                "public_tb_trajectories must be at least 1"
+            )
         if self.hidden_tb_rounds < 1:
             raise ValueError("hidden_tb_rounds must be at least 1")
         if self.hidden_tb_trajectories < 1:
@@ -385,8 +398,18 @@ def build_legacy_refactor_kwargs(
         "external_testbench": external_testbench,
         "external_tb_instruction": settings.external_tb_instruction,
         "external_kernel_name": settings.external_kernel_name,
+        "test_generation_profile": (
+            None
+            if settings.test_generation_profile is None
+            else resolve_test_generation_profile(
+                settings.test_generation_profile
+            ).value
+        ),
         "enable_tb_coverage_loop": settings.enable_tb_coverage_loop,
         "public_tb_rounds": settings.public_tb_rounds,
+        "public_tb_trajectories": (
+            settings.public_tb_trajectories
+        ),
         "public_tb_target": settings.public_tb_target,
         "enable_hidden_tb_eval": settings.enable_hidden_tb_eval,
         "hidden_tb_rounds": settings.hidden_tb_rounds,

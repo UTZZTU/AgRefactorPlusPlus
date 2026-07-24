@@ -369,14 +369,14 @@ PRE_STAGE3_CLOSED=true
 ## 5. 当前执行指针
 
 ```text
-ACTIVE_STEP=C
-ACTIVE_SUBSTEP=C1/C2 dual generation profiles
+ACTIVE_STEP=D
+ACTIVE_SUBSTEP=D Testbench/stub Prompt and error ownership
 P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
 DEFAULT_LLM_CALLS=32
-LIGHTWEIGHT_STATUS=not_implemented
-COVERAGE_ENHANCED_STATUS=existing_unstable_path_requires_rework
+LIGHTWEIGHT_STATUS=implemented_default
+COVERAGE_ENHANCED_STATUS=implemented_explicit
 ```
 
 
@@ -410,6 +410,26 @@ boundary evidence. See
 ```text
 STEP_B=completed
 ACTIVE_STEP=C
+DEFAULT_LLM_CALLS=32
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```
+
+
+
+<!-- P0_STEP_C_DUAL_GENERATION_PROFILES -->
+## Step C completion: dual Testbench generation profiles
+
+The normal source-only command now defaults to `lightweight`. The existing
+coverage loop is available only through explicit `coverage-enhanced` selection,
+with configurable Public rounds and independent trajectories. Coverage-enhanced
+runs retain trajectory/round artifacts and select only a qualified best result.
+See [`P0_DUAL_GENERATION_PROFILES.md`](P0_DUAL_GENERATION_PROFILES.md).
+
+```text
+STEP_C=completed
+ACTIVE_STEP=D
 DEFAULT_LLM_CALLS=32
 P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false

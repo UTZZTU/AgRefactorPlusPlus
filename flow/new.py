@@ -173,9 +173,11 @@ def hls_refactor_with_rag(
     external_testbench: Optional[str] = None,
     external_tb_instruction: Optional[str] = None,
     external_kernel_name: Optional[str] = None,
+    test_generation_profile: Optional[str] = None,
     # Coverage-optimized TB loop (default off → behavior unchanged).
     enable_tb_coverage_loop: bool = False,
     public_tb_rounds: int = 3,
+    public_tb_trajectories: int = 1,
     public_tb_target: float = 80.0,
     # Hidden TB eval gate (default off → behavior unchanged).
     enable_hidden_tb_eval: bool = False,
@@ -276,6 +278,53 @@ def hls_refactor_with_rag(
         raise TypeError("budget must be a BudgetManager or None")
     if not isinstance(generation_only, bool):
         raise TypeError("generation_only must be boolean")
+    if (
+        isinstance(public_tb_trajectories, bool)
+        or not isinstance(public_tb_trajectories, int)
+        or public_tb_trajectories < 1
+    ):
+        raise ValueError(
+            "public_tb_trajectories must be a positive integer"
+        )
+    allowed_generation_profiles = {
+        "lightweight",
+        "coverage-enhanced",
+    }
+    if test_generation_profile is None:
+        resolved_test_generation_profile = (
+            "coverage-enhanced"
+            if enable_tb_coverage_loop
+            else "lightweight"
+        )
+    elif (
+        not isinstance(test_generation_profile, str)
+        or test_generation_profile.strip()
+        not in allowed_generation_profiles
+    ):
+        raise ValueError(
+            "test_generation_profile must be lightweight or "
+            "coverage-enhanced"
+        )
+    else:
+        resolved_test_generation_profile = (
+            test_generation_profile.strip()
+        )
+    if (
+        resolved_test_generation_profile == "lightweight"
+        and enable_tb_coverage_loop
+    ):
+        raise ValueError(
+            "lightweight profile cannot enable the Public coverage loop"
+        )
+    if (
+        resolved_test_generation_profile == "coverage-enhanced"
+        and not enable_tb_coverage_loop
+        and external_testbench is None
+    ):
+        raise ValueError(
+            "coverage-enhanced profile requires the Public coverage loop "
+            "when Public generation is automatic"
+        )
     if use_cached_tb_as_public:
         raise ValueError(
             "using a held-out Testbench as Public violates the "
@@ -397,6 +446,20 @@ def hls_refactor_with_rag(
         "public_hls_decl_verbatim": "",
         "public_hls_decl_sha256": "",
         "model_data_boundary": {},
+        "test_generation_profile": (
+            resolved_test_generation_profile
+        ),
+        "public_tb_artifact_dir": os.path.join(
+            output_dir,
+            "test_generation",
+            "public",
+        ),
+        "hidden_tb_artifact_dir": os.path.join(
+            output_dir,
+            "test_generation",
+            "hidden",
+        ),
+        "public_testbench_coverage": None,
     })
 
     if hetero_enabled:
@@ -446,6 +509,7 @@ def hls_refactor_with_rag(
                     public_tb_rounds,
                     public_tb_target,
                     budget,
+                    public_tb_trajectories,
                 )
             else:
                 tb_future = executor.submit(
@@ -505,6 +569,7 @@ def hls_refactor_with_rag(
             cache_dir=golden_tb_cache_dir,
             cache_key=golden_tb_cache_key,
             budget=budget,
+            artifact_root=cv["hidden_tb_artifact_dir"],
         )
         cv["generated_hidden_testbench"] = held_out["hidden_tb"]
         cv["generated_hidden_coverage"] = held_out["hidden_cov"]

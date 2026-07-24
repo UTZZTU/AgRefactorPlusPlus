@@ -20,6 +20,9 @@ from agrefactor.compat import (
     LegacyRefactorSettings,
 )
 from agrefactor.config import (
+    DEFAULT_HIDDEN_COVERAGE_ROUNDS,
+    DEFAULT_PUBLIC_COVERAGE_ROUNDS,
+    DEFAULT_TEST_GENERATION_TRAJECTORIES,
     EvaluationSplit,
     RunMode,
     TaskSpec,
@@ -30,7 +33,9 @@ from agrefactor.config import (
     TestSourceSelectionMode,
     TestSourceSpec,
     TestSuiteSpec,
+    TestGenerationProfile,
     resolve_target_profile,
+    resolve_test_generation_profile,
 )
 from agrefactor.evaluation import TestbenchPreflight
 from agrefactor.testing import (
@@ -359,6 +364,13 @@ class SourceBootstrapRequest:
     budget_contract: EffectiveRunBudget
     max_candidate_repairs: int
     run_id: str
+    test_generation_profile: TestGenerationProfile = (
+        TestGenerationProfile.LIGHTWEIGHT
+    )
+    public_coverage_rounds: int = DEFAULT_PUBLIC_COVERAGE_ROUNDS
+    test_generation_trajectories: int = (
+        DEFAULT_TEST_GENERATION_TRAJECTORIES
+    )
     require_complete_execution_identity: bool = False
 
     def __post_init__(self) -> None:
@@ -405,6 +417,29 @@ class SourceBootstrapRequest:
             raise ValueError(
                 "max_candidate_repairs must be a positive integer"
             )
+        profile = resolve_test_generation_profile(
+            self.test_generation_profile
+        )
+        for name, value in (
+            ("public_coverage_rounds", self.public_coverage_rounds),
+            (
+                "test_generation_trajectories",
+                self.test_generation_trajectories,
+            ),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 1
+            ):
+                raise ValueError(
+                    f"{name} must be a positive integer"
+                )
+        object.__setattr__(
+            self,
+            "test_generation_profile",
+            profile,
+        )
         object.__setattr__(self, "source_path", source)
         object.__setattr__(
             self,
@@ -447,6 +482,13 @@ class SourceBootstrapRequest:
             ),
             "budget_contract": self.budget_contract.to_dict(),
             "max_candidate_repairs": self.max_candidate_repairs,
+            "test_generation_profile": (
+                self.test_generation_profile.value
+            ),
+            "public_coverage_rounds": self.public_coverage_rounds,
+            "test_generation_trajectories": (
+                self.test_generation_trajectories
+            ),
         }
 
 
@@ -1181,6 +1223,15 @@ class SourceBootstrapPhase:
                 "test_source_mode": (
                     self._request.test_source_plan.overall_mode.value
                 ),
+                "test_generation_profile": (
+                    self._request.test_generation_profile.value
+                ),
+                "public_coverage_rounds": (
+                    self._request.public_coverage_rounds
+                ),
+                "test_generation_trajectories": (
+                    self._request.test_generation_trajectories
+                ),
                 "public_suite_count": len(public_suites),
                 "hidden_suite_count": len(suites) - len(public_suites),
                 "public_testbench_repair_status": (
@@ -1864,6 +1915,53 @@ def _write_request_rejection_artifacts(
     )
 
 
+def _build_generation_settings(
+    request: SourceBootstrapRequest,
+    layout: SourceRunLayout,
+    *,
+    debug: bool,
+) -> LegacyRefactorSettings:
+    """Map the typed product profile to the existing generation backend."""
+
+    profile = request.test_generation_profile
+    enhanced = (
+        profile is TestGenerationProfile.COVERAGE_ENHANCED
+    )
+    public_auto = (
+        request.test_source_plan.public.mode
+        is TestSourceSelectionMode.AUTO
+    )
+    hidden_auto = (
+        request.test_source_plan.hidden.mode
+        is TestSourceSelectionMode.AUTO
+    )
+    return LegacyRefactorSettings(
+        effective_model_config=request.effective_model_config,
+        output_dir=str(layout.work_root / "generation"),
+        max_retry_attempts=0,
+        debug=debug,
+        generation_only=True,
+        external_kernel_name=f"{request.top_function}_hls",
+        test_generation_profile=profile.value,
+        enable_tb_coverage_loop=public_auto and enhanced,
+        public_tb_rounds=(
+            request.public_coverage_rounds if enhanced else 1
+        ),
+        public_tb_trajectories=(
+            request.test_generation_trajectories if enhanced else 1
+        ),
+        public_tb_target=80.0,
+        enable_hidden_tb_eval=hidden_auto,
+        hidden_tb_rounds=(
+            DEFAULT_HIDDEN_COVERAGE_ROUNDS if enhanced else 1
+        ),
+        hidden_tb_trajectories=(
+            request.test_generation_trajectories if enhanced else 1
+        ),
+        hidden_tb_target=90.0,
+    )
+
+
 def run_source_command(
     args,
     *,
@@ -1938,29 +2036,32 @@ def run_source_command(
         budget_contract=budget,
         max_candidate_repairs=args.max_candidate_repairs,
         run_id=run_id,
+        test_generation_profile=(
+            resolve_test_generation_profile(
+                getattr(
+                    args,
+                    "test_generation_profile",
+                    TestGenerationProfile.LIGHTWEIGHT.value,
+                )
+            )
+        ),
+        public_coverage_rounds=getattr(
+            args,
+            "public_coverage_rounds",
+            DEFAULT_PUBLIC_COVERAGE_ROUNDS,
+        ),
+        test_generation_trajectories=getattr(
+            args,
+            "test_generation_trajectories",
+            DEFAULT_TEST_GENERATION_TRAJECTORIES,
+        ),
         require_complete_execution_identity=True,
     )
 
-    public_auto = (
-        plan.public.mode is TestSourceSelectionMode.AUTO
-    )
-    hidden_auto = (
-        plan.hidden.mode is TestSourceSelectionMode.AUTO
-    )
-    generation_settings = LegacyRefactorSettings(
-        effective_model_config=model_runtime.effective_config,
-        output_dir=str(layout.work_root / "generation"),
-        max_retry_attempts=0,
+    generation_settings = _build_generation_settings(
+        request,
+        layout,
         debug=bool(getattr(args, "debug", False)),
-        generation_only=True,
-        external_kernel_name=f"{request.top_function}_hls",
-        enable_tb_coverage_loop=public_auto,
-        public_tb_rounds=3,
-        public_tb_target=80.0,
-        enable_hidden_tb_eval=hidden_auto,
-        hidden_tb_rounds=6,
-        hidden_tb_trajectories=3,
-        hidden_tb_target=90.0,
     )
     generation_adapter = LegacyRefactorAdapter(
         generation_settings
@@ -2022,8 +2123,34 @@ def run_source_command(
                 "artifact_root": str(layout.artifact_root),
                 "work_root": str(layout.work_root),
                 "test_source_mode": plan.overall_mode.value,
+                "test_generation_profile": (
+                    request.test_generation_profile.value
+                ),
+                "test_generation_settings": {
+                    "public_coverage_rounds": (
+                        request.public_coverage_rounds
+                    ),
+                    "test_generation_trajectories": (
+                        request.test_generation_trajectories
+                    ),
+                    "public_coverage_enabled": (
+                        generation_settings.enable_tb_coverage_loop
+                    ),
+                    "effective_public_rounds": (
+                        generation_settings.public_tb_rounds
+                    ),
+                    "effective_public_trajectories": (
+                        generation_settings.public_tb_trajectories
+                    ),
+                    "effective_hidden_rounds": (
+                        generation_settings.hidden_tb_rounds
+                    ),
+                    "effective_hidden_trajectories": (
+                        generation_settings.hidden_tb_trajectories
+                    ),
+                },
                 "budget_contract": budget.to_dict(),
-                "pre_stage3_step": "P5 concise output",
+                "pre_stage3_step": "P0 Step C dual generation profiles",
             },
         )
     finalize_product_artifacts(

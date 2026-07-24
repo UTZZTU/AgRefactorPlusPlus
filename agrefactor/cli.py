@@ -14,9 +14,12 @@ from agrefactor.compat import (
     LegacyRefactorSettings,
 )
 from agrefactor.config import (
+    DEFAULT_PUBLIC_COVERAGE_ROUNDS,
+    DEFAULT_TEST_GENERATION_TRAJECTORIES,
     EvaluationSplit,
     RunMode,
     TaskSpec,
+    TestGenerationProfile,
 )
 from agrefactor.models import (
     CandidateModelAdapter,
@@ -34,6 +37,16 @@ from agrefactor.runtime import (
     UnifiedRunner,
     build_candidate_repair_phase,
 )
+
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError(
+            "value must be a positive integer"
+        )
+    return parsed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -305,6 +318,36 @@ def build_parser() -> argparse.ArgumentParser:
             action="append",
             default=[],
             help="Repeatable compile flag override.",
+        )
+        source_parser.add_argument(
+            "--test-generation-profile",
+            choices=tuple(
+                item.value for item in TestGenerationProfile
+            ),
+            default=TestGenerationProfile.LIGHTWEIGHT.value,
+            help=(
+                "Testbench-generation strategy. Default: lightweight. "
+                "Use coverage-enhanced explicitly for iterative coverage."
+            ),
+        )
+        source_parser.add_argument(
+            "--public-coverage-rounds",
+            type=_positive_int,
+            default=DEFAULT_PUBLIC_COVERAGE_ROUNDS,
+            help=(
+                "Public coverage rounds used only by coverage-enhanced. "
+                f"Default: {DEFAULT_PUBLIC_COVERAGE_ROUNDS}."
+            ),
+        )
+        source_parser.add_argument(
+            "--test-generation-trajectories",
+            type=_positive_int,
+            default=DEFAULT_TEST_GENERATION_TRAJECTORIES,
+            help=(
+                "Independent generation trajectories used only by "
+                "coverage-enhanced. "
+                f"Default: {DEFAULT_TEST_GENERATION_TRAJECTORIES}."
+            ),
         )
         source_parser.add_argument(
             "--public-tests",

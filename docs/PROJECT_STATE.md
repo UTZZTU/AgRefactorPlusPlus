@@ -1359,3 +1359,22 @@ P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
 ```
+
+
+
+<!-- P0_STEP_C_DUAL_GENERATION_PROFILES -->
+## P0 Step C completed
+
+The source-only product entrypoint now defaults to a low-call `lightweight`
+Testbench-generation path. Iterative Public coverage and multi-trajectory
+selection require explicit `coverage-enhanced` selection. See
+[`P0_DUAL_GENERATION_PROFILES.md`](P0_DUAL_GENERATION_PROFILES.md).
+
+```text
+STEP_C=completed
+ACTIVE_STEP=D
+DEFAULT_LLM_CALLS=32
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```
