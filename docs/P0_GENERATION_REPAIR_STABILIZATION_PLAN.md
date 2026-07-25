@@ -369,14 +369,17 @@ PRE_STAGE3_CLOSED=true
 ## 5. 当前执行指针
 
 ```text
-ACTIVE_STEP=E
-ACTIVE_SUBSTEP=E repair budget parameterization
+ACTIVE_STEP=F
+ACTIVE_SUBSTEP=F dual-mode real DFS acceptance
 P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
 DEFAULT_LLM_CALLS=32
 LIGHTWEIGHT_STATUS=implemented_default
 COVERAGE_ENHANCED_STATUS=implemented_explicit
+TESTBENCH_REPAIR_DEFAULT=3
+CANDIDATE_REPAIR_DEFAULT=3
+REPAIR_SAFETY_CEILING=10
 ```
 
 
@@ -449,6 +452,34 @@ own correction paths. See
 ```text
 STEP_D=completed
 ACTIVE_STEP=E
+DEFAULT_LLM_CALLS=32
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```
+
+<!-- P0_STEP_E_REPAIR_BUDGET_PARAMETERIZATION -->
+## Step E completion: repair budget parameterization
+
+The active source-only, repair-aware and compatibility entrypoints now share
+typed Testbench/Candidate repair-attempt defaults and one safety ceiling.
+
+```text
+Testbench default=3
+Candidate default=3
+valid user range=1..10
+safety ceiling=10
+attempt N sees safe summaries 1..N-1
+no no-progress early stop
+```
+
+See
+[`P0_REPAIR_BUDGET_PARAMETERIZATION.md`](P0_REPAIR_BUDGET_PARAMETERIZATION.md).
+
+```text
+STEP_E=completed
+ACTIVE_STEP=F
+NEXT_STEP=F_DUAL_MODE_REAL_DFS_ACCEPTANCE
 DEFAULT_LLM_CALLS=32
 P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false

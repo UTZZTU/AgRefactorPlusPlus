@@ -1,5 +1,12 @@
 """Configuration schemas and target descriptions."""
 
+from .repair_budget import (
+    DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
+    DEFAULT_TESTBENCH_REPAIR_ATTEMPTS,
+    MIN_REPAIR_ATTEMPTS,
+    REPAIR_ATTEMPT_SAFETY_CEILING,
+    validate_repair_attempts,
+)
 from .target import (
     DEFAULT_TARGET_PROFILE_NAME,
     TargetProfile,
@@ -37,6 +44,10 @@ from .test_suite import EvaluationSplit, TestSuiteSpec
 
 __all__ = [
     "DEFAULT_TARGET_PROFILE_NAME",
+    "DEFAULT_CANDIDATE_REPAIR_ATTEMPTS",
+    "DEFAULT_TESTBENCH_REPAIR_ATTEMPTS",
+    "MIN_REPAIR_ATTEMPTS",
+    "REPAIR_ATTEMPT_SAFETY_CEILING",
     "DEFAULT_HIDDEN_COVERAGE_ROUNDS",
     "DEFAULT_PUBLIC_COVERAGE_ROUNDS",
     "DEFAULT_TEST_GENERATION_TRAJECTORIES",
@@ -59,6 +70,7 @@ __all__ = [
     "available_target_profile_names",
     "default_target_profile",
     "resolve_target_profile",
+    "validate_repair_attempts",
     "resolve_test_generation_profile",
     "resolve_test_source",
     "target_profile_config_dir",

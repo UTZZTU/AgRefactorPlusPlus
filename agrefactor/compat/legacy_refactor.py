@@ -11,8 +11,10 @@ import sys
 from typing import Any
 
 from agrefactor.config import (
+    DEFAULT_TESTBENCH_REPAIR_ATTEMPTS,
     TaskSpec,
     resolve_test_generation_profile,
+    validate_repair_attempts,
 )
 from agrefactor.models import (
     CostEstimate,
@@ -145,7 +147,9 @@ class LegacyRefactorSettings:
         EffectiveModelConfig | None
     ) = None
     enable_testbench_repair: bool = False
-    max_testbench_repair_attempts: int = 2
+    max_testbench_repair_attempts: int = (
+        DEFAULT_TESTBENCH_REPAIR_ATTEMPTS
+    )
     testbench_repair_model: str | None = None
     testbench_repair_api_key_env: str = "OPENAI_API_KEY"
     external_tb_instruction: str | None = None
@@ -236,10 +240,11 @@ class LegacyRefactorSettings:
 
         if self.max_retry_attempts < 0:
             raise ValueError("max_retry_attempts must not be negative")
-        if self.max_testbench_repair_attempts < 0:
-            raise ValueError(
-                "max_testbench_repair_attempts must not be negative"
-            )
+        validate_repair_attempts(
+            self.max_testbench_repair_attempts,
+            field_name="max_testbench_repair_attempts",
+            allow_zero=not self.enable_testbench_repair,
+        )
         if (
             not isinstance(self.testbench_repair_api_key_env, str)
             or not self.testbench_repair_api_key_env.strip()
@@ -253,11 +258,7 @@ class LegacyRefactorSettings:
                     "testbench repair currently supports local "
                     "validation only"
                 )
-            if self.max_testbench_repair_attempts < 1:
-                raise ValueError(
-                    "enabled testbench repair requires at least "
-                    "one repair attempt"
-                )
+            # The shared validator already enforces 1..10 when enabled.
             if not (
                 self.testbench_repair_model
                 or self.model

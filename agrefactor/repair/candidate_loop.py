@@ -13,7 +13,12 @@ from enum import Enum
 import json
 from typing import Any, Protocol
 
-from agrefactor.config import EvaluationSplit, TaskSpec
+from agrefactor.config import (
+    DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
+    EvaluationSplit,
+    TaskSpec,
+    validate_repair_attempts,
+)
 from agrefactor.evaluation import FeedbackRouteAction, FeedbackRouteDecision, ValidationState
 from agrefactor.evidence import FeedbackOwner, FeedbackReport, FeedbackStage
 from agrefactor.models import (
@@ -101,7 +106,7 @@ class CandidateRepairLoopRequest:
     feedback: FeedbackReport
     route_decision: FeedbackRouteDecision
     failure_state: ValidationState
-    max_attempts: int
+    max_attempts: int = DEFAULT_CANDIDATE_REPAIR_ATTEMPTS
     public_testbench_code: str | None = None
     family_instruction: str | None = None
     approved_memory_snippets: tuple[str, ...] = ()
@@ -120,10 +125,10 @@ class CandidateRepairLoopRequest:
             raise TypeError("route_decision must be a FeedbackRouteDecision")
         state = _validation_state(self.failure_state)
         object.__setattr__(self, "failure_state", state)
-        if isinstance(self.max_attempts, bool) or not isinstance(self.max_attempts, int):
-            raise TypeError("max_attempts must be an integer")
-        if self.max_attempts <= 0:
-            raise ValueError("max_attempts must be positive")
+        validate_repair_attempts(
+            self.max_attempts,
+            field_name="max_attempts",
+        )
         _validate_repair_context(
             self.feedback,
             self.route_decision,

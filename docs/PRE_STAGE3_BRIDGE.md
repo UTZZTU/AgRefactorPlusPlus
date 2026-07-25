@@ -567,3 +567,21 @@ P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
 ```
+
+<!-- P0_STEP_E_REPAIR_BUDGET_PARAMETERIZATION -->
+## P0 Step E completed
+
+Repair attempts are now a typed product contract rather than scattered
+hard-coded values. Testbench and Candidate defaults are 3, accepted user values
+are 1..10, and values above 10 fail before a provider call. Attempt N receives
+safe summaries for attempts 1..N-1; no no-progress heuristic was added.
+
+```text
+STEP_E=completed
+ACTIVE_STEP=F
+NEXT_STEP=F_DUAL_MODE_REAL_DFS_ACCEPTANCE
+DEFAULT_LLM_CALLS=32
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```

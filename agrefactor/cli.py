@@ -14,12 +14,16 @@ from agrefactor.compat import (
     LegacyRefactorSettings,
 )
 from agrefactor.config import (
+    DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
     DEFAULT_PUBLIC_COVERAGE_ROUNDS,
+    DEFAULT_TESTBENCH_REPAIR_ATTEMPTS,
     DEFAULT_TEST_GENERATION_TRAJECTORIES,
+    REPAIR_ATTEMPT_SAFETY_CEILING,
     EvaluationSplit,
     RunMode,
     TaskSpec,
     TestGenerationProfile,
+    validate_repair_attempts,
 )
 from agrefactor.models import (
     CandidateModelAdapter,
@@ -47,6 +51,22 @@ def _positive_int(value: str) -> int:
             "value must be a positive integer"
         )
     return parsed
+
+
+def _repair_attempt_count(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "repair attempts must be an integer"
+        ) from exc
+    try:
+        return validate_repair_attempts(
+            parsed,
+            field_name="repair attempts",
+        )
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -160,9 +180,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument(
         "--max-testbench-repair-attempts",
-        type=int,
-        default=2,
-        help="Independent testbench repair budget. Default: 2.",
+        type=_repair_attempt_count,
+        default=DEFAULT_TESTBENCH_REPAIR_ATTEMPTS,
+        help=(
+            "Independent Testbench repair attempts. "
+            f"Default: {DEFAULT_TESTBENCH_REPAIR_ATTEMPTS}; "
+            f"valid range: 1..{REPAIR_ATTEMPT_SAFETY_CEILING}."
+        ),
     )
     run_parser.add_argument(
         "--testbench-repair-model",
@@ -233,11 +257,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument(
         "--max-candidate-repair-attempts",
-        type=int,
-        default=2,
+        type=_repair_attempt_count,
+        default=DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
         help=(
-            "Maximum candidate model calls after "
-            "initial validation. Default: 2."
+            "Maximum Candidate repair model calls after initial validation. "
+            f"Default: {DEFAULT_CANDIDATE_REPAIR_ATTEMPTS}; "
+            f"valid range: 1..{REPAIR_ATTEMPT_SAFETY_CEILING}."
         ),
     )
     run_parser.add_argument(
@@ -382,10 +407,24 @@ def build_parser() -> argparse.ArgumentParser:
             help="Repeatable provided Hidden testbench path.",
         )
         source_parser.add_argument(
+            "--max-testbench-repairs",
+            type=_repair_attempt_count,
+            default=DEFAULT_TESTBENCH_REPAIR_ATTEMPTS,
+            help=(
+                "Bounded Public Testbench repair attempts. "
+                f"Default: {DEFAULT_TESTBENCH_REPAIR_ATTEMPTS}; "
+                f"valid range: 1..{REPAIR_ATTEMPT_SAFETY_CEILING}."
+            ),
+        )
+        source_parser.add_argument(
             "--max-candidate-repairs",
-            type=int,
-            default=2,
-            help="Bounded formal candidate-repair attempts. Default: 2.",
+            type=_repair_attempt_count,
+            default=DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
+            help=(
+                "Bounded formal Candidate repair attempts. "
+                f"Default: {DEFAULT_CANDIDATE_REPAIR_ATTEMPTS}; "
+                f"valid range: 1..{REPAIR_ATTEMPT_SAFETY_CEILING}."
+            ),
         )
         source_parser.add_argument("--max-llm-calls", type=int)
         source_parser.add_argument("--max-tool-calls", type=int)

@@ -20,8 +20,10 @@ from agrefactor.compat import (
     LegacyRefactorSettings,
 )
 from agrefactor.config import (
+    DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
     DEFAULT_HIDDEN_COVERAGE_ROUNDS,
     DEFAULT_PUBLIC_COVERAGE_ROUNDS,
+    DEFAULT_TESTBENCH_REPAIR_ATTEMPTS,
     DEFAULT_TEST_GENERATION_TRAJECTORIES,
     EvaluationSplit,
     RunMode,
@@ -36,6 +38,7 @@ from agrefactor.config import (
     TestGenerationProfile,
     resolve_target_profile,
     resolve_test_generation_profile,
+    validate_repair_attempts,
 )
 from agrefactor.evaluation import TestbenchPreflight
 from agrefactor.testing import (
@@ -364,6 +367,9 @@ class SourceBootstrapRequest:
     budget_contract: EffectiveRunBudget
     max_candidate_repairs: int
     run_id: str
+    max_testbench_repairs: int = (
+        DEFAULT_TESTBENCH_REPAIR_ATTEMPTS
+    )
     test_generation_profile: TestGenerationProfile = (
         TestGenerationProfile.LIGHTWEIGHT
     )
@@ -409,14 +415,14 @@ class SourceBootstrapRequest:
             raise TypeError(
                 "budget_contract must be EffectiveRunBudget"
             )
-        if (
-            isinstance(self.max_candidate_repairs, bool)
-            or not isinstance(self.max_candidate_repairs, int)
-            or self.max_candidate_repairs <= 0
-        ):
-            raise ValueError(
-                "max_candidate_repairs must be a positive integer"
-            )
+        validate_repair_attempts(
+            self.max_testbench_repairs,
+            field_name="max_testbench_repairs",
+        )
+        validate_repair_attempts(
+            self.max_candidate_repairs,
+            field_name="max_candidate_repairs",
+        )
         profile = resolve_test_generation_profile(
             self.test_generation_profile
         )
@@ -481,6 +487,7 @@ class SourceBootstrapRequest:
                 self.test_source_plan.to_operator_dict()
             ),
             "budget_contract": self.budget_contract.to_dict(),
+            "max_testbench_repairs": self.max_testbench_repairs,
             "max_candidate_repairs": self.max_candidate_repairs,
             "test_generation_profile": (
                 self.test_generation_profile.value
@@ -986,7 +993,7 @@ class SourceBootstrapPhase:
                 status="running",
                 metadata={
                     "suite_id": preflight_suite.suite_id,
-                    "max_repair_attempts": 2,
+                    "max_repair_attempts": self._request.max_testbench_repairs,
                     "hidden_testbench_exposed_to_model": False,
                 },
             )
@@ -1002,7 +1009,7 @@ class SourceBootstrapPhase:
                 work_dir=(
                     bootstrap_root / "public_testbench_repair"
                 ),
-                max_repair_attempts=2,
+                max_repair_attempts=self._request.max_testbench_repairs,
             )
             self._public_testbench_cost_observations = (
                 public_preparation.cost_observations
@@ -2034,8 +2041,17 @@ def run_source_command(
         target=target,
         test_source_plan=plan,
         budget_contract=budget,
-        max_candidate_repairs=args.max_candidate_repairs,
+        max_candidate_repairs=getattr(
+            args,
+            "max_candidate_repairs",
+            DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
+        ),
         run_id=run_id,
+        max_testbench_repairs=getattr(
+            args,
+            "max_testbench_repairs",
+            DEFAULT_TESTBENCH_REPAIR_ATTEMPTS,
+        ),
         test_generation_profile=(
             resolve_test_generation_profile(
                 getattr(

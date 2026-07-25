@@ -9,7 +9,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Protocol
 
-from agrefactor.config import TaskSpec
+from agrefactor.config import (
+    DEFAULT_TESTBENCH_REPAIR_ATTEMPTS,
+    TaskSpec,
+    validate_repair_attempts,
+)
 from agrefactor.evaluation import TestbenchPreflight
 from agrefactor.evidence import (
     TestbenchFailureOwner,
@@ -65,6 +69,10 @@ class TestbenchRepairRequest:
     )
 
     def __post_init__(self) -> None:
+        validate_repair_attempts(
+            self.max_attempts,
+            field_name="max_attempts",
+        )
         if self.attempt < 1:
             raise ValueError("attempt must be at least 1")
         if self.max_attempts < self.attempt:
@@ -256,16 +264,15 @@ class TestbenchRepairLoop:
         *,
         preflight: TestbenchPreflight,
         repairer: TestbenchRepairer,
-        max_repair_attempts: int = 2,
+        max_repair_attempts: int = (
+            DEFAULT_TESTBENCH_REPAIR_ATTEMPTS
+        ),
     ) -> None:
-        if (
-            isinstance(max_repair_attempts, bool)
-            or not isinstance(max_repair_attempts, int)
-            or max_repair_attempts < 0
-        ):
-            raise ValueError(
-                "max_repair_attempts must be a non-negative integer"
-            )
+        validate_repair_attempts(
+            max_repair_attempts,
+            field_name="max_repair_attempts",
+            allow_zero=True,
+        )
         self._preflight = preflight
         self._repairer = repairer
         self._max_repair_attempts = max_repair_attempts

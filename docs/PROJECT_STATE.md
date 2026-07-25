@@ -1302,8 +1302,7 @@ A real DFS run used both Public Testbench repair attempts, but the
 second prompt did not receive the first deterministic contract
 rejection. Repair requests now carry safe prior-attempt summaries,
 and every prompt explicitly lists required declarations, macros and
-minimum call counts. The deterministic contract and two-attempt bound
-remain unchanged. See
+minimum call counts. The deterministic contract and then-current two-attempt bound were unchanged by that correction. Step E later supersedes the product defaults with the shared 3-attempt, 10-ceiling contract. See
 [`P0_TESTBENCH_REPAIR_RETRY_FEEDBACK.md`](P0_TESTBENCH_REPAIR_RETRY_FEEDBACK.md).
 
 ```text
@@ -1391,6 +1390,27 @@ ABI failures without exposing Hidden content. See
 ```text
 STEP_D=completed
 ACTIVE_STEP=E
+DEFAULT_LLM_CALLS=32
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```
+
+<!-- P0_STEP_E_REPAIR_BUDGET_PARAMETERIZATION -->
+## P0 Step E completed
+
+Testbench and Candidate repair now share default 3-attempt budgets, a user range
+of 1..10 and a safety ceiling of 10. Normal and advanced CLIs reject invalid
+values before provider launch, while both loops retain all prior safe summaries
+and do not add a no-progress early stop. See
+[`P0_REPAIR_BUDGET_PARAMETERIZATION.md`](P0_REPAIR_BUDGET_PARAMETERIZATION.md).
+
+```text
+STEP_E=completed
+ACTIVE_STEP=F
+DEFAULT_TESTBENCH_REPAIRS=3
+DEFAULT_CANDIDATE_REPAIRS=3
+REPAIR_SAFETY_CEILING=10
 DEFAULT_LLM_CALLS=32
 P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false

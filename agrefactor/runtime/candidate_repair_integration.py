@@ -11,7 +11,12 @@ from pathlib import Path
 import re
 from typing import Any, Protocol
 
-from agrefactor.config import EvaluationSplit, TaskSpec
+from agrefactor.config import (
+    DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
+    EvaluationSplit,
+    TaskSpec,
+    validate_repair_attempts,
+)
 from agrefactor.evaluation import FeedbackRouteAction, ValidationState
 from agrefactor.models import CandidateModelAdapter
 from agrefactor.repair import (
@@ -137,7 +142,7 @@ class CandidateRepairOrchestrationRequest:
     preflight_testbench_code: str
     suite_testbench_codes: Mapping[str, str]
     prompt_public_testbench_code: str | None
-    max_attempts: int
+    max_attempts: int = DEFAULT_CANDIDATE_REPAIR_ATTEMPTS
     family_instruction: str | None = None
     approved_memory_snippets: tuple[str, ...] = ()
 
@@ -152,13 +157,10 @@ class CandidateRepairOrchestrationRequest:
             self.prompt_public_testbench_code,
             "prompt_public_testbench_code",
         )
-        if isinstance(self.max_attempts, bool) or not isinstance(
+        validate_repair_attempts(
             self.max_attempts,
-            int,
-        ):
-            raise TypeError("max_attempts must be an integer")
-        if self.max_attempts <= 0:
-            raise ValueError("max_attempts must be positive")
+            field_name="max_attempts",
+        )
         _optional_text(
             self.family_instruction,
             "family_instruction",
@@ -1091,4 +1093,3 @@ def _safe_component(value: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", value)
     cleaned = cleaned.strip("._")
     return cleaned or "validation"
-
