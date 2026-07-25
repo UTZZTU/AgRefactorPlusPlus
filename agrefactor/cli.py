@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import warnings
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, TextIO
@@ -69,6 +70,31 @@ def _repair_attempt_count(value: str) -> int:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
+_ADVANCED_RUN_MODE_DEPRECATION = (
+    " is a deprecated advanced compatibility selector. "
+    "Use refactor/optimize/full for normal product execution; "
+    "run task.json is retained only for advanced reproduction "
+    "and migration."
+)
+
+
+def _warn_deprecated_advanced_run_modes(args) -> None:
+    # Warn without changing normal stderr output; DeprecationWarning remains
+    # capturable by tests and advanced callers.
+    if getattr(args, "command", None) != "run":
+        return
+    for attribute, option in (
+        ("legacy", "--legacy"),
+        ("repair_aware", "--repair-aware"),
+    ):
+        if getattr(args, attribute, False):
+            warnings.warn(
+                option + _ADVANCED_RUN_MODE_DEPRECATION,
+                DeprecationWarning,
+                stacklevel=3,
+            )
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the top-level AgRefactor++ argument parser."""
 
@@ -110,18 +136,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--legacy",
         action="store_true",
-        help=(
-            "Invoke the existing flow.new "
-            "refactoring backend."
-        ),
+        help=argparse.SUPPRESS,
     )
     run_parser.add_argument(
         "--repair-aware",
         action="store_true",
-        help=(
-            "Run the formal local validation and "
-            "bounded candidate-repair path."
-        ),
+        help=argparse.SUPPRESS,
     )
     run_parser.add_argument(
         "--run-id",
@@ -135,8 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--model",
         help=(
-            "User-selected model identifier. "
-            "Required for --repair-aware."
+            "User-selected model identifier for advanced execution."
         ),
     )
     run_parser.add_argument(
@@ -212,13 +231,15 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--candidate-file",
         type=Path,
-        help="Initial candidate source for --repair-aware.",
+        help=(
+            "Initial candidate source for advanced formal validation."
+        ),
     )
     run_parser.add_argument(
         "--original-file",
         type=Path,
         help=(
-            "Original source for --repair-aware; "
+            "Original source for advanced formal validation; "
             "defaults to TaskSpec.kernel_path."
         ),
     )
@@ -244,7 +265,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help=(
             "Isolated local validation work root "
-            "for --repair-aware."
+            "for advanced formal validation."
         ),
     )
     run_parser.add_argument(
@@ -252,7 +273,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help=(
             "Empty output root for the versioned "
-            "repair-aware run bundle."
+            "advanced validation run bundle."
         ),
     )
     run_parser.add_argument(
@@ -929,6 +950,7 @@ def main(
 
     parser = build_parser()
     args = parser.parse_args(argv)
+    _warn_deprecated_advanced_run_modes(args)
 
     try:
         if args.command in ("refactor", "optimize", "full"):

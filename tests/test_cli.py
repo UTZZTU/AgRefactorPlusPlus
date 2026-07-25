@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 from unittest.mock import patch
 
@@ -187,6 +188,55 @@ class CliTests(unittest.TestCase):
             self.assertEqual(events[0], "run.started")
             self.assertEqual(events[-1], "run.finished")
             self.assertEqual(events.count("dry_run.checked"), 2)
+
+    def test_advanced_compatibility_flags_are_hidden_from_help(self) -> None:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "agrefactor.cli",
+                "run",
+                "--help",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0)
+        self.assertNotIn("--legacy", completed.stdout)
+        self.assertNotIn("--repair-aware", completed.stdout)
+
+    def test_advanced_compatibility_flags_emit_deprecation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            task_path = Path(directory) / "task.json"
+            write_task(task_path)
+
+            for option in ("--legacy", "--repair-aware"):
+                with self.subTest(option=option):
+                    with warnings.catch_warnings(record=True) as caught:
+                        warnings.simplefilter("always")
+                        exit_code = main(
+                            [
+                                "run",
+                                str(task_path),
+                                "--dry-run",
+                                option,
+                            ],
+                            stdout=io.StringIO(),
+                            stderr=io.StringIO(),
+                        )
+
+                    self.assertEqual(exit_code, 2)
+                    messages = [str(item.message) for item in caught]
+                    self.assertTrue(
+                        any(
+                            option in message
+                            and "deprecated advanced compatibility"
+                            in message
+                            for message in messages
+                        )
+                    )
 
     def test_run_without_execution_mode_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
