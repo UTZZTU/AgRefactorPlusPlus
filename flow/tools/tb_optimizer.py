@@ -44,6 +44,252 @@ def extract_hls_decl_from_testbench(
     return declaration.strip().rstrip(";") + ";"
 
 
+
+_FORWARD_DECL_RE = re.compile(
+    r'^\s*(?:extern\s+"C"\s+)?'
+    r'(?:[A-Za-z_]\w*(?:::\w+)*(?:\s*[*&]\s*|\s+))+'
+    r'(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*;',
+    re.MULTILINE,
+)
+_DEFINE_LINE_RE = re.compile(
+    r"^\s*#define\s+[A-Za-z_]\w*[^\n]*$",
+    re.MULTILINE,
+)
+
+
+def _normalize_declaration(value: str) -> str:
+    return re.sub(
+        r"\s+",
+        " ",
+        value.strip().rstrip(";"),
+    ) + ";"
+
+
+def _extract_public_macros(testbench_code: str) -> Tuple[str, ...]:
+    return tuple(
+        match.group(0).strip()
+        for match in _DEFINE_LINE_RE.finditer(testbench_code)
+    )
+
+
+def _function_definition_count(
+    source: str,
+    function_name: str,
+) -> int:
+    pattern = re.compile(
+        rf"^\s*(?:extern\s+\"C\"\s+)?"
+        rf"(?:[A-Za-z_]\w*(?:::\w+)*(?:\s*[*&]\s*|\s+))+"
+        rf"{re.escape(function_name)}\s*"
+        rf"\([^;{{}}]*\)\s*\{{",
+        re.MULTILINE,
+    )
+    return len(pattern.findall(source))
+
+
+def _call_count_without_declarations(
+    source: str,
+    function_name: str,
+) -> int:
+    body = _FORWARD_DECL_RE.sub("", source)
+    return len(
+        re.findall(
+            rf"\b{re.escape(function_name)}\s*\(",
+            body,
+        )
+    )
+
+
+def validate_testbench_top_contract(
+    testbench_code: str,
+    original_name: str,
+    candidate_name: str,
+) -> None:
+    """Enforce the minimal Public black-box Testbench contract."""
+
+    issues: List[str] = []
+    if not re.search(
+        r"\b(?:int|auto)\s+main\s*\(",
+        testbench_code,
+    ):
+        issues.append("missing main(...) entry point")
+
+    for function_name in (original_name, candidate_name):
+        if _function_definition_count(
+            testbench_code,
+            function_name,
+        ):
+            issues.append(
+                "testbench must only forward-declare and call "
+                f"{function_name}; it must not define, stub, wrap, "
+                "alias, or reimplement that top"
+            )
+
+    if _call_count_without_declarations(
+        testbench_code,
+        candidate_name,
+    ) < 1:
+        issues.append(
+            f"testbench does not call Candidate top {candidate_name}"
+        )
+
+    declared = tuple(
+        match.group("name")
+        for match in _FORWARD_DECL_RE.finditer(testbench_code)
+    )
+    unexpected = sorted(
+        {
+            name
+            for name in declared
+            if name not in {original_name, candidate_name}
+        }
+    )
+    if unexpected:
+        issues.append(
+            "testbench has external helper declarations outside the "
+            "Original/Candidate black-box surface: "
+            + ", ".join(unexpected)
+        )
+
+    if issues:
+        raise ModelArtifactError("; ".join(issues))
+
+
+def validate_stub_contract(
+    stub_code: str,
+    *,
+    original_name: str,
+    candidate_name: str,
+    frozen_hls_decl: str,
+) -> None:
+    """Require one temporary Candidate implementation with the frozen ABI."""
+
+    issues: List[str] = []
+    if re.search(r"\bmain\s*\(", stub_code):
+        issues.append("stub must not define main")
+    if _function_definition_count(stub_code, candidate_name) != 1:
+        issues.append(
+            "stub must define the Candidate top exactly once: "
+            + candidate_name
+        )
+    if _function_definition_count(stub_code, original_name):
+        issues.append(
+            "stub must not define, wrap, alias, or copy the Original top: "
+            + original_name
+        )
+
+    observed = _extract_seed_hls_decl(
+        stub_code,
+        candidate_name,
+    )
+    if not observed:
+        issues.append(
+            "stub does not expose a Candidate definition header"
+        )
+    elif _normalize_declaration(observed) != _normalize_declaration(
+        frozen_hls_decl
+    ):
+        issues.append(
+            "stub Candidate definition does not match the frozen ABI"
+        )
+
+    if issues:
+        raise ModelArtifactError("; ".join(issues))
+
+
+def _freeze_public_contract(
+    testbench_code: str,
+    candidate_name: str,
+) -> Tuple[str, Tuple[str, ...]]:
+    declaration = extract_hls_decl_from_testbench(
+        testbench_code,
+        candidate_name,
+    )
+    if not declaration:
+        raise ModelArtifactError(
+            "qualified Testbench did not expose a Candidate declaration"
+        )
+    return (
+        _normalize_declaration(declaration),
+        _extract_public_macros(testbench_code),
+    )
+
+
+def _validate_frozen_public_contract(
+    testbench_code: str,
+    candidate_name: str,
+    frozen_hls_decl: str,
+    frozen_macros: Tuple[str, ...],
+) -> None:
+    observed_decl, observed_macros = _freeze_public_contract(
+        testbench_code,
+        candidate_name,
+    )
+    issues: List[str] = []
+    if observed_decl != _normalize_declaration(frozen_hls_decl):
+        issues.append(
+            "coverage-only Testbench changed the frozen Candidate ABI"
+        )
+    if observed_macros != tuple(frozen_macros):
+        issues.append(
+            "coverage-only Testbench changed frozen Public macros"
+        )
+    if issues:
+        raise ModelArtifactError("; ".join(issues))
+
+
+def _validate_frozen_candidate_abi(
+    testbench_code: str,
+    candidate_name: str,
+    frozen_hls_decl: str,
+) -> None:
+    observed = extract_hls_decl_from_testbench(
+        testbench_code,
+        candidate_name,
+    )
+    if not observed:
+        raise ModelArtifactError(
+            "Testbench lost the externally frozen Candidate ABI"
+        )
+    if _normalize_declaration(observed) != _normalize_declaration(
+        frozen_hls_decl
+    ):
+        raise ModelArtifactError(
+            "Testbench changed the externally frozen Public-derived ABI"
+        )
+
+
+def _coverage_action(record: Dict[str, Any]) -> str:
+    status = str(record.get("status") or "unknown")
+    if status == "ok":
+        return "expand_inputs_preserve_abi"
+    action = str(record.get("next_action") or "")
+    if action:
+        return action
+    owner = str(record.get("failure_owner") or "unknown")
+    return {
+        "stub": "regenerate_stub",
+        "testbench": "repair_testbench",
+        "abi": "repair_abi_testbench_stub",
+    }.get(owner, "repair_testbench_stub")
+
+
+def _coverage_contract_failure(message: str) -> Dict[str, Any]:
+    return {
+        "status": "contract_failed",
+        "cov_pct": None,
+        "lines_total": None,
+        "lines_hit": None,
+        "uncovered_lines": [],
+        "run_returncode": None,
+        "compile_stderr": message[-2000:],
+        "run_stderr": "",
+        "qualification_errors": [],
+        "failure_owner": "testbench",
+        "next_action": "repair_testbench",
+        "failure_evidence_source": "frozen Public ABI contract",
+    }
+
+
 # -------------------------- prompt builders --------------------------
 
 def _initial_user_message(
@@ -51,7 +297,7 @@ def _initial_user_message(
     kernel_name: str,
     pinned_public_hls_decl: Optional[str] = None,
 ) -> str:
-    """Build a prompt with no held-out-derived input."""
+    """Build a black-box Testbench prompt with no held-out-derived input."""
 
     hls_name = f"{kernel_name}_hls"
     parts = [
@@ -66,6 +312,26 @@ def _initial_user_message(
             "Use the original name with `_hls` appended verbatim. "
             "Do not drop or shorten any prefix or suffix."
         ),
+        (
+            "Generate one complete, normal-strength testbench directly; "
+            "do not emit a preliminary or simplified version."
+        ),
+        (
+            "Treat Original and Candidate implementations as read-only black "
+            "boxes. The Testbench may own headers, macros, data, and local "
+            "helper definitions, but its only external function forward "
+            f"declarations must be `{kernel_name}` and `{hls_name}`."
+        ),
+        (
+            "Forward-declare those tops only. Never define, stub, wrap, "
+            "alias, or reimplement either top inside the Testbench."
+        ),
+        (
+            "Do not declare, read, write, or reset implementation-private "
+            "globals. Do not copy or depend on implementation-private "
+            "types, helper functions, allocator state, or internal data "
+            "structures. Use only public arguments and outputs."
+        ),
     ]
     if pinned_public_hls_decl:
         parts.extend(
@@ -73,14 +339,13 @@ def _initial_user_message(
                 "",
                 "CRITICAL — FROZEN PUBLIC-DERIVED `_hls` ABI:",
                 (
-                    "The Public Testbench established the declaration below. "
-                    "Preserve it character-for-character. Do not alter language "
-                    "linkage, return type, parameter order/types, qualifiers, "
-                    "pointer/array notation, typedef spelling, or function name."
+                    "Preserve the declaration below character-for-character. "
+                    "Do not alter language linkage, return type, parameter "
+                    "order/types, qualifiers, pointer/array notation, typedef "
+                    "spelling, or function name."
                 ),
-                "",
                 "```cpp",
-                pinned_public_hls_decl.rstrip().rstrip(";") + ";",
+                pinned_public_hls_decl.strip().rstrip(";") + ";",
                 "```",
             ]
         )
@@ -88,35 +353,37 @@ def _initial_user_message(
         [
             "",
             (
-                "Generate one complete, normal-strength testbench now; do not "
-                "emit a preliminary or simplified version. Aim for high line "
-                "coverage while respecting explicit capacities, memory limits, "
-                "and interface constraints in the source."
-            ),
-            (
-                "Before writing calls, inspect the original for mutable global/"
-                "static state, heap-backed structures, allocator state, counters, "
-                "and other state that survives a return. The original and `_hls` "
-                "sides must start from equivalent clean logical states and use "
+                "Before writing calls, inspect the public interface and "
+                "observable state behavior. The Original and `_hls` sides "
+                "must start from equivalent clean logical states and use "
                 "separate mutable input/output storage."
             ),
             (
-                "Reset relevant explicit state immediately before EACH side is "
-                "invoked. If a complete reset cannot be established, do not call "
-                "the original repeatedly; use one representative original "
-                "invocation and a non-delegating matching stub. State "
-                "safety takes priority over testcase count or marginal "
-                "coverage."
+                "Reset only Testbench-owned state immediately before EACH "
+                "side is invoked. If a complete public reset cannot be "
+                "established, do not call the original repeatedly; use one "
+                "representative original invocation and a non-delegating "
+                "matching stub. State safety takes priority over testcase "
+                "count or marginal coverage."
             ),
             (
-                "When declaring the original golden function, preserve its C/C++ "
-                "language linkage exactly as shown in the source. Never add or "
-                "remove `extern \"C\"`; a linkage mismatch causes an undefined "
-                "reference even when the parameter list looks identical."
+                "When declaring the original golden function, preserve its "
+                "C/C++ language linkage exactly as shown in the source. Never "
+                'add or remove `extern "C"`; a linkage mismatch causes an '
+                "undefined reference even when the parameter list looks "
+                "identical."
             ),
             (
-                "Reply with one ```cpp ... ``` block containing the complete "
-                "testbench, with no commentary outside it."
+                "Compare public outputs and observable behavior. On mismatch, "
+                "emit a useful stderr message and return non-zero."
+            ),
+            (
+                "Correctness and a meaningful golden-vs-Candidate comparison "
+                "take priority over testcase count or coverage."
+            ),
+            (
+                "Reply with exactly one complete ```cpp ... ``` block and "
+                "no commentary."
             ),
         ]
     )
@@ -126,68 +393,106 @@ def _initial_user_message(
 def _stub_request_message(
     kernel_name: Optional[str] = None,
     pinned_hls_decl: Optional[str] = None,
+    failure_excerpt: Optional[str] = None,
 ) -> str:
-    original_clause = (
-        f"for the original `{kernel_name}` function "
+    original_name = kernel_name or "the Original top"
+    candidate_name = (
+        f"{kernel_name}_hls"
         if kernel_name
-        else "for every original function it calls "
+        else "the Candidate top"
     )
-    pinned_clause = ""
+    pinned = ""
     if pinned_hls_decl:
-        pinned_clause = (
+        pinned = (
             "\n\nCRITICAL — EXACT `_hls` DEFINITION HEADER:\n"
             "Use the declaration below character-for-character as the "
             "definition header, replacing only its trailing `;` with the "
             "function body. Preserve `extern \"C\"` presence or absence, "
-            "return type, function name, parameters, and qualifiers exactly.\n"
+            "return type, function name, parameters, qualifiers, pointer/"
+            "array notation, and typedef spelling exactly.\n"
             "```cpp\n"
-            + pinned_hls_decl.rstrip().rstrip(";")
+            + pinned_hls_decl.strip().rstrip(";")
+            + ";\n```"
+        )
+    evidence = ""
+    if failure_excerpt:
+        evidence = (
+            "\n\nStub-owned tool evidence from the previous attempt:\n"
+            "```\n"
+            + failure_excerpt.strip()[-1500:]
+            + "\n```\nRepair only the Stub. Keep the Testbench unchanged."
+        )
+    return (
+        "Write one complete temporary Stub translation unit. The Stub is "
+        f"the only temporary implementation of `{candidate_name}` used "
+        "during generation-time qualification. Define that Candidate top "
+        "exactly once and match the frozen declaration exactly, including "
+        "C/C++ linkage, return type, parameter order/types, qualifiers, and "
+        "pointer/array notation. Do not include `main`. Do not define, wrap, "
+        f"alias, copy, or reimplement `{original_name}`. Delegation to the "
+        "corresponding original function is CONDITIONAL, not mandatory. "
+        "Never delegate as a second execution over shared mutable global, "
+        "static, heap-backed, allocator, pointer, tree, queue, counter, or "
+        "mutated-buffer state. If safe delegation cannot be established, "
+        "write an independent minimal stub that matches the tested "
+        "observable behavior and does not call or copy the original "
+        "implementation. If the Stub calls the Original, include only its "
+        "required forward declaration ending in `;`."
+        + pinned
+        + evidence
+        + "\nReply with exactly one complete ```cpp ... ``` block and no "
+        "commentary."
+    )
+
+
+def _empty_stub_request_message(
+    hls_name: str,
+    pinned_hls_decl: Optional[str] = None,
+) -> str:
+    pinned = ""
+    if pinned_hls_decl:
+        pinned = (
+            "\nUse this exact Candidate definition header, replacing only "
+            "the trailing `;` with a body:\n```cpp\n"
+            + pinned_hls_decl.strip().rstrip(";")
             + ";\n```"
         )
     return (
-        "Now write a minimal stub HLS implementation that matches the testbench you just produced. "
-        "The stub MUST define every `_hls` function declared in the testbench with EXACTLY the same "
-        "signature and C/C++ language linkage. Delegation to the corresponding original function is "
-        "CONDITIONAL, not mandatory. Delegate only if the original is stateless/reentrant, or if the "
-        "testbench establishes a complete clean state immediately before the delegated `_hls` call. "
-        "Never delegate as a second execution over shared mutable global, static, heap-backed, "
-        "allocator, pointer, tree, queue, counter, or mutated-buffer state. If safe delegation cannot "
-        "be established, write an independent minimal stub that matches the tested observable behavior "
-        "and does not call or copy the original implementation. Do NOT include a `main`. If the stub "
-        "calls the original, it is compiled in a separate translation unit from `orig_code.cpp`, so it "
-        "MUST contain a forward declaration ending in `;` "
-        + original_clause
-        + "before calling it."
-        + pinned_clause
-        + "\nReply with exactly one complete ```cpp ... ``` block and no commentary."
+        f"Write a minimal empty/dummy implementation of `{hls_name}` for an "
+        "ABI-only CSYNTH check. Define the Candidate top exactly once. "
+        "Preserve the exact C/C++ linkage and full frozen ABI. Do not include "
+        "`main`, do not define the Original top, and do not add an extra "
+        '`extern "C"` wrapper that changes linkage. The body may return a '
+        "default value or do nothing for `void`."
+        + pinned
+        + "\nReply with exactly one complete ```cpp ... ``` block and no "
+        "commentary."
     )
 
 
-
-def _empty_stub_request_message(hls_name: str) -> str:
+def _hls_friendly_rewrite_message(
+    hls_name: str,
+    csynth_err: str,
+) -> str:
+    excerpt = csynth_err.strip()[-1500:] or "(no detailed error)"
     return (
-        f"Now write a MINIMAL EMPTY stub HLS implementation of `{hls_name}` (and any other `_hls` function in the testbench) "
-        f"with EMPTY/DUMMY bodies. This stub is used to verify that the function SIGNATURE is HLS-synthesizable.\n"
-        f"  - The signature MUST match the testbench's declaration EXACTLY.\n"
-        f"  - The body must compile and synthesize but does NOT need to be functionally correct. Just return 0 / a default value / nothing (for void).\n"
-        f"  - Do NOT include any reference to the original function, no `extern \"C\"` wrappers, no `main`.\n"
-        f"  - Do NOT include declarations of `_hls` only (we need full definitions with bodies).\n"
-        f"Reply with one ```cpp ... ``` block, no commentary."
-    )
-
-
-def _hls_friendly_rewrite_message(hls_name: str, csynth_err: str) -> str:
-    err_excerpt = csynth_err.strip()[-1200:] or "(no detailed error)"
-    return (
-        f"The `{hls_name}` signature in your previous testbench is NOT HLS-synthesizable. csynth reported:\n"
-        f"```\n{err_excerpt}\n```\n\n"
-        f"Rewrite the testbench so that the `_hls` declaration is HLS-synthesizable. Apply the following transformations as needed:\n"
-        f"  - Function pointers in args → DROP entirely, or replace with `int` enum dispatch.\n"
-        f"  - `FILE*`, `std::ostream`, mutex types in args (or as referenced struct fields) → DROP the parameter or shrink the struct.\n"
-        f"  - `std::vector`, `std::string`, STL containers → fixed-size arrays parameterized by MACROs.\n"
-        f"  - Pointer-to-pointer args → flatten to single pointer + size scalar.\n"
-        f"The new `_hls` signature can be ANY HLS-synthesizable shape that lets you still validate the golden function's behavior. "
-        f"Keep MACROs and test cases consistent with the new sig. Reply with one ```cpp ... ``` block, no commentary."
+        "The ABI-only CSYNTH check proved that the frozen Candidate ABI is "
+        "not synthesizable. This is an explicit coordinated ABI correction, "
+        "not a coverage-only edit.\n\n"
+        f"Candidate top: `{hls_name}`\n"
+        "CSYNTH evidence:\n```\n"
+        + excerpt
+        + "\n```\n\n"
+        "Rewrite the complete Testbench so that it introduces one new "
+        "HLS-synthesizable Candidate declaration, while preserving the "
+        "Original declaration and meaningful golden-vs-Candidate checks. "
+        "The Testbench must still only forward-declare the Original and "
+        "Candidate tops; it must not define, stub, wrap, or depend on "
+        "implementation-private globals/types/helpers. Correctness takes "
+        "priority over coverage. This coordinated correction will regenerate "
+        "a matching Stub and then re-freeze the new ABI.\n\n"
+        "Reply with exactly one complete ```cpp ... ``` block and no "
+        "commentary."
     )
 
 
@@ -223,71 +528,121 @@ def _feedback_message(
     prev_status: str,
     prev_compile_stderr: str = "",
     prev_run_stderr: str = "",
+    failure_owner: str = "unknown",
+    next_action: str = "",
+    frozen_hls_decl: Optional[str] = None,
+    frozen_macros: Tuple[str, ...] = (),
 ) -> str:
-    if prev_status != "ok":
-        # Feed back the concrete error so the agent can actually fix the bug
-        # (vs. blind retry that repeats the same mistake).
-        error_chunk = ""
-        if prev_status in ("compile_failed", "compile_timeout") and prev_compile_stderr:
-            error_chunk = (
-                f"\n\nCompiler error from the previous attempt (last excerpt):\n"
-                f"```\n{prev_compile_stderr.strip()[-1500:]}\n```\n"
-                f"Diagnose this error and DO NOT repeat the same mistake. "
-                f"If a function declaration / stub signature was wrong, fix that first."
-            )
-        elif prev_status in ("run_timeout",) and prev_run_stderr:
-            error_chunk = (
-                f"\n\nThe previous testbench timed out at runtime. Trailing stderr (last excerpt):\n"
-                f"```\n{prev_run_stderr.strip()[-1500:]}\n```\n"
-                f"Make inputs smaller or avoid the runaway code path; the run must finish within the time limit."
-            )
-        elif prev_status == "run_failed" and prev_run_stderr:
-            error_chunk = (
-                f"\n\nThe previous testbench returned a non-zero status, so it is not qualified. "
-                f"Trailing stderr (last excerpt):\n"
-                f"```\n{prev_run_stderr.strip()[-1500:]}\n```\n"
-                f"Fix the golden-vs-HLS mismatch; coverage alone is not sufficient."
-            )
-        elif prev_status == "qualification_failed" and prev_run_stderr:
-            error_chunk = (
-                f"\n\nThe previous testbench failed the lightweight pre-compile qualification gate:\n"
-                f"```\n{prev_run_stderr.strip()[-1500:]}\n```\n"
-                f"Respect every reported capacity, language-linkage, and persistent-state constraint. Do not repeatedly call a stateful original or delegate the `_hls` stub back to it unless a complete reset is explicitly verified."
-            )
-        elif prev_status in ("no_gcda", "gcov_failed", "missing_orig_gcov") and prev_run_stderr:
-            error_chunk = (
-                f"\n\nThe previous testbench likely crashed during execution (no coverage data was emitted). "
-                f"Trailing stderr (last excerpt):\n"
-                f"```\n{prev_run_stderr.strip()[-1500:]}\n```\n"
-                f"Diagnose the crash (heap corruption, OOB access, etc.). Before merely shrinking inputs, explicitly check whether the original was invoked repeatedly or again through a delegating stub while global/static/heap/allocator state, pointers, trees, queues, counters, or mutated buffers were shared. Regenerate the testbench and matching stub so each side starts from an equivalent clean state; otherwise eliminate repeated original calls or unsafe delegation. Write a NEW testbench whose runs all return normally."
-            )
-        return (
-            f"The previous testbench / stub did not measure cleanly (status: {prev_status})."
-            f"{error_chunk}\n\n"
-            f"Please write a NEW testbench that compiles cleanly, runs to completion, preserves equivalent clean state and independent mutable storage for the original and `_hls` sides, and exercises as much "
-            f"of the original kernel source as possible without violating declared bounds. Reply with one ```cpp ... ``` block containing the "
-            f"complete testbench, no commentary outside it."
+    frozen_block = ""
+    if frozen_hls_decl:
+        frozen_block = (
+            "\n\nFROZEN CANDIDATE ABI — preserve character-for-character:\n"
+            "```cpp\n"
+            + frozen_hls_decl.strip().rstrip(";")
+            + ";\n```"
+        )
+    if frozen_macros:
+        frozen_block += (
+            "\nFROZEN PUBLIC MACROS — preserve character-for-character:\n"
+            "```cpp\n"
+            + "\n".join(frozen_macros)
+            + "\n```"
         )
 
-    uncovered_summary: str
+    if prev_status != "ok":
+        evidence = (
+            prev_compile_stderr.strip()
+            or prev_run_stderr.strip()
+            or "(no detailed diagnostic)"
+        )[-1500:]
+        owner_text = failure_owner or "unknown"
+        diagnostic_context = ""
+        if prev_status == "run_failed":
+            diagnostic_context = (
+                "The previous Testbench returned a non-zero status, so "
+                "coverage alone is not sufficient. "
+            )
+        elif prev_status == "qualification_failed":
+            diagnostic_context = (
+                "The previous Testbench failed the lightweight pre-compile "
+                "qualification gate. Respect every reported capacity, "
+                "language-linkage, and persistent-state constraint. "
+            )
+        elif prev_status in (
+            "no_gcda",
+            "gcov_failed",
+            "missing_orig_gcov",
+        ):
+            diagnostic_context = (
+                "The previous Testbench likely crashed before usable coverage "
+                "data was emitted. Check whether the Original was invoked "
+                "repeatedly or again through a delegating stub while shared "
+                "state remained live; eliminate unsafe delegation and restore "
+                "equivalent clean state. "
+            )
+
+        if next_action == "repair_testbench":
+            instruction = (
+                "Repair only the complete Testbench. Do not modify or "
+                "reimplement either top, and do not change a frozen ABI or "
+                "frozen Public macros."
+            )
+        elif next_action == "repair_abi_testbench_stub":
+            instruction = (
+                "This is ABI/link ownership. Produce a coordinated complete "
+                "Testbench correction; a matching Stub will be regenerated "
+                "and the corrected ABI will be re-frozen."
+            )
+        else:
+            instruction = (
+                "Produce a complete corrected Testbench. A matching Stub will "
+                "be regenerated unless a frozen compatible Stub can be reused."
+            )
+        return (
+            f"Round {round_idx - 1} failed with status `{prev_status}` and "
+            f"tool-backed owner `{owner_text}`.\n"
+            + diagnostic_context
+            + "Diagnostic excerpt:\n```\n"
+            + evidence
+            + "\n```\n"
+            + instruction
+            + "\nTreat Original and Candidate implementations as black boxes. "
+            "Only forward-declare their tops; do not define, stub, wrap, or "
+            "depend on implementation-private globals/types/helpers. "
+            "Correctness takes priority over coverage."
+            + frozen_block
+            + "\nReply with exactly one complete ```cpp ... ``` block and no "
+            "commentary."
+        )
+
     if not uncovered_lines:
-        uncovered_summary = "All lines were covered."
+        uncovered_summary = "All measured lines were covered."
     elif len(uncovered_lines) <= MAX_LISTED_UNCOVERED:
-        uncovered_summary = f"Uncovered line numbers in orig_code.cpp: {uncovered_lines}"
+        uncovered_summary = (
+            "Uncovered line numbers in orig_code.cpp: "
+            + str(uncovered_lines)
+        )
     else:
         uncovered_summary = (
-            f"Uncovered line numbers in orig_code.cpp ({len(uncovered_lines)} lines total; first "
-            f"{MAX_LISTED_UNCOVERED} shown): {uncovered_lines[:MAX_LISTED_UNCOVERED]}"
+            f"{len(uncovered_lines)} lines remain uncovered; first "
+            f"{MAX_LISTED_UNCOVERED}: "
+            + str(uncovered_lines[:MAX_LISTED_UNCOVERED])
         )
 
     return (
-        f"Round {round_idx - 1} testbench achieved {prev_cov:.1f}% line coverage of orig_code.cpp. "
-        f"{uncovered_summary}\n\n"
-        f"Below is the original source with `// UNCOVERED` markers appended to lines the previous testbench did not exercise. "
-        f"Write the next testbench (a new version, not a diff) that ADDITIONALLY covers the marked paths. "
-        f"You may add cases, vary inputs, or add seeds; do not remove cases unless they are dominated by others. Preserve state safety: do not add repeated original calls unless every persistent state component is reset immediately before each invocation, and do not introduce unsafe original delegation in the matching stub.\n\n"
-        f"```cpp\n{annotated_source.rstrip()}\n```\n\n"
-        f"Reply with one ```cpp ... ``` block containing the complete next testbench, no commentary outside it."
+        f"Round {round_idx - 1} passed correctness checks and achieved "
+        f"{prev_cov:.1f}% line coverage. {uncovered_summary}\n\n"
+        "This is coverage-only refinement. Expand deterministic public inputs, "
+        "cases, and checks to exercise additional paths. Do not change the "
+        "Candidate ABI, frozen Public macros, Original/Candidate linkage, or "
+        "the golden-vs-Candidate correctness contract. Do not add private "
+        "globals/types/helpers. The existing matching Stub will be reused."
+        + frozen_block
+        + "\n\nOriginal source annotated with `// UNCOVERED` markers:\n"
+        "```cpp\n"
+        + annotated_source.rstrip()
+        + "\n```\n\nReply with exactly one complete ```cpp ... ``` block and "
+        "no commentary."
     )
 
 
@@ -904,6 +1259,22 @@ def _append_round(
         "qualification_errors": list(
             cov.get("qualification_errors", [])
         ),
+        "failure_owner": cov.get(
+            "failure_owner",
+            "none" if cov.get("status") == "ok" else "unknown",
+        ),
+        "next_action": cov.get(
+            "next_action",
+            (
+                "continue_validation"
+                if cov.get("status") == "ok"
+                else "repair_testbench_stub"
+            ),
+        ),
+        "failure_evidence_source": cov.get(
+            "failure_evidence_source",
+            "legacy coverage result",
+        ),
         **extra,
     }
     rounds.append(record)
@@ -933,6 +1304,7 @@ def run_trajectory(
 ) -> Dict[str, Any]:
     if isinstance(K, bool) or not isinstance(K, int) or K < 1:
         raise ValueError("K must be a positive integer")
+
     loader = HLSAgentLoader(
         AGENT_YAML,
         llm_config_override=llm_config,
@@ -941,117 +1313,386 @@ def run_trajectory(
     agent = loader.load_agent(AGENT_NAME)
     hls_name = f"{kernel_name}_hls"
     rounds: List[Dict[str, Any]] = []
+    external_abi_frozen = bool(
+        isinstance(pinned_hls_decl, str)
+        and pinned_hls_decl.strip()
+    )
+    frozen_hls_decl = (
+        _normalize_declaration(pinned_hls_decl)
+        if external_abi_frozen
+        else ""
+    )
+    frozen_macros: Tuple[str, ...] = ()
+    reusable_stub = ""
 
-    tb_code = _request_cpp_artifact(
-        agent,
+    def request_testbench(
+        message: str,
+        *,
+        first_turn: bool,
+    ) -> str:
+        value = _request_cpp_artifact(
+            agent,
+            message,
+            first_turn=first_turn,
+            artifact_kind="testbench",
+            required_symbol=hls_name,
+        )
+        validate_testbench_top_contract(
+            value,
+            kernel_name,
+            hls_name,
+        )
+        return value
+
+    def request_stub(
+        testbench_code: str,
+        *,
+        message: Optional[str] = None,
+    ) -> Tuple[str, str]:
+        declaration = extract_hls_decl_from_testbench(
+            testbench_code,
+            hls_name,
+        )
+        if not declaration:
+            raise ModelArtifactError(
+                "Testbench does not expose a Candidate declaration"
+            )
+        value = _request_cpp_artifact(
+            agent,
+            (
+                message
+                if message is not None
+                else _stub_request_message(
+                    kernel_name,
+                    declaration,
+                )
+            ),
+            first_turn=False,
+            artifact_kind="stub",
+            required_symbol=hls_name,
+        )
+        value = _ensure_original_forward_declaration(
+            value,
+            orig_code,
+            kernel_name,
+        )
+        validate_stub_contract(
+            value,
+            original_name=kernel_name,
+            candidate_name=hls_name,
+            frozen_hls_decl=declaration,
+        )
+        return value, _normalize_declaration(declaration)
+
+    testbench_code = request_testbench(
         _initial_user_message(
             orig_code,
             kernel_name,
             pinned_public_hls_decl=pinned_hls_decl,
         ),
         first_turn=True,
-        artifact_kind="testbench",
-        required_symbol=hls_name,
     )
-    stub_code = _request_cpp_artifact(
-        agent,
-        _stub_request_message(
-            kernel_name,
-            _extract_seed_hls_decl(tb_code, hls_name),
-        ),
-        first_turn=False,
-        artifact_kind="stub",
-        required_symbol=hls_name,
-    )
-    stub_code = _ensure_original_forward_declaration(
-        stub_code,
-        orig_code,
-        kernel_name,
-    )
+    if external_abi_frozen:
+        _validate_frozen_candidate_abi(
+            testbench_code,
+            hls_name,
+            frozen_hls_decl,
+        )
+    stub_code, current_decl = request_stub(testbench_code)
     coverage = _measure_qualified_coverage(
         orig_code,
-        tb_code,
+        testbench_code,
         stub_code,
         kernel_name,
         budget=budget,
     )
+
+    if coverage.get("status") == "ok":
+        observed_decl, observed_macros = _freeze_public_contract(
+            testbench_code,
+            hls_name,
+        )
+        if external_abi_frozen:
+            _validate_frozen_candidate_abi(
+                testbench_code,
+                hls_name,
+                frozen_hls_decl,
+            )
+            frozen_macros = observed_macros
+        else:
+            frozen_hls_decl = observed_decl
+            frozen_macros = observed_macros
+        reusable_stub = stub_code
+
     _append_round(
         rounds,
         trajectory_idx=trajectory_idx,
         round_index=1,
-        tb_code=tb_code,
+        tb_code=testbench_code,
         stub_code=stub_code,
         cov=coverage,
         artifact_root=artifact_root,
+        ownership_action="initial_generation",
+        testbench_reused=False,
+        stub_reused=False,
+        frozen_public_hls_decl=frozen_hls_decl,
+        frozen_public_macros=list(frozen_macros),
+        abi_decl=current_decl,
     )
 
     for round_index in range(2, K + 1):
-        if (rounds[-1].get("cov_pct") or 0.0) >= target_pct:
-            break
         previous = rounds[-1]
-        previous_status = previous.get("status") or "unknown"
-        annotated = (
-            annotate_uncovered_source(
-                orig_code,
-                previous.get("uncovered_lines", []),
+        if (
+            previous.get("status") == "ok"
+            and (previous.get("cov_pct") or 0.0) >= target_pct
+        ):
+            break
+
+        action = _coverage_action(previous)
+        if (
+            external_abi_frozen
+            and action == "repair_abi_testbench_stub"
+        ):
+            action = "repair_testbench_stub"
+        if action in {"review_toolchain", "review_original"}:
+            break
+        testbench_reused = False
+        stub_reused = False
+        previous_error = (
+            str(previous.get("compile_stderr") or "")
+            or str(previous.get("run_stderr") or "")
+            or str(previous.get("status") or "unknown")
+        )
+
+        if action == "regenerate_stub":
+            testbench_code = str(previous["tb_code"])
+            declaration = (
+                frozen_hls_decl
+                or extract_hls_decl_from_testbench(
+                    testbench_code,
+                    hls_name,
+                )
             )
-            if previous_status == "ok"
-            else orig_code
-        )
-        feedback = _feedback_message(
-            round_index,
-            previous.get("cov_pct") or 0.0,
-            previous.get("uncovered_lines", []),
-            annotated,
-            previous_status,
-            prev_compile_stderr=previous.get(
-                "compile_stderr",
-                "",
-            ),
-            prev_run_stderr=previous.get("run_stderr", ""),
-        )
-        feedback += (
-            f"\n\nREMINDER: The `{hls_name}` declaration and all MACROs "
-            "must remain compatible. A new matching stub will be generated "
-            "for this round."
-        )
-        tb_code = _request_cpp_artifact(
-            agent,
-            feedback,
-            first_turn=False,
-            artifact_kind="testbench",
-            required_symbol=hls_name,
-        )
-        stub_code = _request_cpp_artifact(
-            agent,
-            _stub_request_message(
-                kernel_name,
-                _extract_seed_hls_decl(tb_code, hls_name),
-            ),
-            first_turn=False,
-            artifact_kind="stub",
-            required_symbol=hls_name,
-        )
-        stub_code = _ensure_original_forward_declaration(
-            stub_code,
-            orig_code,
-            kernel_name,
-        )
+            stub_code, current_decl = request_stub(
+                testbench_code,
+                message=_stub_request_message(
+                    kernel_name,
+                    declaration,
+                    failure_excerpt=previous_error,
+                ),
+            )
+            testbench_reused = True
+
+        elif action == "expand_inputs_preserve_abi":
+            if not frozen_hls_decl or not reusable_stub:
+                action = "repair_testbench_stub"
+            else:
+                annotated = annotate_uncovered_source(
+                    orig_code,
+                    previous.get("uncovered_lines", []),
+                )
+                testbench_code = request_testbench(
+                    _feedback_message(
+                        round_index,
+                        previous.get("cov_pct") or 0.0,
+                        previous.get("uncovered_lines", []),
+                        annotated,
+                        "ok",
+                        failure_owner="coverage",
+                        next_action=action,
+                        frozen_hls_decl=frozen_hls_decl,
+                        frozen_macros=frozen_macros,
+                    ),
+                    first_turn=False,
+                )
+                try:
+                    _validate_frozen_public_contract(
+                        testbench_code,
+                        hls_name,
+                        frozen_hls_decl,
+                        frozen_macros,
+                    )
+                except ModelArtifactError as exc:
+                    _append_round(
+                        rounds,
+                        trajectory_idx=trajectory_idx,
+                        round_index=round_index,
+                        tb_code=testbench_code,
+                        stub_code=reusable_stub,
+                        cov=_coverage_contract_failure(str(exc)),
+                        artifact_root=artifact_root,
+                        ownership_action=action,
+                        testbench_reused=False,
+                        stub_reused=True,
+                        frozen_public_hls_decl=frozen_hls_decl,
+                        frozen_public_macros=list(frozen_macros),
+                        abi_decl=frozen_hls_decl,
+                    )
+                    continue
+                stub_code = reusable_stub
+                current_decl = frozen_hls_decl
+                stub_reused = True
+
+        if action == "repair_testbench":
+            annotated = (
+                annotate_uncovered_source(
+                    orig_code,
+                    previous.get("uncovered_lines", []),
+                )
+                if previous.get("status") == "ok"
+                else orig_code
+            )
+            testbench_code = request_testbench(
+                _feedback_message(
+                    round_index,
+                    previous.get("cov_pct") or 0.0,
+                    previous.get("uncovered_lines", []),
+                    annotated,
+                    str(previous.get("status") or "unknown"),
+                    prev_compile_stderr=str(
+                        previous.get("compile_stderr") or ""
+                    ),
+                    prev_run_stderr=str(
+                        previous.get("run_stderr") or ""
+                    ),
+                    failure_owner=str(
+                        previous.get("failure_owner") or "testbench"
+                    ),
+                    next_action=action,
+                    frozen_hls_decl=(
+                        frozen_hls_decl or None
+                    ),
+                    frozen_macros=frozen_macros,
+                ),
+                first_turn=False,
+            )
+            if frozen_hls_decl and reusable_stub:
+                try:
+                    _validate_frozen_public_contract(
+                        testbench_code,
+                        hls_name,
+                        frozen_hls_decl,
+                        frozen_macros,
+                    )
+                except ModelArtifactError as exc:
+                    _append_round(
+                        rounds,
+                        trajectory_idx=trajectory_idx,
+                        round_index=round_index,
+                        tb_code=testbench_code,
+                        stub_code=reusable_stub,
+                        cov=_coverage_contract_failure(str(exc)),
+                        artifact_root=artifact_root,
+                        ownership_action=action,
+                        testbench_reused=False,
+                        stub_reused=True,
+                        frozen_public_hls_decl=frozen_hls_decl,
+                        frozen_public_macros=list(frozen_macros),
+                        abi_decl=frozen_hls_decl,
+                    )
+                    continue
+                stub_code = reusable_stub
+                current_decl = frozen_hls_decl
+                stub_reused = True
+            else:
+                stub_code, current_decl = request_stub(
+                    testbench_code
+                )
+
+        elif action == "repair_abi_testbench_stub":
+            testbench_code = request_testbench(
+                _hls_friendly_rewrite_message(
+                    hls_name,
+                    previous_error,
+                ),
+                first_turn=False,
+            )
+            stub_code, current_decl = request_stub(testbench_code)
+
+        elif action == "repair_testbench_stub":
+            testbench_code = request_testbench(
+                _feedback_message(
+                    round_index,
+                    previous.get("cov_pct") or 0.0,
+                    previous.get("uncovered_lines", []),
+                    orig_code,
+                    str(previous.get("status") or "unknown"),
+                    prev_compile_stderr=str(
+                        previous.get("compile_stderr") or ""
+                    ),
+                    prev_run_stderr=str(
+                        previous.get("run_stderr") or ""
+                    ),
+                    failure_owner=str(
+                        previous.get("failure_owner") or "unknown"
+                    ),
+                    next_action=action,
+                    frozen_hls_decl=(
+                        frozen_hls_decl or None
+                    ),
+                    frozen_macros=frozen_macros,
+                ),
+                first_turn=False,
+            )
+            stub_code, current_decl = request_stub(testbench_code)
+
         coverage = _measure_qualified_coverage(
             orig_code,
-            tb_code,
+            testbench_code,
             stub_code,
             kernel_name,
             budget=budget,
         )
+
+        if coverage.get("status") == "ok":
+            observed_decl, observed_macros = _freeze_public_contract(
+                testbench_code,
+                hls_name,
+            )
+            if external_abi_frozen:
+                _validate_frozen_candidate_abi(
+                    testbench_code,
+                    hls_name,
+                    frozen_hls_decl,
+                )
+                if frozen_macros:
+                    _validate_frozen_public_contract(
+                        testbench_code,
+                        hls_name,
+                        frozen_hls_decl,
+                        frozen_macros,
+                    )
+                else:
+                    frozen_macros = observed_macros
+            elif (
+                not frozen_hls_decl
+                or action == "repair_abi_testbench_stub"
+            ):
+                frozen_hls_decl = observed_decl
+                frozen_macros = observed_macros
+            else:
+                _validate_frozen_public_contract(
+                    testbench_code,
+                    hls_name,
+                    frozen_hls_decl,
+                    frozen_macros,
+                )
+            reusable_stub = stub_code
+
         _append_round(
             rounds,
             trajectory_idx=trajectory_idx,
             round_index=round_index,
-            tb_code=tb_code,
+            tb_code=testbench_code,
             stub_code=stub_code,
             cov=coverage,
             artifact_root=artifact_root,
+            ownership_action=action,
+            testbench_reused=testbench_reused,
+            stub_reused=stub_reused,
+            frozen_public_hls_decl=frozen_hls_decl,
+            frozen_public_macros=list(frozen_macros),
+            abi_decl=current_decl,
         )
 
     return _finalize_trajectory(
@@ -1064,8 +1705,8 @@ def run_trajectory(
         emit_final_text=emit_final_text,
         budget=budget,
         artifact_root=artifact_root,
+        allow_abi_correction=not external_abi_frozen,
     )
-
 
 
 def _finalize_trajectory(
@@ -1079,6 +1720,7 @@ def _finalize_trajectory(
     synth_retry_budget: int = 1,
     budget: Any = None,
     artifact_root: Optional[str] = None,
+    allow_abi_correction: bool = True,
 ) -> Dict[str, Any]:
     ok_rounds = [
         record
@@ -1106,33 +1748,52 @@ def _finalize_trajectory(
             ),
             "qualified": False,
             "trajectory_status": "coverage_failed",
+            "frozen_public_hls_decl": "",
+            "frozen_public_macros": [],
         }
 
-    best = max(ok_rounds, key=lambda record: record["cov_pct"])
+    best = max(
+        ok_rounds,
+        key=lambda record: record["cov_pct"],
+    )
     synth_ok = False
     synth_error = ""
     empty_stub = ""
 
     if expected_hls_name and orig_code is not None:
+        original_name = (
+            expected_hls_name[:-4]
+            if expected_hls_name.endswith("_hls")
+            else expected_hls_name
+        )
         retries_left = synth_retry_budget
         while True:
-            message = _empty_stub_request_message(expected_hls_name)
-            best_decl = _extract_seed_hls_decl(
-                best["tb_code"],
-                expected_hls_name,
+            best_decl = (
+                str(best.get("frozen_public_hls_decl") or "")
+                or extract_hls_decl_from_testbench(
+                    str(best["tb_code"]),
+                    expected_hls_name,
+                )
             )
-            if best_decl:
-                message += (
-                    "\n\nUse this exact declaration:\n```cpp\n"
-                    + best_decl.rstrip()
-                    + ";\n```"
+            if not best_decl:
+                raise ModelArtifactError(
+                    "qualified Testbench lost its Candidate ABI"
                 )
             empty_stub = _request_cpp_artifact(
                 agent,
-                message,
+                _empty_stub_request_message(
+                    expected_hls_name,
+                    best_decl,
+                ),
                 first_turn=False,
                 artifact_kind="empty_stub",
                 required_symbol=expected_hls_name,
+            )
+            validate_stub_contract(
+                empty_stub,
+                original_name=original_name,
+                candidate_name=expected_hls_name,
+                frozen_hls_decl=best_decl,
             )
             with tempfile.TemporaryDirectory(
                 prefix=f"synth_check_traj{trajectory_idx}_"
@@ -1143,8 +1804,13 @@ def _finalize_trajectory(
                     work_dir,
                     budget=budget,
                 )
-            if synth_ok or retries_left <= 0:
+            if (
+                synth_ok
+                or retries_left <= 0
+                or not allow_abi_correction
+            ):
                 break
+
             retries_left -= 1
             new_tb = _request_cpp_artifact(
                 agent,
@@ -1156,19 +1822,25 @@ def _finalize_trajectory(
                 artifact_kind="testbench",
                 required_symbol=expected_hls_name,
             )
-            original_name = (
-                expected_hls_name[:-4]
-                if expected_hls_name.endswith("_hls")
-                else expected_hls_name
+            validate_testbench_top_contract(
+                new_tb,
+                original_name,
+                expected_hls_name,
             )
+            new_decl = extract_hls_decl_from_testbench(
+                new_tb,
+                expected_hls_name,
+            )
+            if not new_decl:
+                raise ModelArtifactError(
+                    "coordinated ABI correction returned no Candidate ABI"
+                )
             new_stub = _request_cpp_artifact(
                 agent,
                 _stub_request_message(
                     original_name,
-                    _extract_seed_hls_decl(
-                        new_tb,
-                        expected_hls_name,
-                    ),
+                    new_decl,
+                    failure_excerpt=synth_error,
                 ),
                 first_turn=False,
                 artifact_kind="stub",
@@ -1179,6 +1851,12 @@ def _finalize_trajectory(
                 orig_code,
                 original_name,
             )
+            validate_stub_contract(
+                new_stub,
+                original_name=original_name,
+                candidate_name=expected_hls_name,
+                frozen_hls_decl=new_decl,
+            )
             new_coverage = _measure_qualified_coverage(
                 orig_code,
                 new_tb,
@@ -1186,6 +1864,13 @@ def _finalize_trajectory(
                 original_name,
                 budget=budget,
             )
+            frozen_decl = ""
+            frozen_macros: Tuple[str, ...] = ()
+            if new_coverage.get("status") == "ok":
+                frozen_decl, frozen_macros = _freeze_public_contract(
+                    new_tb,
+                    expected_hls_name,
+                )
             new_record = _append_round(
                 rounds,
                 trajectory_idx=trajectory_idx,
@@ -1195,6 +1880,13 @@ def _finalize_trajectory(
                 cov=new_coverage,
                 artifact_root=artifact_root,
                 synth_retry=True,
+                ownership_action="repair_abi_testbench_stub",
+                testbench_reused=False,
+                stub_reused=False,
+                abi_refrozen=bool(frozen_decl),
+                frozen_public_hls_decl=frozen_decl,
+                frozen_public_macros=list(frozen_macros),
+                abi_decl=_normalize_declaration(new_decl),
             )
             if (
                 new_record.get("status") != "ok"
@@ -1203,7 +1895,7 @@ def _finalize_trajectory(
                 synth_error = (
                     new_record.get("compile_stderr")
                     or new_record.get("run_stderr")
-                    or "synth-retry coverage failed"
+                    or "coordinated ABI correction failed"
                 )
                 break
             best = new_record
@@ -1216,30 +1908,56 @@ def _finalize_trajectory(
             "best_tb": best["tb_code"],
             "best_stub": best["stub_code"],
             "best_empty_stub": empty_stub,
-            "best_uncovered_lines": best.get("uncovered_lines", []),
+            "best_uncovered_lines": best.get(
+                "uncovered_lines",
+                [],
+            ),
             "final_text": "",
             "rounds": rounds,
             "synth_ok": False,
             "synth_error": synth_error,
             "qualified": False,
             "trajectory_status": "synth_failed",
+            "frozen_public_hls_decl": best.get(
+                "frozen_public_hls_decl",
+                "",
+            ),
+            "frozen_public_macros": best.get(
+                "frozen_public_macros",
+                [],
+            ),
         }
+
+    common = {
+        "trajectory_idx": trajectory_idx,
+        "best_round": best["round"],
+        "best_cov": best.get("cov_pct") or 0.0,
+        "best_tb": best["tb_code"],
+        "best_stub": best["stub_code"],
+        "best_empty_stub": empty_stub,
+        "best_uncovered_lines": best.get(
+            "uncovered_lines",
+            [],
+        ),
+        "rounds": rounds,
+        "synth_ok": True,
+        "synth_error": "",
+        "qualified": True,
+        "trajectory_status": "qualified",
+        "frozen_public_hls_decl": best.get(
+            "frozen_public_hls_decl",
+            "",
+        ),
+        "frozen_public_macros": best.get(
+            "frozen_public_macros",
+            [],
+        ),
+    }
 
     if not emit_final_text:
         return {
-            "trajectory_idx": trajectory_idx,
-            "best_round": best["round"],
-            "best_cov": best.get("cov_pct") or 0.0,
-            "best_tb": best["tb_code"],
-            "best_stub": best["stub_code"],
-            "best_empty_stub": empty_stub,
-            "best_uncovered_lines": best.get("uncovered_lines", []),
+            **common,
             "final_text": "",
-            "rounds": rounds,
-            "synth_ok": True,
-            "synth_error": "",
-            "qualified": True,
-            "trajectory_status": "qualified",
         }
 
     final_raw = _agent_run_once(
@@ -1252,27 +1970,17 @@ def _finalize_trajectory(
         ),
         first_turn=False,
     )
-    final_text = tools.general.strip_thinking(final_raw).strip()
+    final_text = tools.general.strip_thinking(
+        final_raw
+    ).strip()
     if not final_text:
         raise ModelArtifactError(
             "model returned an empty final instruction/specification"
         )
     return {
-        "trajectory_idx": trajectory_idx,
-        "best_round": best["round"],
-        "best_cov": best.get("cov_pct") or 0.0,
-        "best_tb": best["tb_code"],
-        "best_stub": best["stub_code"],
-        "best_empty_stub": empty_stub,
-        "best_uncovered_lines": best.get("uncovered_lines", []),
+        **common,
         "final_text": final_text,
-        "rounds": rounds,
-        "synth_ok": True,
-        "synth_error": "",
-        "qualified": True,
-        "trajectory_status": "qualified",
     }
-
 
 
 # -------------------------- public-facing entrypoints --------------------------
@@ -1392,6 +2100,14 @@ def optimize_tb_public(
         "rounds": best["rounds"],
         "trajectories": trajectories,
         "qualified": True,
+        "frozen_public_hls_decl": best.get(
+            "frozen_public_hls_decl",
+            "",
+        ),
+        "frozen_public_macros": best.get(
+            "frozen_public_macros",
+            [],
+        ),
     }
 
 

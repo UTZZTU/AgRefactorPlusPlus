@@ -369,8 +369,8 @@ PRE_STAGE3_CLOSED=true
 ## 5. 当前执行指针
 
 ```text
-ACTIVE_STEP=D
-ACTIVE_SUBSTEP=D Testbench/stub Prompt and error ownership
+ACTIVE_STEP=E
+ACTIVE_SUBSTEP=E repair budget parameterization
 P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
@@ -430,6 +430,25 @@ See [`P0_DUAL_GENERATION_PROFILES.md`](P0_DUAL_GENERATION_PROFILES.md).
 ```text
 STEP_C=completed
 ACTIVE_STEP=D
+DEFAULT_LLM_CALLS=32
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```
+
+<!-- P0_STEP_D_TESTBENCH_STUB_PROMPT_REFINEMENT -->
+## Step D completion: Testbench/Stub Prompt and error ownership
+
+Testbench generation and repair now use the same black-box top-function contract.
+The first qualified coverage round freezes the Candidate ABI and Public macros;
+coverage-only rounds preserve that contract and reuse the matching Stub. Real
+compiler/link/runtime evidence routes Testbench, Stub and ABI failures to their
+own correction paths. See
+[`P0_TESTBENCH_STUB_PROMPT_REFINEMENT.md`](P0_TESTBENCH_STUB_PROMPT_REFINEMENT.md).
+
+```text
+STEP_D=completed
+ACTIVE_STEP=E
 DEFAULT_LLM_CALLS=32
 P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false

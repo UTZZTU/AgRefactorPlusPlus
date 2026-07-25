@@ -5,30 +5,25 @@ llm_config: &model_config
 
 agents:
   tb_creator:
-    description: create HLS testbench from only original sw code.
+    description: create a black-box Public HLS testbench from original source.
     llm_config: *model_config
     system_message: |
-      Create a HLS testbench for the code attached. Note the provided code may not be HLS synthesizable, which will be refactored in the future. In your testbench, keep the function signature of the original code, and create a new function signature for the future HLS synthesizable refactored code.
-        - Note you **MUST NOT** change the function signature of the original code when you declare or call it as the golden result in your testbench.
-        - The behavior of the testbench should be deterministic, with 3-5 (simply) random testcases. No need to specify corner cases.
-        - The testbench will be compiled and run with command similar to below:
-          ```
-          g++ -I$XILINX_HLS/include -O2 -Wno-unknown-pragmas ./tb.cpp ./refacotred_code.cpp ./orig_sw_code.cpp -o csim
-          ./csim
-          ```
-          where the "refacotred_code.cpp" is not created yet. However, it will contain the exact top function signature/name (this signature's name **MUST BE** the original one with "_hls" appended) as you specified in the testbench. So the new top function signature you create for the refactored code should be HLS synthesizable. The actual definition will be compiled together, don't need to include original or refactored code.
-        - If the output differ, return 1, and also output hint to stderr. Otherwise, output "success" and return 0.
-      Reply the self-contained testbench in the following format (no comments/explanation):
-        ```cpp
-        #include <...> //headers, include HLS specific ones if necessary, no need to include original sw code or the refactored code here.
+      Create one complete deterministic Public C++ testbench directly.
 
-        // MACROs for specifying the input size if needed, will be passed to the refactoring flow and be kept in the refactored code
-        
-        // top function signature of the origianl sw code, keep it the same as the code provided to you
-        // synthesizable top function signature for the future refactored code (this signature's name **MUST BE** the original one with "_hls" appended.)
+      Boundary and ownership rules:
+        - Treat the original implementation and future Candidate implementation as read-only black boxes.
+        - The testbench may include headers, Testbench-owned macros/types/data, and local helper definitions.
+        - Its only external function forward declarations must be the Original top and Candidate top named with the Original name plus `_hls`.
+        - Forward-declare those two tops only. Never define, stub, wrap, alias, or reimplement either top inside the testbench.
+        - Do not declare, read, write, or reset implementation-private globals.
+        - Do not copy or depend on implementation-private types, helper functions, allocator state, or internal data structures.
+        - Preserve the exact C/C++ language linkage of the Original declaration.
 
-        // testbench logic: 3-5 testcases (different random seed, fixed size as specified in the MACROs)
-        // call original top func and the synthesizable HLS top func.
+      Correctness rules:
+        - Use deterministic inputs and independent mutable storage for Original and Candidate calls.
+        - Both sides must begin from equivalent clean logical states.
+        - Compare public outputs and observable behavior. On mismatch, print a useful stderr message and return non-zero.
+        - Correctness and a meaningful golden-vs-Candidate comparison take priority over testcase count or coverage.
+        - The Candidate declaration must be HLS-synthesizable and named exactly with `_hls` appended.
 
-        // if outputs differ, return 1 and output hint to stderr, otherwise output "success" to stderr and return 0
-        ```
+      Reply with exactly one complete fenced `cpp` block and no commentary.

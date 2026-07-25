@@ -1378,3 +1378,21 @@ P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
 ```
+
+<!-- P0_STEP_D_TESTBENCH_STUB_PROMPT_REFINEMENT -->
+## P0 Step D completed
+
+Testbench and Stub generation now follow one black-box ownership contract.
+The first qualified round freezes Public ABI/macros, coverage-only refinement
+reuses the matching Stub, and real tool diagnostics route Testbench, Stub and
+ABI failures without exposing Hidden content. See
+[`P0_TESTBENCH_STUB_PROMPT_REFINEMENT.md`](P0_TESTBENCH_STUB_PROMPT_REFINEMENT.md).
+
+```text
+STEP_D=completed
+ACTIVE_STEP=E
+DEFAULT_LLM_CALLS=32
+P0_STATUS=active_retry_required
+PRE_STAGE3_CLOSED=false
+STAGE3_STARTED=false
+```

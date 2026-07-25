@@ -106,6 +106,65 @@ def _parse_gcov_file(path: str) -> dict[int, int]:
     return hits
 
 
+_COMPILE_OWNER_ACTION = {
+    "testbench": "repair_testbench",
+    "stub": "regenerate_stub",
+    "original": "review_original",
+    "abi": "repair_abi_testbench_stub",
+    "toolchain": "review_toolchain",
+    "unknown": "repair_testbench_stub",
+}
+
+
+def _classify_compile_failure_owner(stderr: str) -> str:
+    """Classify a real compiler/linker failure from emitted diagnostics."""
+
+    text = str(stderr or "")
+    lowered = text.lower()
+    if "undefined reference" in lowered or "multiple definition" in lowered:
+        return "abi"
+
+    files: set[str] = set()
+    for line in text.splitlines():
+        lowered_line = line.lower()
+        if "error:" not in lowered_line and "fatal error:" not in lowered_line:
+            continue
+        for filename, owner in (
+            ("testbench.cpp", "testbench"),
+            ("refactor_code.cpp", "stub"),
+            ("orig_code.cpp", "original"),
+        ):
+            if filename in line:
+                files.add(owner)
+
+    if len(files) == 1:
+        return next(iter(files))
+    if len(files) > 1:
+        return "abi"
+    if "collect2:" in lowered or "ld returned" in lowered:
+        return "abi"
+    return "unknown"
+
+
+def _finish_failure(
+    result: dict,
+    *,
+    status: str,
+    owner: str,
+    action: str | None = None,
+    evidence_source: str,
+) -> dict:
+    result["status"] = status
+    result["failure_owner"] = owner
+    result["next_action"] = (
+        action
+        if action is not None
+        else _COMPILE_OWNER_ACTION.get(owner, "repair_testbench_stub")
+    )
+    result["failure_evidence_source"] = evidence_source
+    return result
+
+
 def measure_coverage(
     orig_code: str,
     tb_code: str,
@@ -114,27 +173,8 @@ def measure_coverage(
     keep_dir: Optional[str] = None,
     budget: Any = None,
 ) -> dict:
-    """Compile+run testbench against orig+stub; return coverage of target_source.
+    """Compile, run, and measure coverage with tool-backed ownership evidence."""
 
-    Args:
-        orig_code: contents of orig_code.cpp
-        tb_code: contents of testbench.cpp
-        stub_code: contents of refactor_code.cpp (stub OR real refactor for hidden eval)
-        target_source: which file to score (default orig_code.cpp)
-        keep_dir: if set, write artifacts under this dir instead of a temp dir
-                  (the dir must already exist; useful for hidden eval diagnostics)
-
-    Returns dict with keys:
-        status: ok | compile_failed | compile_timeout | run_failed | run_timeout |
-                gcov_failed | no_gcda | missing_orig_gcov
-        cov_pct: float | None
-        lines_total: int | None
-        lines_hit: int | None
-        uncovered_lines: list[int]  (empty unless status=ok)
-        run_returncode: int | None
-        compile_stderr: str
-        run_stderr: str
-    """
     res = {
         "status": "",
         "cov_pct": None,
@@ -144,6 +184,9 @@ def measure_coverage(
         "run_returncode": None,
         "compile_stderr": "",
         "run_stderr": "",
+        "failure_owner": "none",
+        "next_action": "continue_validation",
+        "failure_evidence_source": "none",
     }
 
     if keep_dir is not None:
@@ -160,107 +203,196 @@ def measure_coverage(
             "refactor_code.cpp": stub_code,
         }
         for name, content in contents.items():
-            with open(os.path.join(tmp, name), "w", encoding="utf-8") as f:
-                f.write(content)
+            with open(
+                os.path.join(tmp, name),
+                "w",
+                encoding="utf-8",
+            ) as file:
+                file.write(content)
 
-        # Compile (with HLS include fallback if first attempt fails).
         compiled = False
-        for include_flag in (None, f"-I{XILINX_INCLUDE_FALLBACK}"):
+        for include_flag in (
+            None,
+            f"-I{XILINX_INCLUDE_FALLBACK}",
+        ):
             cmd = list(COMPILE_BASE)
             if include_flag is not None:
                 cmd.insert(1, include_flag)
             try:
-                _consume_tool_launch(budget, compile_calls=1)
-                r = subprocess.run(
-                    cmd, cwd=tmp, capture_output=True, text=True, timeout=COMPILE_TIMEOUT
+                _consume_tool_launch(
+                    budget,
+                    compile_calls=1,
+                )
+                completed = subprocess.run(
+                    cmd,
+                    cwd=tmp,
+                    capture_output=True,
+                    text=True,
+                    timeout=COMPILE_TIMEOUT,
                 )
             except subprocess.TimeoutExpired:
-                res["status"] = "compile_timeout"
-                return res
-            if r.returncode == 0:
+                return _finish_failure(
+                    res,
+                    status="compile_timeout",
+                    owner="toolchain",
+                    evidence_source="g++ timeout",
+                )
+            if completed.returncode == 0:
                 compiled = True
                 res["compile_stderr"] = ""
                 break
-            res["compile_stderr"] = r.stderr[-2000:]
+            res["compile_stderr"] = completed.stderr[-2000:]
+
         if not compiled:
-            res["status"] = "compile_failed"
-            return res
-
-        # Run.
-        try:
-            _consume_tool_launch(budget, csim_calls=1)
-            r = subprocess.run(
-                ["./csim_cov"], cwd=tmp, capture_output=True, text=True, timeout=RUN_TIMEOUT
+            owner = _classify_compile_failure_owner(
+                res["compile_stderr"]
             )
-            res["run_returncode"] = r.returncode
-            res["run_stderr"] = r.stderr[-2000:]
-            if r.returncode != 0:
-                # A generated testbench that reports a golden-vs-HLS mismatch
-                # is not qualified, even if partial gcov data exists.
-                res["status"] = "run_failed"
-                return res
-        except subprocess.TimeoutExpired:
-            res["status"] = "run_timeout"
-            return res
+            return _finish_failure(
+                res,
+                status="compile_failed",
+                owner=owner,
+                evidence_source="g++ diagnostics",
+            )
 
-        # Find gcda for target file. gcc 9+ prefixes the executable name.
+        try:
+            _consume_tool_launch(
+                budget,
+                csim_calls=1,
+            )
+            completed = subprocess.run(
+                ["./csim_cov"],
+                cwd=tmp,
+                capture_output=True,
+                text=True,
+                timeout=RUN_TIMEOUT,
+            )
+            res["run_returncode"] = completed.returncode
+            res["run_stderr"] = completed.stderr[-2000:]
+            if completed.returncode != 0:
+                return _finish_failure(
+                    res,
+                    status="run_failed",
+                    owner="stub",
+                    action="regenerate_stub",
+                    evidence_source="program return code",
+                )
+        except subprocess.TimeoutExpired:
+            return _finish_failure(
+                res,
+                status="run_timeout",
+                owner="testbench",
+                action="repair_testbench",
+                evidence_source="program timeout",
+            )
+
         gcda_files = sorted(
-            f for f in os.listdir(tmp) if f.endswith(".gcda")
+            name
+            for name in os.listdir(tmp)
+            if name.endswith(".gcda")
         )
         if not gcda_files:
-            res["status"] = "no_gcda"
-            return res
+            return _finish_failure(
+                res,
+                status="no_gcda",
+                owner="toolchain",
+                action="review_toolchain",
+                evidence_source="gcov artifact discovery",
+            )
+
         stem = target_source.replace(".cpp", "")
         target_gcda = next(
-            (g for g in gcda_files
-             if g.endswith(f"-{stem}.gcda") or g == f"{stem}.gcda"),
+            (
+                item
+                for item in gcda_files
+                if item.endswith(f"-{stem}.gcda")
+                or item == f"{stem}.gcda"
+            ),
             None,
         )
         if target_gcda is None:
-            res["status"] = "no_gcda"
-            return res
+            return _finish_failure(
+                res,
+                status="no_gcda",
+                owner="toolchain",
+                action="review_toolchain",
+                evidence_source="gcov target discovery",
+            )
 
-        # First pass: gcov -n for summary.
         try:
             _consume_tool_launch(budget)
-            g = subprocess.run(
+            summary = subprocess.run(
                 ["gcov", "-n", target_gcda],
-                cwd=tmp, capture_output=True, text=True, timeout=GCOV_TIMEOUT,
+                cwd=tmp,
+                capture_output=True,
+                text=True,
+                timeout=GCOV_TIMEOUT,
             )
         except subprocess.TimeoutExpired:
-            res["status"] = "gcov_failed"
-            return res
-        if g.returncode != 0:
-            res["status"] = "gcov_failed"
-            res["run_stderr"] = g.stderr[-2000:]
-            return res
+            return _finish_failure(
+                res,
+                status="gcov_failed",
+                owner="toolchain",
+                action="review_toolchain",
+                evidence_source="gcov timeout",
+            )
 
-        summaries = _parse_gcov_n_stdout(g.stdout)
+        if summary.returncode != 0:
+            res["run_stderr"] = summary.stderr[-2000:]
+            return _finish_failure(
+                res,
+                status="gcov_failed",
+                owner="toolchain",
+                action="review_toolchain",
+                evidence_source="gcov diagnostics",
+            )
+
+        summaries = _parse_gcov_n_stdout(summary.stdout)
         if target_source not in summaries:
-            res["status"] = "missing_orig_gcov"
-            return res
+            return _finish_failure(
+                res,
+                status="missing_orig_gcov",
+                owner="toolchain",
+                action="review_toolchain",
+                evidence_source="gcov summary",
+            )
+
         hit, total = summaries[target_source]
         res["lines_hit"] = hit
         res["lines_total"] = total
-        res["cov_pct"] = (100.0 * hit / total) if total else 0.0
+        res["cov_pct"] = (
+            100.0 * hit / total
+            if total
+            else 0.0
+        )
 
-        # Second pass: gcov (without -n) to emit per-line .gcov file, parse uncovered.
         try:
             _consume_tool_launch(budget)
             subprocess.run(
                 ["gcov", target_gcda],
-                cwd=tmp, capture_output=True, text=True, timeout=GCOV_TIMEOUT,
+                cwd=tmp,
+                capture_output=True,
+                text=True,
+                timeout=GCOV_TIMEOUT,
             )
         except subprocess.TimeoutExpired:
-            pass  # summary already in res; just skip uncovered list
-        gcov_path = os.path.join(tmp, f"{target_source}.gcov")
+            pass
+
+        gcov_path = os.path.join(
+            tmp,
+            f"{target_source}.gcov",
+        )
         if os.path.isfile(gcov_path):
             line_hits = _parse_gcov_file(gcov_path)
             res["uncovered_lines"] = sorted(
-                ln for ln, ct in line_hits.items() if ct == 0
+                line_number
+                for line_number, count in line_hits.items()
+                if count == 0
             )
 
         res["status"] = "ok"
+        res["failure_owner"] = "none"
+        res["next_action"] = "continue_validation"
+        res["failure_evidence_source"] = "g++/runtime/gcov"
         return res
 
 

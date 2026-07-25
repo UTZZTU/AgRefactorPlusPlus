@@ -157,6 +157,7 @@ class TestbenchRepairContract:
         if not re.search(r"\b(?:int|auto)\s+main\s*\(", proposed):
             issues.append("missing main(...) entry point")
 
+        allowed = set(self.required_top_function_names)
         for function_name in self.required_top_function_names:
             if _call_count(proposed, function_name) < 1:
                 issues.append(
@@ -175,8 +176,24 @@ class TestbenchRepairContract:
                     "testbench must not define, stub, or wrap "
                     "public top-level function: "
                     + function_name
+                    + "; it also must not alias or reimplement it"
                 )
+
+        unexpected = sorted(
+            {
+                name
+                for name in _extract_declared_function_names(proposed)
+                if name not in allowed
+            }
+        )
+        if unexpected:
+            issues.append(
+                "testbench has external helper declarations outside "
+                "the Original/Candidate black-box surface: "
+                + ", ".join(unexpected)
+            )
         return tuple(issues)
+
 
     def to_prompt_requirements(self) -> tuple[str, ...]:
         calls = ", ".join(
@@ -205,52 +222,62 @@ _TESTBENCH_FORBIDDEN_ACTIONS = (
     "Never modify or propose changes to the original program.",
     "Never modify or propose changes to the candidate HLS kernel.",
     (
-        "Never define, stub, wrap, or reimplement an original or "
-        "candidate top-level function inside the testbench."
-    ),
-    "Never copy or redeclare implementation-private types.",
-    (
-        "Never declare, read, write, or reset file-scope variables "
-        "owned by the original or candidate implementation."
+        "Only forward-declare the Original and Candidate top functions. "
+        "Never define, stub, wrap, or reimplement either top inside the "
+        "Testbench; never alias either top."
     ),
     (
-        "Do not access implementation-private helper functions or "
-        "internal data structures."
+        "Never declare, read, write, or reset implementation-private "
+        "globals or file-scope variables owned by either implementation."
     ),
-    "Do not reduce test count or weaken any check.",
+    (
+        "Never copy or depend on implementation-private types, helper "
+        "functions, allocator state, or internal data structures."
+    ),
+    (
+        "Never weaken the golden-vs-Candidate comparison or make the "
+        "Testbench return success unconditionally."
+    ),
 )
 
 _TESTBENCH_OUTPUT_REQUIREMENTS = (
     (
-        "Preserve the meaningful golden-vs-candidate comparison, "
-        "existing checks, deterministic inputs, required public "
-        "top-level calls, and failure/return semantics. Helper "
-        "declarations, private-state accesses, and macros may be "
-        "removed or corrected when real tool evidence requires it."
+        "Treat Original and Candidate implementations as read-only black "
+        "boxes exposed only through their public top declarations."
     ),
     (
-        "Existing testbench declarations are not authoritative. "
-        "When compiler or linker evidence shows an interface "
-        "declaration mismatch, correct only its return type, "
-        "parameter types, qualifiers, or C/C++ language linkage "
-        "to match the corresponding read-only definition."
+        "Existing Testbench declarations are not authoritative. Correct "
+        "the public top declarations when real compiler or linker evidence "
+        "shows a mismatch, while preserving their actual ABI."
     ),
     (
-        "Treat original and candidate implementations as black "
-        "boxes exposed only through their actual public top-level "
-        "definitions."
+        "The Testbench may own headers, macros, data, and local helper "
+        "definitions, but its only external function forward declarations "
+        "must be the Original and Candidate tops."
     ),
     (
-        "When the current testbench resets private state between "
-        "independent cases, preserve clean-state semantics without "
-        "private access. On supported POSIX host simulation, use a "
-        "fresh child process and wait for it, or an equivalent "
-        "supported harness-isolation technique."
+        "Preserve exact return types, parameter order/types, qualifiers, "
+        "pointer/array notation, and C/C++ language linkage for those tops."
     ),
-    "The result must remain deterministic and self-contained.",
     (
-        "Return exactly one complete C++ testbench in one fenced "
-        "code block with no commentary."
+        "Use deterministic public inputs, independent mutable storage, and "
+        "equivalent clean logical states. Correctness takes priority over "
+        "testcase count or coverage."
+    ),
+    (
+        "When the failing Testbench attempted to reset implementation-private "
+        "state, preserve clean-state semantics without private access. On a "
+        "supported POSIX host simulation, a fresh child process and wait, or "
+        "an equivalent supported harness-isolation technique, may be used."
+    ),
+    (
+        "Test cases may be removed or replaced when required by real "
+        "compiler/runtime evidence, but the resulting Testbench must retain "
+        "a meaningful golden-vs-Candidate comparison and failure semantics."
+    ),
+    (
+        "Return exactly one complete C++ Testbench in one fenced code block "
+        "with no commentary."
     ),
 )
 
