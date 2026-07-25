@@ -103,6 +103,8 @@ def validate_testbench_top_contract(
     testbench_code: str,
     original_name: str,
     candidate_name: str,
+    *,
+    require_original_call: bool = False,
 ) -> None:
     """Enforce the minimal Public black-box Testbench contract."""
 
@@ -123,6 +125,17 @@ def validate_testbench_top_contract(
                 f"{function_name}; it must not define, stub, wrap, "
                 "alias, or reimplement that top"
             )
+
+    if (
+        require_original_call
+        and _call_count_without_declarations(
+            testbench_code,
+            original_name,
+        ) < 1
+    ):
+        issues.append(
+            f"held-out testbench does not call Original top {original_name}"
+        )
 
     if _call_count_without_declarations(
         testbench_code,
@@ -349,6 +362,28 @@ def _initial_user_message(
                 "```",
             ]
         )
+        parts.extend(
+            [
+                "",
+                "CRITICAL — HELD-OUT GOLDEN ORACLE CONTRACT:",
+                (
+                    f"The Testbench must make at least one actual call to "
+                    f"`{kernel_name}` and at least one actual call to "
+                    f"`{hls_name}`."
+                ),
+                (
+                    "Expected outputs must come from the actual Original-top "
+                    "call. Do not implement or use a Testbench-owned semantic "
+                    "reference model, golden model, oracle algorithm, copied "
+                    "implementation, or local replacement for the Original."
+                ),
+                (
+                    "For stateful Originals, use one representative Original "
+                    "invocation in the fresh Testbench process rather than "
+                    "repeated calls without a verified public reset."
+                ),
+            ]
+        )
     parts.extend(
         [
             "",
@@ -549,6 +584,16 @@ def _feedback_message(
             + "\n```"
         )
 
+    oracle_block = ""
+    if frozen_hls_decl:
+        oracle_block = (
+            "\n\nHELD-OUT GOLDEN ORACLE CONTRACT:\n"
+            "Call the actual Original top at least once and the Candidate top "
+            "at least once. Expected outputs must come from the actual "
+            "Original call. Do not substitute a local semantic reference, "
+            "golden model, oracle algorithm, or copied implementation."
+        )
+
     if prev_status != "ok":
         evidence = (
             prev_compile_stderr.strip()
@@ -610,6 +655,7 @@ def _feedback_message(
             "Only forward-declare their tops; do not define, stub, wrap, or "
             "depend on implementation-private globals/types/helpers. "
             "Correctness takes priority over coverage."
+            + oracle_block
             + frozen_block
             + "\nReply with exactly one complete ```cpp ... ``` block and no "
             "commentary."
@@ -637,6 +683,7 @@ def _feedback_message(
         "Candidate ABI, frozen Public macros, Original/Candidate linkage, or "
         "the golden-vs-Candidate correctness contract. Do not add private "
         "globals/types/helpers. The existing matching Stub will be reused."
+        + oracle_block
         + frozen_block
         + "\n\nOriginal source annotated with `// UNCOVERED` markers:\n"
         "```cpp\n"
@@ -1161,6 +1208,8 @@ def _measure_qualified_coverage(
     stub_code: str,
     kernel_name: str,
     budget: Any = None,
+    *,
+    require_original_execution: bool = False,
 ) -> Dict[str, Any]:
     # Keep the text-heuristic helpers for later reference, but do not let
     # capacity, linkage, or persistent-state guesses block real tools.
@@ -1171,6 +1220,32 @@ def _measure_qualified_coverage(
         budget=budget,
     )
     result.setdefault("qualification_errors", [])
+    lines_total = result.get("lines_total")
+    lines_hit = result.get("lines_hit")
+    if (
+        require_original_execution
+        and result.get("status") == "ok"
+        and isinstance(lines_total, int)
+        and not isinstance(lines_total, bool)
+        and lines_total > 0
+        and isinstance(lines_hit, int)
+        and not isinstance(lines_hit, bool)
+        and lines_hit < 1
+    ):
+        message = (
+            f"held-out Testbench did not execute Original top {kernel_name}; "
+            "gcov recorded zero executed lines in orig_code.cpp. Call the "
+            "actual Original top and derive expected outputs from that call "
+            "instead of a local semantic oracle."
+        )
+        result["status"] = "qualification_failed"
+        result["failure_owner"] = "testbench"
+        result["next_action"] = "repair_testbench"
+        result["failure_evidence_source"] = (
+            "gcov Original execution evidence"
+        )
+        result["compile_stderr"] = message
+        result["qualification_errors"].append(message)
     return result
 
 # Diagnostic-only fingerprint. It must never control trajectory termination.
@@ -1341,6 +1416,7 @@ def run_trajectory(
             value,
             kernel_name,
             hls_name,
+            require_original_call=external_abi_frozen,
         )
         return value
 
@@ -1405,6 +1481,7 @@ def run_trajectory(
         stub_code,
         kernel_name,
         budget=budget,
+        require_original_execution=external_abi_frozen,
     )
 
     if coverage.get("status") == "ok":
@@ -1642,6 +1719,7 @@ def run_trajectory(
             stub_code,
             kernel_name,
             budget=budget,
+            require_original_execution=external_abi_frozen,
         )
 
         if coverage.get("status") == "ok":

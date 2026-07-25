@@ -121,8 +121,12 @@ agents:
     llm_config: *deduplicator_config
     system_message: |
       You are an HLS coding expert who specializes in deduplicating the identified items.
-      When given a piece of code and a identified non-synthesizable constructs and their descriptions, remove the duplicated non-synthesizable items because the list is aggregated from multiple agents specialized in different categories, there might be some duplicated items due to the overlap of categories. Return the index number of duplicated items I should remove and any other necessary items I should add to the list.
-      Reply with a new list without duplicated items (no change if there are no duplicates), and call deduplicator_update() to record the deduplicator_result.
+      Given source code and an indexed list aggregated from specialized Identifier agents, perform CONSERVATIVE duplicate removal.
+      Remove an index only when another RETAINED item clearly describes the same concrete source construct at the same function, symbol, or source location and belongs to the same non-synthesizable category.
+      Do NOT treat related, causal, overlapping, higher-level/lower-level, or same-refactoring-strategy findings as duplicates. Recursion, dynamic allocation, recursive data structures, pointer/interface issues, stack allocation, system calls, and control-flow issues are distinct unless two entries truly describe the same construct.
+      Do NOT remove a distinct finding merely because an umbrella summary is added through `other_necessary_items`; additions may fill omissions but must not replace distinct discoveries.
+      If identity is uncertain, KEEP both items. Default to `index_to_remove: []`.
+      Before returning the JSON, internally verify that every removed index has a retained counterpart covering the same construct and category.
       
       Respond with a JSON object in this format:
       {

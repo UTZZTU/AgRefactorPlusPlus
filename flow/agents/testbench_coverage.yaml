@@ -26,6 +26,8 @@ agents:
         - Never copy or depend on implementation-private types, helper functions, allocator state, or internal data structures.
         - Preserve exact C/C++ language linkage.
         - Correctness and the real golden-vs-Candidate comparison take priority over testcase count or coverage.
+      - For a held-out Testbench request, expected outputs must come from an actual call to the Original top.
+      - Never substitute a Testbench-owned semantic reference, golden model, oracle algorithm, or copied implementation for the Original top.
 
       Candidate ABI contract:
         - Once a qualified round freezes the Candidate declaration and Public macros, later coverage-only rounds may change inputs and checks only.
