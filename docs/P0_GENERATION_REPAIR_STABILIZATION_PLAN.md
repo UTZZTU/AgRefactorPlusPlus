@@ -11,6 +11,8 @@
 本文冻结 P0 真实 DFS 验收之后的后续路线。除非新的真实工具证据推翻某项结论，
 后续不得跳步，也不得以扩大默认 LLM 预算代替流程修复。
 
+> **Historical snapshot policy:** 本文 A–F 的 `ACTIVE_STEP`、`P0_STATUS=active_retry_required` 和 `PRE_STAGE3_CLOSED=false` 记录的是执行当时状态。当前状态以文首与 `Final completion` 为准。
+
 ## 1. 已确认事实
 
 1. DFS 单 kernel 端到端能力已经被真实证明过：DeepSeek 生成 Candidate，Vitis
@@ -366,7 +368,7 @@ PRE_STAGE3_CLOSED=true
 无证据宣布 P0/Pre-Stage-3 关闭
 ```
 
-## 5. 当前执行指针
+## 5. 历史执行指针（Step F 前，已被最终关闭取代）
 
 ```text
 ACTIVE_STEP=F
@@ -494,6 +496,7 @@ STAGE3_STARTED=false
 STEP_F_DUAL_MODE_REAL_DFS=passed
 STEP_G_CLEANUP_DEPRECATION_CLOSURE=passed
 FINAL_POST_STABILIZATION_P0_SMOKE=accepted
+DOCUMENTATION_CONSISTENCY=passed
 P0_STATUS=accepted
 PRE_STAGE3_CLOSED=true
 STAGE3_STARTED=false
@@ -504,3 +507,4 @@ Evidence:
 
 - [`P0_REAL_DFS_DUAL_MODE_ACCEPTANCE.md`](P0_REAL_DFS_DUAL_MODE_ACCEPTANCE.md)
 - [`PRE_STAGE3_CLEANUP_AND_CLOSURE_ACCEPTANCE.md`](PRE_STAGE3_CLEANUP_AND_CLOSURE_ACCEPTANCE.md)
+- [`PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md`](PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md)

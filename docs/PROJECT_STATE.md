@@ -14,6 +14,7 @@ STEP6_DUAL_MODE_REAL_DFS=passed
 STEP7_FINAL_P0_SMOKE=accepted
 CLEANUP_DEPRECATION_AUDIT=passed
 DETERMINISTIC_REGRESSION=1484/1484
+DOCUMENTATION_CONSISTENCY=passed
 PRE_STAGE3_CLOSED=true
 STAGE3_STARTED=false
 NEXT_STEP=STAGE3_PLANNING
@@ -24,9 +25,12 @@ Evidence:
 - [`P0_REAL_DFS_DUAL_MODE_ACCEPTANCE.md`](P0_REAL_DFS_DUAL_MODE_ACCEPTANCE.md)
 - [`PRE_STAGE3_DEPRECATION_LEDGER.md`](PRE_STAGE3_DEPRECATION_LEDGER.md)
 - [`PRE_STAGE3_CLEANUP_AND_CLOSURE_ACCEPTANCE.md`](PRE_STAGE3_CLEANUP_AND_CLOSURE_ACCEPTANCE.md)
+- [`PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md`](PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md)
 
 Pre-Stage-3 is closed. Stage 3 is allowed but has not started.
 <!-- PRE_STAGE3_FINAL_CLOSURE:END -->
+
+> **Historical snapshot policy:** Later package-level blocks retain their as-of acceptance state. Lines such as `PRE_STAGE3_CLOSED=false`, `P0=not run`, or `NEXT=...` inside those blocks are historical evidence, not the current project state. The current authority is the final closure block above.
 
 
 <!-- P2_SOURCE_ONLY_BOOTSTRAP:BEGIN -->
@@ -123,7 +127,7 @@ Evidence:
 - 当前开发分支：`stage2-general-feedback`
 - 当前功能代码基线：以 `stage2-general-feedback` 当前 HEAD 为准；不再在本状态文档复制容易过期的功能 SHA
 - Stage 2 closure validation baseline：`3f57371c8b58f53449064219c024ab63042a87d4`
-- Stage 2 状态：**closed**；Stage 3：**not allowed, not started**
+- Stage 2 状态：**closed**；Stage 3：**planning allowed, implementation not started**
 - 最新确定性测试：**1484/1484 passed**
 - 最新 Stage 2.5 总结：**7 baseline、7/7 real full chains、9 faults、16 labels、23 scenario executions；跨三次独立验收累计 62/36/9/17/0，0 LLM**
 - 最新完整验证链验收仍为：**broken Candidate Preflight → local FakeProvider → repaired g++ Preflight → Vitis 2023.2 CSYNTH → Public CSIM → Hidden CSIM，shared exact budget 7/4/1/2 + 1 LLM call**

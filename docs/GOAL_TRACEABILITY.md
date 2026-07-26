@@ -10,6 +10,7 @@
 Step 0-5=completed
 Step 6 P0 real DFS dual-mode=passed
 Step 7 cleanup/deprecation/final smoke=passed
+DOCUMENTATION_CONSISTENCY=passed
 PRE_STAGE3_CLOSED=true
 STAGE3_STARTED=false
 NEXT_STEP=STAGE3_PLANNING
@@ -19,6 +20,11 @@ The structural-feedback row's pending P0 evidence is now satisfied by
 [`P0_REAL_DFS_DUAL_MODE_ACCEPTANCE.md`](P0_REAL_DFS_DUAL_MODE_ACCEPTANCE.md).
 The next implementation stage is Stage 3 Safe Three-Level Optimizer planning;
 no Stage 3 implementation is included in this closure.
+
+Documentation state reconciliation evidence:
+[`PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md`](PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md).
+
+> **Historical snapshot policy:** Embedded P1/P4/P2/Execution-Identity/P5 acceptance blocks preserve the status that was true when each package closed. Their `PRE_STAGE3_CLOSED=false` or `P0=next/not run` lines are historical and do not override the final traceability block above.
 
 
 ## 1. 核心目标追踪表
@@ -127,7 +133,7 @@ P4 Public/Hidden test-source provenance completed with
 **1312/1312** deterministic tests and patch ID `bd85479221d8729c9aad23df6a91ccfaf4d7333b`. Evidence:
 [`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md).
 
-Current next evidence:
+Historical next evidence at the time of P1/P4 closure:
 
 ```text
 P5 concise output and log capture
@@ -179,7 +185,7 @@ Stage 1 Core 已关闭 ≠ Stage 1 Hardening 已完成，也 ≠ API 智能体�
 
 ## 5. 当前下一任务
 
-Stage 2 已关闭，但 Stage 3 仍被 Pre-Stage-3 产品化收尾阻断。权威计划见
+Pre-Stage-3 已关闭。当前下一任务是 Stage 3 Safe Three-Level Optimizer 的规划；Stage 3 实现尚未开始。权威计划见
 [`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md)。
 
 ```text

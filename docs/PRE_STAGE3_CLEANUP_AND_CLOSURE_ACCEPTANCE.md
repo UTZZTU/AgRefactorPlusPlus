@@ -45,3 +45,24 @@ help and retained for compatibility.
 
 Pre-Stage-3 is closed. Stage 3 is allowed, but this closure commit does not
 start Stage 3.
+
+## Post-closure documentation consistency
+
+The implementation and real P0 closure were already accepted at `2fe092fa45ba610730aec6adac84ceda76ff49c3`.
+A documentation-only reconciliation subsequently made the current authority
+unambiguous while retaining earlier package states as explicitly historical
+snapshots.
+
+```text
+base_commit=2fe092fa45ba610730aec6adac84ceda76ff49c3
+DOCUMENTATION_CONSISTENCY=passed
+runtime_files_changed=0
+model_api_called=false
+real_vitis_run=false
+PRE_STAGE3_CLOSED=true
+STAGE3_STARTED=false
+NEXT_STEP=STAGE3_PLANNING
+```
+
+Evidence:
+[`PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md`](PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md).

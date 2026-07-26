@@ -1,6 +1,7 @@
 # P1 模型运行时审计决策账本
 
-> **状态修正：** P1/P4 冻结合同已按上位合同重新对齐；P2 是下一包，尚未开始；Stage 3 仍不允许开始
+> **当前状态：** P1/P4 冻结合同已完成，并已通过后续 P2、Execution Identity、P5、P0 与 Pre-Stage-3 Closure 的最终消费验收；Stage 3 planning 已允许，Stage 3 实现尚未开始
+> **Historical snapshot policy:** 本账本中的 active/pending/next 字段保留各子包执行时状态，不再作为当前项目指令
 > **审计基线：** `8b543267a88ed63d343bd633cf29cd6edf9c4127`  
 > **人工复核日期：** 2026-07-22  
 > **作用：** 保存自动审计发现、人工修正、新增发现、阶段归属和关闭证据。  
@@ -767,7 +768,7 @@ real_model_or_vitis_acceptance=false
 P1C3C-F01 through F05 and P1C3B-F09 are closed. P1C3C-F06 through
 F09 advance to P1-C3C2. P1C3C-F10 through F13 remain assigned to P1-C3C3.
 
-## 9. 当前下一步
+## 9. 历史执行指针（截至 P1-C3C1，已被最终关闭取代）
 
 ```text
 Step 0 documentation freeze                 completed
@@ -794,7 +795,7 @@ Step 1 P1-C3C3 repair config/accounting        pending
 Step 1 P1-C4 deterministic parity acceptance   pending
 ```
 
-P1-C3C1 已完成。当前只推进 P1-C3C2 Legacy native-currency Budget bridge；P1-C3C3、P1-C4、P1-D、P4、P2、P0 与 Stage 3 不得提前开始。
+以下指针记录 P1-C3C1 完成时的推进约束，现作为历史审计证据保留，不再代表当前项目状态。P1-C、P1-D、P4、P2、Execution Identity、P5、P0 与 Pre-Stage-3 Closure 后续均已完成。
 
 P4 closure evidence: [`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md).
 
@@ -819,3 +820,23 @@ STAGE3_STARTED=false
 Evidence:
 [`P1_P4_FROZEN_CONTRACT_RECONCILIATION.md`](P1_P4_FROZEN_CONTRACT_RECONCILIATION.md).
 <!-- P1_P4_FROZEN_CONTRACT_RECONCILIATION:END -->
+
+<!-- PRE_STAGE3_FINAL_STATUS:BEGIN -->
+## Final authoritative status after Pre-Stage-3 closure
+
+```text
+P1_STATUS=completed
+P4_STATUS=completed
+P2_STATUS=completed
+EXECUTION_IDENTITY_STATUS=completed
+P5_STATUS=completed
+P0_STATUS=accepted
+DOCUMENTATION_CONSISTENCY=passed
+PRE_STAGE3_CLOSED=true
+STAGE3_STARTED=false
+NEXT_STEP=STAGE3_PLANNING
+```
+
+Evidence:
+[`PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md`](PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md).
+<!-- PRE_STAGE3_FINAL_STATUS:END -->
