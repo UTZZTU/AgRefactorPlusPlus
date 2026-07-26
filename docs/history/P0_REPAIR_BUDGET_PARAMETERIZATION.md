@@ -73,3 +73,19 @@ PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
 DEFAULT_LLM_CALLS=32
 ```
+
+## Current product-contract override
+
+The values above are the historical Step-E acceptance snapshot. The current
+source-only and advanced compatibility contract supersedes only the ceiling:
+
+```text
+Testbench repair default = 3
+Candidate repair default = 3
+current valid user range = 1..20
+current system safety ceiling = 20
+```
+
+The attempt semantics, hidden-boundary rules and bounded-loop behavior remain
+unchanged. Current authority is documented in
+[`CLI_PARAMETER_REFERENCE.md`](../guides/CLI_PARAMETER_REFERENCE.md).

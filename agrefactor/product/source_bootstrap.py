@@ -21,8 +21,12 @@ from agrefactor.compat import (
 )
 from agrefactor.config import (
     DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
+    DEFAULT_CSIM_TIMEOUT_S,
+    DEFAULT_CSYNTH_TIMEOUT_S,
     DEFAULT_HIDDEN_COVERAGE_ROUNDS,
+    DEFAULT_HIDDEN_GENERATION_TRAJECTORIES,
     DEFAULT_PUBLIC_COVERAGE_ROUNDS,
+    DEFAULT_PUBLIC_GENERATION_TRAJECTORIES,
     DEFAULT_TESTBENCH_REPAIR_ATTEMPTS,
     DEFAULT_TEST_GENERATION_TRAJECTORIES,
     EvaluationSplit,
@@ -38,7 +42,10 @@ from agrefactor.config import (
     TestGenerationProfile,
     resolve_target_profile,
     resolve_test_generation_profile,
+    validate_csim_timeout_s,
+    validate_csynth_timeout_s,
     validate_repair_attempts,
+    validate_test_generation_count,
 )
 from agrefactor.evaluation import TestbenchPreflight
 from agrefactor.testing import (
@@ -49,6 +56,7 @@ from agrefactor.models import (
     CandidateModelAdapter,
     EffectiveModelConfig,
     ModelRuntimeSelection,
+    infer_model_family,
     resolve_model_runtime,
 )
 from agrefactor.runtime import (
@@ -303,16 +311,27 @@ class SourceRunLayout:
         *,
         artifact_base: str | os.PathLike[str] | None = None,
         work_base: str | os.PathLike[str] | None = None,
+        artifact_root_override: str | os.PathLike[str] | None = None,
     ) -> "SourceRunLayout":
         safe = _safe_component(run_id)
-        artifact_parent = Path(
-            artifact_base
-            if artifact_base is not None
-            else os.getenv(
-                "AGREFACTOR_RUN_ROOT",
-                os.getenv("RUN_DIR", "/data/agrefactor_runs"),
+        if artifact_base is not None and artifact_root_override is not None:
+            raise ValueError(
+                "artifact_base and artifact_root_override are mutually exclusive"
             )
-        ).expanduser()
+        if artifact_root_override is None:
+            artifact_parent = Path(
+                artifact_base
+                if artifact_base is not None
+                else os.getenv(
+                    "AGREFACTOR_RUN_ROOT",
+                    os.getenv("RUN_DIR", "/data/agrefactor_runs"),
+                )
+            ).expanduser()
+            artifact_root = artifact_parent / f"source_run_{safe}"
+        else:
+            artifact_root = (
+                Path(artifact_root_override).expanduser().resolve()
+            )
         work_parent = Path(
             work_base
             if work_base is not None
@@ -321,8 +340,11 @@ class SourceRunLayout:
                 os.getenv("WORK_DIR", "/data/agrefactor_work"),
             )
         ).expanduser()
-        artifact_root = artifact_parent / f"source_run_{safe}"
         work_root = work_parent / f"source_run_{safe}"
+        if artifact_root.resolve() == work_root.resolve():
+            raise ValueError(
+                "persistent artifact directory must differ from work directory"
+            )
         if artifact_root.exists():
             if not artifact_root.is_dir():
                 raise FileExistsError(
@@ -374,9 +396,18 @@ class SourceBootstrapRequest:
         TestGenerationProfile.LIGHTWEIGHT
     )
     public_coverage_rounds: int = DEFAULT_PUBLIC_COVERAGE_ROUNDS
-    test_generation_trajectories: int = (
-        DEFAULT_TEST_GENERATION_TRAJECTORIES
+    hidden_coverage_rounds: int = DEFAULT_HIDDEN_COVERAGE_ROUNDS
+    public_generation_trajectories: int = (
+        DEFAULT_PUBLIC_GENERATION_TRAJECTORIES
     )
+    hidden_generation_trajectories: int = (
+        DEFAULT_HIDDEN_GENERATION_TRAJECTORIES
+    )
+    # Deprecated shared internal constructor field retained for compatibility.
+    # When supplied, it populates both Public and Hidden trajectories.
+    test_generation_trajectories: int | None = None
+    csim_timeout_s: int = DEFAULT_CSIM_TIMEOUT_S
+    csynth_timeout_s: int = DEFAULT_CSYNTH_TIMEOUT_S
     require_complete_execution_identity: bool = False
 
     def __post_init__(self) -> None:
@@ -426,21 +457,63 @@ class SourceBootstrapRequest:
         profile = resolve_test_generation_profile(
             self.test_generation_profile
         )
-        for name, value in (
-            ("public_coverage_rounds", self.public_coverage_rounds),
-            (
-                "test_generation_trajectories",
-                self.test_generation_trajectories,
-            ),
-        ):
+        public_trajectories = self.public_generation_trajectories
+        hidden_trajectories = self.hidden_generation_trajectories
+        shared_trajectories = self.test_generation_trajectories
+        if shared_trajectories is not None:
+            validate_test_generation_count(
+                shared_trajectories,
+                field_name="test_generation_trajectories",
+            )
             if (
-                isinstance(value, bool)
-                or not isinstance(value, int)
-                or value < 1
+                public_trajectories
+                != DEFAULT_PUBLIC_GENERATION_TRAJECTORIES
+                or hidden_trajectories
+                != DEFAULT_HIDDEN_GENERATION_TRAJECTORIES
             ):
                 raise ValueError(
-                    f"{name} must be a positive integer"
+                    "deprecated shared test_generation_trajectories "
+                    "conflicts with independent trajectory fields"
                 )
+            public_trajectories = shared_trajectories
+            hidden_trajectories = shared_trajectories
+        for name, value in (
+            ("public_coverage_rounds", self.public_coverage_rounds),
+            ("hidden_coverage_rounds", self.hidden_coverage_rounds),
+            (
+                "public_generation_trajectories",
+                public_trajectories,
+            ),
+            (
+                "hidden_generation_trajectories",
+                hidden_trajectories,
+            ),
+        ):
+            validate_test_generation_count(
+                value,
+                field_name=name,
+            )
+        validate_csim_timeout_s(self.csim_timeout_s)
+        validate_csynth_timeout_s(self.csynth_timeout_s)
+        object.__setattr__(
+            self,
+            "public_generation_trajectories",
+            public_trajectories,
+        )
+        object.__setattr__(
+            self,
+            "hidden_generation_trajectories",
+            hidden_trajectories,
+        )
+        object.__setattr__(
+            self,
+            "test_generation_trajectories",
+            (
+                public_trajectories
+                if public_trajectories == hidden_trajectories
+                else None
+            ),
+        )
         object.__setattr__(
             self,
             "test_generation_profile",
@@ -493,9 +566,18 @@ class SourceBootstrapRequest:
                 self.test_generation_profile.value
             ),
             "public_coverage_rounds": self.public_coverage_rounds,
+            "hidden_coverage_rounds": self.hidden_coverage_rounds,
+            "public_generation_trajectories": (
+                self.public_generation_trajectories
+            ),
+            "hidden_generation_trajectories": (
+                self.hidden_generation_trajectories
+            ),
             "test_generation_trajectories": (
                 self.test_generation_trajectories
             ),
+            "csim_timeout_s": self.csim_timeout_s,
+            "csynth_timeout_s": self.csynth_timeout_s,
         }
 
 
@@ -1236,9 +1318,20 @@ class SourceBootstrapPhase:
                 "public_coverage_rounds": (
                     self._request.public_coverage_rounds
                 ),
+                "hidden_coverage_rounds": (
+                    self._request.hidden_coverage_rounds
+                ),
+                "public_generation_trajectories": (
+                    self._request.public_generation_trajectories
+                ),
+                "hidden_generation_trajectories": (
+                    self._request.hidden_generation_trajectories
+                ),
                 "test_generation_trajectories": (
                     self._request.test_generation_trajectories
                 ),
+                "csim_timeout_s": self._request.csim_timeout_s,
+                "csynth_timeout_s": self._request.csynth_timeout_s,
                 "public_suite_count": len(public_suites),
                 "hidden_suite_count": len(suites) - len(public_suites),
                 "public_testbench_repair_status": (
@@ -1759,9 +1852,68 @@ def _target_from_cli(args) -> TargetProfile:
         overrides["device"] = args.part
     if args.clock_period is not None:
         overrides["clock_period_ns"] = args.clock_period
-    if args.compile_flags:
-        overrides["compile_flags"] = list(args.compile_flags)
+    replacement_flags = list(getattr(args, "compile_flags", ()) or ())
+    deprecated_flags = list(
+        getattr(args, "deprecated_compile_flags", ()) or ()
+    )
+    if replacement_flags and deprecated_flags:
+        raise ValueError(
+            "--replace-compile-flag and deprecated --compile-flag "
+            "cannot be combined"
+        )
+    selected_flags = replacement_flags or deprecated_flags
+    if selected_flags:
+        overrides["compile_flags"] = selected_flags
     return resolve_target_profile(overrides)
+
+
+def _reasoning_effort_from_cli(args) -> str | None:
+    """Keep the implicit medium default from blocking generic endpoints."""
+
+    value = getattr(args, "reasoning_effort", None)
+    if getattr(args, "reasoning_effort_explicit", False):
+        return value
+    family = (
+        args.model_family
+        if isinstance(getattr(args, "model_family", None), str)
+        and args.model_family.strip()
+        else infer_model_family(args.model)
+    )
+    if family.strip().casefold() in {
+        "default",
+        "generic-openai-compatible",
+        "openai",
+    }:
+        return None
+    return value
+
+
+def _generation_trajectories_from_cli(args) -> tuple[int, int]:
+    shared = getattr(
+        args,
+        "test_generation_trajectories",
+        DEFAULT_TEST_GENERATION_TRAJECTORIES,
+    )
+    shared_explicit = bool(
+        getattr(args, "test_generation_trajectories_explicit", False)
+    )
+    public_explicit = bool(
+        getattr(args, "public_generation_trajectories_explicit", False)
+    )
+    hidden_explicit = bool(
+        getattr(args, "hidden_generation_trajectories_explicit", False)
+    )
+    if shared_explicit:
+        if public_explicit or hidden_explicit:
+            raise ValueError(
+                "deprecated --test-generation-trajectories cannot be "
+                "combined with independent Public/Hidden trajectory options"
+            )
+        return shared, shared
+    return (
+        args.public_generation_trajectories,
+        args.hidden_generation_trajectories,
+    )
 
 
 def _budget_from_cli(args, selection: ModelRuntimeSelection) -> EffectiveRunBudget:
@@ -1955,15 +2107,15 @@ def _build_generation_settings(
             request.public_coverage_rounds if enhanced else 1
         ),
         public_tb_trajectories=(
-            request.test_generation_trajectories if enhanced else 1
+            request.public_generation_trajectories if enhanced else 1
         ),
         public_tb_target=80.0,
         enable_hidden_tb_eval=hidden_auto,
         hidden_tb_rounds=(
-            DEFAULT_HIDDEN_COVERAGE_ROUNDS if enhanced else 1
+            request.hidden_coverage_rounds if enhanced else 1
         ),
         hidden_tb_trajectories=(
-            request.test_generation_trajectories if enhanced else 1
+            request.hidden_generation_trajectories if enhanced else 1
         ),
         hidden_tb_target=90.0,
     )
@@ -2000,7 +2152,7 @@ def run_source_command(
         family=args.model_family,
         base_url=args.base_url,
         api_key_env=args.api_key_env,
-        reasoning_effort=args.reasoning_effort,
+        reasoning_effort=_reasoning_effort_from_cli(args),
     )
     plan = build_test_source_plan(
         public_mode=args.public_tests,
@@ -2009,7 +2161,13 @@ def run_source_command(
         hidden_paths=args.hidden_tests_provided,
     )
     target = _target_from_cli(args)
-    layout = SourceRunLayout.create(run_id)
+    public_trajectories, hidden_trajectories = (
+        _generation_trajectories_from_cli(args)
+    )
+    layout = SourceRunLayout.create(
+        run_id,
+        artifact_root_override=getattr(args, "output_dir", None),
+    )
     rejection = _safety_ceiling_rejection(args)
     if rejection is not None:
         _write_request_rejection_artifacts(
@@ -2066,10 +2224,22 @@ def run_source_command(
             "public_coverage_rounds",
             DEFAULT_PUBLIC_COVERAGE_ROUNDS,
         ),
-        test_generation_trajectories=getattr(
+        hidden_coverage_rounds=getattr(
             args,
-            "test_generation_trajectories",
-            DEFAULT_TEST_GENERATION_TRAJECTORIES,
+            "hidden_coverage_rounds",
+            DEFAULT_HIDDEN_COVERAGE_ROUNDS,
+        ),
+        public_generation_trajectories=public_trajectories,
+        hidden_generation_trajectories=hidden_trajectories,
+        csim_timeout_s=getattr(
+            args,
+            "csim_timeout_s",
+            DEFAULT_CSIM_TIMEOUT_S,
+        ),
+        csynth_timeout_s=getattr(
+            args,
+            "csynth_timeout_s",
+            DEFAULT_CSYNTH_TIMEOUT_S,
         ),
         require_complete_execution_identity=True,
     )
@@ -2097,8 +2267,8 @@ def run_source_command(
             request=formal_request,
             work_root=layout.work_root / "formal_validation",
             artifact_root=layout.artifact_root,
-            csynth_timelimit=300,
-            csim_timelimit=60,
+            csynth_timelimit=request.csynth_timeout_s,
+            csim_timelimit=request.csim_timeout_s,
         )
 
     phase = SourceBootstrapPhase(
@@ -2146,9 +2316,20 @@ def run_source_command(
                     "public_coverage_rounds": (
                         request.public_coverage_rounds
                     ),
+                    "hidden_coverage_rounds": (
+                        request.hidden_coverage_rounds
+                    ),
+                    "public_generation_trajectories": (
+                        request.public_generation_trajectories
+                    ),
+                    "hidden_generation_trajectories": (
+                        request.hidden_generation_trajectories
+                    ),
                     "test_generation_trajectories": (
                         request.test_generation_trajectories
                     ),
+                    "csim_timeout_s": request.csim_timeout_s,
+                    "csynth_timeout_s": request.csynth_timeout_s,
                     "public_coverage_enabled": (
                         generation_settings.enable_tb_coverage_loop
                     ),

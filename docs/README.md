@@ -6,15 +6,17 @@
 ## 推荐阅读顺序
 
 1. [使用指南](guides/USAGE.md)
-2. [环境配置](guides/ENVIRONMENT.md)
-3. [项目路线](roadmap/ROADMAP.md)
-4. [当前项目状态](roadmap/PROJECT_STATE.md)
+2. [CLI 参数参考](guides/CLI_PARAMETER_REFERENCE.md)
+3. [环境配置](guides/ENVIRONMENT.md)
+4. [项目路线](roadmap/ROADMAP.md)
+5. [当前项目状态](roadmap/PROJECT_STATE.md)
 
 ## 使用指南
 
 安装、环境配置、命令和复现说明。
 
 - [环境与复现说明](guides/ENVIRONMENT.md)
+- [CLI 参数参考](guides/CLI_PARAMETER_REFERENCE.md)
 - [复现状态与已验证功能](guides/REPRODUCTION_STATUS.md)
 - [使用说明](guides/USAGE.md)
 
@@ -26,6 +28,7 @@
 - [Pre-Stage-3 产品化与关闭计划](roadmap/PRE_STAGE3_PRODUCTIZATION_PLAN.md)
 - [AgRefactor++ Current Project State](roadmap/PROJECT_STATE.md)
 - [AgRefactor++ Development Roadmap](roadmap/ROADMAP.md)
+- [Product Capability Backlog](roadmap/PRODUCT_CAPABILITY_BACKLOG.md)
 - [Stage 0 — Reproduction Baseline](roadmap/STAGE0_BASELINE.md)
 - [Stage 1 — Shared Infrastructure](roadmap/STAGE1_INFRASTRUCTURE.md)
 - [Stage 2.6 Closure-readiness Audit](roadmap/STAGE2_CLOSURE_READINESS_AUDIT.md)
@@ -70,6 +73,7 @@ Stage 2 证据闭环、可靠性与关闭证据。
 模型、测试来源、CLI、Execution Identity、输出、P0 与关闭证据。
 
 - [Execution Identity Authority Reconciliation Acceptance](acceptance/pre-stage3/EXECUTION_IDENTITY_ACCEPTANCE.md)
+- [Pre-Stage-3 CLI Parameter Contract Acceptance](acceptance/pre-stage3/CLI_PARAMETER_CONTRACT_ACCEPTANCE.md)
 - [P0 Cost-Budget Currency Blocker Correction](acceptance/pre-stage3/P0_COST_BUDGET_CURRENCY_BLOCKER_ACCEPTANCE.md)
 - [P0 Portable Identifying JSON-Object Blocker Correction](acceptance/pre-stage3/P0_PORTABLE_IDENTIFYING_JSON_BLOCKER_ACCEPTANCE.md)
 - [P0 Public Testbench Repair Routing and Output Limits](acceptance/pre-stage3/P0_PUBLIC_TESTBENCH_REPAIR_AND_OUTPUT_LIMITS_ACCEPTANCE.md)

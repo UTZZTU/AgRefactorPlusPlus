@@ -151,16 +151,16 @@ class ExecutionIdentityAuthorityReconciliationTests(unittest.TestCase):
                 target_manifest=values["target_manifest"],
                 test_source_plan={"public": "auto", "hidden": "auto"},
                 budget_request={
-                    "system_defaults": {"max_llm_calls": 32},
-                    "system_safety_ceilings": {"max_llm_calls": 128},
-                    "user_requested": {"max_llm_calls": 129},
+                    "system_defaults": {"max_llm_calls": 64},
+                    "system_safety_ceilings": {"max_llm_calls": 256},
+                    "user_requested": {"max_llm_calls": 257},
                     "effective_hard_limits": None,
                 },
                 rejection={
                     "kind": "safety_ceiling_exceeded",
                     "resource": "max_llm_calls",
-                    "user_requested": 129,
-                    "system_safety_ceiling": 128,
+                    "user_requested": 257,
+                    "system_safety_ceiling": 256,
                 },
                 artifact_schema_version=1,
             )
@@ -189,7 +189,7 @@ class ExecutionIdentityAuthorityReconciliationTests(unittest.TestCase):
                     "--model",
                     "deepseek-v4-flash",
                     "--max-llm-calls",
-                    "129",
+                    "257",
                     "--run-id",
                     "ceiling-rejected",
                 ]

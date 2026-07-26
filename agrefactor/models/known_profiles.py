@@ -85,7 +85,7 @@ def _profile(
         supported_parameters=_COMMON_PARAMETERS,
         artifact_default_parameters=_ARTIFACT_DEFAULTS,
         output_policy=_OUTPUT_POLICY,
-        request_timeout_s=120.0,
+        request_timeout_s=240.0,
         prompt_profile=prompt_profile,
     )
 
@@ -159,7 +159,7 @@ GENERIC_OPENAI_COMPATIBLE_MODEL_FAMILY_PROFILE = ModelFamilyProfile(
     supported_parameters=_COMMON_PARAMETERS,
     artifact_default_parameters=_ARTIFACT_DEFAULTS,
     output_policy=_OUTPUT_POLICY,
-    request_timeout_s=120.0,
+    request_timeout_s=240.0,
     prompt_profile="generic-openai-compatible",
 )
 

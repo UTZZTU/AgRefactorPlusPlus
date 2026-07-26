@@ -15,16 +15,27 @@ from agrefactor.compat import (
     LegacyRefactorSettings,
 )
 from agrefactor.config import (
+    CSIM_TIMEOUT_SAFETY_CEILING,
+    CSYNTH_TIMEOUT_SAFETY_CEILING,
     DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
+    DEFAULT_CSIM_TIMEOUT_S,
+    DEFAULT_CSYNTH_TIMEOUT_S,
+    DEFAULT_HIDDEN_COVERAGE_ROUNDS,
+    DEFAULT_HIDDEN_GENERATION_TRAJECTORIES,
     DEFAULT_PUBLIC_COVERAGE_ROUNDS,
+    DEFAULT_PUBLIC_GENERATION_TRAJECTORIES,
     DEFAULT_TESTBENCH_REPAIR_ATTEMPTS,
     DEFAULT_TEST_GENERATION_TRAJECTORIES,
     REPAIR_ATTEMPT_SAFETY_CEILING,
+    TEST_GENERATION_COUNT_SAFETY_CEILING,
     EvaluationSplit,
     RunMode,
     TaskSpec,
     TestGenerationProfile,
+    validate_csim_timeout_s,
+    validate_csynth_timeout_s,
     validate_repair_attempts,
+    validate_test_generation_count,
 )
 from agrefactor.models import (
     CandidateModelAdapter,
@@ -32,6 +43,7 @@ from agrefactor.models import (
     ModelSpec,
     OpenAICompatibleProvider,
 )
+from agrefactor.runtime.budget_profile import DEFAULT_SOURCE_RUN_BUDGET_PROFILE
 from agrefactor.runtime import (
     BudgetLimits,
     CandidateRepairOrchestrationRequest,
@@ -45,6 +57,21 @@ from agrefactor.runtime import (
 
 
 
+class _StoreWithExplicitFlag(argparse.Action):
+    """Store a value and remember that the user supplied the option."""
+
+    def __call__(
+        self,
+        parser,
+        namespace,
+        values,
+        option_string=None,
+    ) -> None:
+        del parser, option_string
+        setattr(namespace, self.dest, values)
+        setattr(namespace, f"{self.dest}_explicit", True)
+
+
 def _positive_int(value: str) -> int:
     parsed = int(value)
     if parsed < 1:
@@ -52,6 +79,36 @@ def _positive_int(value: str) -> int:
             "value must be a positive integer"
         )
     return parsed
+
+
+def _test_generation_count(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "test generation count must be an integer"
+        ) from exc
+    try:
+        return validate_test_generation_count(
+            parsed,
+            field_name="test generation count",
+        )
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _csim_timeout(value: str) -> int:
+    try:
+        return validate_csim_timeout_s(int(value))
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _csynth_timeout(value: str) -> int:
+    try:
+        return validate_csynth_timeout_s(int(value))
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def _repair_attempt_count(value: str) -> int:
@@ -288,15 +345,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument(
         "--csynth-timelimit",
-        type=int,
-        default=300,
-        help="Per-CSYNTH timeout in seconds. Default: 300.",
+        type=_csynth_timeout,
+        default=DEFAULT_CSYNTH_TIMEOUT_S,
+        help=(
+            "Per-CSYNTH timeout in seconds. "
+            f"Default: {DEFAULT_CSYNTH_TIMEOUT_S}; "
+            f"valid range: 1..{CSYNTH_TIMEOUT_SAFETY_CEILING}."
+        ),
     )
     run_parser.add_argument(
         "--csim-timelimit",
-        type=int,
-        default=60,
-        help="Per-CSIM timeout in seconds. Default: 60.",
+        type=_csim_timeout,
+        default=DEFAULT_CSIM_TIMEOUT_S,
+        help=(
+            "Per-CSIM timeout in seconds. "
+            f"Default: {DEFAULT_CSIM_TIMEOUT_S}; "
+            f"valid range: 1..{CSIM_TIMEOUT_SAFETY_CEILING}."
+        ),
     )
     run_parser.add_argument(
         "--debug",
@@ -312,6 +377,12 @@ def build_parser() -> argparse.ArgumentParser:
                 "Run the normal source-only product entrypoint. "
                 "Optimize/full execution remains gated until Stage 3."
             ),
+        )
+        source_parser.set_defaults(
+            reasoning_effort_explicit=False,
+            public_generation_trajectories_explicit=False,
+            hidden_generation_trajectories_explicit=False,
+            test_generation_trajectories_explicit=False,
         )
         source_parser.add_argument(
             "source",
@@ -343,6 +414,12 @@ def build_parser() -> argparse.ArgumentParser:
         source_parser.add_argument(
             "--reasoning-effort",
             choices=("low", "medium", "high"),
+            default="medium",
+            action=_StoreWithExplicitFlag,
+            help=(
+                "Unified requested reasoning effort. Default: medium. "
+                "Current provider/model mappings remain profile-specific."
+            ),
         )
         source_parser.add_argument(
             "--target",
@@ -359,11 +436,21 @@ def build_parser() -> argparse.ArgumentParser:
             help="Optional target clock period in nanoseconds.",
         )
         source_parser.add_argument(
-            "--compile-flag",
+            "--replace-compile-flag",
             dest="compile_flags",
             action="append",
             default=[],
-            help="Repeatable compile flag override.",
+            help=(
+                "Repeatable replacement for the TargetProfile compile flag "
+                "list; supplying it replaces committed defaults."
+            ),
+        )
+        source_parser.add_argument(
+            "--compile-flag",
+            dest="deprecated_compile_flags",
+            action="append",
+            default=[],
+            help=argparse.SUPPRESS,
         )
         source_parser.add_argument(
             "--test-generation-profile",
@@ -378,30 +465,62 @@ def build_parser() -> argparse.ArgumentParser:
         )
         source_parser.add_argument(
             "--public-coverage-rounds",
-            type=_positive_int,
+            type=_test_generation_count,
             default=DEFAULT_PUBLIC_COVERAGE_ROUNDS,
             help=(
                 "Public coverage rounds used only by coverage-enhanced. "
-                f"Default: {DEFAULT_PUBLIC_COVERAGE_ROUNDS}."
+                f"Default: {DEFAULT_PUBLIC_COVERAGE_ROUNDS}; "
+                f"valid range: 1..{TEST_GENERATION_COUNT_SAFETY_CEILING}."
+            ),
+        )
+        source_parser.add_argument(
+            "--hidden-coverage-rounds",
+            type=_test_generation_count,
+            default=DEFAULT_HIDDEN_COVERAGE_ROUNDS,
+            help=(
+                "Hidden coverage rounds used only by coverage-enhanced. "
+                f"Default: {DEFAULT_HIDDEN_COVERAGE_ROUNDS}; "
+                f"valid range: 1..{TEST_GENERATION_COUNT_SAFETY_CEILING}."
+            ),
+        )
+        source_parser.add_argument(
+            "--public-generation-trajectories",
+            type=_test_generation_count,
+            default=DEFAULT_PUBLIC_GENERATION_TRAJECTORIES,
+            action=_StoreWithExplicitFlag,
+            help=(
+                "Independent Public generation trajectories used only by "
+                "coverage-enhanced. "
+                f"Default: {DEFAULT_PUBLIC_GENERATION_TRAJECTORIES}; "
+                f"valid range: 1..{TEST_GENERATION_COUNT_SAFETY_CEILING}."
+            ),
+        )
+        source_parser.add_argument(
+            "--hidden-generation-trajectories",
+            type=_test_generation_count,
+            default=DEFAULT_HIDDEN_GENERATION_TRAJECTORIES,
+            action=_StoreWithExplicitFlag,
+            help=(
+                "Independent Hidden generation trajectories used only by "
+                "coverage-enhanced. "
+                f"Default: {DEFAULT_HIDDEN_GENERATION_TRAJECTORIES}; "
+                f"valid range: 1..{TEST_GENERATION_COUNT_SAFETY_CEILING}."
             ),
         )
         source_parser.add_argument(
             "--test-generation-trajectories",
-            type=_positive_int,
+            type=_test_generation_count,
             default=DEFAULT_TEST_GENERATION_TRAJECTORIES,
-            help=(
-                "Independent generation trajectories used only by "
-                "coverage-enhanced. "
-                f"Default: {DEFAULT_TEST_GENERATION_TRAJECTORIES}."
-            ),
+            action=_StoreWithExplicitFlag,
+            help=argparse.SUPPRESS,
         )
         source_parser.add_argument(
             "--public-tests",
-            choices=("auto", "none"),
+            choices=("auto",),
             default=None,
             help=(
                 "Public source mode when --public-test is absent. "
-                "Default: auto."
+                "Default and only normal-mode value: auto."
             ),
         )
         source_parser.add_argument(
@@ -447,22 +566,84 @@ def build_parser() -> argparse.ArgumentParser:
                 f"valid range: 1..{REPAIR_ATTEMPT_SAFETY_CEILING}."
             ),
         )
-        source_parser.add_argument("--max-llm-calls", type=int)
-        source_parser.add_argument("--max-tool-calls", type=int)
-        source_parser.add_argument("--max-compile-calls", type=int)
-        source_parser.add_argument("--max-csim-calls", type=int)
-        source_parser.add_argument("--max-csynth-calls", type=int)
-        source_parser.add_argument("--max-wall-time-s", type=float)
+        budget_defaults = DEFAULT_SOURCE_RUN_BUDGET_PROFILE.system_defaults
+        budget_ceilings = (
+            DEFAULT_SOURCE_RUN_BUDGET_PROFILE.system_safety_ceilings
+        )
+        for option, field_name, value_type, label in (
+            ("--max-llm-calls", "max_llm_calls", int, "LLM calls"),
+            ("--max-tool-calls", "max_tool_calls", int, "tool calls"),
+            (
+                "--max-compile-calls",
+                "max_compile_calls",
+                int,
+                "compile calls",
+            ),
+            ("--max-csim-calls", "max_csim_calls", int, "CSIM calls"),
+            (
+                "--max-csynth-calls",
+                "max_csynth_calls",
+                int,
+                "CSYNTH calls",
+            ),
+            (
+                "--max-wall-time-s",
+                "max_wall_time_s",
+                float,
+                "wall-clock seconds",
+            ),
+        ):
+            source_parser.add_argument(
+                option,
+                type=value_type,
+                help=(
+                    f"Hard run limit for {label}. "
+                    f"System default: {getattr(budget_defaults, field_name)}; "
+                    f"safety ceiling: "
+                    f"{getattr(budget_ceilings, field_name)}."
+                ),
+            )
         source_parser.add_argument(
             "--token-budget",
             type=int,
-            help="Observed-only soft token budget.",
+            help=(
+                "Observed-only soft token budget; does not stop execution."
+            ),
         )
         source_parser.add_argument(
             "--cost-budget",
             help=(
                 "Observed-only soft cost budget in the selected "
-                "pricing snapshot currency."
+                "pricing snapshot currency; does not stop execution."
+            ),
+        )
+        source_parser.add_argument(
+            "--csim-timeout-s",
+            type=_csim_timeout,
+            default=DEFAULT_CSIM_TIMEOUT_S,
+            help=(
+                "Per-CSIM timeout in seconds. "
+                f"Default: {DEFAULT_CSIM_TIMEOUT_S}; "
+                f"valid range: 1..{CSIM_TIMEOUT_SAFETY_CEILING}."
+            ),
+        )
+        source_parser.add_argument(
+            "--csynth-timeout-s",
+            type=_csynth_timeout,
+            default=DEFAULT_CSYNTH_TIMEOUT_S,
+            help=(
+                "Per-CSYNTH timeout in seconds. "
+                f"Default: {DEFAULT_CSYNTH_TIMEOUT_S}; "
+                f"valid range: 1..{CSYNTH_TIMEOUT_SAFETY_CEILING}."
+            ),
+        )
+        source_parser.add_argument(
+            "--output-dir",
+            type=Path,
+            help=(
+                "Exact empty or not-yet-created persistent artifact "
+                "directory for this run. Temporary tool work remains under "
+                "WORK_DIR/AGREFACTOR_WORK_ROOT."
             ),
         )
         source_parser.add_argument(

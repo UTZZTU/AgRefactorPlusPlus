@@ -29,7 +29,7 @@ class RepairBudgetContractTests(unittest.TestCase):
         self.assertEqual(MIN_REPAIR_ATTEMPTS, 1)
         self.assertEqual(DEFAULT_TESTBENCH_REPAIR_ATTEMPTS, 3)
         self.assertEqual(DEFAULT_CANDIDATE_REPAIR_ATTEMPTS, 3)
-        self.assertEqual(REPAIR_ATTEMPT_SAFETY_CEILING, 10)
+        self.assertEqual(REPAIR_ATTEMPT_SAFETY_CEILING, 20)
 
     def test_shared_validator_accepts_boundaries(self):
         self.assertEqual(
@@ -37,15 +37,15 @@ class RepairBudgetContractTests(unittest.TestCase):
             1,
         )
         self.assertEqual(
-            validate_repair_attempts(10, field_name="repairs"),
-            10,
+            validate_repair_attempts(20, field_name="repairs"),
+            20,
         )
 
     def test_shared_validator_rejects_zero_and_above_ceiling(self):
         with self.assertRaises(ValueError):
             validate_repair_attempts(0, field_name="repairs")
         with self.assertRaises(ValueError):
-            validate_repair_attempts(11, field_name="repairs")
+            validate_repair_attempts(21, field_name="repairs")
 
     def test_normal_source_cli_defaults_to_three_each(self):
         args = build_parser().parse_args(
@@ -71,13 +71,13 @@ class RepairBudgetContractTests(unittest.TestCase):
                 "--model",
                 "model-id",
                 "--max-testbench-repairs",
-                "10",
+                "20",
                 "--max-candidate-repairs",
-                "10",
+                "20",
             ]
         )
-        self.assertEqual(args.max_testbench_repairs, 10)
-        self.assertEqual(args.max_candidate_repairs, 10)
+        self.assertEqual(args.max_testbench_repairs, 20)
+        self.assertEqual(args.max_candidate_repairs, 20)
 
     def test_normal_source_cli_rejects_zero_before_execution(self):
         with self.assertRaises(SystemExit):
@@ -105,7 +105,7 @@ class RepairBudgetContractTests(unittest.TestCase):
                     "--model",
                     "model-id",
                     "--max-candidate-repairs",
-                    "11",
+                    "21",
                 ]
             )
 
@@ -133,7 +133,7 @@ class RepairBudgetContractTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             LegacyRefactorSettings(
-                max_testbench_repair_attempts=11
+                max_testbench_repair_attempts=21
             )
 
     def test_candidate_orchestration_default_is_three(self):
@@ -173,7 +173,7 @@ class RepairBudgetContractTests(unittest.TestCase):
                     )
                 },
                 prompt_public_testbench_code=None,
-                max_attempts=11,
+                max_attempts=21,
             )
 
     def test_candidate_loop_request_default_is_three(self):
@@ -193,14 +193,14 @@ class RepairBudgetContractTests(unittest.TestCase):
             TestbenchRepairLoop(
                 preflight=object(),
                 repairer=object(),
-                max_repair_attempts=11,
+                max_repair_attempts=21,
             )
 
     def test_testbench_request_rejects_above_ceiling(self):
         with self.assertRaises(ValueError):
             TestbenchRepairRequest(
                 attempt=1,
-                max_attempts=11,
+                max_attempts=21,
                 current_testbench="int main(){return 0;}",
                 original_code="void top(){}",
                 candidate_code="void top_hls(){}",

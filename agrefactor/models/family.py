@@ -518,7 +518,7 @@ class ModelFamilyProfile:
     output_policy: ModelOutputPolicy = field(
         default_factory=ModelOutputPolicy
     )
-    request_timeout_s: float = 120.0
+    request_timeout_s: float = 240.0
     prompt_profile: str | None = None
 
     def __post_init__(self) -> None:

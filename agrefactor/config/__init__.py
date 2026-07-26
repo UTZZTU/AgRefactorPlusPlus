@@ -1,3 +1,4 @@
+
 """Configuration schemas and target descriptions."""
 
 from .repair_budget import (
@@ -20,10 +21,23 @@ from .target_profiles import (
 )
 from .test_generation import (
     DEFAULT_HIDDEN_COVERAGE_ROUNDS,
+    DEFAULT_HIDDEN_GENERATION_TRAJECTORIES,
     DEFAULT_PUBLIC_COVERAGE_ROUNDS,
+    DEFAULT_PUBLIC_GENERATION_TRAJECTORIES,
     DEFAULT_TEST_GENERATION_TRAJECTORIES,
+    MIN_TEST_GENERATION_COUNT,
+    TEST_GENERATION_COUNT_SAFETY_CEILING,
     TestGenerationProfile,
     resolve_test_generation_profile,
+    validate_test_generation_count,
+)
+from .tool_timeouts import (
+    CSIM_TIMEOUT_SAFETY_CEILING,
+    CSYNTH_TIMEOUT_SAFETY_CEILING,
+    DEFAULT_CSIM_TIMEOUT_S,
+    DEFAULT_CSYNTH_TIMEOUT_S,
+    validate_csim_timeout_s,
+    validate_csynth_timeout_s,
 )
 from .task import RunMode, TaskSpec
 from .test_source import (
@@ -49,8 +63,16 @@ __all__ = [
     "MIN_REPAIR_ATTEMPTS",
     "REPAIR_ATTEMPT_SAFETY_CEILING",
     "DEFAULT_HIDDEN_COVERAGE_ROUNDS",
+    "DEFAULT_HIDDEN_GENERATION_TRAJECTORIES",
     "DEFAULT_PUBLIC_COVERAGE_ROUNDS",
+    "DEFAULT_PUBLIC_GENERATION_TRAJECTORIES",
     "DEFAULT_TEST_GENERATION_TRAJECTORIES",
+    "MIN_TEST_GENERATION_COUNT",
+    "TEST_GENERATION_COUNT_SAFETY_CEILING",
+    "DEFAULT_CSIM_TIMEOUT_S",
+    "DEFAULT_CSYNTH_TIMEOUT_S",
+    "CSIM_TIMEOUT_SAFETY_CEILING",
+    "CSYNTH_TIMEOUT_SAFETY_CEILING",
     "EvaluationSplit",
     "RunMode",
     "TargetProfile",
@@ -72,6 +94,9 @@ __all__ = [
     "resolve_target_profile",
     "validate_repair_attempts",
     "resolve_test_generation_profile",
+    "validate_test_generation_count",
+    "validate_csim_timeout_s",
+    "validate_csynth_timeout_s",
     "resolve_test_source",
     "target_profile_config_dir",
 ]
