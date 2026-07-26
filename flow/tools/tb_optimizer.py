@@ -1517,6 +1517,78 @@ def run_trajectory(
         abi_decl=current_decl,
     )
 
+    # A K=1 trajectory is the lightweight profile's bounded generation path.
+    # Keep it non-iterative for coverage, but do not discard a valid Testbench
+    # merely because the first model-generated Candidate Stub is not compilable.
+    # The tool-backed owner/action already identifies this as Stub-owned, so
+    # permit exactly one diagnostic-driven Stub regeneration before finalizing.
+    if (
+        K == 1
+        and rounds[-1].get("next_action") == "regenerate_stub"
+    ):
+        previous = rounds[-1]
+        previous_error = (
+            str(previous.get("compile_stderr") or "")
+            or str(previous.get("run_stderr") or "")
+            or str(previous.get("status") or "unknown")
+        )
+        testbench_code = str(previous["tb_code"])
+        declaration = (
+            frozen_hls_decl
+            or extract_hls_decl_from_testbench(
+                testbench_code,
+                hls_name,
+            )
+        )
+        stub_code, current_decl = request_stub(
+            testbench_code,
+            message=_stub_request_message(
+                kernel_name,
+                declaration,
+                failure_excerpt=previous_error,
+            ),
+        )
+        coverage = _measure_qualified_coverage(
+            orig_code,
+            testbench_code,
+            stub_code,
+            kernel_name,
+            budget=budget,
+            require_original_execution=external_abi_frozen,
+        )
+        if coverage.get("status") == "ok":
+            observed_decl, observed_macros = _freeze_public_contract(
+                testbench_code,
+                hls_name,
+            )
+            if external_abi_frozen:
+                _validate_frozen_candidate_abi(
+                    testbench_code,
+                    hls_name,
+                    frozen_hls_decl,
+                )
+                frozen_macros = observed_macros
+            else:
+                frozen_hls_decl = observed_decl
+                frozen_macros = observed_macros
+            reusable_stub = stub_code
+        _append_round(
+            rounds,
+            trajectory_idx=trajectory_idx,
+            round_index=2,
+            tb_code=testbench_code,
+            stub_code=stub_code,
+            cov=coverage,
+            artifact_root=artifact_root,
+            ownership_action="regenerate_stub",
+            testbench_reused=True,
+            stub_reused=False,
+            lightweight_bounded_stub_recovery=True,
+            frozen_public_hls_decl=frozen_hls_decl,
+            frozen_public_macros=list(frozen_macros),
+            abi_decl=current_decl,
+        )
+
     for round_index in range(2, K + 1):
         previous = rounds[-1]
         if (
