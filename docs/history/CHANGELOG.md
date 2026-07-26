@@ -1,6 +1,6 @@
 # 变更记录
 
-本文档记录 AgRefactor++ 相对于原始 AgRefactor 的主要代码与文档修改。原项目已有但仅在本地完成复现的功能，统一记录在 `docs/REPRODUCTION_STATUS.md`，避免把“复现验证”误写成“新增功能”。
+本文档记录 AgRefactor++ 相对于原始 AgRefactor 的主要代码与文档修改。原项目已有但仅在本地完成复现的功能，统一记录在 `docs/guides/REPRODUCTION_STATUS.md`，避免把“复现验证”误写成“新增功能”。
 
 ## 未发布
 
@@ -110,8 +110,8 @@ Public/Hidden 与通用反馈：
 ### 文档
 
 - 精简主 README，使其只保留项目定位、已验证能力、快速开始和文档入口。
-- 新增 `docs/USAGE.md`，集中维护单 kernel、RAG、批量实验和 optimization 命令。
-- 新增 `docs/REPRODUCTION_STATUS.md`，区分已验证、部分验证、暂未验证和暂停功能。
+- 新增 `docs/guides/USAGE.md`，集中维护单 kernel、RAG、批量实验和 optimization 命令。
+- 新增 `docs/guides/REPRODUCTION_STATUS.md`，区分已验证、部分验证、暂未验证和暂停功能。
 - 修正安装说明：仓库当前没有 `setup.py` 或 `pyproject.toml`，不再建议执行 `pip install -e .`。
 - 明确版本感知迁移仍是研究方向，而不是当前已经完整实现的能力。
 - 明确 HeteroRefactor 不是主流程必需依赖，当前因外部 EDG binary 不可用而暂停。
@@ -178,8 +178,8 @@ Public/Hidden 与通用反馈：
 
 - 将项目名统一为 AgRefactor++。
 - README 主体改为中文并删除重复的中英文说明。
-- 将环境说明拆分到 `docs/ENVIRONMENT.md`。
-- 将详细代码修改拆分到 `docs/CHANGELOG.md`。
+- 将环境说明拆分到 `docs/guides/ENVIRONMENT.md`。
+- 将详细代码修改拆分到 `docs/history/CHANGELOG.md`。
 - README 聚焦新用户第一次运行所需内容。
 
 <!-- AGREFPP_ROADMAP_EXPANSION:START -->

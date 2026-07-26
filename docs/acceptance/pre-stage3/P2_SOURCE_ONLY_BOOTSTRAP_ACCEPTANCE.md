@@ -3,7 +3,7 @@
 ## Authority and scope
 
 The sole implementation authority is
-[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md).
+[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](../../roadmap/PRE_STAGE3_PRODUCTIZATION_PLAN.md).
 
 This is one integrated P2 package. It does not create P2 sub-stages, does not
 implement the Stage-3 optimizer, does not close Execution Identity or P5, and

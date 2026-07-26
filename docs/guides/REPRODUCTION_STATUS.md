@@ -253,9 +253,9 @@ stage3_allowed=true
 
 详见：
 
-- [`stage2_hardening_acceptance.md`](stage2_hardening_acceptance.md)
-- [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md)
-- [`STAGE2_EVIDENCE_LOOP.md`](STAGE2_EVIDENCE_LOOP.md)
+- [`stage2_hardening_acceptance.md`](../acceptance/stage2/stage2_hardening_acceptance.md)
+- [`stage2_closure_acceptance.md`](../acceptance/stage2/stage2_closure_acceptance.md)
+- [`STAGE2_EVIDENCE_LOOP.md`](../roadmap/STAGE2_EVIDENCE_LOOP.md)
 <!-- AGREFPP_STAGE1_STAGE2_STATUS:END -->
 
 ## 文档原则

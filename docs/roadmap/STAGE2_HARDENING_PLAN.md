@@ -138,7 +138,7 @@ Stage 2.7 是有限收尾阶段：只处理 B-01～B-05，以及 2.7.5 真实 sm
 真实模型关闭条件是“真实调用和可信记录”，不是“必须成功修复”。
 
 验收见
-[`stage2_repair_protocol_acceptance.md`](stage2_repair_protocol_acceptance.md)。
+[`stage2_repair_protocol_acceptance.md`](../acceptance/stage2/stage2_repair_protocol_acceptance.md)。
 
 ### 4.2 2.7.2 Minimal ModelFamilyProfile — 已完成
 
@@ -160,7 +160,7 @@ strict_completion
 不做自动模型路由，用户固定模型仍是唯一权威选择。Profile 只影响安全默认
 参数、通用 Prompt instruction 和审计 manifest；Response Contract 不可绕过。
 验收见
-[`stage2_model_family_profile_acceptance.md`](stage2_model_family_profile_acceptance.md)。
+[`stage2_model_family_profile_acceptance.md`](../acceptance/stage2/stage2_model_family_profile_acceptance.md)。
 
 ### 4.3 2.7.3 Stage 1 Hardening Batch A — 已完成
 
@@ -172,7 +172,7 @@ feat: harden target execution profiles
 已完成 committed named target profile、per-profile executable/settings、
 parser identity、effective provenance、basic resource schema 和无 secret 模板。
 保持现有 Vitis 2023.2 行为，未增加 Batch B 多版本/设备矩阵。验收见
-[`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md)。
+[`stage2_stage1_hardening_batch_a_acceptance.md`](../acceptance/stage2/stage2_stage1_hardening_batch_a_acceptance.md)。
 
 ### 4.4 2.7.4 Formal Repair-aware UnifiedRunner / CLI — 已完成
 
@@ -194,7 +194,7 @@ TaskSpec
 
 已由正式 `--repair-aware` CLI 接线并写入 versioned run/phase/repair manifests；
 一个 UnifiedRunner run 共享一个 budget 和一个 trace。验收见
-[`stage2_repair_aware_cli_acceptance.md`](stage2_repair_aware_cli_acceptance.md)。
+[`stage2_repair_aware_cli_acceptance.md`](../acceptance/stage2/stage2_repair_aware_cli_acceptance.md)。
 
 ### 4.5 2.7.5 Real Network-model Smoke — 已完成
 
@@ -249,7 +249,7 @@ stage2_closed=false
 已完成 blocker 验收、acceptance/commit/evidence 索引、manifest/hash 核对和
 Stage 2.8 frozen handoff。2.7.7 未新增功能、未调用网络模型、未重新执行 Vitis
 CSYNTH/CSIM，也未关闭 Stage 2。验收见
-[`stage2_hardening_acceptance.md`](stage2_hardening_acceptance.md)。
+[`stage2_hardening_acceptance.md`](../acceptance/stage2/stage2_hardening_acceptance.md)。
 
 ## 5. Stage 1 Hardening Batch B
 
@@ -316,10 +316,10 @@ stage2_closed=true
 stage3_allowed=true
 ```
 
-C-09 已通过 README、`docs/CHANGELOG.md`、USAGE、REPRODUCTION_STATUS、
+C-09 已通过 README、`docs/history/CHANGELOG.md`、USAGE、REPRODUCTION_STATUS、
 ROADMAP、Goal Traceability、Project State、Handoff、Evidence/Hardening 和
 formal closure acceptance 的同步完成。详细记录见
-[`stage2_closure_acceptance.md`](stage2_closure_acceptance.md)。
+[`stage2_closure_acceptance.md`](../acceptance/stage2/stage2_closure_acceptance.md)。
 
 ## 8. 执行原则
 

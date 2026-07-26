@@ -3,7 +3,7 @@
 ## Authority and scope
 
 The sole authority is
-[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md).
+[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](../roadmap/PRE_STAGE3_PRODUCTIZATION_PLAN.md).
 
 This is one integrated correction package. It does not create additional
 P1/P4 sub-stages, does not implement the P2 source-only CLI, and does not

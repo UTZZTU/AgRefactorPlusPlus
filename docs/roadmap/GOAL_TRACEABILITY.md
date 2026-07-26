@@ -17,12 +17,12 @@ NEXT_STEP=STAGE3_PLANNING
 ```
 
 The structural-feedback row's pending P0 evidence is now satisfied by
-[`P0_REAL_DFS_DUAL_MODE_ACCEPTANCE.md`](P0_REAL_DFS_DUAL_MODE_ACCEPTANCE.md).
+[`P0_REAL_DFS_DUAL_MODE_ACCEPTANCE.md`](../acceptance/pre-stage3/P0_REAL_DFS_DUAL_MODE_ACCEPTANCE.md).
 The next implementation stage is Stage 3 Safe Three-Level Optimizer planning;
 no Stage 3 implementation is included in this closure.
 
 Documentation state reconciliation evidence:
-[`PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md`](PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md).
+[`PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md`](../acceptance/pre-stage3/PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md).
 
 > **Historical snapshot policy:** Embedded P1/P4/P2/Execution-Identity/P5 acceptance blocks preserve the status that was true when each package closed. Their `PRE_STAGE3_CLOSED=false` or `P0=next/not run` lines are historical and do not override the final traceability block above.
 
@@ -31,12 +31,12 @@ Documentation state reconciliation evidence:
 
 | 目标 | 主要 Stage | 当前实现 | 仍缺内容 | 当前证据 |
 |---|---|---|---|---|
-| TargetProfile | Stage 1/2/5 | 2.7.3 已完成 committed named profile、executable/settings、parser identity、resource schema、per-field provenance；保持 Vitis 2023.2 默认兼容 | Batch B 多版本/设备/platform 与 Stage 5 source/target | [`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md) |
+| TargetProfile | Stage 1/2/5 | 2.7.3 已完成 committed named profile、executable/settings、parser identity、resource schema、per-field provenance；保持 Vitis 2023.2 默认兼容 | Batch B 多版本/设备/platform 与 Stage 5 source/target | [`stage2_stage1_hardening_batch_a_acceptance.md`](../acceptance/stage2/stage2_stage1_hardening_batch_a_acceptance.md) |
 | 双模式版本处理 | Stage 5 | refactor/optimize/full 数据结构预留 | migrate mode、SourceProfile、source baseline、migration report | 至少一组真实 source→target |
-| Model API Registry | Stage 1/2 | P1-A/B/C/D 已完成：Modern、Legacy、repair 统一运行时，且 `deepseek-v4-flash` 已完成单次有界真实网络 smoke、native CNY accounting 与第二次调用硬阻断 | 无；后续由 P4/P2/P5/P0 消费 | [`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md) |
-| 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、typed family instruction、formal CLI 与 strict contract 已完成；真实 proposal evidence 未证明需要放宽 | Stage 2 已关闭；后续仅按新真实证据 harden | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
-| 结构化反馈/状态机 | Stage 2 | Public/Hidden 路由、终态隔离与 agent-safe redaction 已完成；P4 进一步接入明确 source identity、revision、SHA-256、运行内容一致性和多 suite provenance | P0 经最终 source-only 入口做真实 DFS 复验 | [`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md) |
-| Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、7/7 full chains、9/9 faults、16/16 labels，并经 2.7.7/2.8 closure audit | 扩大版本、器件和 kernel 统计覆盖 | [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md) |
+| Model API Registry | Stage 1/2 | P1-A/B/C/D 已完成：Modern、Legacy、repair 统一运行时，且 `deepseek-v4-flash` 已完成单次有界真实网络 smoke、native CNY accounting 与第二次调用硬阻断 | 无；后续由 P4/P2/P5/P0 消费 | [`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](../acceptance/pre-stage3/P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md) |
+| 分层 Prompt | Stage 2 | Shared builder、candidate/testbench consumers、typed family instruction、formal CLI 与 strict contract 已完成；真实 proposal evidence 未证明需要放宽 | Stage 2 已关闭；后续仅按新真实证据 harden | [`stage2_closure_acceptance.md`](../acceptance/stage2/stage2_closure_acceptance.md) |
+| 结构化反馈/状态机 | Stage 2 | Public/Hidden 路由、终态隔离与 agent-safe redaction 已完成；P4 进一步接入明确 source identity、revision、SHA-256、运行内容一致性和多 suite provenance | P0 经最终 source-only 入口做真实 DFS 复验 | [`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](../acceptance/pre-stage3/P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md) |
+| Multi-type Smoke / Independent Ground Truth | Stage 2 | 7 baselines、7/7 full chains、9/9 faults、16/16 labels，并经 2.7.7/2.8 closure audit | 扩大版本、器件和 kernel 统计覆盖 | [`stage2_closure_acceptance.md`](../acceptance/stage2/stage2_closure_acceptance.md) |
 | 安全三级优化器 | Stage 3 | legacy `simple_iter` baseline | hypothesis、3 levels、checkpoint、rollback、cache、best_correct | 多 kernel 与 baseline 对照 |
 | Memory Applicability Gate | Stage 4 | legacy RAG 正负 trial | schema、score、abstention、off/gated/always | 负迁移与弃权实验 |
 | BudgetManager | Stage 1/3 | token/cost、LLM/tool/compile/csynth/csim hard limits、pre-call block、real launch exact-once accounting、UnifiedRunner/legacy propagation；真实 DFS 工具链与 Stage 2 repair-aware validation 共享预算通过 | Stage 3 budget exhaustion 停止新候选并返回 best_correct | [`PROJECT_STATE.md`](PROJECT_STATE.md) |
@@ -76,62 +76,62 @@ STAGE3_STARTED=false
 
 Step 0 consumer audit is complete. The final findings, corrections, F15 addition,
 P1-A–P1-D split and acceptance gates are recorded in
-[`P1_MODEL_RUNTIME_AUDIT_DECISIONS.md`](P1_MODEL_RUNTIME_AUDIT_DECISIONS.md).
+[`P1_MODEL_RUNTIME_AUDIT_DECISIONS.md`](../audits/P1_MODEL_RUNTIME_AUDIT_DECISIONS.md).
 
 P1-A deterministic acceptance is complete at `e9f4a51744ce44c04236466450b8af85ebf9be9c` with **889/889** tests.
-Evidence: [`P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md`](P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md).
+Evidence: [`P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md`](../acceptance/pre-stage3/P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md).
 
 P1-B0 read-only pricing/cost audit is complete at `24918d6fcfe1250043cd6a72082456241fa4679e`.
 Evidence:
-[`P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md`](P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md).
+[`P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md`](../audits/P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md).
 
 P1-B1 deterministic acceptance is complete at `bb219ea9e3049b4f5959c9dbb9c0e585875afd82` with
 **920/920** tests. Evidence:
-[`P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md`](P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md).
+[`P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md`](../acceptance/pre-stage3/P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md).
 
-P1-B2 deterministic acceptance is complete at `571c51fcc250592a21bf40b3831b7dccfc6400aa` with **950/950** tests, 5 source records and 6 verified concrete-model snapshots. Evidence: [`P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md`](P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md).
+P1-B2 deterministic acceptance is complete at `571c51fcc250592a21bf40b3831b7dccfc6400aa` with **950/950** tests, 5 source records and 6 verified concrete-model snapshots. Evidence: [`P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md`](../acceptance/pre-stage3/P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md).
 
 P1-B3 deterministic acceptance is complete with implementation commit
 `1c6c7efc9160c104319d4cc01a9b96c3ae0d082e`, correction commit `2296a18f09aa478afcdc5cc9652b4d9166a44149` and
 **993/993** final tests. Evidence:
-[`P1B3_COST_ESTIMATOR_ACCEPTANCE.md`](P1B3_COST_ESTIMATOR_ACCEPTANCE.md).
+[`P1B3_COST_ESTIMATOR_ACCEPTANCE.md`](../acceptance/pre-stage3/P1B3_COST_ESTIMATOR_ACCEPTANCE.md).
 
 P1-B4A deterministic acceptance is complete at `ae276f3df79685a7edd36dc6b06c7d82d5784e7a` with **1016/1016** tests and patch ID `89db552f6660c8e5fa9ac2a67deb21909ae25ae3`. Evidence:
-[`P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md`](P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md).
+[`P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md`](../acceptance/pre-stage3/P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md).
 
 P1-B4B deterministic acceptance is complete at `f650478e842e9020c23489adb407b1b50f1c4438` with **1052/1052** tests and patch ID `5360788b724a9c6d6fcebff107943436efb8a510`. P1-B is closed. Evidence:
-[`P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md`](P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md).
+[`P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md`](../acceptance/pre-stage3/P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md).
 
 P1-C1 deterministic acceptance is complete at `3137a9cdbaf0201ed2ee3f5a28225121ceb04d56` with **1089/1089** tests and patch ID `4a37e161da17664a073761837ce944ea7eff749d`. Evidence:
-[`P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md`](P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md).
+[`P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md).
 
 P1-C2 deterministic acceptance is complete at `4a39ed894da4d04e3d46772c7b2f5d400ed98093` with **1119/1119** tests and patch ID `01d5e3c292b82e9fb58a8c9f14b02c7a90b5a9c9`. Evidence:
-[`P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md`](P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md).
+[`P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md).
 
 P1-C3A deterministic acceptance is complete at `c14650b2a474478cd82c0a9d1798fdd9b80d971b` with **1153/1153** tests and patch ID `b5302f1d3205042b01884e9be4c4e9c0095fb380`. Evidence:
-[`P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md`](P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md).
+[`P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md).
 
 P1-C3B deterministic acceptance is complete at `343d23c5b811f7c529991450b0952299f460c820` with **1184/1184** tests and patch ID `4e4597fb64f4dc3dab29a6b51228143586cb174c`. Evidence:
-[`P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md`](P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md).
+[`P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md).
 
 P1-C3C1 deterministic acceptance is complete at `d2f085b3cabefef87e8aa5099bdb1c2a8ce32b7d` with **1220/1220** tests and patch ID `f5ecbba1271868d84d1ad5b8482c50926a013c6f`. Evidence:
-[`P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md`](P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md).
+[`P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md).
 
 P1-C3C2 integrated accounting completed at `f0c06c32771916bb6ad3bd68eb4ac21473dcd41b` with
 **1250/1250** tests and patch ID `6f77f6146e64a341623ac9e21a591f5a7e4cd7bd`.
 P1-C4 deterministic parity closed P1-C with **1275/1275** tests.
 Evidence:
-[`P1C_RUNTIME_CLOSURE_ACCEPTANCE.md`](P1C_RUNTIME_CLOSURE_ACCEPTANCE.md).
+[`P1C_RUNTIME_CLOSURE_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C_RUNTIME_CLOSURE_ACCEPTANCE.md).
 
 P1-D bounded network smoke completed for `deepseek-v4-flash` with one real
 DeepSeek API call. The concrete model is `network_smoke_verified`; observed
 TokenUsage, native CNY estimated cost, credential exclusion and the prospective
 second-call hard block are recorded in
-[`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md).
+[`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](../acceptance/pre-stage3/P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md).
 
 P4 Public/Hidden test-source provenance completed with
 **1312/1312** deterministic tests and patch ID `bd85479221d8729c9aad23df6a91ccfaf4d7333b`. Evidence:
-[`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md).
+[`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](../acceptance/pre-stage3/P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md).
 
 Historical next evidence at the time of P1/P4 closure:
 
@@ -226,7 +226,7 @@ STAGE3_STARTED=false
 ```
 
 Evidence:
-[`P1_P4_FROZEN_CONTRACT_RECONCILIATION.md`](P1_P4_FROZEN_CONTRACT_RECONCILIATION.md).
+[`P1_P4_FROZEN_CONTRACT_RECONCILIATION.md`](../audits/P1_P4_FROZEN_CONTRACT_RECONCILIATION.md).
 <!-- P1_P4_FROZEN_CONTRACT_RECONCILIATION:END -->
 
 <!-- P2_SOURCE_ONLY_BOOTSTRAP:BEGIN -->
@@ -262,5 +262,5 @@ P5=closed
 P0=next, not run
 ```
 
-Evidence: [`P5_CONCISE_OUTPUT_ACCEPTANCE.md`](P5_CONCISE_OUTPUT_ACCEPTANCE.md).
+Evidence: [`P5_CONCISE_OUTPUT_ACCEPTANCE.md`](../acceptance/pre-stage3/P5_CONCISE_OUTPUT_ACCEPTANCE.md).
 <!-- P5_CONCISE_OUTPUT_CLOSURE:END -->

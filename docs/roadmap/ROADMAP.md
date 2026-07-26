@@ -91,7 +91,7 @@ NEXT_STEP=STAGE3_PLANNING
 Stage 3 is now allowed but has not started.
 
 Documentation reconciliation evidence:
-[`PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md`](PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md).
+[`PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md`](../acceptance/pre-stage3/PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md).
 
 <!-- PRE_STAGE3_PRODUCTIZATION_PLAN:END -->
 
@@ -398,10 +398,10 @@ candidate，没有调用 LLM API，因此证明的是 Stage 1 工具与预算基
 
 验收记录：
 
-- [`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md)；
-- [`stage1_csynth_budget_acceptance.md`](stage1_csynth_budget_acceptance.md)；
-- [`stage1_compile_csim_budget_acceptance.md`](stage1_compile_csim_budget_acceptance.md)；
-- [`stage1_core_acceptance.md`](stage1_core_acceptance.md)。
+- [`stage1_target_profile_acceptance.md`](../acceptance/stage1/stage1_target_profile_acceptance.md)；
+- [`stage1_csynth_budget_acceptance.md`](../acceptance/stage1/stage1_csynth_budget_acceptance.md)；
+- [`stage1_compile_csim_budget_acceptance.md`](../acceptance/stage1/stage1_compile_csim_budget_acceptance.md)；
+- [`stage1_core_acceptance.md`](../acceptance/stage1/stage1_core_acceptance.md)。
 
 ### 5.4 Stage 1 Hardening 与跨 Stage 边界
 
@@ -505,7 +505,7 @@ Stage 2.6 Closure-readiness Audit
 ```
 
 详细验收文档：
-[`stage1_core_acceptance.md`](stage1_core_acceptance.md)。
+[`stage1_core_acceptance.md`](../acceptance/stage1/stage1_core_acceptance.md)。
 
 ## 6. Stage 2 — 结构化证据闭环
 
@@ -627,7 +627,7 @@ stage2_real_csim_handler_resume5_20260717_184240
 ```
 
 详细记录：
-[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)。
+[`stage2_runtime_evidence_acceptance.md`](../acceptance/stage2/stage2_runtime_evidence_acceptance.md)。
 
 ### 6.5 Stage 2.4：Shared Layered Prompt Builder — 已完成
 
@@ -743,7 +743,7 @@ Stage 2.5 已完成：
 该累计值不是一次共享预算。统一证据：
 
 - [`stage2_smoke_evidence_summary.md`](stage2_smoke_evidence_summary.md)；
-- [`stage2_smoke_evidence_index.json`](stage2_smoke_evidence_index.json)。
+- [`stage2_smoke_evidence_index.json`](../stage2_smoke_evidence_index.json)。
 
 Stage 2.5 不证明任意 HLS、统计归属准确率、真实网络模型修复或跨版本支持。
 
@@ -773,7 +773,7 @@ CandidateResponseContract 新语法与 CSYNTH parser 新规则没有被 Stage 2.
 详见：
 
 - [`STAGE2_CLOSURE_READINESS_AUDIT.md`](STAGE2_CLOSURE_READINESS_AUDIT.md)；
-- [`stage2_closure_readiness_audit.json`](stage2_closure_readiness_audit.json)。
+- [`stage2_closure_readiness_audit.json`](../stage2_closure_readiness_audit.json)。
 
 ### 6.8 Stage 2.7：Cross-stage Validation and Repair Hardening — 已完成
 
@@ -811,7 +811,7 @@ feat: add minimal model family profiles
 - Response Contract、模型选择和工具链均未放宽或改变。
 
 验收见
-[`stage2_model_family_profile_acceptance.md`](stage2_model_family_profile_acceptance.md)。
+[`stage2_model_family_profile_acceptance.md`](../acceptance/stage2/stage2_model_family_profile_acceptance.md)。
 
 Stage 2.7.3 功能提交：
 
@@ -823,7 +823,7 @@ feat: harden target execution profiles
 已完成一个稳定 committed named profile、per-profile executable/settings、
 parser identity、resource-limit schema 和逐字段 provenance；保持 Vitis 2023.2
 默认行为，不增加第二版本或设备矩阵。验收见
-[`stage2_stage1_hardening_batch_a_acceptance.md`](stage2_stage1_hardening_batch_a_acceptance.md)。
+[`stage2_stage1_hardening_batch_a_acceptance.md`](../acceptance/stage2/stage2_stage1_hardening_batch_a_acceptance.md)。
 
 Stage 2.7.4 功能提交：
 
@@ -845,7 +845,7 @@ TaskSpec
 
 一个 UnifiedRunner run 只创建一个 BudgetManager 和一个 TraceRecorder；
 legacy、dry-run 与 repair-aware 三种模式显式互斥。验收见
-[`stage2_repair_aware_cli_acceptance.md`](stage2_repair_aware_cli_acceptance.md)。
+[`stage2_repair_aware_cli_acceptance.md`](../acceptance/stage2/stage2_repair_aware_cli_acceptance.md)。
 
 Stage 2.7.5 已在代码基线 `7407da78b9371e853b44a201828ce4b9251fad8f` 上完成一次真实
 OpenAI-compatible network-model Candidate repair smoke：
@@ -928,7 +928,7 @@ feature_code_changes=0
 ```
 
 正式关闭记录：
-[`stage2_closure_acceptance.md`](stage2_closure_acceptance.md)。
+[`stage2_closure_acceptance.md`](../acceptance/stage2/stage2_closure_acceptance.md)。
 
 ### 6.10 Stage 2 完成标准
 
@@ -953,10 +953,10 @@ Testbench Reliability 完成
 
 - [`STAGE2_EVIDENCE_LOOP.md`](STAGE2_EVIDENCE_LOOP.md)；
 - [`STAGE2_HARDENING_PLAN.md`](STAGE2_HARDENING_PLAN.md)；
-- [`stage2_acceptance.md`](stage2_acceptance.md)；
-- [`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md)；
-- [`stage2_hardening_acceptance.md`](stage2_hardening_acceptance.md)；
-- [`stage2_closure_acceptance.md`](stage2_closure_acceptance.md)。
+- [`stage2_acceptance.md`](../acceptance/stage2/stage2_acceptance.md)；
+- [`stage2_runtime_evidence_acceptance.md`](../acceptance/stage2/stage2_runtime_evidence_acceptance.md)；
+- [`stage2_hardening_acceptance.md`](../acceptance/stage2/stage2_hardening_acceptance.md)；
+- [`stage2_closure_acceptance.md`](../acceptance/stage2/stage2_closure_acceptance.md)。
 
 ## 7. Stage 3 — 安全的三级优化器
 
@@ -1337,12 +1337,12 @@ Hardening 时，先补齐并做真实验收，再继续对应 Stage。
 
 新对话或长时间中断后，依次阅读：
 
-1. `docs/PROJECT_STATE.md`
-2. `docs/ROADMAP.md`
-3. `docs/GOAL_TRACEABILITY.md`
+1. `docs/roadmap/PROJECT_STATE.md`
+2. `docs/roadmap/ROADMAP.md`
+3. `docs/roadmap/GOAL_TRACEABILITY.md`
 4. 当前 Stage 文档
-5. `docs/REPRODUCTION_STATUS.md`
-6. `docs/USAGE.md`
+5. `docs/guides/REPRODUCTION_STATUS.md`
+6. `docs/guides/USAGE.md`
 7. 最新 acceptance
 8. Git history
 

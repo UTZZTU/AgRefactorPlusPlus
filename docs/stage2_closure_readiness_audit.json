@@ -303,10 +303,10 @@
       "milestone": "2.7.7",
       "name": "Cross-stage Regression and Stage 2.8 Handoff",
       "primary_files": [
-        "docs/PROJECT_STATE.md",
-        "docs/NEXT_CHAT_HANDOFF.md",
-        "docs/STAGE2_HARDENING_PLAN.md",
-        "docs/stage2_hardening_acceptance.md (new)"
+        "docs/roadmap/PROJECT_STATE.md",
+        "docs/reference/NEXT_CHAT_HANDOFF.md",
+        "docs/roadmap/STAGE2_HARDENING_PLAN.md",
+        "docs/acceptance/stage2/stage2_hardening_acceptance.md (new)"
       ]
     }
   ],

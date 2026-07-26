@@ -3,7 +3,7 @@
 > Profile-schema contract. The family profile is now
 > `deterministically_tested`; `network_smoke_verified` remains attached to the
 > exact concrete-model evidence only. See
-> [`P1_P4_FROZEN_CONTRACT_RECONCILIATION.md`](P1_P4_FROZEN_CONTRACT_RECONCILIATION.md).
+> [`P1_P4_FROZEN_CONTRACT_RECONCILIATION.md`](../../audits/P1_P4_FROZEN_CONTRACT_RECONCILIATION.md).
 
 # P1-D Bounded DeepSeek Network Smoke Acceptance
 

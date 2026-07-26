@@ -87,7 +87,7 @@ This acceptance record supports a Stage 2 milestone, not a claim of general corr
 
 本文档验收的是 **Stage 2 Testbench Reliability 核心**，不是原始 Stage 2 全部范围。完整 Stage 2 仍需 general feedback parser、evidence state machine、layered stage/model Prompt、多类型真实 kernel smoke 与文档同步。
 
-权威完成标准见 [`ROADMAP.md`](ROADMAP.md)，当前阶段细节见 [`STAGE2_EVIDENCE_LOOP.md`](STAGE2_EVIDENCE_LOOP.md)。
+权威完成标准见 [`ROADMAP.md`](../../roadmap/ROADMAP.md)，当前阶段细节见 [`STAGE2_EVIDENCE_LOOP.md`](../../roadmap/STAGE2_EVIDENCE_LOOP.md)。
 <!-- AGREFPP_STAGE2_CLOSURE_SCOPE:END -->
 
 
@@ -101,7 +101,7 @@ time.
 
 The subsequent Stage 2.1–2.3 evolution is recorded in:
 
-- [`STAGE2_EVIDENCE_LOOP.md`](STAGE2_EVIDENCE_LOOP.md);
+- [`STAGE2_EVIDENCE_LOOP.md`](../../roadmap/STAGE2_EVIDENCE_LOOP.md);
 - [`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md).
 
 The later milestone adds Public/Hidden suite evidence, generic feedback and

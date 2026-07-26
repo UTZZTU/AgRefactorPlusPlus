@@ -5,7 +5,7 @@
 > **审计基线：** `8b543267a88ed63d343bd633cf29cd6edf9c4127`  
 > **人工复核日期：** 2026-07-22  
 > **作用：** 保存自动审计发现、人工修正、新增发现、阶段归属和关闭证据。  
-> **上位合同：** [`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md)
+> **上位合同：** [`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](../roadmap/PRE_STAGE3_PRODUCTIZATION_PLAN.md)
 
 ## 1. 证据边界
 
@@ -224,7 +224,7 @@ P1-C3C2 integrated accounting completed at `f0c06c32771916bb6ad3bd68eb4ac21473dc
 **1250/1250** tests and patch ID `6f77f6146e64a341623ac9e21a591f5a7e4cd7bd`.
 P1-C4 deterministic parity closed P1-C with **1275/1275** tests.
 Evidence:
-[`P1C_RUNTIME_CLOSURE_ACCEPTANCE.md`](P1C_RUNTIME_CLOSURE_ACCEPTANCE.md).
+[`P1C_RUNTIME_CLOSURE_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C_RUNTIME_CLOSURE_ACCEPTANCE.md).
 
 ### P1-D：验收与真实 smoke——completed
 
@@ -253,7 +253,7 @@ full_deterministic_regression=1275/1275
 ```
 
 Evidence:
-[`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md).
+[`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](../acceptance/pre-stage3/P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md).
 
 只标记该具体模型的网络 smoke，不把一次运行扩展成整个 DeepSeek family
 或任意 endpoint 的网络保证。
@@ -332,7 +332,7 @@ remain rejected before Provider execution.
 ## 8.2 P1-A deterministic acceptance
 
 Formal evidence:
-[`P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md`](P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md)
+[`P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md`](../acceptance/pre-stage3/P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md)
 
 ```text
 implementation_commit=e9f4a51744ce44c04236466450b8af85ebf9be9c
@@ -375,7 +375,7 @@ CLI and P5 remain outside P1-B1.
 ## 8.4 P1-B1 deterministic acceptance
 
 Formal evidence:
-[`P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md`](P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md)
+[`P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md`](../acceptance/pre-stage3/P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md)
 
 ```text
 implementation_commit=bb219ea9e3049b4f5959c9dbb9c0e585875afd82
@@ -396,7 +396,7 @@ consumer migration remain P1-B4/P1-C.
 
 ## 8.5 P1-B2 deterministic acceptance
 
-Formal evidence: [`P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md`](P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md)
+Formal evidence: [`P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md`](../acceptance/pre-stage3/P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md)
 
 ```text
 implementation_commit=571c51fcc250592a21bf40b3831b7dccfc6400aa
@@ -419,7 +419,7 @@ P1B0-F08 is closed. The official snapshot half of F05/F11 is complete; Legacy au
 ## 8.6 P1-B3 deterministic acceptance
 
 Formal evidence:
-[`P1B3_COST_ESTIMATOR_ACCEPTANCE.md`](P1B3_COST_ESTIMATOR_ACCEPTANCE.md)
+[`P1B3_COST_ESTIMATOR_ACCEPTANCE.md`](../acceptance/pre-stage3/P1B3_COST_ESTIMATOR_ACCEPTANCE.md)
 
 ```text
 base_commit=2d9487cdedd8f15c811ef256a6a28909988438a5
@@ -451,7 +451,7 @@ claim changes.
 ## 8.7 P1-B4A deterministic acceptance
 
 Formal evidence:
-[`P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md`](P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md)
+[`P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md`](../acceptance/pre-stage3/P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md)
 
 ```text
 parent_commit=4e9353f81c6c284a32f514811de61f0067045cbb
@@ -480,7 +480,7 @@ BudgetManager/BudgetUsage ledger for native-currency observed costs.
 ## 8.8 P1-B4B and P1-B4 deterministic acceptance
 
 Formal evidence:
-[`P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md`](P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md)
+[`P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md`](../acceptance/pre-stage3/P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md)
 
 ```text
 parent_commit=149e8aaf86da9185f50cc017f676299fa2f55eb2
@@ -530,7 +530,7 @@ vitis_run=false
 ```
 
 Formal evidence:
-[`P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md`](P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md)
+[`P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md)
 
 ```text
 parent_commit=8fab046d3e705fb40db189984a0f51389b5b94d3
@@ -580,7 +580,7 @@ vitis_run=false
 ```
 
 Formal evidence:
-[`P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md`](P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md)
+[`P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md)
 
 ```text
 parent_commit=3f1995e62449fcb3872ce8440a802ef1361f165a
@@ -633,7 +633,7 @@ vitis_run=false
 ```
 
 Formal evidence:
-[`P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md`](P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md)
+[`P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md)
 
 ```text
 parent_commit=e73d0999e6fa6425831c55aca6af215834101883
@@ -686,7 +686,7 @@ vitis_run=false
 ```
 
 Formal evidence:
-[`P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md`](P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md)
+[`P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md)
 
 ```text
 parent_commit=fe7b2a590541570fec1bf9767a43b10da62b91c2
@@ -740,7 +740,7 @@ vitis_run=false
 ```
 
 Formal evidence:
-[`P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md`](P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md)
+[`P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md)
 
 ```text
 parent_commit=4cf848dea1e54128011ca63d67ec6f88e300e8a1
@@ -797,13 +797,13 @@ Step 1 P1-C4 deterministic parity acceptance   pending
 
 以下指针记录 P1-C3C1 完成时的推进约束，现作为历史审计证据保留，不再代表当前项目状态。P1-C、P1-D、P4、P2、Execution Identity、P5、P0 与 Pre-Stage-3 Closure 后续均已完成。
 
-P4 closure evidence: [`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md).
+P4 closure evidence: [`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](../acceptance/pre-stage3/P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md).
 
 <!-- P1_P4_FROZEN_CONTRACT_RECONCILIATION:BEGIN -->
 ## P1/P4 frozen-contract reconciliation
 
 The previous `completed` labels used narrower acceptance scopes than
-[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md).
+[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](../roadmap/PRE_STAGE3_PRODUCTIZATION_PLAN.md).
 The mismatch is now corrected in one integrated package:
 
 ```text
@@ -838,5 +838,5 @@ NEXT_STEP=STAGE3_PLANNING
 ```
 
 Evidence:
-[`PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md`](PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md).
+[`PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md`](../acceptance/pre-stage3/PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md).
 <!-- PRE_STAGE3_FINAL_STATUS:END -->

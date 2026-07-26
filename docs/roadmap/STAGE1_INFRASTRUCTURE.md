@@ -78,7 +78,7 @@ Estimated Fmax: 342.47 MHz
 Result: REAL_VITIS_SMOKE_PASSED=1
 ```
 
-详见 [`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md)。
+详见 [`stage1_target_profile_acceptance.md`](../acceptance/stage1/stage1_target_profile_acceptance.md)。
 
 ## 4. 多版本显式指定
 
@@ -138,7 +138,7 @@ pre-call hard check
 - 真实 DFS Preflight → Vitis → csim 全链路通过；
 - 精确使用量 `4 tool / 2 compile / 1 csynth / 1 csim`。
 
-验收见 [`stage1_core_acceptance.md`](stage1_core_acceptance.md)。
+验收见 [`stage1_core_acceptance.md`](../acceptance/stage1/stage1_core_acceptance.md)。
 
 public test 作为 Stage 2/3 的评测角色，由 compile/csim 执行，不新增独立预算。原始项目无活跃 cosim，当前不属于 Core；后续新增 RTL co-simulation 时再独立设计。
 

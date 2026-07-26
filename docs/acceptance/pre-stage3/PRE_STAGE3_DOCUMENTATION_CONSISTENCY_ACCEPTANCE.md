@@ -3,7 +3,7 @@
 ## Authority and scope
 
 The implementation authority remains
-[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md).
+[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](../../roadmap/PRE_STAGE3_PRODUCTIZATION_PLAN.md).
 This package changes documentation only. It does not change runtime code,
 product behavior, budgets, Public/Hidden semantics, model configuration,
 Vitis integration, or the accepted P0 evidence.
@@ -38,14 +38,14 @@ real_vitis_run=false
 ## Reconciled documents
 
 ```text
-docs/PRE_STAGE3_PRODUCTIZATION_PLAN.md
-docs/PROJECT_STATE.md
-docs/GOAL_TRACEABILITY.md
-docs/P1_MODEL_RUNTIME_AUDIT_DECISIONS.md
-docs/P0_GENERATION_REPAIR_STABILIZATION_PLAN.md
-docs/PRE_STAGE3_CLEANUP_AND_CLOSURE_ACCEPTANCE.md
-docs/ROADMAP.md
-docs/PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md
+docs/roadmap/PRE_STAGE3_PRODUCTIZATION_PLAN.md
+docs/roadmap/PROJECT_STATE.md
+docs/roadmap/GOAL_TRACEABILITY.md
+docs/audits/P1_MODEL_RUNTIME_AUDIT_DECISIONS.md
+docs/history/P0_GENERATION_REPAIR_STABILIZATION_PLAN.md
+docs/acceptance/pre-stage3/PRE_STAGE3_CLEANUP_AND_CLOSURE_ACCEPTANCE.md
+docs/roadmap/ROADMAP.md
+docs/acceptance/pre-stage3/PRE_STAGE3_DOCUMENTATION_CONSISTENCY_ACCEPTANCE.md
 ```
 
 ## Validation

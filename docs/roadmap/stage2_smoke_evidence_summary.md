@@ -139,4 +139,4 @@ Stage 1 Hardening Batch A.
 | 2.5.3 | `stage2_smoke_fault_matrix_summary.json` | 454 | `7e64aa4a16d79f6e22f183e117507202de543c7d93f092a22e6c35359752920a` |
 
 Machine-readable index:
-[`stage2_smoke_evidence_index.json`](stage2_smoke_evidence_index.json).
+[`stage2_smoke_evidence_index.json`](../stage2_smoke_evidence_index.json).

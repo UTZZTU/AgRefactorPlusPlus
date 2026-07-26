@@ -56,7 +56,7 @@ This work remains active and is not discarded. It now serves as:
 - the first stage-specific prompt and constrained repair prototype.
 
 Acceptance:
-[`stage2_acceptance.md`](stage2_acceptance.md).
+[`stage2_acceptance.md`](../acceptance/stage2/stage2_acceptance.md).
 
 ## 4. Stage 2.1: Public/Hidden test roles and evidence
 
@@ -166,7 +166,7 @@ evaluation modules depend on low-level runtime services.
 - safe Public and Hidden trace boundaries.
 
 Detailed record:
-[`stage2_runtime_evidence_acceptance.md`](stage2_runtime_evidence_acceptance.md).
+[`stage2_runtime_evidence_acceptance.md`](../acceptance/stage2/stage2_runtime_evidence_acceptance.md).
 
 ## 7. Current limitations
 
@@ -292,7 +292,7 @@ This milestone does not prove seven-type Vitis synthesis, Public/Hidden CSIM,
 fault ownership accuracy, or model repair. Stage 2.5.2 is next.
 
 Detailed record:
-[`stage2_smoke_corpus_acceptance.md`](stage2_smoke_corpus_acceptance.md).
+[`stage2_smoke_corpus_acceptance.md`](../acceptance/stage2/stage2_smoke_corpus_acceptance.md).
 
 ### 8.1.2 Stage 2.5.2 completed
 
@@ -329,7 +329,7 @@ not prove arbitrary HLS support, fault ownership accuracy, Hidden-failure
 behavior, or model repair.
 
 Detailed record:
-[`stage2_smoke_pass_matrix_acceptance.md`](stage2_smoke_pass_matrix_acceptance.md).
+[`stage2_smoke_pass_matrix_acceptance.md`](../acceptance/stage2/stage2_smoke_pass_matrix_acceptance.md).
 
 ### 8.1.3 Stage 2.5.3 completed
 
@@ -350,14 +350,14 @@ Acceptance:
 ```
 
 Detailed record:
-[`stage2_smoke_fault_matrix_acceptance.md`](stage2_smoke_fault_matrix_acceptance.md).
+[`stage2_smoke_fault_matrix_acceptance.md`](../acceptance/stage2/stage2_smoke_fault_matrix_acceptance.md).
 
 ### 8.1.4 Stage 2.5.4 completed
 
 Evidence entry points:
 
 - [`stage2_smoke_evidence_summary.md`](stage2_smoke_evidence_summary.md);
-- [`stage2_smoke_evidence_index.json`](stage2_smoke_evidence_index.json).
+- [`stage2_smoke_evidence_index.json`](../stage2_smoke_evidence_index.json).
 
 ```text
 7 baseline + 9 fault = 16 independent labels
@@ -404,7 +404,7 @@ ground truth and Hidden/budget evidence are satisfied/verification-only.
 Detailed audit:
 
 - [`STAGE2_CLOSURE_READINESS_AUDIT.md`](STAGE2_CLOSURE_READINESS_AUDIT.md);
-- [`stage2_closure_readiness_audit.json`](stage2_closure_readiness_audit.json).
+- [`stage2_closure_readiness_audit.json`](../stage2_closure_readiness_audit.json).
 
 
 ## 8.3 Stage 2.7–2.8 decision
@@ -664,7 +664,7 @@ local tools and independent ground truth distinct. It launched no new network ca
 formal Vitis acceptance and did not close Stage 2.
 
 Detailed record:
-[`stage2_hardening_acceptance.md`](stage2_hardening_acceptance.md).
+[`stage2_hardening_acceptance.md`](../acceptance/stage2/stage2_hardening_acceptance.md).
 
 ## 8.11 Stage 2.8 Final Documentation and Closure
 
@@ -688,7 +688,7 @@ feature_code_changes=0
 
 All public status, usage, reproducibility, roadmap, traceability, handoff and Stage 2
 acceptance documents were synchronized. The formal closure record is
-[`stage2_closure_acceptance.md`](stage2_closure_acceptance.md).
+[`stage2_closure_acceptance.md`](../acceptance/stage2/stage2_closure_acceptance.md).
 
 Stage 2 closure preserves all scope caveats: one Vitis version/host, finite kernel
 matrix, one real model smoke, no formal equivalence, no automatic routing, and no

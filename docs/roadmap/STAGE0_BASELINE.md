@@ -25,8 +25,8 @@
 
 ## 相关文档
 
-- [`REPRODUCTION_STATUS.md`](REPRODUCTION_STATUS.md)
-- [`USAGE.md`](USAGE.md)
-- [`ENVIRONMENT.md`](ENVIRONMENT.md)
+- [`REPRODUCTION_STATUS.md`](../guides/REPRODUCTION_STATUS.md)
+- [`USAGE.md`](../guides/USAGE.md)
+- [`ENVIRONMENT.md`](../guides/ENVIRONMENT.md)
 
 Stage 0 视为“复现基线基本完成”，但后续不得把未验证代码路径补写成已验证能力。

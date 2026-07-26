@@ -67,17 +67,17 @@ The final synchronization covers:
 
 ```text
 README.md
-docs/CHANGELOG.md
-docs/USAGE.md
-docs/REPRODUCTION_STATUS.md
-docs/ROADMAP.md
-docs/GOAL_TRACEABILITY.md
-docs/PROJECT_STATE.md
-docs/NEXT_CHAT_HANDOFF.md
-docs/STAGE2_EVIDENCE_LOOP.md
-docs/STAGE2_HARDENING_PLAN.md
-docs/stage2_hardening_acceptance.md
-docs/stage2_closure_acceptance.md
+docs/history/CHANGELOG.md
+docs/guides/USAGE.md
+docs/guides/REPRODUCTION_STATUS.md
+docs/roadmap/ROADMAP.md
+docs/roadmap/GOAL_TRACEABILITY.md
+docs/roadmap/PROJECT_STATE.md
+docs/reference/NEXT_CHAT_HANDOFF.md
+docs/roadmap/STAGE2_EVIDENCE_LOOP.md
+docs/roadmap/STAGE2_HARDENING_PLAN.md
+docs/acceptance/stage2/stage2_hardening_acceptance.md
+docs/acceptance/stage2/stage2_closure_acceptance.md
 ```
 
 ## Execution-class boundary

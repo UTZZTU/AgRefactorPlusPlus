@@ -236,10 +236,10 @@ Classification: `verification`.
 
 Primary file scope:
 
-- `docs/PROJECT_STATE.md`
-- `docs/NEXT_CHAT_HANDOFF.md`
-- `docs/STAGE2_HARDENING_PLAN.md`
-- `docs/stage2_hardening_acceptance.md (new)`
+- `docs/roadmap/PROJECT_STATE.md`
+- `docs/reference/NEXT_CHAT_HANDOFF.md`
+- `docs/roadmap/STAGE2_HARDENING_PLAN.md`
+- `docs/acceptance/stage2/stage2_hardening_acceptance.md (new)`
 
 Acceptance: All blocker criteria pass, real/deterministic evidence remains distinguished, and Stage 2.8 receives a frozen closure checklist.
 
@@ -257,4 +257,4 @@ Acceptance: All blocker criteria pass, real/deterministic evidence remains disti
 Stage 2 cannot close until all five blockers are accepted or explicitly removed from the Stage 3 critical path with new evidence. Stage 2.8 remains the sole formal closure milestone.
 
 Machine-readable audit:
-[`stage2_closure_readiness_audit.json`](stage2_closure_readiness_audit.json).
+[`stage2_closure_readiness_audit.json`](../stage2_closure_readiness_audit.json).

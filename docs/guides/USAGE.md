@@ -374,7 +374,7 @@ csynth_invocation.json
 - return code；
 - execution status。
 
-验收记录：[`stage1_target_profile_acceptance.md`](stage1_target_profile_acceptance.md)。
+验收记录：[`stage1_target_profile_acceptance.md`](../acceptance/stage1/stage1_target_profile_acceptance.md)。
 
 ### 当前统一 CLI 边界
 
@@ -482,5 +482,5 @@ full unittest=836/836
 
 这些结果不代表任意 kernel、任意 Vitis 版本、自动模型路由或 Stage 3 优化已经完成。
 关闭证据见
-[`stage2_closure_acceptance.md`](stage2_closure_acceptance.md)。
+[`stage2_closure_acceptance.md`](../acceptance/stage2/stage2_closure_acceptance.md)。
 <!-- AGREFPP_STAGE2_RUNTIME_API_STATUS:END -->

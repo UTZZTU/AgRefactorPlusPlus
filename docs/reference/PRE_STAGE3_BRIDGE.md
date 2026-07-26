@@ -9,7 +9,7 @@ bridge. Work must proceed in small, evidence-driven steps.
 ## Frozen productization and closure decisions
 
 完整实施合同见
-[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md)。
+[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](../roadmap/PRE_STAGE3_PRODUCTIZATION_PLAN.md)。
 
 普通 CLI 必须要求 source、`--top` 和 model，只暴露
 `refactor / optimize / full`；普通用户不选择 `--legacy / --repair-aware`。
@@ -83,52 +83,52 @@ STAGE3_STARTED=false
 
 The read-only model/budget/pricing consumer audit and manual review are complete.
 The authoritative implementation decisions are recorded in
-[`P1_MODEL_RUNTIME_AUDIT_DECISIONS.md`](P1_MODEL_RUNTIME_AUDIT_DECISIONS.md).
+[`P1_MODEL_RUNTIME_AUDIT_DECISIONS.md`](../audits/P1_MODEL_RUNTIME_AUDIT_DECISIONS.md).
 
 P1-A static model compatibility completed deterministic acceptance at `e9f4a51744ce44c04236466450b8af85ebf9be9c` with 889/889 tests. Evidence is recorded in
-[`P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md`](P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md).
+[`P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md`](../acceptance/pre-stage3/P1A_STATIC_MODEL_COMPATIBILITY_ACCEPTANCE.md).
 
 P1-B0 pricing/cost consumer audit is complete. Decisions and the P1-B1 boundary are recorded in
-[`P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md`](P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md).
+[`P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md`](../audits/P1B0_PRICING_CONSUMER_AUDIT_DECISIONS.md).
 
 P1-B1 typed pricing/native-currency schema completed deterministic acceptance at `bb219ea9e3049b4f5959c9dbb9c0e585875afd82` with 920/920 tests. Evidence is recorded in
-[`P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md`](P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md).
+[`P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md`](../acceptance/pre-stage3/P1B1_TYPED_PRICING_SCHEMA_ACCEPTANCE.md).
 
 P1-B2 official concrete-model pricing snapshots completed deterministic acceptance at `571c51fcc250592a21bf40b3831b7dccfc6400aa` with 950/950 tests. Evidence is recorded in
-[`P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md`](P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md).
+[`P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md`](../acceptance/pre-stage3/P1B2_OFFICIAL_PRICING_SNAPSHOTS_ACCEPTANCE.md).
 
 P1-B3 provider-neutral usage-to-cost estimator completed deterministic acceptance with implementation commit `1c6c7efc9160c104319d4cc01a9b96c3ae0d082e`, correction commit `2296a18f09aa478afcdc5cc9652b4d9166a44149` and 993/993 final tests. Evidence is recorded in
-[`P1B3_COST_ESTIMATOR_ACCEPTANCE.md`](P1B3_COST_ESTIMATOR_ACCEPTANCE.md).
+[`P1B3_COST_ESTIMATOR_ACCEPTANCE.md`](../acceptance/pre-stage3/P1B3_COST_ESTIMATOR_ACCEPTANCE.md).
 
 P1-B4A usage normalization and shared serialization completed deterministic acceptance at `ae276f3df79685a7edd36dc6b06c7d82d5784e7a` with 1016/1016 tests. Evidence is recorded in
-[`P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md`](P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md).
+[`P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md`](../acceptance/pre-stage3/P1B4A_USAGE_NORMALIZATION_SERIALIZATION_ACCEPTANCE.md).
 
 P1-B4B explicit estimation and native-cost accounting completed deterministic acceptance at `f650478e842e9020c23489adb407b1b50f1c4438` with 1052/1052 tests. P1-B is closed. Evidence is recorded in
-[`P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md`](P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md).
+[`P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md`](../acceptance/pre-stage3/P1B4B_NATIVE_COST_ACCOUNTING_ACCEPTANCE.md).
 
 P1-C1 typed effective model resolution completed deterministic acceptance at `3137a9cdbaf0201ed2ee3f5a28225121ceb04d56` with 1089/1089 tests. Evidence is recorded in
-[`P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md`](P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md).
+[`P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C1_TYPED_EFFECTIVE_MODEL_CONFIG_ACCEPTANCE.md).
 
 P1-C2 modern consumer migration completed deterministic acceptance at `4a39ed894da4d04e3d46772c7b2f5d400ed98093` with 1119/1119 tests. Evidence is recorded in
-[`P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md`](P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md).
+[`P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C2_MODERN_CONSUMER_MIGRATION_ACCEPTANCE.md).
 
 P1-C3A typed Legacy translation completed deterministic acceptance at `c14650b2a474478cd82c0a9d1798fdd9b80d971b` with 1153/1153 tests. Evidence is recorded in
-[`P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md`](P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md).
+[`P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C3A_TYPED_LEGACY_TRANSLATION_ACCEPTANCE.md).
 
 P1-C3B generic AG2 loader policy completed deterministic acceptance at `343d23c5b811f7c529991450b0952299f460c820` with 1184/1184 tests. Evidence is recorded in
-[`P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md`](P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md).
+[`P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C3B_GENERIC_LOADER_POLICY_ACCEPTANCE.md).
 
 P1-C3C1 typed AG2 usage summary completed deterministic acceptance at `d2f085b3cabefef87e8aa5099bdb1c2a8ce32b7d` with 1220/1220 tests. Evidence is recorded in
-[`P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md`](P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md).
+[`P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C3C1_TYPED_USAGE_SUMMARY_ACCEPTANCE.md).
 
 P1-C3C2 integrated accounting completed at `f0c06c32771916bb6ad3bd68eb4ac21473dcd41b` with 1250/1250 tests. P1-C4 parity closed P1-C with 1275/1275 tests. Evidence is recorded in
-[`P1C_RUNTIME_CLOSURE_ACCEPTANCE.md`](P1C_RUNTIME_CLOSURE_ACCEPTANCE.md).
+[`P1C_RUNTIME_CLOSURE_ACCEPTANCE.md`](../acceptance/pre-stage3/P1C_RUNTIME_CLOSURE_ACCEPTANCE.md).
 
 P1-D bounded DeepSeek network smoke completed for `deepseek-v4-flash` with one real API call, native CNY cost provenance, no credential persistence and a verified `max_llm_calls=1` block. Evidence is recorded in
-[`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md).
+[`P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md`](../acceptance/pre-stage3/P1D_BOUNDED_NETWORK_SMOKE_ACCEPTANCE.md).
 
 P1 is complete. P4 Public/Hidden test-source provenance completed with 1312/1312 deterministic tests and patch ID `bd85479221d8729c9aad23df6a91ccfaf4d7333b`. Evidence is recorded in
-[`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md).
+[`P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md`](../acceptance/pre-stage3/P4_TEST_SOURCE_PROVENANCE_ACCEPTANCE.md).
 
 P1, P4, P2 and the authority-reconciled Execution Identity contract are closed. The active package is P5 concise output and log capture; P0 and Stage 3 remain separate later packages.
 <!-- P1_MODEL_RUNTIME_AUDIT_DECISIONS:END -->
@@ -341,7 +341,7 @@ regression.
 ## P1/P4 frozen-contract reconciliation
 
 The previous `completed` labels used narrower acceptance scopes than
-[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](PRE_STAGE3_PRODUCTIZATION_PLAN.md).
+[`PRE_STAGE3_PRODUCTIZATION_PLAN.md`](../roadmap/PRE_STAGE3_PRODUCTIZATION_PLAN.md).
 The mismatch is now corrected in one integrated package:
 
 ```text
@@ -356,7 +356,7 @@ STAGE3_STARTED=false
 ```
 
 Evidence:
-[`P1_P4_FROZEN_CONTRACT_RECONCILIATION.md`](P1_P4_FROZEN_CONTRACT_RECONCILIATION.md).
+[`P1_P4_FROZEN_CONTRACT_RECONCILIATION.md`](../audits/P1_P4_FROZEN_CONTRACT_RECONCILIATION.md).
 <!-- P1_P4_FROZEN_CONTRACT_RECONCILIATION:END -->
 
 <!-- P2_SOURCE_ONLY_BOOTSTRAP:BEGIN -->
@@ -409,7 +409,7 @@ selected model's pricing currency even when `--cost-budget` was omitted,
 violating `EffectiveRunBudget`'s paired optional-field invariant. The
 correction persists a Cost-budget currency only when the user declares a
 Cost budget. Deterministic and zero-LLM CLI evidence is recorded in
-[`P0_COST_BUDGET_CURRENCY_BLOCKER_ACCEPTANCE.md`](P0_COST_BUDGET_CURRENCY_BLOCKER_ACCEPTANCE.md).
+[`P0_COST_BUDGET_CURRENCY_BLOCKER_ACCEPTANCE.md`](../acceptance/pre-stage3/P0_COST_BUDGET_CURRENCY_BLOCKER_ACCEPTANCE.md).
 
 ```text
 P0_STATUS=active_retry_required
@@ -425,7 +425,7 @@ by the selected OpenAI-compatible endpoint. Because identification is
 already consumed through `json.loads()`, its static AG2 agent contract
 now uses portable `json_object` output with explicit JSON shapes. The
 `HLSAgentLoader` remains vendor-neutral. Evidence is recorded in
-[`P0_PORTABLE_IDENTIFYING_JSON_BLOCKER_ACCEPTANCE.md`](P0_PORTABLE_IDENTIFYING_JSON_BLOCKER_ACCEPTANCE.md).
+[`P0_PORTABLE_IDENTIFYING_JSON_BLOCKER_ACCEPTANCE.md`](../acceptance/pre-stage3/P0_PORTABLE_IDENTIFYING_JSON_BLOCKER_ACCEPTANCE.md).
 
 ```text
 P0_STATUS=active_retry_required
@@ -442,7 +442,7 @@ globals. Source bootstrap now executes the independent Public Testbench
 repair loop, records derived provenance, and keeps Hidden content out
 of prompts. The four known-family artifact output limits are 32768 with
 the existing 65536 safety ceiling. Evidence is recorded in
-[`P0_PUBLIC_TESTBENCH_REPAIR_AND_OUTPUT_LIMITS_ACCEPTANCE.md`](P0_PUBLIC_TESTBENCH_REPAIR_AND_OUTPUT_LIMITS_ACCEPTANCE.md).
+[`P0_PUBLIC_TESTBENCH_REPAIR_AND_OUTPUT_LIMITS_ACCEPTANCE.md`](../acceptance/pre-stage3/P0_PUBLIC_TESTBENCH_REPAIR_AND_OUTPUT_LIMITS_ACCEPTANCE.md).
 
 ```text
 P0_STATUS=active_retry_required
@@ -458,7 +458,7 @@ passing, but Prompt Identity recorded 29 calls while the shared budget
 correctly recorded 30. The missing call was the single Public Testbench
 repair. Source bootstrap now adds every safe Testbench repair audit event
 to the unified Prompt Identity without persisting plaintext or Hidden
-content. See [`P0_PROMPT_IDENTITY_RECONCILIATION.md`](P0_PROMPT_IDENTITY_RECONCILIATION.md).
+content. See [`P0_PROMPT_IDENTITY_RECONCILIATION.md`](../audits/P0_PROMPT_IDENTITY_RECONCILIATION.md).
 
 ```text
 P0_STATUS=active_retry_required
@@ -486,7 +486,7 @@ STAGE3_STARTED=false
 ## P0 生成与修复稳定化执行计划
 
 P0 真实 DFS 运行暴露出的生成、Hidden、启发式与 repair 问题，已冻结到
-[`P0_GENERATION_REPAIR_STABILIZATION_PLAN.md`](P0_GENERATION_REPAIR_STABILIZATION_PLAN.md)。
+[`P0_GENERATION_REPAIR_STABILIZATION_PLAN.md`](../history/P0_GENERATION_REPAIR_STABILIZATION_PLAN.md)。
 
 ```text
 ACTIVE_STEP=A
@@ -502,7 +502,7 @@ DEFAULT_LLM_CALLS=32
 
 Heuristic failure fingerprints, private-dependency guesses and broad
 failing-Testbench preservation rules no longer block real tools.
-See [`P0_HEURISTIC_AUTHORITY_REMOVAL.md`](P0_HEURISTIC_AUTHORITY_REMOVAL.md).
+See [`P0_HEURISTIC_AUTHORITY_REMOVAL.md`](../history/P0_HEURISTIC_AUTHORITY_REMOVAL.md).
 
 ```text
 STEP_A=completed
@@ -520,7 +520,7 @@ STAGE3_STARTED=false
 The data direction is now Public-to-Hidden only. Candidate generation precedes
 held-out generation, and `model_data_boundary.json` provides fail-closed
 evidence. See
-[`P0_HIDDEN_BOUNDARY_CORRECTION.md`](P0_HIDDEN_BOUNDARY_CORRECTION.md).
+[`P0_HIDDEN_BOUNDARY_CORRECTION.md`](../history/P0_HIDDEN_BOUNDARY_CORRECTION.md).
 
 ```text
 STEP_B=completed
@@ -539,7 +539,7 @@ STAGE3_STARTED=false
 The source-only product entrypoint now defaults to a low-call `lightweight`
 Testbench-generation path. Iterative Public coverage and multi-trajectory
 selection require explicit `coverage-enhanced` selection. See
-[`P0_DUAL_GENERATION_PROFILES.md`](P0_DUAL_GENERATION_PROFILES.md).
+[`P0_DUAL_GENERATION_PROFILES.md`](../history/P0_DUAL_GENERATION_PROFILES.md).
 
 ```text
 STEP_C=completed
@@ -557,7 +557,7 @@ Testbench and Stub generation now follow one black-box ownership contract.
 The first qualified round freezes Public ABI/macros, coverage-only refinement
 reuses the matching Stub, and real tool diagnostics route Testbench, Stub and
 ABI failures without exposing Hidden content. See
-[`P0_TESTBENCH_STUB_PROMPT_REFINEMENT.md`](P0_TESTBENCH_STUB_PROMPT_REFINEMENT.md).
+[`P0_TESTBENCH_STUB_PROMPT_REFINEMENT.md`](../history/P0_TESTBENCH_STUB_PROMPT_REFINEMENT.md).
 
 ```text
 STEP_D=completed

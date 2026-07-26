@@ -659,15 +659,15 @@ Stage 2 已关闭；Stage 3 允许开始，但尚未实现。
 先阅读：
 
 ```text
-1. docs/NEXT_CHAT_HANDOFF.md
-2. docs/PROJECT_STATE.md
-3. docs/ROADMAP.md
-4. docs/GOAL_TRACEABILITY.md
-5. docs/stage2_closure_acceptance.md
-6. docs/stage2_hardening_acceptance.md
-7. docs/STAGE2_EVIDENCE_LOOP.md
-8. docs/STAGE2_HARDENING_PLAN.md
-9. docs/STAGE3_SAFE_OPTIMIZER.md
+1. docs/reference/NEXT_CHAT_HANDOFF.md
+2. docs/roadmap/PROJECT_STATE.md
+3. docs/roadmap/ROADMAP.md
+4. docs/roadmap/GOAL_TRACEABILITY.md
+5. docs/acceptance/stage2/stage2_closure_acceptance.md
+6. docs/acceptance/stage2/stage2_hardening_acceptance.md
+7. docs/roadmap/STAGE2_EVIDENCE_LOOP.md
+8. docs/roadmap/STAGE2_HARDENING_PLAN.md
+9. docs/roadmap/STAGE3_SAFE_OPTIMIZER.md
 10. agrefactor/runtime/runner.py
 11. agrefactor/runtime/repair_phase.py
 12. agrefactor/repair/candidate_loop.py
