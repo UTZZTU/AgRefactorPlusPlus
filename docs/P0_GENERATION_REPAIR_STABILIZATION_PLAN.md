@@ -1,11 +1,11 @@
 # P0 生成与修复稳定化执行计划
 
-> **状态：** Pre-Stage-3 活跃执行合同
+> **状态：** 已完成的 P0 稳定化与关闭记录
 > **冻结日期：** 2026-07-24
 > **基线提交：** `f3e76347ac780cfdf77ea4b8adfe0c9db8d22f80`
 > **基线回归：** 1406 tests passed
-> **P0：** active retry required
-> **Pre-Stage-3：** 未关闭
+> **P0：** accepted
+> **Pre-Stage-3：** 已关闭
 > **Stage 3：** 未开始
 
 本文冻结 P0 真实 DFS 验收之后的后续路线。除非新的真实工具证据推翻某项结论，
@@ -485,3 +485,22 @@ P0_STATUS=active_retry_required
 PRE_STAGE3_CLOSED=false
 STAGE3_STARTED=false
 ```
+
+
+<!-- P0_FINAL_CLOSURE -->
+## Final completion
+
+```text
+STEP_F_DUAL_MODE_REAL_DFS=passed
+STEP_G_CLEANUP_DEPRECATION_CLOSURE=passed
+FINAL_POST_STABILIZATION_P0_SMOKE=accepted
+P0_STATUS=accepted
+PRE_STAGE3_CLOSED=true
+STAGE3_STARTED=false
+NEXT_STEP=STAGE3_PLANNING
+```
+
+Evidence:
+
+- [`P0_REAL_DFS_DUAL_MODE_ACCEPTANCE.md`](P0_REAL_DFS_DUAL_MODE_ACCEPTANCE.md)
+- [`PRE_STAGE3_CLEANUP_AND_CLOSURE_ACCEPTANCE.md`](PRE_STAGE3_CLEANUP_AND_CLOSURE_ACCEPTANCE.md)

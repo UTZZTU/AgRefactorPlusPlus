@@ -75,6 +75,20 @@ known-model compatibility profiles
 
 首批静态模型范围为 DeepSeek、Kimi、GLM、MiniMax、Qwen 和
 Generic OpenAI-compatible；动态未知模型探测和自动路由后置。
+
+<!-- PRE_STAGE3_FINAL_RESULT -->
+Closure result:
+
+```text
+STEP6_P0_REAL_DFS=passed
+STEP7_CLEANUP_DEPRECATION_CLOSURE=passed
+PRE_STAGE3_CLOSED=true
+STAGE3_STARTED=false
+NEXT_STEP=STAGE3_PLANNING
+```
+
+Stage 3 is now allowed but has not started.
+
 <!-- PRE_STAGE3_PRODUCTIZATION_PLAN:END -->
 
 <!-- PRE_STAGE3_BUDGET_PRICING_REFINEMENT:BEGIN -->

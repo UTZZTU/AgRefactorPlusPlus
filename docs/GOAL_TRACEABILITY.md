@@ -2,6 +2,25 @@
 
 > 本文档回答：最初目标是否还在、在哪个 Stage 实现、目前完成到什么程度、下一证据是什么。
 
+
+<!-- PRE_STAGE3_FINAL_CLOSURE -->
+## Pre-Stage-3 final traceability
+
+```text
+Step 0-5=completed
+Step 6 P0 real DFS dual-mode=passed
+Step 7 cleanup/deprecation/final smoke=passed
+PRE_STAGE3_CLOSED=true
+STAGE3_STARTED=false
+NEXT_STEP=STAGE3_PLANNING
+```
+
+The structural-feedback row's pending P0 evidence is now satisfied by
+[`P0_REAL_DFS_DUAL_MODE_ACCEPTANCE.md`](P0_REAL_DFS_DUAL_MODE_ACCEPTANCE.md).
+The next implementation stage is Stage 3 Safe Three-Level Optimizer planning;
+no Stage 3 implementation is included in this closure.
+
+
 ## 1. 核心目标追踪表
 
 | 目标 | 主要 Stage | 当前实现 | 仍缺内容 | 当前证据 |
@@ -169,9 +188,9 @@ Step 1  P1-A/P1-B/P1-C/P1-D 已完成；P1 整体完成
 Step 2  P4 Public/Hidden 来源与 provenance 已完成
 Step 3  P2 source-only bootstrap、统一 CLI 与调用前预算闭环已完成
 Step 4  Execution Identity 已完成
-Step 5  P5 简洁输出当前活跃
-Step 6  P0 真实 DFS source-only accepted
-Step 7  清理、弃用与 Pre-Stage-3 Closure
+Step 5  P5 简洁输出与日志捕获已完成
+Step 6  P0 真实 DFS source-only accepted（已完成）
+Step 7  清理、弃用与 Pre-Stage-3 Closure（已完成）
 Step 8  Stage 3 Safe Three-Level Optimizer
 ```
 

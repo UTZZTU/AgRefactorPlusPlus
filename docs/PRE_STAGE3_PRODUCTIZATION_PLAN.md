@@ -6,6 +6,37 @@
 >
 > Stage 2 已关闭，Stage 3 尚未开始。在本文关闭条件满足前，不得写入 `PRE_STAGE3_CLOSED=true`，也不得开始 Stage 3。
 
+
+<!-- PRE_STAGE3_FINAL_RESULT:BEGIN -->
+## Final implementation result
+
+The frozen Step 0–Step 7 sequence is complete.
+
+```text
+step6_execution_commit=67546b4c015f8505a5de72bc1b57159c5c1547fe
+cleanup_implementation_commit=a4ee78ff38df864cadb444c39e24c1d96cdf2527
+hidden_stub_recovery_commit=03d1ae702f50e3f9ff08a1950a7127ed44feef85
+hidden_testbench_contract_recovery_commit=74699c63cbbdb0e9b30daf08343cb08400216374
+lightweight_hidden_tool_recovery_commit=b33fe48cccc441a149b7a613770baba612485d75
+STEP6_P0_REAL_DFS=passed
+STEP7_CLEANUP_DEPRECATION=passed
+STEP7_FINAL_P0_SMOKE=accepted
+DETERMINISTIC_REGRESSION=1484/1484
+PRE_STAGE3_CLOSED=true
+STAGE3_STARTED=false
+NEXT_STEP=STAGE3_PLANNING
+```
+
+Evidence:
+
+- [`P0_REAL_DFS_DUAL_MODE_ACCEPTANCE.md`](P0_REAL_DFS_DUAL_MODE_ACCEPTANCE.md)
+- [`PRE_STAGE3_DEPRECATION_LEDGER.md`](PRE_STAGE3_DEPRECATION_LEDGER.md)
+- [`PRE_STAGE3_CLEANUP_AND_CLOSURE_ACCEPTANCE.md`](PRE_STAGE3_CLEANUP_AND_CLOSURE_ACCEPTANCE.md)
+
+Step 8 is permitted but not started.
+<!-- PRE_STAGE3_FINAL_RESULT:END -->
+
+
 ## 1. 当前结论与边界
 
 Stage 2 已建立正式验证与有限修复后端：
