@@ -1,7 +1,18 @@
 # Pre-Stage-3 产品化与关闭计划
 
-> **状态：** Stage 3 前冻结实施合同  
-> **决策日期：** 2026-07-22  
+> **CURRENT STATUS: CLOSED HISTORICAL CONTRACT**
+>
+> 本文保留已经完成的 Pre-Stage-3 冻结实施合同和历史验收语义，
+> 不再是当前执行计划。当前状态见
+> [`PROJECT_STATE.md`](PROJECT_STATE.md)，当前参数见
+> [`CLI_PARAMETER_REFERENCE.md`](../guides/CLI_PARAMETER_REFERENCE.md)，
+> Stage 3 实施以
+> [`STAGE3_IMPLEMENTATION_CONTRACT.md`](STAGE3_IMPLEMENTATION_CONTRACT.md)
+> 为准。历史正文中的旧测试数、旧参数名和阶段中间状态不得覆盖当前权威文档。
+
+
+> **状态：** Stage 3 前冻结实施合同
+> **决策日期：** 2026-07-22
 > **权威关系：** `ROADMAP.md` 继续定义长期使命和八项核心能力；本文完整定义进入 Stage 3 前仍必须完成的 P0–P5、Execution Identity、弃用清理和验收顺序。
 >
 > Stage 2 已关闭，Stage 3 尚未开始。在本文关闭条件满足前，不得写入 `PRE_STAGE3_CLOSED=true`，也不得开始 Stage 3。

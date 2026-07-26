@@ -1,96 +1,90 @@
-
 # Product Capability Backlog
 
-本文档记录已经明确延期、但不能遗忘的产品能力。它不是当前执行指针，也不改变 `PRE_STAGE3_CLOSED=true` 和 `STAGE3_STARTED=false`。
+本文只记录不属于当前 Stage 3 首包、但不能遗忘的能力。当前执行指针见 [PROJECT_STATE.md](PROJECT_STATE.md)。
 
-## 1. 模型与 Provider 能力
+## 已迁移到冻结 Stage 3 合同
 
-### 具体模型/部署的 reasoning 映射
+以下内容不再是未决 backlog，已经在 [STAGE3_IMPLEMENTATION_CONTRACT.md](STAGE3_IMPLEMENTATION_CONTRACT.md) 中冻结：
 
-当前普通 CLI 统一提供 `low/medium/high`，默认 `medium`；真实参数仍沿用现有 Profile。后续需要按“具体 model ID + provider/deployment + API format”建立能力记录，包括：
+- optimization objective v1；
+- Structural/Bottleneck/Pragma policy；
+- hypothesis/candidate schema；
+- checkpoint、rollback 和 validation cache；
+- best_correct/best_ppa；
+- budget exhaustion；
+- optimize/full 语义；
+- Stage 3 artifact layout；
+-初始 CLI surface；
+-实施分包和验收矩阵。
 
-- graded effort；
-- thinking enable/disable；
-- provider-managed reasoning；
-- 不同 API 的参数名；
-- requested/effective/provider 参数证据。
+## 模型与 Provider Hardening
+
+### 具体模型/部署 reasoning 映射
+
+后续按：
+
+```text
+model ID
++ provider/deployment
++ API format
+```
+
+建立 graded effort、thinking enable/disable、provider-managed reasoning 和 requested/effective/provider evidence。
 
 ### Authorized auto model pool
 
-后续实现：
-
-- `fixed` 与显式授权 `auto` 策略；
-- allowed model pool；
-- fallback/routing policy；
-- 选择原因和成本/能力证据；
-- 不得未经授权替换用户模型。
+后续实现 fixed/auto、allowed_models、fallback/routing policy 和选择证据。系统不得未经授权替换用户模型。
 
 ### 模型请求参数
 
-`temperature/top_p/max_tokens/seed/stop` 等暂不开放。只有在 typed capability、默认值、安全上限和 Execution Identity 完整后再考虑产品化。
+`temperature/top_p/max_tokens/seed/stop` 等只有在 typed capability、默认值、安全上限和 Execution Identity 完整后才能开放。
 
-## 2. Stage 3 优化器参数
-
-Stage 3 规划时统一设计：
-
-- optimization objective；
-- structural/bottleneck/pragma budgets；
-- hypothesis/beam limits；
-- checkpoint、rollback 与 cache policy；
-- feasibility、acceptance 和 best-candidate policy；
-- resource utilization constraints。
-
-TargetProfile 已具备 BRAM/DSP/FF/LUT/URAM limit schema，但普通 CLI 暂不开放，留到优化器合同统一处理。
-
-## 3. Coverage policy
+## Coverage Policy
 
 当前固定：
 
 ```text
-Public coverage target = 80%
-Hidden coverage target = 90%
+Public coverage target=80%
+Hidden coverage target=90%
 ```
 
-后续讨论是否只开放 Public target、是否通过 operator/evaluation profile 管理 Hidden target，以及如何防止用户降低 Hidden 证据强度。
+后续讨论是否只开放 Public target，以及如何防止降低 Hidden 证据强度。
 
-## 4. Memory/RAG
-
-Stage 4 再产品化：
+## Stage 4 Memory/RAG
 
 - memory mode；
 - knowledge database；
 - retrieval top-k；
 - applicability/confidence gate；
 - update/retention policy；
-- retrieval evidence。
+- retrieval evidence；
+- negative memory；
+- abstention。
 
-## 5. Version migration
-
-Stage 5 统一设计：
+## Stage 5 Version Migration
 
 - source toolchain/profile；
 - target toolchain/profile；
 - migration mode；
-- repository-level migration；
 - compatibility validation；
-- migration evidence and rollback。
+- migration evidence；
+- rollback；
+-更多 Vitis 版本、设备、platform 和 parser。
 
-## 6. Future runtime budgets
+## Future Runtime
 
-保留新增：
+-真实 RTL cosim call site；
+-cosim budget；
+-cosim timeout；
+-cosim evidence/failure ownership。
 
-- cosim call budget；
-- cosim timeout；
-- cosim evidence and failure ownership。
+不得为了补齐名词而创建没有真实 call site 的字段。
 
-当前 compile/CSIM/CSYNTH/tool/LLM/wall-time 维度保持不变。
+## Deferred Advanced Configuration
 
-## 7. Deferred advanced configuration
-
-暂不开放：
-
--完整 Target executable/settings/parser overrides；
-- resource-limit CLI；
-- separate generation/Testbench-repair/Candidate-repair models；
-- advanced suite provenance authoring；
-- per-run temporary work directory override。
+-完整 Target executable/settings/parser CLI override；
+-per-run temporary work directory override；
+-separate generation/Testbench-repair/Candidate-repair models；
+-advanced suite provenance authoring；
+-大规模自动路由；
+-repository-level migration。

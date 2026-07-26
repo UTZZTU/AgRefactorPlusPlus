@@ -4,6 +4,15 @@
 
 ## 未发布
 
+### Current authority cleanup and Stage 3 planning freeze
+
+- 最新 CLI 后完成一次真实 DeepSeek + Vitis HLS 2023.2 source-only accepted smoke。
+- 删除一次性交接、过期 Bridge 和单次 retry reference；长期经验合并进入 history。
+- `PROJECT_STATE`、`GOAL_TRACEABILITY` 和复现状态收敛为当前权威。
+- Legacy baseline 与当前产品验证分离。
+- 冻结 Stage 3 Candidate、Hypothesis、best_correct、checkpoint、cache、预算、CLI 和验收合同。
+- Stage 3 功能实现仍未开始。
+
 <!-- AGREFPP_STAGE1_STAGE2_CHANGELOG:START -->
 ### Stage 1 共享架构
 

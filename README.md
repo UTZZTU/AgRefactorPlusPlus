@@ -1,13 +1,19 @@
-
 # AgRefactor++
 
-AgRefactor++ 是一个面向 Vitis HLS 的模型可插拔、证据驱动、预算约束的自动重构与验证系统。用户提供 C/C++ 源码、top function 和模型，系统生成候选实现，并通过编译、综合、Public/Hidden 测试和有限修复给出可审计结果。
+AgRefactor++ 是一个面向 Vitis HLS 的模型可插拔、证据驱动、预算约束的自动重构、验证与后续安全优化系统。
 
-> 当前正式普通入口是 `refactor`。`optimize` 和 `full` 已预留，但在 Stage 3 优化器完成前会明确拒绝执行。
+当前状态：
+
+```text
+PRE_STAGE3_CLOSED=true
+STAGE3_PLANNING_FROZEN=true
+STAGE3_IMPLEMENTATION_STARTED=false
+NEXT_STEP=STAGE3_IMPLEMENTATION_STEP_1
+```
+
+当前正式普通入口是 `refactor`。`optimize` 和 `full` 已保留；只有在 Stage 3 实现按照冻结合同逐步完成后才会开放真实执行。
 
 ## 快速开始
-
-### 1. 获取代码与环境
 
 ```bash
 git clone https://github.com/UTZZTU/AgRefactorPlusPlus.git
@@ -16,17 +22,10 @@ cd AgRefactorPlusPlus
 conda create -n agrefactor python=3.10
 conda activate agrefactor
 pip install -r requirements.txt
-```
-
-仓库当前从根目录直接运行，不需要 `pip install -e .`。
-
-### 2. 配置 API 与目录
-
-```bash
 cp .env.example .env
 ```
 
-使用已提交默认记录 `deepseek-v4-flash` 时：
+使用已提交默认模型记录 `deepseek-v4-flash` 时，至少配置：
 
 ```bash
 DEEPSEEK_API_KEY=your-deepseek-api-key
@@ -34,29 +33,33 @@ RUN_DIR=/absolute/path/to/agrefactor_runs
 WORK_DIR=/absolute/path/to/agrefactor_work
 ```
 
-其他 OpenAI-compatible 模型默认读取 `OPENAI_API_KEY`；也可通过 `--base-url` 和 `--api-key-env` 显式覆盖。不要把真实凭证提交到仓库。
-
-### 3. 加载 Vitis HLS
-
-当前真实验收环境使用 Vitis HLS 2023.2：
+加载 Vitis HLS 2023.2：
 
 ```bash
 source /path/to/Xilinx/Vitis/2023.2/settings64.sh
-which vitis-run
+export AGREFACTOR_VITIS_RUN=/path/to/Xilinx/Vitis/2023.2/bin/vitis-run
 vitis-run --version
 ```
 
-多版本环境可显式设置：
+运行普通 source-only 重构：
 
 ```bash
-export AGREFACTOR_VITIS_RUN=/path/to/Xilinx/Vitis/2023.2/bin/vitis-run
-export AGREFACTOR_VITIS_SETTINGS=/path/to/Xilinx/Vitis/2023.2/settings64.sh
+python -m agrefactor.cli refactor \
+  src/heterorefactor/dfs/kernel.cpp \
+  --top process_top \
+  --model deepseek-v4-flash \
+  --public-tests auto \
+  --hidden-tests auto
 ```
 
-### 4. 运行 source-only 重构
+指定单次持久输出目录：
 
 ```bash
-python -m agrefactor.cli refactor   src/heterorefactor/dfs/kernel.cpp   --top process_top   --model deepseek-v4-flash   --public-tests auto   --hidden-tests auto
+python -m agrefactor.cli refactor \
+  src/heterorefactor/dfs/kernel.cpp \
+  --top process_top \
+  --model deepseek-v4-flash \
+  --output-dir /data/my_runs/dfs_trial
 ```
 
 完整参数：
@@ -65,91 +68,52 @@ python -m agrefactor.cli refactor   src/heterorefactor/dfs/kernel.cpp   --top pr
 python -m agrefactor.cli refactor --help
 ```
 
-## 常用参数
+## 当前正式参数摘要
 
-| 参数 | 默认/范围 | 作用 |
-|---|---|---|
-| `--top` | 必填 | 明确指定 top function |
-| `--model` | 必填 | 固定选择模型，不自动换模型 |
-| `--model-family` | 自动推断 | 显式选择静态模型家族 Profile |
-| `--base-url` | 模型/Provider 默认 | 覆盖 OpenAI-compatible endpoint |
-| `--api-key-env` | 模型默认 | 指定 API key 环境变量名 |
-| `--reasoning-effort` | `medium`; `low/medium/high` | 统一请求语义；具体映射仍由当前 Profile 决定 |
-| `--target` | `vitis-2023.2-default` | 选择 TargetProfile |
-| `--part` | Profile 默认 | 覆盖器件/part |
-| `--clock-period` | Profile 默认 | 覆盖目标时钟周期，单位 ns |
-| `--replace-compile-flag` | Profile 默认 | 可重复；替换 Profile 的完整编译参数列表 |
-| `--public-tests auto` / `--public-test FILE` | `auto` | 自动生成或提供一个或多个 Public suite |
-| `--hidden-tests auto/none` / `--hidden-test FILE` | `auto` | 自动生成、关闭或提供 Hidden suite |
-| `--test-generation-profile` | `lightweight` | `lightweight` 或 `coverage-enhanced` |
-| `--public-coverage-rounds` | `3`; `1..20` | coverage-enhanced 的 Public coverage 轮数 |
-| `--hidden-coverage-rounds` | `6`; `1..20` | coverage-enhanced 的 Hidden coverage 轮数 |
-| `--public-generation-trajectories` | `3`; `1..20` | coverage-enhanced 的 Public 独立 trajectory 数 |
-| `--hidden-generation-trajectories` | `3`; `1..20` | coverage-enhanced 的 Hidden 独立 trajectory 数 |
-| `--max-testbench-repairs` | `3`; `1..20` | Public Testbench 有限修复次数 |
-| `--max-candidate-repairs` | `3`; `1..20` | Candidate 有限修复次数 |
-| `--csim-timeout-s` | `120`; `1..600` | 单次 CSIM timeout |
-| `--csynth-timeout-s` | `600`; `1..3600` | 单次 CSYNTH timeout |
-| `--output-dir` | 自动目录 | 为单次运行指定精确持久 artifact 目录 |
-| `--run-id` | 自动 UUID | 稳定运行标识 |
-| `--json` / `--verbose` / `--debug` | 默认简洁输出 | 三者互斥的输出等级 |
+| 类别 | 当前合同 |
+|---|---|
+| Reasoning | 用户语义默认 `medium`；真实 Provider 映射仍由静态 Profile 决定 |
+| Public tests | 必须为 `auto` 或一个/多个 provided suites |
+| Hidden tests | `auto`、`none` 或一个/多个 provided suites |
+| Test generation | `lightweight` 默认；`coverage-enhanced` 可独立设置 Public/Hidden rounds 与 trajectories |
+| Repair | Testbench/Candidate 默认 3，安全上限 20 |
+| Timeout | 模型请求 240 秒；CSIM 120 秒；CSYNTH 600 秒 |
+| Hard budgets | LLM 64、Tool 128、Compile 48、CSIM 32、CSYNTH 16、Wall 7200 秒 |
+| Token/Cost | observed-only；does not stop execution |
+| Compile flags | 使用 `--replace-compile-flag` 替换 TargetProfile 默认列表 |
+| Output | 默认自动目录；`--output-dir` 可指定精确持久 artifact 目录 |
 
-`lightweight` 模式无论用户填写什么 coverage-enhanced 数值，实际 Public/Hidden rounds 和 trajectories 都固定为 `1`。
+完整、可执行的参数定义见 [CLI 参数参考](docs/guides/CLI_PARAMETER_REFERENCE.md)。
 
-## 运行预算
+## 当前证据边界
 
-| 参数 | 系统默认 | 安全上限 | 语义 |
-|---|---:|---:|---|
-| `--max-llm-calls` | 64 | 256 | 硬预算 |
-| `--max-tool-calls` | 128 | 512 | 硬预算 |
-| `--max-compile-calls` | 48 | 192 | 硬预算 |
-| `--max-csim-calls` | 32 | 128 | 硬预算 |
-| `--max-csynth-calls` | 16 | 64 | 硬预算 |
-| `--max-wall-time-s` | 7200 | 14400 | 硬预算，秒 |
-| `--token-budget` | 未设置 | 无硬上限 | observed-only；does not stop execution（不会中止执行） |
-| `--cost-budget` | 未设置 | 无硬上限 | observed-only；does not stop execution（不会中止执行） |
+已验证：
 
-用户显式硬预算必须不超过系统安全上限。Token 和 Estimated cost 只记录、展示和比较，不是最终账单，也不会触发硬停止。
+- Ubuntu 22.04、Python 3.10、Vitis HLS 2023.2；
+- source-only `refactor` 正式入口；
+- 真实 DeepSeek、Preflight、CSYNTH、Public/Hidden CSIM；
+- 结构化反馈、有限 Candidate/Testbench repair；
+- Execution Identity、预算、trace 和安全 artifacts；
+- 最新确定性回归与最新 CLI 后真实 smoke。
 
-## 输出与复现
+尚未实现：
 
-默认终端只显示简洁摘要。持久 artifacts 包括：
+- Stage 3 安全三级优化器；
+- Stage 4 Memory Applicability Gate；
+- Stage 5 版本迁移；
+- 自动模型池与动态路由；
+- 多版本/多设备广泛支持；
+- RTL cosim 主路径。
 
-```text
-full_result.json
-trace.jsonl
-model_calls.json
-tool_calls.json
-stdout.log
-stderr.log
-execution_identity.json
-run_artifact_manifest.json
-```
+## 权威文档
 
-指定独立输出目录：
-
-```bash
-python -m agrefactor.cli refactor kernel.cpp   --top process_top   --model deepseek-v4-flash   --output-dir /data/my_runs/dfs_trial
-```
-
-该目录必须不存在或为空；临时编译与工具工作目录仍位于 `WORK_DIR`。
-
-高级 TaskSpec 校验与复现入口仍保留：
-
-```bash
-python -m agrefactor.cli validate-task task.json
-python -m agrefactor.cli run task.json --dry-run
-```
-
-普通使用优先选择 source-only `refactor`。
-
-## 文档
-
-- [文档总览](docs/README.md)
-- [使用指南](docs/guides/USAGE.md)
-- [完整 CLI 参数参考](docs/guides/CLI_PARAMETER_REFERENCE.md)
-- [环境配置](docs/guides/ENVIRONMENT.md)
-- [项目路线](docs/roadmap/ROADMAP.md)
+1. [当前项目状态](docs/roadmap/PROJECT_STATE.md)
+2. [长期路线](docs/roadmap/ROADMAP.md)
+3. [目标追踪](docs/roadmap/GOAL_TRACEABILITY.md)
+4. [Stage 3 冻结实施合同](docs/roadmap/STAGE3_IMPLEMENTATION_CONTRACT.md)
+5. [使用指南](docs/guides/USAGE.md)
+6. [复现与验证状态](docs/guides/REPRODUCTION_STATUS.md)
+7. [文档总览](docs/README.md)
 
 ## 项目来源
 
