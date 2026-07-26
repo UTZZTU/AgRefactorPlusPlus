@@ -425,6 +425,38 @@ def _initial_user_message(
     return "\n".join(parts)
 
 
+def _initial_hidden_testbench_contract_repair_message(
+    kernel_name: str,
+    pinned_hls_decl: str,
+    failure_excerpt: str,
+) -> str:
+    hls_name = f"{kernel_name}_hls"
+    evidence = (failure_excerpt.strip() or "unknown contract failure")[-1500:]
+    return (
+        "Your previous held-out Testbench artifact failed the static "
+        "black-box/frozen-ABI contract before tool qualification.\n\n"
+        "Contract evidence:\n```\n"
+        + evidence
+        + "\n```\n\n"
+        "Return one complete replacement held-out Testbench. Preserve the "
+        "externally frozen Public-derived Candidate declaration below "
+        "character-for-character; do not change linkage, return type, "
+        "function name, parameter order/types, qualifiers, pointer/array "
+        "notation, typedef spelling, or the trailing declaration form.\n"
+        "```cpp\n"
+        + pinned_hls_decl.strip().rstrip(";")
+        + ";\n```\n"
+        f"Forward-declare and actually call both `{kernel_name}` and "
+        f"`{hls_name}`. Do not define, stub, wrap, alias, or reimplement "
+        "either top. Expected outputs must come from the actual Original "
+        "call; do not add a local semantic oracle or depend on "
+        "implementation-private state. Keep all external declarations "
+        "within the Original/Candidate black-box surface.\n"
+        "Reply with exactly one complete ```cpp ... ``` block and no "
+        "commentary."
+    )
+
+
 def _stub_request_message(
     kernel_name: Optional[str] = None,
     pinned_hls_decl: Optional[str] = None,
@@ -1460,20 +1492,42 @@ def run_trajectory(
         )
         return value, _normalize_declaration(declaration)
 
-    testbench_code = request_testbench(
-        _initial_user_message(
-            orig_code,
-            kernel_name,
-            pinned_public_hls_decl=pinned_hls_decl,
-        ),
-        first_turn=True,
-    )
-    if external_abi_frozen:
+    initial_testbench_contract_repaired = False
+    initial_testbench_contract_error = ""
+    try:
+        testbench_code = request_testbench(
+            _initial_user_message(
+                orig_code,
+                kernel_name,
+                pinned_public_hls_decl=pinned_hls_decl,
+            ),
+            first_turn=True,
+        )
+        if external_abi_frozen:
+            _validate_frozen_candidate_abi(
+                testbench_code,
+                hls_name,
+                frozen_hls_decl,
+            )
+    except ModelArtifactError as exc:
+        if not external_abi_frozen:
+            raise
+        initial_testbench_contract_error = str(exc)
+        testbench_code = request_testbench(
+            _initial_hidden_testbench_contract_repair_message(
+                kernel_name,
+                frozen_hls_decl,
+                initial_testbench_contract_error,
+            ),
+            first_turn=False,
+        )
         _validate_frozen_candidate_abi(
             testbench_code,
             hls_name,
             frozen_hls_decl,
         )
+        initial_testbench_contract_repaired = True
+
     stub_code, current_decl = request_stub(testbench_code)
     coverage = _measure_qualified_coverage(
         orig_code,
@@ -1512,6 +1566,12 @@ def run_trajectory(
         ownership_action="initial_generation",
         testbench_reused=False,
         stub_reused=False,
+        initial_testbench_contract_repaired=(
+            initial_testbench_contract_repaired
+        ),
+        initial_testbench_contract_error=(
+            initial_testbench_contract_error[-1500:]
+        ),
         frozen_public_hls_decl=frozen_hls_decl,
         frozen_public_macros=list(frozen_macros),
         abi_decl=current_decl,
