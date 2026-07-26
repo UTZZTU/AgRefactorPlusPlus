@@ -1577,77 +1577,157 @@ def run_trajectory(
         abi_decl=current_decl,
     )
 
-    # A K=1 trajectory is the lightweight profile's bounded generation path.
-    # Keep it non-iterative for coverage, but do not discard a valid Testbench
-    # merely because the first model-generated Candidate Stub is not compilable.
-    # The tool-backed owner/action already identifies this as Stub-owned, so
-    # permit exactly one diagnostic-driven Stub regeneration before finalizing.
-    if (
-        K == 1
-        and rounds[-1].get("next_action") == "regenerate_stub"
-    ):
+    # K=1 is the lightweight profile's single primary generation round.
+    # It must not become a coverage-refinement loop, but a tool-backed failure
+    # classification must still be consumable. Permit exactly one bounded
+    # recovery for recoverable ownership actions, reusing the Testbench only
+    # for Stub-owned failures and preserving every externally frozen ABI.
+    if K == 1:
         previous = rounds[-1]
-        previous_error = (
-            str(previous.get("compile_stderr") or "")
-            or str(previous.get("run_stderr") or "")
-            or str(previous.get("status") or "unknown")
-        )
-        testbench_code = str(previous["tb_code"])
-        declaration = (
-            frozen_hls_decl
-            or extract_hls_decl_from_testbench(
-                testbench_code,
-                hls_name,
+        reported_action = _coverage_action(previous)
+        action = reported_action
+        if (
+            external_abi_frozen
+            and action == "repair_abi_testbench_stub"
+        ):
+            # Hidden generation may repair Original/Testbench/Stub linkage, but
+            # it must never rewrite the externally frozen Candidate ABI.
+            action = "repair_testbench_stub"
+
+        if action in {
+            "regenerate_stub",
+            "repair_testbench",
+            "repair_testbench_stub",
+        }:
+            previous_error = (
+                str(previous.get("compile_stderr") or "")
+                or str(previous.get("run_stderr") or "")
+                or str(previous.get("status") or "unknown")
             )
-        )
-        stub_code, current_decl = request_stub(
-            testbench_code,
-            message=_stub_request_message(
+            testbench_reused = False
+            stub_reused = False
+
+            if action == "regenerate_stub":
+                testbench_code = str(previous["tb_code"])
+                declaration = (
+                    frozen_hls_decl
+                    or extract_hls_decl_from_testbench(
+                        testbench_code,
+                        hls_name,
+                    )
+                )
+                stub_code, current_decl = request_stub(
+                    testbench_code,
+                    message=_stub_request_message(
+                        kernel_name,
+                        declaration,
+                        failure_excerpt=previous_error,
+                    ),
+                )
+                testbench_reused = True
+            else:
+                repair_message = _feedback_message(
+                    2,
+                    previous.get("cov_pct") or 0.0,
+                    previous.get("uncovered_lines", []),
+                    orig_code,
+                    str(previous.get("status") or "unknown"),
+                    prev_compile_stderr=str(
+                        previous.get("compile_stderr") or ""
+                    ),
+                    prev_run_stderr=str(
+                        previous.get("run_stderr") or ""
+                    ),
+                    failure_owner=str(
+                        previous.get("failure_owner") or "unknown"
+                    ),
+                    next_action=action,
+                    frozen_hls_decl=(
+                        frozen_hls_decl or None
+                    ),
+                    frozen_macros=frozen_macros,
+                )
+                if reported_action == "repair_abi_testbench_stub":
+                    original_decl = _extract_seed_hls_decl(
+                        orig_code,
+                        kernel_name,
+                    )
+                    repair_message += (
+                        "\n\nThis is a link/ABI failure during held-out "
+                        "qualification. The Candidate ABI remains externally "
+                        "frozen and MUST NOT change. Re-inspect the Original "
+                        "top declaration and preserve its exact C/C++ language "
+                        "linkage, return type, name, parameter types/order, and "
+                        "qualifiers in the replacement Testbench."
+                    )
+                    if original_decl:
+                        repair_message += (
+                            "\n\nEXACT ORIGINAL TOP DECLARATION FROM SOURCE:\n"
+                            "```cpp\n"
+                            + original_decl.strip().rstrip(";")
+                            + ";\n```"
+                        )
+                testbench_code = request_testbench(
+                    repair_message,
+                    first_turn=False,
+                )
+                if external_abi_frozen:
+                    _validate_frozen_candidate_abi(
+                        testbench_code,
+                        hls_name,
+                        frozen_hls_decl,
+                    )
+                stub_code, current_decl = request_stub(testbench_code)
+
+            coverage = _measure_qualified_coverage(
+                orig_code,
+                testbench_code,
+                stub_code,
                 kernel_name,
-                declaration,
-                failure_excerpt=previous_error,
-            ),
-        )
-        coverage = _measure_qualified_coverage(
-            orig_code,
-            testbench_code,
-            stub_code,
-            kernel_name,
-            budget=budget,
-            require_original_execution=external_abi_frozen,
-        )
-        if coverage.get("status") == "ok":
-            observed_decl, observed_macros = _freeze_public_contract(
-                testbench_code,
-                hls_name,
+                budget=budget,
+                require_original_execution=external_abi_frozen,
             )
-            if external_abi_frozen:
-                _validate_frozen_candidate_abi(
+            if coverage.get("status") == "ok":
+                observed_decl, observed_macros = _freeze_public_contract(
                     testbench_code,
                     hls_name,
-                    frozen_hls_decl,
                 )
-                frozen_macros = observed_macros
-            else:
-                frozen_hls_decl = observed_decl
-                frozen_macros = observed_macros
-            reusable_stub = stub_code
-        _append_round(
-            rounds,
-            trajectory_idx=trajectory_idx,
-            round_index=2,
-            tb_code=testbench_code,
-            stub_code=stub_code,
-            cov=coverage,
-            artifact_root=artifact_root,
-            ownership_action="regenerate_stub",
-            testbench_reused=True,
-            stub_reused=False,
-            lightweight_bounded_stub_recovery=True,
-            frozen_public_hls_decl=frozen_hls_decl,
-            frozen_public_macros=list(frozen_macros),
-            abi_decl=current_decl,
-        )
+                if external_abi_frozen:
+                    _validate_frozen_candidate_abi(
+                        testbench_code,
+                        hls_name,
+                        frozen_hls_decl,
+                    )
+                    frozen_macros = observed_macros
+                else:
+                    frozen_hls_decl = observed_decl
+                    frozen_macros = observed_macros
+                reusable_stub = stub_code
+            _append_round(
+                rounds,
+                trajectory_idx=trajectory_idx,
+                round_index=2,
+                tb_code=testbench_code,
+                stub_code=stub_code,
+                cov=coverage,
+                artifact_root=artifact_root,
+                ownership_action=action,
+                testbench_reused=testbench_reused,
+                stub_reused=stub_reused,
+                lightweight_bounded_recovery=True,
+                lightweight_bounded_recovery_reported_action=(
+                    reported_action
+                ),
+                lightweight_bounded_stub_recovery=(
+                    action == "regenerate_stub"
+                ),
+                lightweight_bounded_testbench_recovery=(
+                    action in {"repair_testbench", "repair_testbench_stub"}
+                ),
+                frozen_public_hls_decl=frozen_hls_decl,
+                frozen_public_macros=list(frozen_macros),
+                abi_decl=current_decl,
+            )
 
     for round_index in range(2, K + 1):
         previous = rounds[-1]
