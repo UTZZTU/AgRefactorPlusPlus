@@ -139,6 +139,50 @@ def _build_model_data_boundary(
         "hidden_testbench_exposed_to_generation_model": False,
     }
 
+
+def _finish_test_generation_exhaustion(
+    cv,
+    exc,
+    output_dir: str,
+):
+    # Persist one bounded generation failure without exposing Hidden data.
+
+    if not isinstance(
+        exc,
+        tools.tb_optimizer.TestbenchGenerationExhausted,
+    ):
+        raise TypeError(
+            "exc must be TestbenchGenerationExhausted"
+        )
+    failure = exc.to_dict()
+    cv["generation_failure"] = failure
+    cv["generation_failure_kind"] = failure["failure_kind"]
+    cv["failed_stage"] = failure["stage"]
+    cv["failure_owner"] = failure["failure_owner"]
+    cv["next_action"] = failure["next_action"]
+    cv["diagnostic_kind"] = failure["diagnostic_kind"]
+    cv["attempt_count"] = failure["attempt_count"]
+    cv["trajectory_count"] = failure["trajectory_count"]
+    cv["hidden_testbench_exposed_to_model"] = False
+
+    event_name = f"{failure['split']}_generation"
+    order = list(cv.get("generation_event_order", []))
+    if event_name not in order:
+        order.append(event_name)
+    cv["generation_event_order"] = order
+
+    if failure["split"] == "hidden":
+        cv["generated_hidden_testbench"] = ""
+        cv["generated_hidden_coverage"] = None
+
+    tools.general.save_context(
+        "test_generation_exhausted",
+        cv,
+        output_dir,
+    )
+    return False, cv
+
+
 def hls_refactor_with_rag(
     kernel_path: str,
     kernel_name: str,
@@ -522,7 +566,18 @@ def hls_refactor_with_rag(
             identification_future = tools.identifying.identify_non_synthesizable_items(
                 cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, reset_knowledge_db, executor, debug, llm_config, budget
             )
-            cv["testbench"], cv["tb_aligned_instruction"], cv["new_kernel_name"] = tb_future.result()
+            try:
+                (
+                    cv["testbench"],
+                    cv["tb_aligned_instruction"],
+                    cv["new_kernel_name"],
+                ) = tb_future.result()
+            except tools.tb_optimizer.TestbenchGenerationExhausted as exc:
+                return _finish_test_generation_exhaustion(
+                    cv,
+                    exc,
+                    output_dir,
+                )
             cv["identified_items"], cv["items_hetero"] = identification_future.result()
     cv["generation_event_order"].append("public_generation")
     public_hls_decl = tools.tb_optimizer.extract_hls_decl_from_testbench(
@@ -558,19 +613,26 @@ def hls_refactor_with_rag(
             debug,
             "Generating held-out evaluator after Candidate generation",
         )
-        held_out = tools.tb_optimizer.make_golden_hidden_tb(
-            orig_code=cv["orig_code"],
-            kernel_name=cv["kernel_name"],
-            pinned_public_hls_decl=cv["public_hls_decl_verbatim"],
-            M=hidden_tb_trajectories,
-            K=hidden_tb_rounds,
-            target_pct=hidden_tb_target,
-            llm_config=llm_config,
-            cache_dir=golden_tb_cache_dir,
-            cache_key=golden_tb_cache_key,
-            budget=budget,
-            artifact_root=cv["hidden_tb_artifact_dir"],
-        )
+        try:
+            held_out = tools.tb_optimizer.make_golden_hidden_tb(
+                orig_code=cv["orig_code"],
+                kernel_name=cv["kernel_name"],
+                pinned_public_hls_decl=cv["public_hls_decl_verbatim"],
+                M=hidden_tb_trajectories,
+                K=hidden_tb_rounds,
+                target_pct=hidden_tb_target,
+                llm_config=llm_config,
+                cache_dir=golden_tb_cache_dir,
+                cache_key=golden_tb_cache_key,
+                budget=budget,
+                artifact_root=cv["hidden_tb_artifact_dir"],
+            )
+        except tools.tb_optimizer.TestbenchGenerationExhausted as exc:
+            return _finish_test_generation_exhaustion(
+                cv,
+                exc,
+                output_dir,
+            )
         cv["generated_hidden_testbench"] = held_out["hidden_tb"]
         cv["generated_hidden_coverage"] = held_out["hidden_cov"]
         cv["generation_event_order"].append("hidden_generation")

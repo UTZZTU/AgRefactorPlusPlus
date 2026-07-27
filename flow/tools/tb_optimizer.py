@@ -32,6 +32,195 @@ SYNTH_CHECK_TIMEOUT = 300  # seconds for csynth on empty stub
 MAX_LISTED_UNCOVERED = 60
 
 
+
+class TestbenchGenerationExhausted(RuntimeError):
+    # Bounded, model-generated Testbench/Stub qualification exhaustion.
+    # The payload is code-free and safe for product/operator metadata.
+
+    schema_version = 1
+    _DIAGNOSTIC_LIMIT = 2000
+
+    def __init__(
+        self,
+        *,
+        split: str,
+        stage: str,
+        trajectories: List[Dict[str, Any]],
+    ) -> None:
+        if split not in {"public", "hidden"}:
+            raise ValueError("split must be public or hidden")
+        if not isinstance(stage, str) or not stage.strip():
+            raise ValueError("stage must not be empty")
+        if not isinstance(trajectories, list) or not trajectories:
+            raise ValueError("trajectories must be a non-empty list")
+
+        summaries = [
+            self._summarize_trajectory(
+                trajectory,
+                split=split,
+            )
+            for trajectory in trajectories
+        ]
+        owners = {
+            item["failure_owner"]
+            for item in summaries
+            if item["failure_owner"] not in {"", "none", "unknown"}
+        }
+        actions = {
+            item["next_action"]
+            for item in summaries
+            if item["next_action"] not in {"", "none", "unknown"}
+        }
+        diagnostic_kinds = {
+            item["diagnostic_kind"]
+            for item in summaries
+            if item["diagnostic_kind"] not in {"", "none", "unknown"}
+        }
+
+        failure_owner = (
+            next(iter(owners))
+            if len(owners) == 1
+            else "mixed"
+            if owners
+            else "unknown"
+        )
+        next_action = (
+            next(iter(actions))
+            if len(actions) == 1
+            else "change_generation_strategy"
+        )
+        diagnostic_kind = (
+            next(iter(diagnostic_kinds))
+            if len(diagnostic_kinds) == 1
+            else "mixed_qualification_failure"
+            if diagnostic_kinds
+            else "generation_qualification_failed"
+        )
+        attempt_count = sum(
+            max(1, int(item["round_count"]))
+            for item in summaries
+        )
+        excerpts = [
+            item["diagnostic_excerpt"]
+            for item in summaries
+            if item["diagnostic_excerpt"]
+        ]
+        diagnostic_excerpt = " | ".join(excerpts)[
+            -self._DIAGNOSTIC_LIMIT:
+        ]
+
+        self._payload = {
+            "schema_version": self.schema_version,
+            "failure_kind": "testbench_generation_exhausted",
+            "terminal_class": "bounded_generation_failure",
+            "bounded": True,
+            "split": split,
+            "stage": stage.strip(),
+            "trajectory_count": len(summaries),
+            "qualified_count": 0,
+            "attempt_count": attempt_count,
+            "failure_owner": failure_owner,
+            "next_action": next_action,
+            "diagnostic_kind": diagnostic_kind,
+            "diagnostic_excerpt": diagnostic_excerpt,
+            "trajectory_summaries": summaries,
+            "hidden_testbench_exposed_to_model": False,
+            "retry_guidance": [
+                "retry with a different bounded generation profile",
+                "retry with another compatible model",
+                "increase bounded trajectory diversity within safety ceilings",
+                "provide qualified Public/Hidden suites when available",
+                "use a future memory-assisted strategy when available",
+            ],
+        }
+        compatibility_prefix = (
+            "golden hidden testbench generation"
+            if split == "hidden"
+            else "public testbench generation"
+        )
+        super().__init__(
+            f"{compatibility_prefix} produced no qualified trajectory: "
+            f"exhausted {len(summaries)} trajectory(s) after "
+            f"{attempt_count} bounded qualification attempt(s); "
+            f"owner={failure_owner}; kind={diagnostic_kind}"
+        )
+
+    @classmethod
+    def _summarize_trajectory(
+        cls,
+        trajectory: Dict[str, Any],
+        *,
+        split: str,
+    ) -> Dict[str, Any]:
+        if not isinstance(trajectory, dict):
+            trajectory = {}
+        raw_rounds = trajectory.get("rounds")
+        rounds = (
+            [item for item in raw_rounds if isinstance(item, dict)]
+            if isinstance(raw_rounds, list)
+            else []
+        )
+        last = rounds[-1] if rounds else {}
+
+        owner = str(
+            last.get("failure_owner")
+            or trajectory.get("failure_owner")
+            or "unknown"
+        )
+        action = str(
+            last.get("next_action")
+            or trajectory.get("next_action")
+            or "change_generation_strategy"
+        )
+        diagnostic_kind = str(
+            last.get("status")
+            or trajectory.get("trajectory_status")
+            or "generation_qualification_failed"
+        )
+        raw_diagnostic = str(
+            last.get("compile_stderr")
+            or last.get("run_stderr")
+            or trajectory.get("error")
+            or trajectory.get("synth_error")
+            or diagnostic_kind
+        )
+
+        if split == "hidden" and owner not in {"stub", "toolchain"}:
+            diagnostic_excerpt = (
+                "held-out qualification failed; detailed diagnostics "
+                "remain in operator-only artifacts"
+            )
+        else:
+            diagnostic_excerpt = raw_diagnostic[-cls._DIAGNOSTIC_LIMIT:]
+
+        return {
+            "trajectory_idx": int(
+                trajectory.get("trajectory_idx", 0)
+            ),
+            "trajectory_status": str(
+                trajectory.get("trajectory_status")
+                or diagnostic_kind
+            ),
+            "qualified": bool(trajectory.get("qualified", False)),
+            "synth_ok": bool(trajectory.get("synth_ok", False)),
+            "round_count": len(rounds),
+            "failure_owner": owner,
+            "next_action": action,
+            "diagnostic_kind": diagnostic_kind,
+            "diagnostic_excerpt": diagnostic_excerpt,
+        }
+
+    def to_dict(self) -> Dict[str, Any]:
+        return json.loads(
+            json.dumps(
+                self._payload,
+                ensure_ascii=False,
+                allow_nan=False,
+                sort_keys=True,
+            )
+        )
+
+
 def extract_hls_decl_from_testbench(
     testbench_code: str,
     hls_name: str,
@@ -503,7 +692,16 @@ def _stub_request_message(
         "mutated-buffer state. If safe delegation cannot be established, "
         "write an independent minimal stub that matches the tested "
         "observable behavior and does not call or copy the original "
-        "implementation. If the Stub calls the Original, include only its "
+        "implementation. Prefer straightforward, compile-safe, HLS-friendly "
+        "C++ with fixed-size storage, ordinary loops, and named helper "
+        "functions. Avoid dynamic allocation, exceptions, recursion, generic "
+        "or nested lambdas, complex capture rules, and unnecessary STL unless "
+        "the frozen ABI makes them unavoidable. Verify that every identifier "
+        "is declared in scope, every referenced local is legally accessible, "
+        "and every required standard header is present. When tool evidence is "
+        "provided, materially replace the failing construct instead of "
+        "repeating it with superficial edits. If the Stub calls the Original, "
+        "include only its "
         "required forward declaration ending in `;`."
         + pinned
         + evidence
@@ -2358,18 +2556,10 @@ def optimize_tb_public(
         and trajectory.get("final_text")
     ]
     if not qualified:
-        reasons = [
-            str(
-                trajectory.get("error")
-                or trajectory.get("synth_error")
-                or trajectory.get("trajectory_status")
-                or "unknown"
-            )[-500:]
-            for trajectory in trajectories
-        ]
-        raise RuntimeError(
-            "public testbench generation produced no qualified trajectory: "
-            + " | ".join(reasons)
+        raise TestbenchGenerationExhausted(
+            split="public",
+            stage="public_generation_qualification",
+            trajectories=trajectories,
         )
 
     best = max(
@@ -2719,19 +2909,10 @@ def make_golden_hidden_tb(
         and trajectory.get("best_tb")
     ]
     if not qualified:
-        reasons = [
-            str(
-                trajectory.get("error")
-                or trajectory.get("synth_error")
-                or trajectory.get("trajectory_status")
-                or "unknown"
-            )[-500:]
-            for trajectory in trajectories
-        ]
-        raise RuntimeError(
-            "golden hidden testbench generation produced no "
-            "qualified trajectory: "
-            + " | ".join(reasons)
+        raise TestbenchGenerationExhausted(
+            split="hidden",
+            stage="hidden_generation_qualification",
+            trajectories=trajectories,
         )
     best = max(
         qualified,

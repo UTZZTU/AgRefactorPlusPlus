@@ -581,6 +581,103 @@ class SourceBootstrapRequest:
         }
 
 
+
+_GENERATION_FAILURE_SCALAR_KEYS = (
+    "schema_version",
+    "failure_kind",
+    "terminal_class",
+    "bounded",
+    "split",
+    "stage",
+    "trajectory_count",
+    "qualified_count",
+    "attempt_count",
+    "failure_owner",
+    "next_action",
+    "diagnostic_kind",
+    "diagnostic_excerpt",
+    "hidden_testbench_exposed_to_model",
+    "retry_guidance",
+)
+
+
+def _raw_context_get(value: object, key: str) -> object:
+    if isinstance(value, Mapping):
+        return value.get(key)
+    getter = getattr(value, "get", None)
+    if callable(getter):
+        try:
+            return getter(key)
+        except Exception:
+            return None
+    try:
+        return value[key]  # type: ignore[index]
+    except Exception:
+        return None
+
+
+def _extract_generation_failure_metadata(
+    raw_result: object,
+) -> dict[str, Any]:
+    # Extract only code-free, product-safe bounded failure metadata.
+
+    if (
+        not isinstance(raw_result, tuple)
+        or len(raw_result) < 2
+    ):
+        return {}
+    context_variables = raw_result[1]
+    raw_failure = _raw_context_get(
+        context_variables,
+        "generation_failure",
+    )
+    if not isinstance(raw_failure, Mapping):
+        return {}
+
+    failure: dict[str, Any] = {}
+    for key in _GENERATION_FAILURE_SCALAR_KEYS:
+        value = raw_failure.get(key)
+        if key == "retry_guidance":
+            if isinstance(value, list) and all(
+                isinstance(item, str) for item in value
+            ):
+                failure[key] = list(value)
+            continue
+        if isinstance(value, (str, int, bool)) or value is None:
+            failure[key] = value
+
+    if failure.get("failure_kind") != "testbench_generation_exhausted":
+        return {}
+    if failure.get("bounded") is not True:
+        return {}
+    if failure.get("split") not in {"public", "hidden"}:
+        return {}
+    stage = failure.get("stage")
+    if not isinstance(stage, str) or not stage:
+        return {}
+
+    diagnostic = failure.get("diagnostic_excerpt")
+    if isinstance(diagnostic, str):
+        failure["diagnostic_excerpt"] = diagnostic[-2000:]
+
+    return {
+        "failed_stage": stage,
+        "failure_owner": failure.get("failure_owner", "unknown"),
+        "next_action": failure.get(
+            "next_action",
+            "change_generation_strategy",
+        ),
+        "diagnostic_kind": failure.get(
+            "diagnostic_kind",
+            "generation_qualification_failed",
+        ),
+        "attempt_count": failure.get("attempt_count", 0),
+        "trajectory_count": failure.get("trajectory_count", 0),
+        "hidden_testbench_exposed_to_model": False,
+        "generation_failure": failure,
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class SourceBootstrapRunResult:
     result: RunResult
@@ -965,6 +1062,23 @@ class SourceBootstrapPhase:
         )
         self._last_generation_result = generation_result
         if not generation_result.succeeded:
+            raw_result = getattr(
+                self._generation_adapter,
+                "last_raw_result",
+                None,
+            )
+            failure_metadata = _extract_generation_failure_metadata(
+                raw_result
+            )
+            failure_payload = failure_metadata.get(
+                "generation_failure",
+                {},
+            )
+            failure_reason = (
+                failure_payload.get("diagnostic_excerpt")
+                if isinstance(failure_payload, Mapping)
+                else None
+            )
             identity_summary = self._write_execution_identity(
                 context=context,
                 normalized_task=context.task,
@@ -982,19 +1096,28 @@ class SourceBootstrapPhase:
                     else None
                 ),
             )
+            metadata = {
+                "source_bootstrap": True,
+                "generation_only": True,
+                "formal_validation_started": False,
+                "execution_identity": identity_summary,
+            }
+            metadata.update(failure_metadata)
             return PhaseResult(
                 phase=RunPhase.REFACTOR,
                 status=generation_result.status,
                 summary=(
                     "Initial generation failed before formal validation: "
-                    + (generation_result.summary or "unknown failure")
+                    + (
+                        str(failure_reason)
+                        if failure_reason
+                        else (
+                            generation_result.summary
+                            or "unknown failure"
+                        )
+                    )
                 ),
-                metadata={
-                    "source_bootstrap": True,
-                    "generation_only": True,
-                    "formal_validation_started": False,
-                    "execution_identity": identity_summary,
-                },
+                metadata=metadata,
             )
 
         raw_result = getattr(
