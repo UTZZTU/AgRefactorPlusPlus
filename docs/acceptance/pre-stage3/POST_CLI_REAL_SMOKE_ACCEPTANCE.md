@@ -2,7 +2,7 @@
 
 ## Purpose
 
-验证 CLI 参数合同提交 `__BASE_COMMIT__` 之后，当前普通 source-only 产品入口仍能完成一次真实模型与 Vitis HLS 2023.2 accepted run。
+验证 CLI 参数合同提交 `f80803af65b18015bb0801c05964a6c5c2a83d52` 之后，当前普通 source-only 产品入口仍能完成一次真实模型与 Vitis HLS 2023.2 accepted run。
 
 ## Command Contract
 
@@ -35,7 +35,7 @@ output_dir=explicit_exact_artifact_root
 run_id=post-cli-real-smoke-20260726_192331
 started_at_utc=2026-07-26T19:23:35Z
 finished_at_utc=2026-07-26T19:26:11Z
-repository_commit=__BASE_COMMIT__
+repository_commit=f80803af65b18015bb0801c05964a6c5c2a83d52
 repository_clean=true
 product_summary_status=accepted
 unified_run_status=succeeded

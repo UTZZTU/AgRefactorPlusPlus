@@ -6,7 +6,7 @@
 
 ```text
 branch=stage2-general-feedback
-baseline_before_this_package=__BASE_COMMIT__
+baseline_before_this_package=f80803af65b18015bb0801c05964a6c5c2a83d52
 latest_deterministic_regression=1500/1500
 post_cli_real_smoke=accepted
 post_cli_real_smoke_run_id=post-cli-real-smoke-20260726_192331
@@ -74,7 +74,7 @@ compile_calls=6
 csim_calls=3
 csynth_calls=2
 actual_vitis_version=2023.2
-repository_commit=__BASE_COMMIT__
+repository_commit=f80803af65b18015bb0801c05964a6c5c2a83d52
 repository_clean=true
 artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifacts
 ```
