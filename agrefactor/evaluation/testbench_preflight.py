@@ -163,30 +163,120 @@ def _undefined_function_names(stderr: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(names))
 
 
-def _declared_linkage(source: str, function_name: str) -> str | None:
+def _strip_cpp_comments_preserving_layout(source: str) -> str:
+    """Mask C/C++ comments without changing offsets or line numbers."""
+
+    def replace(match: re.Match[str]) -> str:
+        return "".join(
+            "\n" if character == "\n" else " "
+            for character in match.group(0)
+        )
+
+    return re.sub(
+        r"//[^\n]*|/\*.*?\*/",
+        replace,
+        source,
+        flags=re.DOTALL,
+    )
+
+
+def _extern_c_block_spans(source: str) -> tuple[tuple[int, int], ...]:
+    """Return balanced ``extern "C" { ... }`` source spans."""
+
+    cleaned = _strip_cpp_comments_preserving_layout(source)
+    spans: list[tuple[int, int]] = []
+
+    for match in re.finditer(r'extern\s+"C"\s*\{', cleaned):
+        opening = cleaned.find("{", match.start(), match.end())
+        if opening < 0:
+            continue
+
+        depth = 0
+        quote: str | None = None
+        escaped = False
+
+        for index in range(opening, len(cleaned)):
+            character = cleaned[index]
+
+            if quote is not None:
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == quote:
+                    quote = None
+                continue
+
+            if character in {'"', "'"}:
+                quote = character
+                continue
+            if character == "{":
+                depth += 1
+                continue
+            if character == "}":
+                depth -= 1
+                if depth == 0:
+                    spans.append((match.start(), index + 1))
+                    break
+
+    return tuple(spans)
+
+
+def _offset_in_spans(
+    offset: int,
+    spans: tuple[tuple[int, int], ...],
+) -> bool:
+    return any(start <= offset < end for start, end in spans)
+
+
+def _function_linkage(
+    source: str,
+    function_name: str,
+    *,
+    definition: bool,
+) -> str | None:
+    """Infer linkage for matching declarations or definitions."""
+
+    cleaned = _strip_cpp_comments_preserving_layout(source)
+    terminator = r"\{" if definition else ";"
     pattern = re.compile(
         rf"^\s*(?P<c>extern\s+\"C\"\s+)?"
         rf"(?:[A-Za-z_]\w*(?:::\w+)*(?:\s*[*&]\s*|\s+))+"
-        rf"{re.escape(function_name)}\s*\([^;{{}}]*\)\s*;",
+        rf"{re.escape(function_name)}\s*\([^;{{}}]*\)\s*"
+        rf"{terminator}",
         re.MULTILINE,
     )
-    match = pattern.search(source)
-    if not match:
-        return None
-    return "c" if match.group("c") else "cpp"
+    extern_c_spans = _extern_c_block_spans(source)
+    linkages: set[str] = set()
+
+    for match in pattern.finditer(cleaned):
+        if match.group("c") or _offset_in_spans(
+            match.start(),
+            extern_c_spans,
+        ):
+            linkages.add("c")
+        else:
+            linkages.add("cpp")
+
+    if len(linkages) == 1:
+        return next(iter(linkages))
+    return None
+
+
+def _declared_linkage(source: str, function_name: str) -> str | None:
+    return _function_linkage(
+        source,
+        function_name,
+        definition=False,
+    )
 
 
 def _defined_linkage(source: str, function_name: str) -> str | None:
-    pattern = re.compile(
-        rf"^\s*(?P<c>extern\s+\"C\"\s+)?"
-        rf"(?:[A-Za-z_]\w*(?:::\w+)*(?:\s*[*&]\s*|\s+))+"
-        rf"{re.escape(function_name)}\s*\([^;{{}}]*\)\s*\{{",
-        re.MULTILINE,
+    return _function_linkage(
+        source,
+        function_name,
+        definition=True,
     )
-    match = pattern.search(source)
-    if not match:
-        return None
-    return "c" if match.group("c") else "cpp"
 
 
 def infer_linkage_mismatch(

@@ -197,6 +197,51 @@ class TestbenchPreflightTests(unittest.TestCase):
             result.diagnostics[0].message,
         )
 
+    def test_cpp_definition_with_c_block_declaration_is_testbench_owned(
+        self,
+    ) -> None:
+        original = ORIGINAL.replace('extern "C" ', '')
+        block_testbench = VALID_TB.replace(
+            (
+                'extern "C" void process_top'
+                '(int, int *, int *, int *);\n'
+                'extern "C" void process_top_hls'
+                '(int, int *, int *, int *);'
+            ),
+            (
+                'extern "C" {\n'
+                'void process_top(int, int *, int *, int *);\n'
+                'void process_top_hls(int, int *, int *, int *);\n'
+                '}'
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = TestbenchPreflight().compile_and_link(
+                work_dir=directory,
+                testbench_code=block_testbench,
+                original_code=original,
+                candidate_code=CANDIDATE,
+            )
+
+        self.assertEqual(
+            result.failure_kind,
+            TestbenchFailureKind.LINKAGE_MISMATCH,
+        )
+        self.assertEqual(
+            result.failure_owner,
+            TestbenchFailureOwner.TESTBENCH,
+        )
+        self.assertEqual(result.next_action, "repair_testbench")
+        self.assertIn(
+            "process_top",
+            result.diagnostics[0].message,
+        )
+        self.assertNotIn(
+            "process_top_hls",
+            result.diagnostics[0].message,
+        )
+
     def test_true_missing_definition_remains_unknown(self) -> None:
         missing_candidate = CANDIDATE.replace(
             "process_top_hls",
