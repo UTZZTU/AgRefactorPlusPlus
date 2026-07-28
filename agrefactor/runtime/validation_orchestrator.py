@@ -649,6 +649,7 @@ class ValidationOrchestrator:
                 context,
                 validation_id=resolved_id,
                 step=step,
+                decision=decision,
             )
 
             current_state = step.transition.next_state
@@ -739,6 +740,12 @@ class ValidationOrchestrator:
                 "item_count": len(report.items),
                 "blocking": report.blocking,
                 "hidden_source_suppressed": True,
+                "feedback_report_summary": (
+                    _operator_feedback_report_summary(
+                        report,
+                        step_id=step.step_id,
+                    )
+                ),
             }
         else:
             metadata = {
@@ -766,8 +773,34 @@ class ValidationOrchestrator:
         *,
         validation_id: str,
         step: ValidationStepRecord,
+        decision: FeedbackRouteDecision,
     ) -> None:
+        if not isinstance(decision, FeedbackRouteDecision):
+            raise TypeError(
+                "decision must be a FeedbackRouteDecision"
+            )
+
         transition = step.transition
+        if (
+            transition.source_decision_id
+            != decision.decision_id
+        ):
+            raise ValueError(
+                "transition must reference the recorded decision"
+            )
+
+        hidden = (
+            step.state
+            is ValidationState.HIDDEN_EVALUATION
+        )
+        evidence_view = (
+            "operator_full" if hidden else "agent_safe"
+        )
+        source_report_id = (
+            _redacted_hidden_report_id(step.step_id)
+            if hidden
+            else decision.source_report_id
+        )
         metadata: dict[str, Any] = {
             "validation_id": validation_id,
             "step_id": step.step_id,
@@ -784,11 +817,16 @@ class ValidationOrchestrator:
             "selected_feedback_count": len(
                 step.selected_feedback_items
             ),
+            "evidence_view": evidence_view,
+            "route_decision_summary": (
+                _route_decision_summary(
+                    decision,
+                    source_report_id=source_report_id,
+                    source_report_redacted=hidden,
+                )
+            ),
         }
-        if (
-            step.state
-            is ValidationState.HIDDEN_EVALUATION
-        ):
+        if hidden:
             metadata["hidden_feedback_suppressed"] = True
         else:
             metadata["selected_feedback_items"] = [
@@ -803,6 +841,91 @@ class ValidationOrchestrator:
             message=transition.reason,
             metadata=metadata,
         )
+
+
+def _redacted_hidden_report_id(step_id: str) -> str:
+    return f"{_required(step_id, 'step_id')}.hidden-report"
+
+
+def _operator_feedback_report_summary(
+    report: FeedbackReport,
+    *,
+    step_id: str,
+) -> dict[str, Any]:
+    """Return an operator-only Hidden feedback audit projection."""
+
+    if not isinstance(report, FeedbackReport):
+        raise TypeError("report must be a FeedbackReport")
+
+    return {
+        "schema_version": 1,
+        "report_id": _redacted_hidden_report_id(step_id),
+        "source": report.source,
+        "item_count": len(report.items),
+        "blocking": report.blocking,
+        "items": [
+            {
+                "stage": item.stage.value,
+                "category": item.category.value,
+                "severity": item.severity.value,
+                "owner": item.owner.value,
+                "blocking": item.blocking,
+            }
+            for item in report.items
+        ],
+        "source_report_id_redacted": True,
+        "item_identifiers_retained": False,
+        "item_text_retained": False,
+        "source_evidence_retained": False,
+    }
+
+
+def _route_decision_summary(
+    decision: FeedbackRouteDecision,
+    *,
+    source_report_id: str,
+    source_report_redacted: bool,
+) -> dict[str, Any]:
+    """Return a bounded route-decision audit projection."""
+
+    if not isinstance(decision, FeedbackRouteDecision):
+        raise TypeError(
+            "decision must be a FeedbackRouteDecision"
+        )
+
+    candidate_actions = decision.metadata.get(
+        "candidate_actions",
+        [],
+    )
+    if not isinstance(candidate_actions, list):
+        candidate_actions = []
+
+    return {
+        "schema_version": 1,
+        "decision_id": decision.decision_id,
+        "source_report_id": _required(
+            source_report_id,
+            "source_report_id",
+        ),
+        "action": decision.action.value,
+        "blocking_feedback_count": len(
+            decision.blocking_feedback_ids
+        ),
+        "selected_feedback_count": len(
+            decision.selected_feedback_ids
+        ),
+        "advisory_feedback_count": len(
+            decision.advisory_feedback_ids
+        ),
+        "candidate_actions": [
+            str(action)
+            for action in candidate_actions
+        ],
+        "source_report_redacted": source_report_redacted,
+        "feedback_ids_retained": False,
+        "reason_retained": False,
+    }
+
 
 
 def _coerce_state(
