@@ -2,7 +2,7 @@
 
 > **状态：** FROZEN
 > **冻结范围：** Stage 3 安全三级优化器
-> **实现状态：** 尚未开始
+> **实现状态：** 进行中；S3.1 已验收，下一包为 S3.2
 > **前置基线：** Pre-Stage-3 已关闭，最新 CLI 后真实 source-only smoke 已通过
 > **变更规则：** 任何语义变更必须有明确决策记录、测试和本文更新，不能在实现中静默改写合同。
 
@@ -581,6 +581,8 @@ error
 
 ### S3.1 Candidate State Foundation
 
+状态：**ACCEPTED**（50/50 focused，1558/1558 full deterministic；无模型/Vitis 调用）。
+
 只实现：
 
 - typed HypothesisRecord；
@@ -593,6 +595,8 @@ error
 不调用模型或 Vitis。
 
 ### S3.2 Qualification and PPA Evidence
+
+状态：**NEXT**。
 
 - baseline/candidate qualification orchestration；
 -PPA report adapter；

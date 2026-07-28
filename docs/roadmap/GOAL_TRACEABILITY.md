@@ -10,7 +10,7 @@ Stage 1=closed
 Stage 2=closed
 Pre-Stage-3=closed
 Stage 3 planning=frozen
-Stage 3 implementation=not started
+Stage 3 implementation=in progress; S3.1 accepted
 Stage 4=not started
 Stage 5=not started
 Stage 6=not started
@@ -26,7 +26,7 @@ Stage 6=not started
 | 分层 Prompt | Shared builder、Target/model/evidence/scope/output layers，Candidate/Testbench consumers | Stage 3 optimization hypothesis Prompt | Stage 3 | optimization prompt identity |
 | 结构化反馈与状态机 | Preflight、CSYNTH、Public/Hidden、repair、owner、next action、Hidden suppression | Stage 3 PPA/optimization decision evidence | Stage 3 | candidate decision state tests |
 | Multi-type ground truth | 7 baselines、7/7 full chains、9/9 fault matrix、16/16 labels | 更广 kernel/版本/设备统计 | Stage 6 | 固定 benchmark 扩展 |
-| 安全三级优化器 | Legacy `opt.simple_iter` baseline；Stage 3 合同已冻结 | candidate lineage、hypothesis、三层策略、checkpoint、rollback、cache、best_correct | Stage 3 | deterministic candidate-state package |
+| 安全三级优化器 | S3.1 已完成 typed HypothesisRecord、CandidateRecord、OptimizerState、原子 checkpoint 与 baseline initial best_correct；Legacy `opt.simple_iter` 仍仅为 baseline | qualification、PPA evidence/comparator、cache、三级策略、真实 optimize/full | Stage 3 | S3.2 qualification and PPA evidence package |
 | Memory Applicability Gate | Legacy RAG 正负 trial 可作为 baseline | schema、score、abstention、off/gated/always | Stage 4 | 负迁移和弃权实验 |
 | BudgetManager | LLM/Tool/Compile/CSIM/CSYNTH/wall-time 硬控制；Token/Cost observed-only | Stage 3 candidate停止和 best_correct fallback；未来 cosim | Stage 3/后续 | budget exhaustion returns best_correct |
 | 版本迁移 | 长期目标保留 | 真实 source→target 修复、验证、优化和报告 | Stage 5 | migration acceptance |
@@ -75,15 +75,29 @@ simple_iter 可循环
 
 详细定义见 [STAGE3_IMPLEMENTATION_CONTRACT.md](STAGE3_IMPLEMENTATION_CONTRACT.md)。
 
-### 尚未开始实现
+### 已完成 S3.1
 
 ```text
-candidate state package
-optimizer runtime
-model hypothesis generation
-three-level strategy
-optimize/full adapter
-real optimization acceptance
+typed HypothesisRecord
+typed CandidateRecord
+OptimizerState
+atomic checkpoint/recovery
+baseline initial best_correct
+50/50 focused tests
+1558/1558 full deterministic regression
+```
+
+S3.1 没有调用模型或 Vitis，也没有实现 qualification、PPA comparator、cache、三级策略或 optimize/full。
+
+### 下一包 S3.2
+
+```text
+baseline/candidate qualification orchestration
+PPA report adapter
+latency comparator
+validation cache identity
+deterministic tool fixtures
+one existing real baseline replay
 ```
 
 ## 完成声明检查表

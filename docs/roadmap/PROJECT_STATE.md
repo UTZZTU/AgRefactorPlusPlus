@@ -6,16 +6,17 @@
 
 ```text
 branch=stage2-general-feedback
-baseline_before_this_package=f80803af65b18015bb0801c05964a6c5c2a83d52
-latest_deterministic_regression=1500/1500
+baseline_before_this_package=72f87ca5e828dd9ac6f244e254c298c13d6897fb
+latest_deterministic_regression=1558/1558
 post_cli_real_smoke=accepted
 post_cli_real_smoke_run_id=post-cli-real-smoke-20260726_192331
 post_cli_real_smoke_artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifacts
 PRE_STAGE3_CLOSED=true
 STAGE3_PLANNING_FROZEN=true
 STAGE3_IMPLEMENTATION_ALLOWED=true
-STAGE3_IMPLEMENTATION_STARTED=false
-NEXT_STEP=STAGE3_IMPLEMENTATION_STEP_1
+STAGE3_IMPLEMENTATION_STARTED=true
+STAGE3_S3_1_CANDIDATE_STATE_FOUNDATION=accepted
+NEXT_STEP=STAGE3_IMPLEMENTATION_STEP_2
 ```
 
 最终提交 SHA 以 `stage2-general-feedback` 当前 HEAD 为准；本文不复制会因自身提交而立刻过期的最终 SHA。
@@ -84,7 +85,7 @@ artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifact
 ## 4. 当前不能宣称
 
 - `optimize/full` 已实现；
-- Stage 3 安全三级优化器已开始；
+- S3.2 qualification/PPA evidence 已实现；
 - 任意 Vitis 版本或器件支持；
 - 稳定模型修复/优化成功率；
 - Legacy RAG 等于 Memory Applicability Gate；
@@ -99,7 +100,7 @@ Stage 3 规划合同已经冻结：
 - [Stage 3 Frozen Implementation Contract](STAGE3_IMPLEMENTATION_CONTRACT.md)
 - [Stage 3 High-Level Design](STAGE3_SAFE_OPTIMIZER.md)
 
-允许开始的第一个实现包只有：
+已经验收的第一个实现包是：
 
 ```text
 candidate state/schema
@@ -108,7 +109,7 @@ candidate state/schema
 + deterministic tests
 ```
 
-不得在第一个包中同时实现模型搜索、三级策略、完整 CLI 和真实多 kernel 优化。
+S3.1 未实现模型搜索、三级策略、完整 CLI 或真实多 kernel 优化；下一包严格为 S3.2 Qualification and PPA Evidence。
 
 ## 6. 当前权威文档
 
@@ -117,7 +118,8 @@ candidate state/schema
 3. [STAGE3_IMPLEMENTATION_CONTRACT.md](STAGE3_IMPLEMENTATION_CONTRACT.md)
 4. [CLI_PARAMETER_REFERENCE.md](../guides/CLI_PARAMETER_REFERENCE.md)
 5. [REPRODUCTION_STATUS.md](../guides/REPRODUCTION_STATUS.md)
-6. [最新真实 smoke acceptance](../acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md)
+6. [S3.1 Candidate State Foundation acceptance](../acceptance/stage3/stage3_s31_candidate_state_foundation_acceptance.md)
+7. [最新真实 smoke acceptance](../acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md)
 
 ## 7. 工程原则
 

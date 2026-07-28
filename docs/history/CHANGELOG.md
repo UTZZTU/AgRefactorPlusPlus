@@ -4,6 +4,15 @@
 
 ## 未发布
 
+### Stage 3.1 Candidate State Foundation
+
+- 新增 typed `HypothesisRecord`、`CandidateRecord` 与 `OptimizerState`，执行严格 schema、确定性序列化和单向候选状态约束。
+- baseline qualification 成功后的 baseline 可初始化为 `best_correct`；S3.1 不实现 qualification 本身。
+- 新增原子 optimizer checkpoint writer、不可变 checkpoint marker、projection 恢复、source hash/path/symlink 防护。
+- 新增 50 个 S3.1 focused tests；全量确定性回归达到 1558/1558。
+- 本包未调用模型、Vitis、真实 CSIM 或真实 CSYNTH，未实现 PPA comparator、cache、三级策略或 `optimize/full`。
+- 下一包为 S3.2 Qualification and PPA Evidence。
+
 ### Current authority cleanup and Stage 3 planning freeze
 
 - 最新 CLI 后完成一次真实 DeepSeek + Vitis HLS 2023.2 source-only accepted smoke。

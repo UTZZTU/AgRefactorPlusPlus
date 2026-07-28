@@ -4,7 +4,9 @@
 
 ```text
 PLANNING_FROZEN=true
-IMPLEMENTATION_STARTED=false
+IMPLEMENTATION_STARTED=true
+S3_1_CANDIDATE_STATE_FOUNDATION=accepted
+CURRENT_PACKAGE=S3.2_QUALIFICATION_AND_PPA_EVIDENCE
 AUTHORITATIVE_CONTRACT=STAGE3_IMPLEMENTATION_CONTRACT.md
 ```
 
@@ -69,8 +71,8 @@ Level 1 Structural Optimization
 ## 实施顺序
 
 ```text
-S3.1 Candidate state/checkpoint/best_correct
-S3.2 Qualification and PPA evidence adapters
+S3.1 Candidate state/checkpoint/best_correct — accepted
+S3.2 Qualification and PPA evidence adapters — next
 S3.3 Deterministic hypothesis and policy state machine
 S3.4 Model-backed Structural level
 S3.5 Bottleneck level
