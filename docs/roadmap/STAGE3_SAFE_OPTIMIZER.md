@@ -6,7 +6,8 @@
 PLANNING_FROZEN=true
 IMPLEMENTATION_STARTED=true
 S3_1_CANDIDATE_STATE_FOUNDATION=accepted
-CURRENT_PACKAGE=S3.2_QUALIFICATION_AND_PPA_EVIDENCE
+S3_2_QUALIFICATION_AND_PPA_EVIDENCE=accepted
+CURRENT_PACKAGE=S3.3_DETERMINISTIC_OPTIMIZER_STATE_MACHINE
 AUTHORITATIVE_CONTRACT=STAGE3_IMPLEMENTATION_CONTRACT.md
 ```
 
@@ -72,8 +73,8 @@ Level 1 Structural Optimization
 
 ```text
 S3.1 Candidate state/checkpoint/best_correct — accepted
-S3.2 Qualification and PPA evidence adapters — next
-S3.3 Deterministic hypothesis and policy state machine
+S3.2 Qualification and PPA evidence adapters — accepted
+S3.3 Deterministic hypothesis and policy state machine — next
 S3.4 Model-backed Structural level
 S3.5 Bottleneck level
 S3.6 Pragma level
@@ -81,4 +82,4 @@ S3.7 optimize/full product adapters
 S3.8 Multi-kernel real acceptance and simple_iter comparison
 ```
 
-不得把 S3.1–S3.8 合并成一次大提交。
+不得把 S3.1–S3.8 合并成一次大提交。S3.2 的一次真实 replay 只证明当前 baseline/Target/suite/toolchain 组合，不外推为多 kernel 或产品 optimize/full。

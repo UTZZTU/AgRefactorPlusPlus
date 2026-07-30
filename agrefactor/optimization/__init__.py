@@ -1,8 +1,41 @@
-"""Safe optimizer state and checkpoint foundations."""
+"""Safe optimizer state, qualification, PPA, cache, and checkpoint contracts."""
 
+from .cache import (
+    CACHE_SCHEMA_VERSION,
+    VALIDATION_PIPELINE_VERSION,
+    VALIDATION_SCHEMA_VERSION,
+    QualificationEvidenceCache,
+    SuiteIdentity,
+    ValidationCacheIdentity,
+    build_toolchain_fingerprint,
+    suite_identity_from_file,
+)
 from .checkpoint import (
     OptimizerCheckpointSnapshot,
     OptimizerCheckpointWriter,
+)
+from .ppa import (
+    PPA_SCHEMA_VERSION,
+    LatencyPpaComparator,
+    PpaComparison,
+    PpaComparisonDecision,
+    PpaEvidence,
+    PpaParseError,
+    PpaReportFormat,
+    PpaResourceUsage,
+    VitisHlsPpaReportAdapter,
+)
+from .qualification import (
+    QUALIFICATION_PIPELINE_VERSION,
+    QUALIFICATION_SCHEMA_VERSION,
+    CandidateQualificationRequest,
+    CandidateQualificationResult,
+    QualificationStage,
+    QualificationStatus,
+    QualificationStepOutcome,
+    QualificationStepRecord,
+    Stage3QualificationOrchestrator,
+    initialize_qualified_baseline,
 )
 from .state import (
     SCHEMA_VERSION,
@@ -19,17 +52,44 @@ from .state import (
 )
 
 __all__ = [
+    "CACHE_SCHEMA_VERSION",
+    "PPA_SCHEMA_VERSION",
+    "QUALIFICATION_PIPELINE_VERSION",
+    "QUALIFICATION_SCHEMA_VERSION",
     "SCHEMA_VERSION",
+    "VALIDATION_PIPELINE_VERSION",
+    "VALIDATION_SCHEMA_VERSION",
+    "CandidateQualificationRequest",
+    "CandidateQualificationResult",
     "CandidateRecord",
     "CandidateStatus",
     "HypothesisRecord",
     "HypothesisRisk",
+    "LatencyPpaComparator",
     "OptimizationLevel",
     "OptimizerCheckpointSnapshot",
     "OptimizerCheckpointWriter",
     "OptimizerState",
     "OptimizerTerminalStatus",
+    "PpaComparison",
+    "PpaComparisonDecision",
+    "PpaEvidence",
+    "PpaParseError",
+    "PpaReportFormat",
+    "PpaResourceUsage",
+    "QualificationEvidenceCache",
+    "QualificationStage",
+    "QualificationStatus",
+    "QualificationStepOutcome",
+    "QualificationStepRecord",
+    "Stage3QualificationOrchestrator",
+    "SuiteIdentity",
+    "ValidationCacheIdentity",
+    "VitisHlsPpaReportAdapter",
+    "build_toolchain_fingerprint",
     "candidate_index_from_dict",
     "candidate_index_to_dict",
+    "initialize_qualified_baseline",
     "normalize_candidate_index",
+    "suite_identity_from_file",
 ]

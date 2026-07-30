@@ -4,6 +4,16 @@
 
 ## 未发布
 
+### Stage 3.2 Qualification and PPA Evidence
+
+- 新增独立 Stage 3 qualification orchestration，严格执行 source → Preflight → Public → CSYNTH → Hidden → PPA → feasibility，不改写 Stage 2 已验收顺序。
+- 新增 typed Vitis HLS PPA evidence、XML-first/text-fallback report adapter、resource feasibility 与冻结 latency comparator。
+- 新增包含 source/Target/实际 toolchain/Public-Hidden suite/flags/clock/device/parser/schema 的 exact validation cache identity，以及原子、不可变、Hidden-safe evidence cache。
+- 修复 S3.1 `CandidateRecord` budget snapshot 对正常 `tokens` 字段的误拒绝，改为明确 BudgetUsage allowlist 并继续拒绝未知字段。
+- 新增 85 个 S3.2 focused tests；optimizer regression 135/135，全量确定性回归 1643/1643。
+- 完成一次既有 accepted baseline 的真实 g++ Preflight → Public CSIM → Vitis HLS 2023.2 CSYNTH → Hidden CSIM → PPA replay；随后 exact cache hit 的真实工具计数增量为 0。
+- 本包未调用模型，未实现 S3.3 状态机、三级搜索或正式 `optimize/full`；下一包为 S3.3。
+
 ### Stage 3.1 Candidate State Foundation
 
 - 新增 typed `HypothesisRecord`、`CandidateRecord` 与 `OptimizerState`，执行严格 schema、确定性序列化和单向候选状态约束。

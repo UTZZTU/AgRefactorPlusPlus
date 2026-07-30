@@ -6,8 +6,8 @@
 
 ```text
 branch=stage2-general-feedback
-baseline_before_this_package=72f87ca5e828dd9ac6f244e254c298c13d6897fb
-latest_deterministic_regression=1558/1558
+baseline_before_this_package=9e55601f873e46e6edf83b5092970e47fbe132c0
+latest_deterministic_regression=1643/1643
 post_cli_real_smoke=accepted
 post_cli_real_smoke_run_id=post-cli-real-smoke-20260726_192331
 post_cli_real_smoke_artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifacts
@@ -16,7 +16,10 @@ STAGE3_PLANNING_FROZEN=true
 STAGE3_IMPLEMENTATION_ALLOWED=true
 STAGE3_IMPLEMENTATION_STARTED=true
 STAGE3_S3_1_CANDIDATE_STATE_FOUNDATION=accepted
-NEXT_STEP=STAGE3_IMPLEMENTATION_STEP_2
+STAGE3_S3_2_QUALIFICATION_AND_PPA_EVIDENCE=accepted
+stage3_s32_real_replay=accepted
+stage3_s32_real_replay_artifact_root=/data/agrefactor_runs/stage3_s32_real_replay_20260730T153256Z_2390707
+NEXT_STEP=STAGE3_IMPLEMENTATION_STEP_3
 ```
 
 最终提交 SHA 以 `stage2-general-feedback` 当前 HEAD 为准；本文不复制会因自身提交而立刻过期的最终 SHA。
@@ -85,7 +88,7 @@ artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifact
 ## 4. 当前不能宣称
 
 - `optimize/full` 已实现；
-- S3.2 qualification/PPA evidence 已实现；
+- S3.3 deterministic optimizer state machine 已实现；
 - 任意 Vitis 版本或器件支持；
 - 稳定模型修复/优化成功率；
 - Legacy RAG 等于 Memory Applicability Gate；
@@ -109,7 +112,7 @@ candidate state/schema
 + deterministic tests
 ```
 
-S3.1 未实现模型搜索、三级策略、完整 CLI 或真实多 kernel 优化；下一包严格为 S3.2 Qualification and PPA Evidence。
+S3.1 与 S3.2 已验收：当前具备 candidate/checkpoint foundation、独立 Stage 3 qualification、typed PPA evidence、latency comparator 与 exact validation cache identity。S3.2 只完成一次既有 baseline 的真实 replay，不等于产品 `optimize/full` 或多 kernel 优化；下一包严格为 S3.3 Deterministic Optimizer State Machine。
 
 ## 6. 当前权威文档
 
@@ -119,7 +122,8 @@ S3.1 未实现模型搜索、三级策略、完整 CLI 或真实多 kernel 优�
 4. [CLI_PARAMETER_REFERENCE.md](../guides/CLI_PARAMETER_REFERENCE.md)
 5. [REPRODUCTION_STATUS.md](../guides/REPRODUCTION_STATUS.md)
 6. [S3.1 Candidate State Foundation acceptance](../acceptance/stage3/stage3_s31_candidate_state_foundation_acceptance.md)
-7. [最新真实 smoke acceptance](../acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md)
+7. [S3.2 Qualification and PPA Evidence acceptance](../acceptance/stage3/stage3_s32_qualification_ppa_acceptance.md)
+8. [最新真实产品 smoke acceptance](../acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md)
 
 ## 7. 工程原则
 

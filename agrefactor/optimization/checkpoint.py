@@ -426,7 +426,8 @@ class OptimizerCheckpointWriter:
         candidates: Mapping[str, CandidateRecord],
     ) -> None:
         if candidate_id is None:
-            raise ValueError(f"{label} candidate id must not be empty")
+            _safe_unlink_projection(self._root, path)
+            return
         record = candidates[candidate_id]
         source_path = _resolve_member(
             self._root,

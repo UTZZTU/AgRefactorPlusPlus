@@ -596,7 +596,7 @@ error
 
 ### S3.2 Qualification and PPA Evidence
 
-状态：**NEXT**。
+状态：**ACCEPTED**（85/85 S3.2 focused，135/135 optimizer regression，1643/1643 full deterministic；一次现有 baseline 的真实 Vitis HLS 2023.2 replay accepted；模型调用 0）。
 
 - baseline/candidate qualification orchestration；
 -PPA report adapter；
@@ -605,7 +605,11 @@ error
 -deterministic tool fixtures；
 -一次现有真实 baseline replay。
 
+实现说明：S3.2 使用独立 qualification orchestration 复用 Stage 2 handlers，但不改写 Stage 2 已验收顺序；补充 `CandidateRecord` budget snapshot allowlist，使正常 `tokens` usage 可持久化，同时继续拒绝未知/secret-like budget 字段。
+
 ### S3.3 Deterministic Optimizer State Machine
+
+状态：**NEXT**。
 
 - level/round transitions；
 -policy counters；

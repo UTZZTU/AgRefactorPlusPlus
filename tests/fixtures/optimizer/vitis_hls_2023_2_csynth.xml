@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<profile>
+  <UserAssignments>
+    <TargetClockPeriod>5.000</TargetClockPeriod>
+  </UserAssignments>
+  <PerformanceEstimates>
+    <SummaryOfTimingAnalysis>
+      <EstimatedClockPeriod>4.250</EstimatedClockPeriod>
+    </SummaryOfTimingAnalysis>
+    <SummaryOfOverallLatency>
+      <Best-caseLatency>96</Best-caseLatency>
+      <Worst-caseLatency>112</Worst-caseLatency>
+      <Interval-min>1</Interval-min>
+      <Interval-max>2</Interval-max>
+    </SummaryOfOverallLatency>
+  </PerformanceEstimates>
+  <AreaEstimates>
+    <Resources>
+      <BRAM_18K>4</BRAM_18K>
+      <DSP>8</DSP>
+      <FF>1200</FF>
+      <LUT>900</LUT>
+      <URAM>0</URAM>
+    </Resources>
+    <AvailableResources>
+      <BRAM_18K>100</BRAM_18K>
+      <DSP>200</DSP>
+      <FF>100000</FF>
+      <LUT>50000</LUT>
+      <URAM>20</URAM>
+    </AvailableResources>
+  </AreaEstimates>
+</profile>

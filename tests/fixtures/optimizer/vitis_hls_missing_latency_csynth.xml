@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<profile>
+  <PerformanceEstimates>
+    <SummaryOfTimingAnalysis>
+      <EstimatedClockPeriod>4.250</EstimatedClockPeriod>
+    </SummaryOfTimingAnalysis>
+  </PerformanceEstimates>
+  <AreaEstimates><Resources><LUT>5</LUT></Resources></AreaEstimates>
+</profile>

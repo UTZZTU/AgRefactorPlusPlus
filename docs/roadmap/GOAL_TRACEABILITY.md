@@ -10,7 +10,7 @@ Stage 1=closed
 Stage 2=closed
 Pre-Stage-3=closed
 Stage 3 planning=frozen
-Stage 3 implementation=in progress; S3.1 accepted
+Stage 3 implementation=in progress; S3.1-S3.2 accepted
 Stage 4=not started
 Stage 5=not started
 Stage 6=not started
@@ -24,9 +24,9 @@ Stage 6=not started
 | 双模式版本处理 | `refactor/optimize/full` 数据结构预留；普通 source-only refactor 已实现 | migrate mode、SourceProfile、source baseline、migration report | Stage 5 | 一组真实旧版→目标版迁移 |
 | Model API Registry | Modern/Legacy/repair 统一 typed runtime；DeepSeek 真实 smoke；固定模型路径 | authorized auto pool、具体部署 reasoning mapping | 后续 hardening | 用户授权模型池与选择证据 |
 | 分层 Prompt | Shared builder、Target/model/evidence/scope/output layers，Candidate/Testbench consumers | Stage 3 optimization hypothesis Prompt | Stage 3 | optimization prompt identity |
-| 结构化反馈与状态机 | Preflight、CSYNTH、Public/Hidden、repair、owner、next action、Hidden suppression | Stage 3 PPA/optimization decision evidence | Stage 3 | candidate decision state tests |
+| 结构化反馈与状态机 | Preflight、CSYNTH、Public/Hidden、repair、owner、next action、Hidden suppression；S3.2 新增独立 qualification 与 typed PPA/feasibility evidence | S3.3 deterministic optimizer transition/policy evidence | Stage 3 | S3.3 candidate decision state tests |
 | Multi-type ground truth | 7 baselines、7/7 full chains、9/9 fault matrix、16/16 labels | 更广 kernel/版本/设备统计 | Stage 6 | 固定 benchmark 扩展 |
-| 安全三级优化器 | S3.1 已完成 typed HypothesisRecord、CandidateRecord、OptimizerState、原子 checkpoint 与 baseline initial best_correct；Legacy `opt.simple_iter` 仍仅为 baseline | qualification、PPA evidence/comparator、cache、三级策略、真实 optimize/full | Stage 3 | S3.2 qualification and PPA evidence package |
+| 安全三级优化器 | S3.1 已完成 state/checkpoint foundation；S3.2 已完成独立 qualification、PPA adapter、latency comparator、exact cache identity 和一次真实 baseline replay；Legacy `opt.simple_iter` 仍仅为 baseline | S3.3 三级状态机、S3.4-S3.6 model-backed levels、S3.7 optimize/full、S3.8 evaluation | Stage 3 | S3.3 deterministic optimizer state machine |
 | Memory Applicability Gate | Legacy RAG 正负 trial 可作为 baseline | schema、score、abstention、off/gated/always | Stage 4 | 负迁移和弃权实验 |
 | BudgetManager | LLM/Tool/Compile/CSIM/CSYNTH/wall-time 硬控制；Token/Cost observed-only | Stage 3 candidate停止和 best_correct fallback；未来 cosim | Stage 3/后续 | budget exhaustion returns best_correct |
 | 版本迁移 | 长期目标保留 | 真实 source→target 修复、验证、优化和报告 | Stage 5 | migration acceptance |
@@ -89,15 +89,32 @@ baseline initial best_correct
 
 S3.1 没有调用模型或 Vitis，也没有实现 qualification、PPA comparator、cache、三级策略或 optimize/full。
 
-### 下一包 S3.2
+### 已完成 S3.2
 
 ```text
-baseline/candidate qualification orchestration
-PPA report adapter
-latency comparator
-validation cache identity
-deterministic tool fixtures
-one existing real baseline replay
+independent Stage 3 qualification order
+source → Preflight → Public → CSYNTH → Hidden → PPA → feasibility
+typed Vitis HLS PPA evidence
+frozen latency comparator
+exact validation cache identity and immutable safe cache
+85/85 S3.2 focused tests
+135/135 optimizer regression
+1643/1643 full deterministic regression
+one real Vitis 2023.2 baseline replay
+cache-hit replay with zero real-tool counter delta
+```
+
+S3.2 没有调用模型，没有实现多轮搜索、三级策略或正式 `optimize/full`。
+
+### 下一包 S3.3
+
+```text
+level/round transitions
+policy counters
+budget exhaustion
+rollback
+FakeProvider hypotheses
+no real network model or Vitis
 ```
 
 ## 完成声明检查表

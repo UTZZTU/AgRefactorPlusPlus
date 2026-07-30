@@ -1,0 +1,17 @@
+Vitis HLS Synthesis Report
+Best-case Latency: 96
+Worst-case Latency: 112
+Interval-min: 1
+Interval-max: 2
+Target Clock Period: 5.000
+Estimated Clock Period: 4.250
+BRAM_18K: 4
+Available BRAM_18K: 100
+DSP: 8
+Available DSP: 200
+FF: 1200
+Available FF: 100000
+LUT: 900
+Available LUT: 50000
+URAM: 0
+Available URAM: 20

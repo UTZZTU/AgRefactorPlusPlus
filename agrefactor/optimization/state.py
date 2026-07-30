@@ -5,8 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 import json
+from math import isfinite
 from pathlib import PurePosixPath
 import re
 from typing import Any, TypeVar
@@ -34,6 +36,19 @@ _SECRET_KEYS = frozenset(
         "refresh_token",
         "secret",
         "token",
+    }
+)
+_BUDGET_USAGE_FIELDS = frozenset(
+    {
+        "llm_calls",
+        "tool_calls",
+        "compile_calls",
+        "csim_calls",
+        "csynth_calls",
+        "tokens",
+        "cost_usd",
+        "elapsed_s",
+        "costs_by_currency",
     }
 )
 _VERIFICATION_ORDER = {
@@ -336,15 +351,13 @@ class CandidateRecord:
             reject_secrets=True,
         )
         ppa = _json_mapping(self.ppa, "ppa", reject_secrets=True)
-        budget_before = _json_mapping(
+        budget_before = _budget_mapping(
             self.budget_before,
             "budget_before",
-            reject_secrets=True,
         )
-        budget_after = _json_mapping(
+        budget_after = _budget_mapping(
             self.budget_after,
             "budget_after",
-            reject_secrets=True,
         )
         decision = _json_mapping(
             self.decision,
@@ -446,11 +459,11 @@ class CandidateRecord:
             "correctness": _json_mapping(self.correctness, "correctness"),
             "synthesis": _json_mapping(self.synthesis, "synthesis"),
             "ppa": _json_mapping(self.ppa, "ppa"),
-            "budget_before": _json_mapping(
+            "budget_before": _budget_mapping(
                 self.budget_before,
                 "budget_before",
             ),
-            "budget_after": _json_mapping(
+            "budget_after": _budget_mapping(
                 self.budget_after,
                 "budget_after",
             ),
@@ -860,6 +873,66 @@ def _json_object(payload: str, name: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise TypeError(f"{name} must contain a JSON object")
     return value
+
+
+def _budget_mapping(
+    value: Mapping[str, Any],
+    name: str,
+) -> dict[str, Any]:
+    copied = _json_mapping(value, name, reject_secrets=False)
+    unknown = set(copied) - _BUDGET_USAGE_FIELDS
+    if unknown:
+        raise ValueError(
+            f"{name} contains unknown budget fields: "
+            + ", ".join(sorted(unknown))
+        )
+    integer_fields = {
+        "llm_calls",
+        "tool_calls",
+        "compile_calls",
+        "csim_calls",
+        "csynth_calls",
+        "tokens",
+    }
+    for key in integer_fields & set(copied):
+        value = copied[key]
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"{name}.{key} must be a non-negative integer")
+    for key in {"cost_usd", "elapsed_s"} & set(copied):
+        value = copied[key]
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not isfinite(float(value))
+            or float(value) < 0
+        ):
+            raise ValueError(f"{name}.{key} must be finite and non-negative")
+    if "costs_by_currency" in copied:
+        costs = copied["costs_by_currency"]
+        if not isinstance(costs, Mapping):
+            raise TypeError(f"{name}.costs_by_currency must be a mapping")
+        for currency, amount in costs.items():
+            if re.fullmatch(r"[A-Z]{3}", str(currency)) is None:
+                raise ValueError(
+                    f"{name}.costs_by_currency contains invalid currency"
+                )
+            try:
+                decimal = Decimal(str(amount))
+            except (InvalidOperation, ValueError) as exc:
+                raise ValueError(
+                    f"{name}.costs_by_currency amount is invalid"
+                ) from exc
+            if not decimal.is_finite() or decimal < 0:
+                raise ValueError(
+                    f"{name}.costs_by_currency amount must be non-negative"
+                )
+        _reject_secret_keys(costs, f"{name}.costs_by_currency")
+    # ``tokens`` is a legitimate observed usage counter, not a credential.
+    # Every other nested value retains secret-key rejection.
+    for key, child in copied.items():
+        if key not in {"tokens", "costs_by_currency"}:
+            _reject_secret_keys(child, f"{name}.{key}")
+    return copied
 
 
 def _json_mapping(
