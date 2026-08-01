@@ -2,7 +2,7 @@
 
 > **状态：** FROZEN
 > **冻结范围：** Stage 3 安全三级优化器
-> **实现状态：** 进行中；S3.1–S3.4 已验收，下一包为 S3.5
+> **实现状态：** 进行中；S3.1–S3.5 已验收，下一包为 S3.6
 > **前置基线：** Pre-Stage-3 已关闭，最新 CLI 后真实 source-only smoke 已通过
 > **变更规则：** 任何语义变更必须有明确决策记录、测试和本文更新，不能在实现中静默改写合同。
 
@@ -639,11 +639,22 @@ error
 
 精确消歧见 `STAGE3_S34_DECISION_RECORD.md`。
 
-### S3.5 Bottleneck
+### S3.5 Bottleneck Model Integration
 
-- report evidence references；
--bottleneck classification；
--真实 bounded smoke。
+状态：**ACCEPTED**（80/80 S3.5 focused，313/313 optimizer regression，1821/1821 full deterministic；bounded real model smoke 使用精确 2 次 LLM 调用，真实网络=true，Vitis/compile/CSIM/CSYNTH=0）。
+
+- 从 accepted parent 的 typed `PpaEvidence` 构造 agent-safe projection；不复制 raw report path/content，不含 Hidden/operator-full 证据；
+- strict versioned Bottleneck response，同一次 bounded analysis 调用产生最多 3 个非权威 model classifications 与最多 3 个 evidence-linked hypotheses；
+- classification 必须引用真实 evidence id 和冻结 signal-field allowlist；`unknown` 是正式结果，必须 low confidence，且不能产生 executable hypothesis；
+- classification 明确标记 `authoritative=false`、`classification_source=model_inference`，不能取代 qualification、真实 CSYNTH 或 PPA；
+- complete-source Bottleneck rewrite 复用 `CandidateResponseContract`，保护整源、semantic change 与 top interface；
+- immutable classification artifacts、safe model-call audit、shared LLM hard-budget accounting；
+- typed per-level provider/executor dispatch 只依据 `OptimizationLevel`，不扫描源码猜 level，并要求相同 prospective budget increment；
+- bounded smoke 使用 typed PPA fixture 证明 evidence/classification/hypothesis/rewrite integration；不运行 Vitis，不宣称真实瓶颈已被工具确认或 PPA 改善；
+- 不使用 source-string、pragma-count、warning-regex 或其他不完整静态匹配作为 Bottleneck 权威门禁；
+- 未解除产品 `optimize/full` 门禁，未提前实现 Pragma。
+
+精确消歧见 `STAGE3_S35_DECISION_RECORD.md`。
 
 ### S3.6 Pragma
 

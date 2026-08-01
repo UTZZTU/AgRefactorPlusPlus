@@ -25,6 +25,30 @@ from .test_source_isolation import assert_hidden_test_sources_absent
 OPTIMIZATION_PROMPT_SCHEMA_VERSION = 1
 STRUCTURAL_HYPOTHESIS_PURPOSE = "optimizer_structural_hypothesis"
 STRUCTURAL_REWRITE_PURPOSE = "optimizer_structural_rewrite"
+BOTTLENECK_ANALYSIS_PURPOSE = "optimizer_bottleneck_analysis"
+BOTTLENECK_REWRITE_PURPOSE = "optimizer_bottleneck_rewrite"
+BOTTLENECK_ALLOWED_SIGNAL_FIELDS = (
+    "latency_cycles_min",
+    "latency_cycles_max",
+    "initiation_interval_min",
+    "initiation_interval_max",
+    "target_clock_period_ns",
+    "achieved_clock_period_ns",
+    "max_resource_utilization_ratio",
+    "objective_feasible",
+    "constraint_violations",
+    "parser_warnings",
+    "resources_used.bram_18k",
+    "resources_used.dsp",
+    "resources_used.ff",
+    "resources_used.lut",
+    "resources_used.uram",
+    "resources_available.bram_18k",
+    "resources_available.dsp",
+    "resources_available.ff",
+    "resources_available.lut",
+    "resources_available.uram",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -290,6 +314,316 @@ class StructuralOptimizationPromptBuilder:
             ]
         )
 
+
+
+@dataclass(frozen=True, slots=True)
+class BottleneckAnalysisPromptRequest:
+    """Inputs for one bounded Bottleneck classification/hypothesis call."""
+
+    task: TaskSpec
+    parent_candidate_id: str
+    parent_source: str
+    round_number: int
+    max_classifications: int
+    max_hypotheses: int
+    evidence: Mapping[str, Any]
+    safe_context: Mapping[str, Any] = field(default_factory=dict)
+    family_instruction: str | None = None
+
+    schema_version = OPTIMIZATION_PROMPT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        _validate_task(self.task)
+        object.__setattr__(
+            self,
+            "parent_candidate_id",
+            _required_text(self.parent_candidate_id, "parent_candidate_id"),
+        )
+        object.__setattr__(
+            self,
+            "parent_source",
+            _required_source(self.parent_source, "parent_source"),
+        )
+        if isinstance(self.round_number, bool) or self.round_number < 1:
+            raise ValueError("round_number must be positive")
+        for name in ("max_classifications", "max_hypotheses"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not 1 <= value <= 3:
+                raise ValueError(f"{name} must be between 1 and 3")
+        evidence = _json_object(self.evidence, "evidence")
+        if evidence.get("raw_report_included") is not False:
+            raise ValueError("Bottleneck evidence must exclude the raw report")
+        if evidence.get("hidden_evidence_included") is not False:
+            raise ValueError("Bottleneck evidence must exclude Hidden evidence")
+        safe_evidence = dict(evidence)
+        safe_evidence.pop("raw_report_included", None)
+        safe_evidence.pop("hidden_evidence_included", None)
+        _reject_agent_unsafe(safe_evidence, "evidence")
+        safe_context = _json_object(self.safe_context, "safe_context")
+        _reject_agent_unsafe(safe_context, "safe_context")
+        family = _optional_text(self.family_instruction, "family_instruction")
+        object.__setattr__(self, "evidence", evidence)
+        object.__setattr__(self, "safe_context", safe_context)
+        object.__setattr__(self, "family_instruction", family)
+
+
+@dataclass(frozen=True, slots=True)
+class BottleneckRewritePromptRequest:
+    """Inputs for one complete-source Bottleneck rewrite call."""
+
+    task: TaskSpec
+    candidate_id: str
+    parent_candidate_id: str
+    parent_source: str
+    hypothesis: HypothesisRecord
+    safe_context: Mapping[str, Any] = field(default_factory=dict)
+    family_instruction: str | None = None
+
+    schema_version = OPTIMIZATION_PROMPT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        _validate_task(self.task)
+        candidate_id = _required_text(self.candidate_id, "candidate_id")
+        parent_id = _required_text(self.parent_candidate_id, "parent_candidate_id")
+        source = _required_source(self.parent_source, "parent_source")
+        if not isinstance(self.hypothesis, HypothesisRecord):
+            raise TypeError("hypothesis must be HypothesisRecord")
+        if self.hypothesis.level is not OptimizationLevel.BOTTLENECK:
+            raise ValueError("S3.5 rewrite requires a Bottleneck hypothesis")
+        if self.hypothesis.parent_candidate_id != parent_id:
+            raise ValueError("hypothesis parent does not match parent_candidate_id")
+        classification = self.hypothesis.model_identity.get("classification")
+        if not isinstance(classification, Mapping):
+            raise ValueError("Bottleneck hypothesis must carry classification metadata")
+        classification = _json_object(classification, "classification")
+        _reject_agent_unsafe(classification, "classification")
+        if classification.get("authoritative") is not False:
+            raise ValueError("Bottleneck model classification must be non-authoritative")
+        safe_context = _json_object(self.safe_context, "safe_context")
+        _reject_agent_unsafe(safe_context, "safe_context")
+        family = _optional_text(self.family_instruction, "family_instruction")
+        object.__setattr__(self, "candidate_id", candidate_id)
+        object.__setattr__(self, "parent_candidate_id", parent_id)
+        object.__setattr__(self, "parent_source", source)
+        object.__setattr__(self, "safe_context", safe_context)
+        object.__setattr__(self, "family_instruction", family)
+
+
+class BottleneckOptimizationPromptBuilder:
+    """Build S3.5 evidence-driven prompts with deterministic identities."""
+
+    def build_analysis(self, request: BottleneckAnalysisPromptRequest) -> LayeredPrompt:
+        if not isinstance(request, BottleneckAnalysisPromptRequest):
+            raise TypeError("request must be BottleneckAnalysisPromptRequest")
+        system = self._analysis_system(request)
+        user = self._analysis_user(request)
+        prompt = _finalize_prompt(
+            system=system,
+            user=user,
+            manifest={
+                "schema_version": OPTIMIZATION_PROMPT_SCHEMA_VERSION,
+                "purpose": BOTTLENECK_ANALYSIS_PURPOSE,
+                "task_id": request.task.task_id,
+                "kernel_name": request.task.kernel_name,
+                "target_profile": request.task.target.name,
+                "mode": request.task.mode.value,
+                "level": OptimizationLevel.BOTTLENECK.value,
+                "round_number": request.round_number,
+                "parent_candidate_id": request.parent_candidate_id,
+                "parent_source_sha256": _text_sha256(request.parent_source),
+                "evidence_id": request.evidence.get("evidence_id"),
+                "evidence_projection_sha256": _mapping_sha256(request.evidence),
+                "max_classifications": request.max_classifications,
+                "max_hypotheses": request.max_hypotheses,
+                "safe_context": request.safe_context,
+                "family_instruction_present": request.family_instruction is not None,
+                "feedback_projection": "agent_safe_typed_ppa_only",
+                "raw_report_included": False,
+                "hidden_test_source_isolation": "verified",
+                "classification_authority": "model_inference_not_tool_fact",
+                "output_contract": {
+                    "format": "json_object",
+                    "schema": "bottleneck_analysis_response_v1",
+                    "commentary_allowed": False,
+                    "unknown_allowed": True,
+                    "max_classifications": request.max_classifications,
+                    "max_hypotheses": request.max_hypotheses,
+                },
+            },
+        )
+        assert_hidden_test_sources_absent(task=request.task, messages=prompt.messages)
+        return prompt
+
+    def build_rewrite(self, request: BottleneckRewritePromptRequest) -> LayeredPrompt:
+        if not isinstance(request, BottleneckRewritePromptRequest):
+            raise TypeError("request must be BottleneckRewritePromptRequest")
+        system = self._rewrite_system(request)
+        user = self._rewrite_user(request)
+        classification = request.hypothesis.model_identity["classification"]
+        prompt = _finalize_prompt(
+            system=system,
+            user=user,
+            manifest={
+                "schema_version": OPTIMIZATION_PROMPT_SCHEMA_VERSION,
+                "purpose": BOTTLENECK_REWRITE_PURPOSE,
+                "task_id": request.task.task_id,
+                "kernel_name": request.task.kernel_name,
+                "target_profile": request.task.target.name,
+                "mode": request.task.mode.value,
+                "level": OptimizationLevel.BOTTLENECK.value,
+                "candidate_id": request.candidate_id,
+                "parent_candidate_id": request.parent_candidate_id,
+                "parent_source_sha256": _text_sha256(request.parent_source),
+                "hypothesis_id": request.hypothesis.hypothesis_id,
+                "hypothesis_sha256": _mapping_sha256(request.hypothesis.to_dict()),
+                "classification_id": classification.get("classification_id"),
+                "classification_sha256": _mapping_sha256(classification),
+                "safe_context": request.safe_context,
+                "family_instruction_present": request.family_instruction is not None,
+                "feedback_projection": "agent_safe_typed_ppa_only",
+                "hidden_test_source_isolation": "verified",
+                "output_contract": {
+                    "artifact_name": "candidate_kernel",
+                    "language": "cpp",
+                    "complete_replacement": True,
+                    "fenced_code_block": True,
+                    "commentary_allowed": False,
+                    "top_function_interface_must_remain_unchanged": True,
+                },
+            },
+        )
+        assert_hidden_test_sources_absent(task=request.task, messages=prompt.messages)
+        return prompt
+
+    @staticmethod
+    def _analysis_system(request: BottleneckAnalysisPromptRequest) -> str:
+        kinds = (
+            "initiation_interval|loop_carried_dependency|memory_port_contention|"
+            "critical_path|resource_bottleneck|unknown_loop_bound|"
+            "dataflow_stall_risk|latency_structure|objective_constraint|unknown"
+        )
+        signals = json.dumps(
+            list(BOTTLENECK_ALLOWED_SIGNAL_FIELDS),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        lines = [
+            "You are the AgRefactor++ Stage 3 Bottleneck analysis component.",
+            "",
+            "System invariants:",
+            "- Correctness is more important than performance.",
+            "- Use only the complete parent source and the typed agent-safe PPA projection supplied here.",
+            "- The raw synthesis report and Hidden evaluation evidence are unavailable and must never be inferred or requested.",
+            "- A classification is a model inference, not an authoritative tool fact.",
+            "- Cite only supplied evidence_id values and explicit signal_fields from the frozen allowlist.",
+            "- If evidence is insufficient, emit kind=unknown with confidence=low and no executable hypothesis for that classification.",
+            "- Do not use source-string, pragma-count, warning-regex, or pattern matching as a correctness or bottleneck gate.",
+            "- Do not claim that compilation, simulation, synthesis, or PPA improvement has already succeeded.",
+            "- Return strict JSON only; no Markdown and no commentary.",
+            "- The final message content must be non-empty; its first non-whitespace character must be { and its last must be }.",
+            "",
+            "Allowed classification kinds:",
+            f"- {kinds}",
+            "Allowed signal_fields exact-string array:",
+            signals,
+            "- Use only exact strings from that array.",
+            "- resources_used and resources_available are JSON container names, not valid signal_fields.",
+            "- For resource evidence, cite one or more exact leaf paths such as resources_used.lut.",
+            "",
+            "Output JSON contract:",
+            '{"schema_version":1,"classifications":[{"kind":"...","claim":"...","confidence":"low|medium|high","supporting_evidence_ids":["..."],"signal_fields":["..."]}],"hypotheses":[{"classification_index":1,"claim":"...","supporting_evidence_ids":["..."],"expected_benefit":{"metric":"latency","direction":"decrease"},"risk":"low|medium|high","modification_scope":["..."],"verification_plan":["preflight","public","csynth","hidden"]}]}',
+            f"- Return at most {request.max_classifications} classifications and {request.max_hypotheses} hypotheses, in priority order.",
+            "- classification_index is one-based and must reference a non-unknown classification.",
+            "- Hypothesis evidence must be a subset of its classification evidence.",
+            "- Use exactly the keys shown above; do not invent evidence IDs or tool facts.",
+        ]
+        if request.family_instruction:
+            lines.extend(["", "Model-family instruction:", request.family_instruction])
+        return "\n".join(lines)
+
+    @staticmethod
+    def _analysis_user(request: BottleneckAnalysisPromptRequest) -> str:
+        task_payload = {
+            "task_id": request.task.task_id,
+            "kernel_name": request.task.kernel_name,
+            "mode": request.task.mode.value,
+            "target": request.task.target.to_effective_dict(),
+            "objective": "latency",
+            "level": "bottleneck",
+            "round_number": request.round_number,
+            "parent_candidate_id": request.parent_candidate_id,
+            "safe_context": request.safe_context,
+            "allowed_signal_fields": list(BOTTLENECK_ALLOWED_SIGNAL_FIELDS),
+        }
+        return "\n".join(
+            [
+                "Task and policy contract:",
+                "```json",
+                _pretty_json(task_payload),
+                "```",
+                "",
+                "Typed agent-safe PPA evidence projection:",
+                "```json",
+                _pretty_json(request.evidence),
+                "```",
+                "",
+                "Parent candidate source (read-only):",
+                "```cpp",
+                request.parent_source,
+                "```",
+                "",
+                "Return the strict JSON object now.",
+            ]
+        )
+
+    @staticmethod
+    def _rewrite_system(request: BottleneckRewritePromptRequest) -> str:
+        lines = [
+            "You are the AgRefactor++ Stage 3 Bottleneck complete-source generator.",
+            "",
+            "System invariants:",
+            "- Implement only the selected evidence-linked Bottleneck hypothesis.",
+            "- Treat the classification as a non-authoritative model inference that still requires full qualification.",
+            "- Preserve functional behavior and the exact top-function interface.",
+            "- Return the complete replacement translation unit, not a patch, diff, excerpt, or explanation.",
+            "- Do not define main unless the top function itself is main.",
+            "- Never weaken tests or fabricate compile, simulation, synthesis, or PPA success.",
+            "- Never infer, request, or mention Hidden evaluation content.",
+            "- No static matcher will certify Bottleneck intent; qualification and PPA evidence remain authoritative.",
+            "- Return exactly one fenced C++ block and no text outside it.",
+        ]
+        if request.family_instruction:
+            lines.extend(["", "Model-family instruction:", request.family_instruction])
+        return "\n".join(lines)
+
+    @staticmethod
+    def _rewrite_user(request: BottleneckRewritePromptRequest) -> str:
+        payload = {
+            "task_id": request.task.task_id,
+            "kernel_name": request.task.kernel_name,
+            "mode": request.task.mode.value,
+            "target": request.task.target.to_effective_dict(),
+            "candidate_id": request.candidate_id,
+            "parent_candidate_id": request.parent_candidate_id,
+            "hypothesis": request.hypothesis.to_dict(),
+            "classification": request.hypothesis.model_identity["classification"],
+            "safe_context": request.safe_context,
+        }
+        return "\n".join(
+            [
+                "Selected Bottleneck change contract:",
+                "```json",
+                _pretty_json(payload),
+                "```",
+                "",
+                "Current complete source:",
+                "```cpp",
+                request.parent_source,
+                "```",
+                "",
+                "Return exactly one complete replacement C++ source block.",
+            ]
+        )
 
 def _finalize_prompt(*, system: str, user: str, manifest: Mapping[str, Any]) -> LayeredPrompt:
     base = _json_object(manifest, "manifest")
