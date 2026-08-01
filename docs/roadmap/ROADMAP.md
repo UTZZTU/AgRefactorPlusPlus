@@ -1062,7 +1062,8 @@ S3.2 Qualification and PPA Evidence — accepted
 S3.2 deterministic regression — 85/85 focused, 135/135 optimizer, 1643/1643 full
 S3.2 real replay — Vitis HLS 2023.2 accepted; model calls=0
 S3.3 deterministic state machine — 46/46 focused, 181/181 optimizer, 1689/1689 full; model/network/Vitis calls=0
-next — S3.4 Structural Model Integration
+S3.4 Structural model integration — 52/52 focused, 233/233 optimizer, 1741/1741 full; bounded real smoke=2 LLM calls, no Vitis/compile/CSIM/CSYNTH
+next — S3.5 Bottleneck Model Integration
 ```
 
 详细文档：[`STAGE3_SAFE_OPTIMIZER.md`](STAGE3_SAFE_OPTIMIZER.md)。
@@ -1323,7 +1324,7 @@ Gate acceptance、abstention、rejection、negative transfer、retrieval 后成�
 | Stage 0 | 基线能力保留；真实端到端样例仍主要集中于 DFS |
 | Stage 1 | Core 已关闭；Hardening 按后续真实需求推进 |
 | Stage 2 | 已关闭；Pre-Stage-3 产品化合同已关闭 |
-| Stage 3 | 进行中；S3.1-S3.3 已验收，下一包为 S3.4 |
+| Stage 3 | 进行中；S3.1-S3.4 已验收，下一包为 S3.5 |
 | Stage 4 | 未开始；当前 RAG 不等于 Memory Applicability Gate |
 | Stage 5 | 未开始；当前 TargetProfile 不等于真实版本迁移 |
 | Stage 6 | 未开始；尚未形成系统 benchmark、消融和重复实验 |
@@ -1335,11 +1336,12 @@ Stage 3 当前严格按冻结实现包推进：
 1. S3.1 Candidate State Foundation — 已验收；
 2. S3.2 Qualification and PPA Evidence — 已验收；
 3. S3.3 Deterministic Optimizer State Machine — 已验收；
-4. S3.4–S3.6 依次接入 Structural、Bottleneck、Pragma；当前下一包为 S3.4；
-5. S3.7 产品适配；
-6. S3.8 多 kernel 真实验收与 `simple_iter` 公平对照。
+4. S3.4 Structural Model Integration — 已验收；
+5. S3.5–S3.6 依次接入 Bottleneck、Pragma；当前下一包为 S3.5；
+6. S3.7 产品适配；
+7. S3.8 多 kernel 真实验收与 `simple_iter` 公平对照。
 
-S3.3 已保持 FakeProvider/FakeExecutor 与确定性 fixtures，不调用真实网络模型或 Vitis；不得把后续 S3.4–S3.8 合并或提前解除产品门禁。
+S3.3 已保持 FakeProvider/FakeExecutor 与确定性 fixtures；S3.4 只接入 Structural hypothesis/complete-source 的真实模型合同，并以两次模型调用、零 Vitis 的 bounded smoke 验收。不得把后续 S3.5–S3.8 合并，不得把 contract-valid source 冒充 correctness/PPA，也不得提前解除产品门禁。
 
 Stage 1 Hardening 不单独阻塞主线；当 Stage 2–5 的真实功能依赖某项
 Hardening 时，先补齐并做真实验收，再继续对应 Stage。

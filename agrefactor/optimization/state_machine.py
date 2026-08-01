@@ -1,9 +1,8 @@
-"""Deterministic, checkpointed Stage 3.3 optimizer state machine.
+"""Deterministic, checkpointed Stage 3 optimizer state machine.
 
-The engine is intentionally injected and tool-free.  It consumes the frozen
-safe-v1 policy, typed S3.1/S3.2 records, FakeProvider-compatible hypotheses,
-and S3.2-compatible qualification outcomes.  It does not import the real model
-registry, product CLI, or Vitis handlers.
+S3.3 established the injected control plane. S3.4 preserves that deterministic
+engine while allowing explicitly injected model-backed Structural components.
+The product CLI remains gated and no provider/tool is imported implicitly.
 """
 
 from __future__ import annotations
@@ -44,7 +43,7 @@ from .state import (
 )
 
 
-STATE_MACHINE_SCHEMA_VERSION = 1
+STATE_MACHINE_SCHEMA_VERSION = 2
 
 
 def _utc_now() -> datetime:
@@ -230,8 +229,8 @@ class DeterministicOptimizerStateMachine:
                 "policy": self._policy.to_dict(),
                 "provider": self._provider.name,
                 "executor": self._executor.name,
-                "real_network": False,
-                "real_vitis": False,
+                "real_network": self._uses_network(),
+                "real_vitis": self._uses_vitis(),
             },
         )
 
@@ -257,8 +256,8 @@ class DeterministicOptimizerStateMachine:
                     self._state.executed_candidate_count
                 ),
                 "counters": self._counters.to_dict(),
-                "real_network": False,
-                "real_vitis": False,
+                "real_network": self._uses_network(),
+                "real_vitis": self._uses_vitis(),
             },
         )
         return self._result()
@@ -302,6 +301,7 @@ class DeterministicOptimizerStateMachine:
 
         parent_id = self._state.current_candidate_id
         parent = self._candidates[parent_id]
+        parent_source = self._read_candidate_source(parent)
         evidence_ids = self._supporting_evidence_ids(parent)
         request = HypothesisRequest(
             run_id=self._state.run_id,
@@ -316,6 +316,7 @@ class DeterministicOptimizerStateMachine:
                 "parent_candidate_id": parent.candidate_id,
                 "parent_source_sha256": parent.source_sha256,
             },
+            parent_source=parent_source,
         )
 
         if not self._preflight_invocation(
@@ -880,6 +881,16 @@ class DeterministicOptimizerStateMachine:
                 **({} if metadata is None else dict(metadata)),
             },
         )
+
+
+    def _uses_network(self) -> bool:
+        return bool(
+            getattr(self._provider, "uses_network", False)
+            or getattr(self._executor, "uses_network", False)
+        )
+
+    def _uses_vitis(self) -> bool:
+        return bool(getattr(self._executor, "uses_vitis", False))
 
     def _supporting_evidence_ids(
         self,

@@ -21,7 +21,7 @@ from .state import (
 )
 
 
-PROVIDER_SCHEMA_VERSION = 1
+PROVIDER_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +35,7 @@ class HypothesisRequest:
     max_hypotheses: int
     supporting_evidence_ids: tuple[str, ...] = ()
     safe_context: Mapping[str, Any] = field(default_factory=dict)
+    parent_source: bytes = b""
 
     schema_version = PROVIDER_SCHEMA_VERSION
 
@@ -52,11 +53,14 @@ class HypothesisRequest:
         evidence = tuple(self.supporting_evidence_ids)
         if not all(isinstance(item, str) and item.strip() for item in evidence):
             raise ValueError("supporting_evidence_ids must contain non-empty strings")
+        if not isinstance(self.parent_source, bytes):
+            raise TypeError("parent_source must be bytes")
         safe_context = dict(self.safe_context)
         _reject_unsafe_keys(safe_context)
         object.__setattr__(self, "run_id", self.run_id.strip())
         object.__setattr__(self, "supporting_evidence_ids", evidence)
         object.__setattr__(self, "safe_context", safe_context)
+        object.__setattr__(self, "parent_source", self.parent_source)
 
 
 @runtime_checkable
@@ -68,6 +72,9 @@ class HypothesisProvider(Protocol):
 
     @property
     def budget_increment(self) -> BudgetIncrement: ...
+
+    @property
+    def uses_network(self) -> bool: ...
 
     def propose(
         self,
@@ -123,6 +130,10 @@ class FakeHypothesisProvider:
     @property
     def budget_increment(self) -> BudgetIncrement:
         return self._budget_increment
+
+    @property
+    def uses_network(self) -> bool:
+        return False
 
     @property
     def requests(self) -> tuple[HypothesisRequest, ...]:

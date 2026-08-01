@@ -6,8 +6,8 @@
 
 ```text
 branch=stage2-general-feedback
-baseline_before_this_package=1ef34ef63d0f0ed82b0de3da22b20c9346f6bed8
-latest_deterministic_regression=1689/1689
+baseline_before_this_package=7e55aae15bbae7f9bd236dd4fc4832558e806f8b
+latest_deterministic_regression=1741/1741
 post_cli_real_smoke=accepted
 post_cli_real_smoke_run_id=post-cli-real-smoke-20260726_192331
 post_cli_real_smoke_artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifacts
@@ -18,9 +18,12 @@ STAGE3_IMPLEMENTATION_STARTED=true
 STAGE3_S3_1_CANDIDATE_STATE_FOUNDATION=accepted
 STAGE3_S3_2_QUALIFICATION_AND_PPA_EVIDENCE=accepted
 STAGE3_S3_3_DETERMINISTIC_OPTIMIZER_STATE_MACHINE=accepted
+STAGE3_S3_4_STRUCTURAL_MODEL_INTEGRATION=accepted
+stage3_s34_real_structural_smoke=accepted
+stage3_s34_real_structural_smoke_claim_scope=structural_model_contract_only
 stage3_s32_real_replay=accepted
 stage3_s32_real_replay_artifact_root=/data/agrefactor_runs/stage3_s32_real_replay_20260730T153256Z_2390707
-NEXT_STEP=STAGE3_IMPLEMENTATION_STEP_4
+NEXT_STEP=STAGE3_IMPLEMENTATION_STEP_5
 ```
 
 最终提交 SHA 以 `stage2-general-feedback` 当前 HEAD 为准；本文不复制会因自身提交而立刻过期的最终 SHA。
@@ -60,7 +63,9 @@ python -m agrefactor.cli refactor \
 - LLM、Tool、Compile、CSIM、CSYNTH 和 wall-time 硬预算；
 - Token/Cost observed-only 记录；
 - 真实工具调用和 suite provenance；
-- operator-full / agent-safe / Hidden suppression 边界。
+- operator-full / agent-safe / Hidden suppression 边界；
+- Structural optimization layered Prompt、strict hypothesis JSON、complete-source model contract；
+- real model call safe audit、shared LLM budget accounting 与显式 qualification adapter boundary。
 
 ## 3. 最新真实 smoke
 
@@ -88,7 +93,7 @@ artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifact
 
 ## 4. 当前不能宣称
 
-- 真实 model-backed Structural optimization 已实现；
+- 真实 model-backed Structural hypothesis/source contract 等于已通过 correctness、综合或 PPA；
 - 产品 `optimize/full` 已解除门禁；
 - 任意 Vitis 版本或器件支持；
 - 稳定模型修复/优化成功率；
@@ -113,7 +118,7 @@ candidate state/schema
 + deterministic tests
 ```
 
-S3.1–S3.3 已验收：当前具备 candidate/checkpoint foundation、独立 Stage 3 qualification、typed PPA evidence、latency comparator、exact validation cache identity，以及完整 deterministic safe-v1 level/round/budget/rollback/resume 状态机。S3.3 使用 FakeProvider/FakeExecutor，不等于真实模型优化、产品 `optimize/full` 或多 kernel 优化；下一包严格为 S3.4 Structural Model Integration。
+S3.1–S3.4 已验收：当前具备 candidate/checkpoint foundation、独立 Stage 3 qualification、typed PPA evidence、latency comparator、exact validation cache identity、完整 deterministic safe-v1 level/round/budget/rollback/resume 状态机，以及 real model-backed Structural hypothesis/complete-source contracts。S3.4 的 bounded smoke 只证明两次真实模型调用的 Prompt/response integration，不等于候选正确、已综合、PPA 改善、产品 `optimize/full` 或多 kernel 优化；下一包严格为 S3.5 Bottleneck Model Integration。
 
 ## 6. 当前权威文档
 
@@ -126,7 +131,9 @@ S3.1–S3.3 已验收：当前具备 candidate/checkpoint foundation、独立 St
 7. [S3.2 Qualification and PPA Evidence acceptance](../acceptance/stage3/stage3_s32_qualification_ppa_acceptance.md)
 8. [S3.3 Deterministic Optimizer State Machine acceptance](../acceptance/stage3/stage3_s33_deterministic_optimizer_state_machine_acceptance.md)
 9. [S3.3 decision record](STAGE3_S33_DECISION_RECORD.md)
-10. [最新真实产品 smoke acceptance](../acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md)
+10. [S3.4 Structural Model Integration acceptance](../acceptance/stage3/stage3_s34_structural_model_integration_acceptance.md)
+11. [S3.4 decision record](STAGE3_S34_DECISION_RECORD.md)
+12. [最新真实产品 smoke acceptance](../acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md)
 
 ## 7. 工程原则
 

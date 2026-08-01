@@ -10,7 +10,7 @@ Stage 1=closed
 Stage 2=closed
 Pre-Stage-3=closed
 Stage 3 planning=frozen
-Stage 3 implementation=in progress; S3.1-S3.3 accepted
+Stage 3 implementation=in progress; S3.1-S3.4 accepted
 Stage 4=not started
 Stage 5=not started
 Stage 6=not started
@@ -23,12 +23,12 @@ Stage 6=not started
 | TargetProfile | Vitis 2023.2 committed profile、executable/settings、part、clock、compile flags、Tcl、parser identity、resource schema、per-field provenance | 多版本、更多设备/platform、版本特定 parser | Stage 5 扩展 | 至少一组真实 source/target 版本矩阵 |
 | 双模式版本处理 | `refactor/optimize/full` 数据结构预留；普通 source-only refactor 已实现 | migrate mode、SourceProfile、source baseline、migration report | Stage 5 | 一组真实旧版→目标版迁移 |
 | Model API Registry | Modern/Legacy/repair 统一 typed runtime；DeepSeek 真实 smoke；固定模型路径 | authorized auto pool、具体部署 reasoning mapping | 后续 hardening | 用户授权模型池与选择证据 |
-| 分层 Prompt | Shared builder、Target/model/evidence/scope/output layers，Candidate/Testbench consumers | Stage 3 optimization hypothesis Prompt | Stage 3 | optimization prompt identity |
-| 结构化反馈与状态机 | Preflight、CSYNTH、Public/Hidden、repair、owner、next action、Hidden suppression；S3.2 qualification/PPA；S3.3 deterministic level/round/budget/rollback/resume engine | S3.4–S3.6 model-backed level consumers | Stage 3 | Structural model integration evidence |
+| 分层 Prompt | Shared builder、Target/model/evidence/scope/output layers；Candidate/Testbench consumers；S3.4 Structural hypothesis/rewrite Prompt 与 identity | Bottleneck/Pragma Prompt consumers | Stage 3 | S3.5 Bottleneck prompt/evidence identity |
+| 结构化反馈与状态机 | Preflight、CSYNTH、Public/Hidden、repair、owner、next action、Hidden suppression；S3.2 qualification/PPA；S3.3 deterministic engine；S3.4 model-backed Structural consumer | S3.5–S3.6 Bottleneck/Pragma consumers | Stage 3 | Bottleneck report-evidence model integration |
 | Multi-type ground truth | 7 baselines、7/7 full chains、9/9 fault matrix、16/16 labels | 更广 kernel/版本/设备统计 | Stage 6 | 固定 benchmark 扩展 |
-| 安全三级优化器 | S3.1 state/checkpoint；S3.2 qualification/PPA/cache；S3.3 safe-v1 deterministic 三级状态机、预算、回滚与 resume；Legacy `opt.simple_iter` 仍仅为 baseline | S3.4-S3.6 model-backed levels、S3.7 optimize/full、S3.8 evaluation | Stage 3 | S3.4 bounded Structural model smoke |
+| 安全三级优化器 | S3.1 state/checkpoint；S3.2 qualification/PPA/cache；S3.3 deterministic engine；S3.4 real model-backed Structural hypothesis/complete-source integration；Legacy `opt.simple_iter` 仍仅为 baseline | S3.5-S3.6 Bottleneck/Pragma、S3.7 optimize/full、S3.8 evaluation | Stage 3 | S3.5 bounded Bottleneck model smoke |
 | Memory Applicability Gate | Legacy RAG 正负 trial 可作为 baseline | schema、score、abstention、off/gated/always | Stage 4 | 负迁移和弃权实验 |
-| BudgetManager | LLM/Tool/Compile/CSIM/CSYNTH/wall-time 硬控制；Token/Cost observed-only；S3.3 candidate停止和 best_correct fallback 已完成 | 未来 cosim 与真实 S3.4+ adapter usage | Stage 3/后续 | bounded real Structural smoke |
+| BudgetManager | LLM/Tool/Compile/CSIM/CSYNTH/wall-time 硬控制；Token/Cost observed-only；S3.3 fallback；S3.4 real LLM prospective/physical accounting | 未来 cosim 与 S3.5+ mixed model/tool usage | Stage 3/后续 | bounded Bottleneck model/tool evidence |
 | 版本迁移 | 长期目标保留 | 真实 source→target 修复、验证、优化和报告 | Stage 5 | migration acceptance |
 | 论文评测 | 真实工具证据和审计基础已具备 | safe optimizer 与 simple_iter、公平预算、多 kernel 重复实验、消融 | Stage 6 | 固定评测协议 |
 
@@ -123,7 +123,32 @@ checkpointed next action + resume deduplication
 no real network model or Vitis
 ```
 
-S3.3 没有实现真实 optimization prompt/source rewrite，也没有解除产品 `optimize/full` 门禁。下一包为 S3.4 Structural Model Integration。
+S3.3 没有实现真实 optimization prompt/source rewrite，也没有解除产品 `optimize/full` 门禁。S3.4 已补齐 Structural model integration，仍不等于 correctness/PPA 或产品接线。
+
+
+### 已完成 S3.4
+
+```text
+agent-safe Structural hypothesis/rewrite layered prompts
+strict versioned hypothesis JSON; max 3 provider-ordered proposals
+adapter-owned deterministic hypothesis IDs
+complete replacement C++ source contract
+existing CandidateResponseContract top-interface protection
+provider-neutral real model integration
+safe model-call audit without raw prompts/responses
+shared LLM budget and observed token/cost accounting
+explicit generated-source → qualification boundary
+52/52 focused
+233/233 optimizer regression
+1741/1741 full deterministic regression
+bounded real Structural smoke: exactly 2 model calls
+Vitis/compile/CSIM/CSYNTH calls=0
+```
+
+S3.4 does not claim that a contract-valid model source is correct,
+synthesizable, feasible, or faster. It does not use incomplete static source
+matching as an authoritative Structural gate and does not enable product
+`optimize/full`. The next package is S3.5 Bottleneck Model Integration.
 
 ## 完成声明检查表
 

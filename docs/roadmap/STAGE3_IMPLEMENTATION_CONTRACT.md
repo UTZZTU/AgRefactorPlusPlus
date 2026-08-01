@@ -2,7 +2,7 @@
 
 > **状态：** FROZEN
 > **冻结范围：** Stage 3 安全三级优化器
-> **实现状态：** 进行中；S3.1–S3.3 已验收，下一包为 S3.4
+> **实现状态：** 进行中；S3.1–S3.4 已验收，下一包为 S3.5
 > **前置基线：** Pre-Stage-3 已关闭，最新 CLI 后真实 source-only smoke 已通过
 > **变更规则：** 任何语义变更必须有明确决策记录、测试和本文更新，不能在实现中静默改写合同。
 
@@ -624,9 +624,20 @@ error
 
 ### S3.4 Structural Model Integration
 
-- optimization layered Prompt；
--strict hypothesis/complete-source contract；
--真实 bounded structural smoke。
+状态：**ACCEPTED**（52/52 S3.4 focused，233/233 optimizer regression，1741/1741 full deterministic；bounded real model smoke 使用精确 2 次 LLM 调用，真实网络=true，Vitis/compile/CSIM/CSYNTH=0）。
+
+- agent-safe optimization layered Prompt 与 deterministic prompt identity；
+- strict versioned Structural hypothesis JSON、最多 3 个 provider-ordered hypotheses 与 adapter-owned IDs；
+- complete-source Structural rewrite contract，复用已验收 `CandidateResponseContract` 保护完整源码、semantic change 和 top interface；
+- provider-neutral real model registry integration、observed token/cost 与 shared LLM hard-budget accounting；
+- safe model-call artifacts，不持久化 raw Prompt/response 或 Hidden/operator-full 内容；
+- generated source 与 qualification/PPA 之间保留显式 adapter boundary；
+- S3.3 state machine 获得 exact parent source 和 injected network/Vitis trace flags，policy/rollback/checkpoint/best semantics 不变；
+- bounded smoke 只证明 model/prompt/response contract，不宣称 correctness、synthesis、feasibility 或 PPA improvement；
+- 不使用不完整静态字符串/正则匹配作为 Structural 权威门禁；
+- 未解除产品 `optimize/full` 门禁，未提前实现 Bottleneck/Pragma。
+
+精确消歧见 `STAGE3_S34_DECISION_RECORD.md`。
 
 ### S3.5 Bottleneck
 

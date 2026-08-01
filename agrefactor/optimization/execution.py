@@ -150,6 +150,12 @@ class CandidateExecutor(Protocol):
     @property
     def budget_increment(self) -> BudgetIncrement: ...
 
+    @property
+    def uses_network(self) -> bool: ...
+
+    @property
+    def uses_vitis(self) -> bool: ...
+
     def execute(self, request: CandidateExecutionRequest) -> CandidateExecutionResult: ...
 
 
@@ -185,6 +191,14 @@ class FakeCandidateExecutor:
     @property
     def budget_increment(self) -> BudgetIncrement:
         return self._budget_increment
+
+    @property
+    def uses_network(self) -> bool:
+        return False
+
+    @property
+    def uses_vitis(self) -> bool:
+        return False
 
     @property
     def requests(self) -> tuple[CandidateExecutionRequest, ...]:

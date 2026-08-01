@@ -4,6 +4,19 @@
 
 ## 未发布
 
+### Stage 3.4 Structural Model Integration
+
+- 新增 agent-safe Structural hypothesis/rewrite layered Prompt、deterministic prompt identity 与 Hidden source isolation。
+- 新增 strict versioned hypothesis JSON；最多 3 个 provider-ordered hypotheses，由 adapter 分配稳定 ID，不让模型伪造 lineage。
+- 新增 provider-neutral real model hypothesis adapter 和 complete-source candidate generator，复用已验收 `CandidateResponseContract` 保护整源输出、semantic change 与 top interface。
+- 新增 safe `model_calls.jsonl`，只记录安全 manifest、hash、usage、finish/error，不持久化 raw Prompt/response、secret 或 Hidden/operator-full 内容。
+- 新增 shared LLM prospective/physical budget accounting；已启动调用在 transport/parse/contract failure 时仍精确计数，预算不足在 provider 前零调用停止。
+- 新增显式 `StructuralQualificationAdapter` boundary；模型输出合法不等于 correctness、synthesis、feasibility、`best_correct` 或 PPA improvement。
+- S3.3 state machine 现在向 provider 传递 exact checkpointed parent source，并从 injected provider/executor 派生 network/Vitis trace flags；safe-v1 policy、rollback、checkpoint、resume 与 best pointer 语义保持不变。
+- 新增 bounded real Structural smoke：成功路径精确 2 次真实模型调用，Vitis/compile/CSIM/CSYNTH/Hidden/PPA/product CLI 调用均为 0。
+- 新增 52 个 S3.4 focused tests；optimizer regression 233/233，全量 deterministic regression 1741/1741。
+- 未引入不完整静态字符串/正则 Structural 权威门禁，未实现 Bottleneck/Pragma，未解除产品 `optimize/full`；下一包为 S3.5。
+
 ### Stage 3.3 Deterministic Optimizer State Machine
 
 - 新增 typed frozen `SafeOptimizerPolicy`，精确实现 Structural 2 → Bottleneck 2 → Pragma 3、每轮 3 提 1 执行与总 7 candidate 上限。

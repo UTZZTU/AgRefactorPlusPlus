@@ -83,6 +83,21 @@ from .state import (
     candidate_index_to_dict,
     normalize_candidate_index,
 )
+from .structural_model import (
+    STRUCTURAL_HYPOTHESIS_RESPONSE_SCHEMA_VERSION,
+    STRUCTURAL_MODEL_SCHEMA_VERSION,
+    StructuralCandidateGenerationResult,
+    StructuralHypothesisDraft,
+    StructuralHypothesisResponseContract,
+    StructuralModelArtifactWriter,
+    StructuralModelCallRecord,
+    StructuralModelCandidateExecutor,
+    StructuralModelCandidateGenerator,
+    StructuralModelContractError,
+    StructuralModelHypothesisProvider,
+    StructuralQualificationAdapter,
+)
+
 
 __all__ = [
     "CACHE_SCHEMA_VERSION",
@@ -147,5 +162,17 @@ __all__ = [
     "OptimizerRunResult",
     "SafeOptimizerPolicy",
     "normalize_hypothesis",
+    "STRUCTURAL_HYPOTHESIS_RESPONSE_SCHEMA_VERSION",
+    "STRUCTURAL_MODEL_SCHEMA_VERSION",
+    "StructuralCandidateGenerationResult",
+    "StructuralHypothesisDraft",
+    "StructuralHypothesisResponseContract",
+    "StructuralModelArtifactWriter",
+    "StructuralModelCallRecord",
+    "StructuralModelCandidateExecutor",
+    "StructuralModelCandidateGenerator",
+    "StructuralModelContractError",
+    "StructuralModelHypothesisProvider",
+    "StructuralQualificationAdapter",
     "suite_identity_from_file",
 ]
