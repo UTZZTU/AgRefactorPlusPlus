@@ -10,7 +10,7 @@ Stage 1=closed
 Stage 2=closed
 Pre-Stage-3=closed
 Stage 3 planning=frozen
-Stage 3 implementation=in progress; S3.1-S3.5 accepted
+Stage 3 implementation=in progress; S3.1-S3.6 accepted
 Stage 4=not started
 Stage 5=not started
 Stage 6=not started
@@ -23,12 +23,12 @@ Stage 6=not started
 | TargetProfile | Vitis 2023.2 committed profile、executable/settings、part、clock、compile flags、Tcl、parser identity、resource schema、per-field provenance | 多版本、更多设备/platform、版本特定 parser | Stage 5 扩展 | 至少一组真实 source/target 版本矩阵 |
 | 双模式版本处理 | `refactor/optimize/full` 数据结构预留；普通 source-only refactor 已实现 | migrate mode、SourceProfile、source baseline、migration report | Stage 5 | 一组真实旧版→目标版迁移 |
 | Model API Registry | Modern/Legacy/repair 统一 typed runtime；DeepSeek 真实 smoke；固定模型路径 | authorized auto pool、具体部署 reasoning mapping | 后续 hardening | 用户授权模型池与选择证据 |
-| 分层 Prompt | Shared builder、Target/model/evidence/scope/output layers；Candidate/Testbench consumers；S3.4 Structural、S3.5 Bottleneck analysis/rewrite Prompt 与 identity | Pragma Prompt consumer | Stage 3 | S3.6 Pragma prompt/scope identity |
-| 结构化反馈与状态机 | Preflight、CSYNTH、Public/Hidden、repair、owner、next action、Hidden suppression；S3.2 qualification/PPA；S3.3 deterministic engine；S3.4 model-backed Structural、S3.5 typed evidence/classification Bottleneck consumer | S3.6 Pragma consumer | Stage 3 | Pragma scope/policy integration |
+| 分层 Prompt | Shared builder、Target/model/evidence/scope/output layers；Candidate/Testbench consumers；S3.4 Structural、S3.5 Bottleneck、S3.6 Pragma analysis/rewrite Prompt 与 identity | S3.7 产品 consumer | Stage 3 | optimize/full unified prompt identity |
+| 结构化反馈与状态机 | Preflight、CSYNTH、Public/Hidden、repair、owner、next action、Hidden suppression；S3.2 qualification/PPA；S3.3 deterministic engine；S3.4 Structural、S3.5 Bottleneck、S3.6 typed Pragma consumer | S3.7 product orchestration | Stage 3 | full three-level internal exercise |
 | Multi-type ground truth | 7 baselines、7/7 full chains、9/9 fault matrix、16/16 labels | 更广 kernel/版本/设备统计 | Stage 6 | 固定 benchmark 扩展 |
-| 安全三级优化器 | S3.1 state/checkpoint；S3.2 qualification/PPA/cache；S3.3 deterministic engine；S3.4 Structural、S3.5 Bottleneck real model hypothesis/complete-source integration；Legacy `opt.simple_iter` 仍仅为 baseline | S3.6 Pragma、S3.7 optimize/full、S3.8 evaluation | Stage 3 | S3.6 bounded Pragma model smoke |
+| 安全三级优化器 | S3.1 state/checkpoint；S3.2 qualification/PPA/cache；S3.3 deterministic engine；S3.4 Structural、S3.5 Bottleneck、S3.6 Pragma real model hypothesis/complete-source integration；Legacy `opt.simple_iter` 仍仅为 baseline | S3.7 optimize/full、S3.8 evaluation | Stage 3 | S3.7 internal full-chain exercise |
 | Memory Applicability Gate | Legacy RAG 正负 trial 可作为 baseline | schema、score、abstention、off/gated/always | Stage 4 | 负迁移和弃权实验 |
-| BudgetManager | LLM/Tool/Compile/CSIM/CSYNTH/wall-time 硬控制；Token/Cost observed-only；S3.3 fallback；S3.4–S3.5 real LLM prospective/physical accounting | 未来 cosim 与 S3.6+ mixed model/tool usage | Stage 3/后续 | bounded Pragma model/tool evidence |
+| BudgetManager | LLM/Tool/Compile/CSIM/CSYNTH/wall-time 硬控制；Token/Cost observed-only；S3.3 fallback；S3.4–S3.6 real LLM prospective/physical accounting | S3.7 mixed model/tool product orchestration 与未来 cosim | Stage 3/后续 | full-chain physical budget evidence |
 | 版本迁移 | 长期目标保留 | 真实 source→target 修复、验证、优化和报告 | Stage 5 | migration acceptance |
 | 论文评测 | 真实工具证据和审计基础已具备 | safe optimizer 与 simple_iter、公平预算、多 kernel 重复实验、消融 | Stage 6 | 固定评测协议 |
 
@@ -161,9 +161,9 @@ strict evidence id + signal-field linkage
 unknown classification as a safe first-class outcome
 evidence-linked Bottleneck hypothesis and complete-source rewrite
 explicit per-level provider/executor dispatch
-80/80 focused
-313/313 optimizer regression
-1821/1821 full deterministic regression
+82/82 focused
+315/315 optimizer regression
+1823/1823 full deterministic regression
 bounded real Bottleneck smoke: exactly 2 model calls
 Vitis/compile/CSIM/CSYNTH calls=0
 ```
@@ -171,8 +171,32 @@ Vitis/compile/CSIM/CSYNTH calls=0
 S3.5 does not claim that model classification is a tool fact or that a generated
 source is correct, synthesizable, feasible, or faster. It does not use source
 strings, pragma counts, warning regexes, or similar incomplete heuristics as an
-authoritative Bottleneck gate. Product `optimize/full` remains gated. The next
-package is S3.6 Pragma Model Integration.
+authoritative Bottleneck gate. Product `optimize/full` remains gated.
+
+
+### 已完成 S3.6
+
+```text
+typed Pragma directive/target/parameter policy
+non-authoritative action_source=model_proposal
+exact PPA evidence id + signal leaf linkage
+unknown action as safe abstention
+complete-source Pragma rewrite
+three-level typed provider/executor dispatch
+75/75 focused
+382/382 optimizer regression
+1890/1890 full deterministic regression
+bounded real Pragma smoke: exactly 2 model calls
+Vitis/compile/CSIM/CSYNTH calls=0
+```
+
+S3.6 does not claim that target references are source-backed facts, that a
+directive is legal for every tool version, or that generated source is correct,
+synthesizable, feasible or faster. It does not use source strings, pragma counts,
+loop regexes or warning patterns as an authoritative Pragma gate. Generic
+`resource` is clarified into typed `bind_storage`/`bind_op` for safe-v1. Product
+`optimize/full` remains gated; S3.7 must complete an internal three-level full
+chain before removing those gates.
 
 ## 完成声明检查表
 

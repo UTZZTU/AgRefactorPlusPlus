@@ -1,9 +1,10 @@
 """Deterministic, agent-safe layered prompts for Stage 3 optimization.
 
-S3.4 introduces only the Structural level.  These builders deliberately do not
-reuse repair-only feedback contracts: optimization prompts are hypothesis
-oriented, have no Hidden evidence, and expose exactly one complete source
-artifact when a rewrite is requested.
+Stage 3 optimization prompts are level-specific and deliberately do not reuse
+repair-only feedback contracts: they are hypothesis oriented, have no Hidden
+evidence, and expose exactly one complete source artifact when a rewrite is
+requested. S3.6 adds a typed Pragma action contract without any source-string
+or pragma-count authority gate.
 """
 
 from __future__ import annotations
@@ -12,14 +13,16 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from agrefactor.config import RunMode, TaskSpec
 from agrefactor.models import ChatMessage
-from agrefactor.optimization.state import HypothesisRecord, OptimizationLevel
 
 from .layered import LayeredPrompt
 from .test_source_isolation import assert_hidden_test_sources_absent
+
+if TYPE_CHECKING:
+    from agrefactor.optimization.state import HypothesisRecord
 
 
 OPTIMIZATION_PROMPT_SCHEMA_VERSION = 1
@@ -27,6 +30,8 @@ STRUCTURAL_HYPOTHESIS_PURPOSE = "optimizer_structural_hypothesis"
 STRUCTURAL_REWRITE_PURPOSE = "optimizer_structural_rewrite"
 BOTTLENECK_ANALYSIS_PURPOSE = "optimizer_bottleneck_analysis"
 BOTTLENECK_REWRITE_PURPOSE = "optimizer_bottleneck_rewrite"
+PRAGMA_ANALYSIS_PURPOSE = "optimizer_pragma_analysis"
+PRAGMA_REWRITE_PURPOSE = "optimizer_pragma_rewrite"
 BOTTLENECK_ALLOWED_SIGNAL_FIELDS = (
     "latency_cycles_min",
     "latency_cycles_max",
@@ -48,6 +53,25 @@ BOTTLENECK_ALLOWED_SIGNAL_FIELDS = (
     "resources_available.ff",
     "resources_available.lut",
     "resources_available.uram",
+)
+PRAGMA_ALLOWED_SIGNAL_FIELDS = BOTTLENECK_ALLOWED_SIGNAL_FIELDS
+PRAGMA_ALLOWED_KINDS = (
+    "pipeline",
+    "unroll",
+    "array_partition",
+    "dataflow",
+    "inline",
+    "bind_storage",
+    "bind_op",
+    "unknown",
+)
+PRAGMA_ALLOWED_TARGET_KINDS = (
+    "function",
+    "loop",
+    "array",
+    "operation",
+    "region",
+    "unknown",
 )
 
 
@@ -114,10 +138,7 @@ class StructuralRewritePromptRequest:
         candidate_id = _required_text(self.candidate_id, "candidate_id")
         parent_id = _required_text(self.parent_candidate_id, "parent_candidate_id")
         source = _required_source(self.parent_source, "parent_source")
-        if not isinstance(self.hypothesis, HypothesisRecord):
-            raise TypeError("hypothesis must be HypothesisRecord")
-        if self.hypothesis.level is not OptimizationLevel.STRUCTURAL:
-            raise ValueError("S3.4 rewrite requires a Structural hypothesis")
+        _require_hypothesis_level(self.hypothesis, "structural")
         if self.hypothesis.parent_candidate_id != parent_id:
             raise ValueError("hypothesis parent does not match parent_candidate_id")
         safe_context = _json_object(self.safe_context, "safe_context")
@@ -151,7 +172,7 @@ class StructuralOptimizationPromptBuilder:
                 "kernel_name": request.task.kernel_name,
                 "target_profile": request.task.target.name,
                 "mode": request.task.mode.value,
-                "level": OptimizationLevel.STRUCTURAL.value,
+                "level": "structural",
                 "round_number": request.round_number,
                 "parent_candidate_id": request.parent_candidate_id,
                 "parent_source_sha256": _text_sha256(request.parent_source),
@@ -190,7 +211,7 @@ class StructuralOptimizationPromptBuilder:
                 "kernel_name": request.task.kernel_name,
                 "target_profile": request.task.target.name,
                 "mode": request.task.mode.value,
-                "level": OptimizationLevel.STRUCTURAL.value,
+                "level": "structural",
                 "candidate_id": request.candidate_id,
                 "parent_candidate_id": request.parent_candidate_id,
                 "parent_source_sha256": _text_sha256(request.parent_source),
@@ -386,10 +407,7 @@ class BottleneckRewritePromptRequest:
         candidate_id = _required_text(self.candidate_id, "candidate_id")
         parent_id = _required_text(self.parent_candidate_id, "parent_candidate_id")
         source = _required_source(self.parent_source, "parent_source")
-        if not isinstance(self.hypothesis, HypothesisRecord):
-            raise TypeError("hypothesis must be HypothesisRecord")
-        if self.hypothesis.level is not OptimizationLevel.BOTTLENECK:
-            raise ValueError("S3.5 rewrite requires a Bottleneck hypothesis")
+        _require_hypothesis_level(self.hypothesis, "bottleneck")
         if self.hypothesis.parent_candidate_id != parent_id:
             raise ValueError("hypothesis parent does not match parent_candidate_id")
         classification = self.hypothesis.model_identity.get("classification")
@@ -427,7 +445,7 @@ class BottleneckOptimizationPromptBuilder:
                 "kernel_name": request.task.kernel_name,
                 "target_profile": request.task.target.name,
                 "mode": request.task.mode.value,
-                "level": OptimizationLevel.BOTTLENECK.value,
+                "level": "bottleneck",
                 "round_number": request.round_number,
                 "parent_candidate_id": request.parent_candidate_id,
                 "parent_source_sha256": _text_sha256(request.parent_source),
@@ -470,7 +488,7 @@ class BottleneckOptimizationPromptBuilder:
                 "kernel_name": request.task.kernel_name,
                 "target_profile": request.task.target.name,
                 "mode": request.task.mode.value,
-                "level": OptimizationLevel.BOTTLENECK.value,
+                "level": "bottleneck",
                 "candidate_id": request.candidate_id,
                 "parent_candidate_id": request.parent_candidate_id,
                 "parent_source_sha256": _text_sha256(request.parent_source),
@@ -625,6 +643,326 @@ class BottleneckOptimizationPromptBuilder:
             ]
         )
 
+@dataclass(frozen=True, slots=True)
+class PragmaAnalysisPromptRequest:
+    """Inputs for one bounded Pragma applicability/action call."""
+
+    task: TaskSpec
+    parent_candidate_id: str
+    parent_source: str
+    round_number: int
+    max_actions: int
+    max_hypotheses: int
+    evidence: Mapping[str, Any]
+    safe_context: Mapping[str, Any] = field(default_factory=dict)
+    family_instruction: str | None = None
+
+    schema_version = OPTIMIZATION_PROMPT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        _validate_task(self.task)
+        object.__setattr__(
+            self,
+            "parent_candidate_id",
+            _required_text(self.parent_candidate_id, "parent_candidate_id"),
+        )
+        object.__setattr__(
+            self,
+            "parent_source",
+            _required_source(self.parent_source, "parent_source"),
+        )
+        if isinstance(self.round_number, bool) or self.round_number < 1:
+            raise ValueError("round_number must be positive")
+        for name in ("max_actions", "max_hypotheses"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not 1 <= value <= 3:
+                raise ValueError(f"{name} must be between 1 and 3")
+        evidence = _json_object(self.evidence, "evidence")
+        if evidence.get("raw_report_included") is not False:
+            raise ValueError("Pragma evidence must exclude the raw report")
+        if evidence.get("hidden_evidence_included") is not False:
+            raise ValueError("Pragma evidence must exclude Hidden evidence")
+        safe_evidence = dict(evidence)
+        safe_evidence.pop("raw_report_included", None)
+        safe_evidence.pop("hidden_evidence_included", None)
+        _reject_agent_unsafe(safe_evidence, "evidence")
+        safe_context = _json_object(self.safe_context, "safe_context")
+        _reject_agent_unsafe(safe_context, "safe_context")
+        family = _optional_text(self.family_instruction, "family_instruction")
+        object.__setattr__(self, "evidence", evidence)
+        object.__setattr__(self, "safe_context", safe_context)
+        object.__setattr__(self, "family_instruction", family)
+
+
+@dataclass(frozen=True, slots=True)
+class PragmaRewritePromptRequest:
+    """Inputs for one complete-source Pragma rewrite call."""
+
+    task: TaskSpec
+    candidate_id: str
+    parent_candidate_id: str
+    parent_source: str
+    hypothesis: HypothesisRecord
+    safe_context: Mapping[str, Any] = field(default_factory=dict)
+    family_instruction: str | None = None
+
+    schema_version = OPTIMIZATION_PROMPT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        _validate_task(self.task)
+        candidate_id = _required_text(self.candidate_id, "candidate_id")
+        parent_id = _required_text(self.parent_candidate_id, "parent_candidate_id")
+        source = _required_source(self.parent_source, "parent_source")
+        _require_hypothesis_level(self.hypothesis, "pragma")
+        if self.hypothesis.parent_candidate_id != parent_id:
+            raise ValueError("hypothesis parent does not match parent_candidate_id")
+        action = self.hypothesis.model_identity.get("pragma_action")
+        if not isinstance(action, Mapping):
+            raise ValueError("Pragma hypothesis must carry pragma_action metadata")
+        action = _json_object(action, "pragma_action")
+        _reject_agent_unsafe(action, "pragma_action")
+        if action.get("authoritative") is not False:
+            raise ValueError("Pragma model action must be non-authoritative")
+        safe_context = _json_object(self.safe_context, "safe_context")
+        _reject_agent_unsafe(safe_context, "safe_context")
+        family = _optional_text(self.family_instruction, "family_instruction")
+        object.__setattr__(self, "candidate_id", candidate_id)
+        object.__setattr__(self, "parent_candidate_id", parent_id)
+        object.__setattr__(self, "parent_source", source)
+        object.__setattr__(self, "safe_context", safe_context)
+        object.__setattr__(self, "family_instruction", family)
+
+
+class PragmaOptimizationPromptBuilder:
+    """Build S3.6 evidence-driven Pragma prompts with deterministic identities."""
+
+    def build_analysis(self, request: PragmaAnalysisPromptRequest) -> LayeredPrompt:
+        if not isinstance(request, PragmaAnalysisPromptRequest):
+            raise TypeError("request must be PragmaAnalysisPromptRequest")
+        system = self._analysis_system(request)
+        user = self._analysis_user(request)
+        prompt = _finalize_prompt(
+            system=system,
+            user=user,
+            manifest={
+                "schema_version": OPTIMIZATION_PROMPT_SCHEMA_VERSION,
+                "purpose": PRAGMA_ANALYSIS_PURPOSE,
+                "task_id": request.task.task_id,
+                "kernel_name": request.task.kernel_name,
+                "target_profile": request.task.target.name,
+                "mode": request.task.mode.value,
+                "level": "pragma",
+                "round_number": request.round_number,
+                "parent_candidate_id": request.parent_candidate_id,
+                "parent_source_sha256": _text_sha256(request.parent_source),
+                "evidence_id": request.evidence.get("evidence_id"),
+                "evidence_projection_sha256": _mapping_sha256(request.evidence),
+                "max_actions": request.max_actions,
+                "max_hypotheses": request.max_hypotheses,
+                "safe_context": request.safe_context,
+                "family_instruction_present": request.family_instruction is not None,
+                "feedback_projection": "agent_safe_typed_ppa_only",
+                "raw_report_included": False,
+                "hidden_test_source_isolation": "verified",
+                "pragma_action_authority": "model_proposal_not_tool_fact",
+                "static_pragma_gate": False,
+                "output_contract": {
+                    "format": "json_object",
+                    "schema": "pragma_analysis_response_v1",
+                    "commentary_allowed": False,
+                    "unknown_allowed": True,
+                    "max_actions": request.max_actions,
+                    "max_hypotheses": request.max_hypotheses,
+                },
+            },
+        )
+        assert_hidden_test_sources_absent(task=request.task, messages=prompt.messages)
+        return prompt
+
+    def build_rewrite(self, request: PragmaRewritePromptRequest) -> LayeredPrompt:
+        if not isinstance(request, PragmaRewritePromptRequest):
+            raise TypeError("request must be PragmaRewritePromptRequest")
+        system = self._rewrite_system(request)
+        user = self._rewrite_user(request)
+        action = request.hypothesis.model_identity["pragma_action"]
+        prompt = _finalize_prompt(
+            system=system,
+            user=user,
+            manifest={
+                "schema_version": OPTIMIZATION_PROMPT_SCHEMA_VERSION,
+                "purpose": PRAGMA_REWRITE_PURPOSE,
+                "task_id": request.task.task_id,
+                "kernel_name": request.task.kernel_name,
+                "target_profile": request.task.target.name,
+                "mode": request.task.mode.value,
+                "level": "pragma",
+                "candidate_id": request.candidate_id,
+                "parent_candidate_id": request.parent_candidate_id,
+                "parent_source_sha256": _text_sha256(request.parent_source),
+                "hypothesis_id": request.hypothesis.hypothesis_id,
+                "hypothesis_sha256": _mapping_sha256(request.hypothesis.to_dict()),
+                "pragma_action_id": action.get("action_id"),
+                "pragma_action_sha256": _mapping_sha256(action),
+                "safe_context": request.safe_context,
+                "family_instruction_present": request.family_instruction is not None,
+                "feedback_projection": "agent_safe_typed_ppa_only",
+                "hidden_test_source_isolation": "verified",
+                "static_pragma_gate": False,
+                "output_contract": {
+                    "artifact_name": "candidate_kernel",
+                    "language": "cpp",
+                    "complete_replacement": True,
+                    "fenced_code_block": True,
+                    "commentary_allowed": False,
+                    "top_function_interface_must_remain_unchanged": True,
+                },
+            },
+        )
+        assert_hidden_test_sources_absent(task=request.task, messages=prompt.messages)
+        return prompt
+
+    @staticmethod
+    def _analysis_system(request: PragmaAnalysisPromptRequest) -> str:
+        kinds = "|".join(PRAGMA_ALLOWED_KINDS)
+        targets = "|".join(PRAGMA_ALLOWED_TARGET_KINDS)
+        signals = json.dumps(
+            list(PRAGMA_ALLOWED_SIGNAL_FIELDS),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        lines = [
+            "You are the AgRefactor++ Stage 3 Pragma planning component.",
+            "",
+            "System invariants:",
+            "- Correctness is more important than performance.",
+            "- Pragma is the final optimization level; propose only a narrow directive change, not an algorithm rewrite.",
+            "- Use only the complete parent source and the typed agent-safe PPA projection supplied here.",
+            "- The raw synthesis report and Hidden evaluation evidence are unavailable and must never be inferred or requested.",
+            "- A pragma action is a model proposal, not an authoritative statement that a source target exists or that a directive is legal/effective.",
+            "- Cite only supplied evidence_id values and exact signal_fields from the frozen allowlist.",
+            "- Do not scan text, count existing pragmas, or use regex/pattern matching as an applicability or correctness gate.",
+            "- If evidence or target applicability is insufficient, emit kind=unknown with confidence=low and no executable hypothesis for that action.",
+            "- Do not claim compilation, simulation, synthesis, or PPA improvement has succeeded.",
+            "- Return strict JSON only; no Markdown and no commentary.",
+            "- The final message content must be non-empty and contain exactly one JSON object.",
+            "",
+            "Allowed action kinds:",
+            f"- {kinds}",
+            "Allowed target_kind values:",
+            f"- {targets}",
+            "Allowed signal_fields exact-string array:",
+            signals,
+            "- resources_used and resources_available are containers, not valid signal_fields; cite exact leaf paths.",
+            "",
+            "Directive-specific parameters (exact keys only):",
+            '- pipeline: {"ii":positive_integer optional,"rewind":boolean optional}',
+            '- unroll: {"factor":positive_integer optional,"skip_exit_check":boolean optional}; empty means complete unroll proposal',
+            '- array_partition: {"type":"complete|block|cyclic","factor":positive_integer when block/cyclic,"dim":positive_integer optional}',
+            '- dataflow: {}',
+            '- inline: {"mode":"on|off|recursive"}',
+            '- bind_storage: {"type":"ram_1p|ram_2p|ram_t2p|rom_1p|rom_2p|rom_np|fifo","impl":"auto|bram|bram_ecc|lutram|uram|uram_ecc|memory|srl","latency":non_negative_integer optional}',
+            '- bind_op: {"op":"add|sub|mul|div|rem|fadd|fsub|fmul|fdiv|dadd|dsub|dmul|ddiv","impl":"fabric|dsp|maxdsp|fulldsp|meddsp|primitivedsp","latency":non_negative_integer optional}',
+            '- unknown: {}; target_kind=unknown; target_ref=null; empty evidence and signals',
+            "- Generic RESOURCE is not a safe-v1 action; use typed bind_storage or bind_op when supported.",
+            "",
+            "Output JSON contract:",
+            '{"schema_version":1,"actions":[{"kind":"...","target_kind":"...","target_ref":"... or null","parameters":{},"claim":"...","confidence":"low|medium|high","supporting_evidence_ids":["..."],"signal_fields":["..."]}],"hypotheses":[{"action_index":1,"claim":"...","supporting_evidence_ids":["..."],"expected_benefit":{"metric":"latency","direction":"decrease"},"risk":"low|medium|high","modification_scope":["..."],"verification_plan":["preflight","public","csynth","hidden"]}]}',
+            f"- Return at most {request.max_actions} actions and {request.max_hypotheses} hypotheses, in priority order.",
+            "- action_index is one-based and must reference a non-unknown action.",
+            "- Hypothesis evidence must be a subset of its action evidence.",
+            "- Use exactly the keys shown; do not invent evidence IDs, signal fields, directive kinds, or tool facts.",
+        ]
+        if request.family_instruction:
+            lines.extend(["", "Model-family instruction:", request.family_instruction])
+        return "\n".join(lines)
+
+    @staticmethod
+    def _analysis_user(request: PragmaAnalysisPromptRequest) -> str:
+        task_payload = {
+            "task_id": request.task.task_id,
+            "kernel_name": request.task.kernel_name,
+            "mode": request.task.mode.value,
+            "target": request.task.target.to_effective_dict(),
+            "objective": "latency",
+            "level": "pragma",
+            "round_number": request.round_number,
+            "parent_candidate_id": request.parent_candidate_id,
+            "safe_context": request.safe_context,
+            "allowed_signal_fields": list(PRAGMA_ALLOWED_SIGNAL_FIELDS),
+            "allowed_action_kinds": list(PRAGMA_ALLOWED_KINDS),
+            "allowed_target_kinds": list(PRAGMA_ALLOWED_TARGET_KINDS),
+        }
+        return "\n".join(
+            [
+                "Task and policy contract:",
+                "```json",
+                _pretty_json(task_payload),
+                "```",
+                "",
+                "Typed agent-safe PPA evidence projection:",
+                "```json",
+                _pretty_json(request.evidence),
+                "```",
+                "",
+                "Parent candidate source (read-only; use it to name a precise target_ref, not as a static gate):",
+                "```cpp",
+                request.parent_source,
+                "```",
+                "",
+                "Return the strict JSON object now.",
+            ]
+        )
+
+    @staticmethod
+    def _rewrite_system(request: PragmaRewritePromptRequest) -> str:
+        lines = [
+            "You are the AgRefactor++ Stage 3 Pragma complete-source generator.",
+            "",
+            "System invariants:",
+            "- Implement only the selected typed Pragma action and hypothesis.",
+            "- Treat the action as a non-authoritative model proposal that still requires full qualification.",
+            "- Keep algorithm structure and functional behavior unchanged except for the narrow directive insertion or adjustment.",
+            "- Preserve the exact top-function interface.",
+            "- Return the complete replacement translation unit, not a patch, diff, excerpt, or explanation.",
+            "- Do not define main unless the top function itself is main.",
+            "- Never weaken tests or fabricate compile, simulation, synthesis, or PPA success.",
+            "- Never infer, request, or mention Hidden evaluation content.",
+            "- No source-string or pragma-count matcher will certify the result; downstream qualification remains authoritative.",
+            "- Return exactly one fenced cpp code block and no other text.",
+        ]
+        if request.family_instruction:
+            lines.extend(["", "Model-family instruction:", request.family_instruction])
+        return "\n".join(lines)
+
+    @staticmethod
+    def _rewrite_user(request: PragmaRewritePromptRequest) -> str:
+        action = request.hypothesis.model_identity["pragma_action"]
+        payload = {
+            "candidate_id": request.candidate_id,
+            "parent_candidate_id": request.parent_candidate_id,
+            "top_function": request.task.kernel_name,
+            "objective": "latency",
+            "pragma_action": action,
+            "hypothesis": request.hypothesis.to_dict(),
+            "safe_context": request.safe_context,
+        }
+        return "\n".join(
+            [
+                "Selected Pragma action contract:",
+                "```json",
+                _pretty_json(payload),
+                "```",
+                "",
+                "Current complete source:",
+                "```cpp",
+                request.parent_source,
+                "```",
+                "",
+                "Return exactly one complete replacement C++ source block.",
+            ]
+        )
+
+
 def _finalize_prompt(*, system: str, user: str, manifest: Mapping[str, Any]) -> LayeredPrompt:
     base = _json_object(manifest, "manifest")
     identity_payload = {
@@ -640,6 +978,18 @@ def _finalize_prompt(*, system: str, user: str, manifest: Mapping[str, Any]) -> 
         messages=(ChatMessage(role="system", content=system), ChatMessage(role="user", content=user)),
         manifest=base,
     )
+
+
+def _require_hypothesis_level(hypothesis: Any, expected_level: str) -> None:
+    """Validate optimizer state types lazily to keep prompt imports acyclic."""
+
+    from agrefactor.optimization.state import HypothesisRecord, OptimizationLevel
+
+    if not isinstance(hypothesis, HypothesisRecord):
+        raise TypeError("hypothesis must be HypothesisRecord")
+    level = OptimizationLevel(expected_level)
+    if hypothesis.level is not level:
+        raise ValueError(f"hypothesis level must be {expected_level}")
 
 
 def _validate_task(task: TaskSpec) -> None:

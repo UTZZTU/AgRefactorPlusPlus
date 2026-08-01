@@ -2,7 +2,7 @@
 
 > **状态：** FROZEN
 > **冻结范围：** Stage 3 安全三级优化器
-> **实现状态：** 进行中；S3.1–S3.5 已验收，下一包为 S3.6
+> **实现状态：** 进行中；S3.1–S3.6 已验收，下一包为 S3.7
 > **前置基线：** Pre-Stage-3 已关闭，最新 CLI 后真实 source-only smoke 已通过
 > **变更规则：** 任何语义变更必须有明确决策记录、测试和本文更新，不能在实现中静默改写合同。
 
@@ -641,7 +641,7 @@ error
 
 ### S3.5 Bottleneck Model Integration
 
-状态：**ACCEPTED**（80/80 S3.5 focused，313/313 optimizer regression，1821/1821 full deterministic；bounded real model smoke 使用精确 2 次 LLM 调用，真实网络=true，Vitis/compile/CSIM/CSYNTH=0）。
+状态：**ACCEPTED**（82/82 S3.5 focused，315/315 optimizer regression，1823/1823 full deterministic；bounded real model smoke 使用精确 2 次 LLM 调用，真实网络=true，Vitis/compile/CSIM/CSYNTH=0）。
 
 - 从 accepted parent 的 typed `PpaEvidence` 构造 agent-safe projection；不复制 raw report path/content，不含 Hidden/operator-full 证据；
 - strict versioned Bottleneck response，同一次 bounded analysis 调用产生最多 3 个非权威 model classifications 与最多 3 个 evidence-linked hypotheses；
@@ -656,12 +656,27 @@ error
 
 精确消歧见 `STAGE3_S35_DECISION_RECORD.md`。
 
-### S3.6 Pragma
+### S3.6 Pragma Model Integration
 
-- pragma scope/policy；
--真实 bounded smoke。
+状态：**ACCEPTED**（75/75 S3.6 focused，382/382 optimizer regression，1890/1890 full deterministic；bounded real model smoke 使用精确 2 次 LLM 调用，真实网络=true，Vitis/compile/CSIM/CSYNTH=0）。
+
+- 复用 accepted parent 的 typed agent-safe PPA projection，不复制 raw report path/content，不含 Hidden/operator-full 证据；
+- strict versioned Pragma response，同一次 bounded analysis 调用产生最多 3 个非权威 typed actions 与最多 3 个 evidence-linked hypotheses；
+- action 必须引用真实 evidence id 和冻结 signal-field leaf allowlist；`unknown` 必须 low confidence、null target、空参数/证据/信号，且不能产生 executable hypothesis；
+- frozen safe-v1 directive/target/parameter policy 覆盖 `pipeline`、`unroll`、`array_partition`、`dataflow`、`inline`、`bind_storage`、`bind_op`；generic `resource` 不作为未类型化别名接受；
+- action 明确标记 `authoritative=false`、`action_source=model_proposal`，不能证明 target 存在、directive 合法或 PPA 改善；
+- complete-source Pragma rewrite 复用 `CandidateResponseContract`，保护整源、semantic change 与 top interface；
+- immutable action artifacts、safe model-call audit、shared LLM hard-budget accounting；
+- typed dispatch 确定性覆盖 Structural/Bottleneck/Pragma 三层，只依据 `OptimizationLevel`，不扫描源码猜 level；
+- bounded smoke 使用 typed PPA fixture 证明 action/hypothesis/rewrite integration；不运行 Vitis，不宣称正确性、综合或 PPA 改善；
+- 不使用 source-string、pragma-count、loop-regex 或 warning-pattern 作为 Pragma 权威门禁；
+- 未解除产品 `optimize/full` 门禁。
+
+精确消歧见 `STAGE3_S36_DECISION_RECORD.md`。
 
 ### S3.7 Product Adapters
+
+进入/关闭条件：解除产品门禁前必须完成一次内部 baseline qualification → Structural → Bottleneck → Pragma → qualification/PPA → rollback/best_correct → unified artifacts 全链路演练。
 
 -真实 `optimize`；
 -真实 `full`；

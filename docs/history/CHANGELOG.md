@@ -1,12 +1,24 @@
-- 根据目标主机真实模型响应修正 S3.5 signal-field Prompt/解析一致性：共享精确 leaf allowlist，明确禁止 `resources_used`/`resources_available` 容器别名，不做自动扩展或静态猜测。
 # 变更记录
-- S3.5 bounded smoke 复用 Stage 2 typed output policy：analysis/rewrite 单次 `max_tokens=32768`，安全上限 `65536`；保留 non-thinking、local strict JSON 与无隐藏重试。
+
+## 2026-08-01 — Stage 3.6 Pragma Model Integration
+
+- added typed, evidence-linked non-authoritative Pragma actions and strict response contract;
+- added frozen safe-v1 directive/target/parameter policy and first-class unknown abstention;
+- clarified generic BIND/RESOURCE into typed `bind_storage` and `bind_op`;
+- added complete-source Pragma generation, qualification adapter boundary and three-level dispatch coverage;
+- corrected the prompt/optimizer import boundary and added fresh-process prompt-module import coverage;
+- added bounded two-call real model smoke with Stage 2 output token policy;
+- prohibited source-string, pragma-count, loop-regex and warning-pattern authority gates;
+- kept product `optimize/full` gated and added the S3.7 internal full-chain entry/closure condition;
+- accepted 75/75 focused, 382/382 optimizer and 1890/1890 full deterministic regression.
 
 本文档记录 AgRefactor++ 相对于原始 AgRefactor 的主要代码与文档修改。原项目已有但仅在本地完成复现的功能，统一记录在 `docs/guides/REPRODUCTION_STATUS.md`，避免把“复现验证”误写成“新增功能”。
 
 ## 未发布
 
 ### Stage 3.5 Bottleneck Model Integration
+- 根据目标主机真实模型响应修正 S3.5 signal-field Prompt/解析一致性：共享精确 leaf allowlist，明确禁止 `resources_used`/`resources_available` 容器别名，不做自动扩展或静态猜测。
+- S3.5 bounded smoke 复用 Stage 2 typed output policy：analysis/rewrite 单次 `max_tokens=32768`，安全上限 `65536`；保留 non-thinking、local strict JSON 与无隐藏重试。
 - 根据目标主机真实证据修正 S3.5 DeepSeek bounded smoke：provider-side JSON Output 首次调用可能返回空 `content`；现在由本地 strict response contract 保持 JSON 权威，DeepSeek smoke 显式关闭 thinking，不把 reasoning 当最终结果，也不增加隐藏重试。
 
 - 新增 accepted-parent `PpaEvidence` 的 typed agent-safe projection；保留 metrics/resource/report identity hash，明确排除 raw report path/content 与 Hidden/operator-full evidence。
@@ -16,7 +28,7 @@
 - 新增 immutable bottleneck classification artifacts、safe model-call audit、shared LLM budget accounting。
 - 新增 typed per-level provider/executor dispatch，只按 `OptimizationLevel` 路由并要求相同 prospective budget increment，不扫描源码猜 level。
 - 新增 bounded real Bottleneck smoke：使用 typed PPA fixture，成功路径精确 2 次真实模型调用，Vitis/compile/CSIM/CSYNTH/Hidden/product CLI 调用均为 0。
-- 新增 79 个 S3.5 focused tests；optimizer regression 315/315，全量 deterministic regression 1823/1823。
+- 新增 82 个 S3.5 focused tests；optimizer regression 315/315，全量 deterministic regression 1823/1823。
 - 未引入 source-string、pragma-count、warning-regex 等不完整 Bottleneck 权威门禁，未实现 Pragma，未解除产品 `optimize/full`；下一包为 S3.6。
 
 ### Stage 3.4 Structural Model Integration

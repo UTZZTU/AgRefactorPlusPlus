@@ -10,7 +10,8 @@ S3_2_QUALIFICATION_AND_PPA_EVIDENCE=accepted
 S3_3_DETERMINISTIC_OPTIMIZER_STATE_MACHINE=accepted
 S3_4_STRUCTURAL_MODEL_INTEGRATION=accepted
 S3_5_BOTTLENECK_MODEL_INTEGRATION=accepted
-CURRENT_PACKAGE=S3.6_PRAGMA_MODEL_INTEGRATION
+S3_6_PRAGMA_MODEL_INTEGRATION=accepted
+CURRENT_PACKAGE=S3.7_PRODUCT_ADAPTERS
 AUTHORITATIVE_CONTRACT=STAGE3_IMPLEMENTATION_CONTRACT.md
 ```
 
@@ -80,9 +81,9 @@ S3.2 Qualification and PPA evidence adapters — accepted
 S3.3 Deterministic hypothesis and policy state machine — accepted
 S3.4 Model-backed Structural level — accepted
 S3.5 Model-backed Bottleneck level — accepted
-S3.6 Pragma level — current
-S3.7 optimize/full product adapters
+S3.6 Model-backed Pragma level — accepted
+S3.7 optimize/full product adapters — current next package
 S3.8 Multi-kernel real acceptance and simple_iter comparison
 ```
 
-不得把 S3.1–S3.8 合并成一次大提交。S3.2 的一次真实 replay 只证明当前 baseline/Target/suite/toolchain 组合；S3.4 的两调用真实 model smoke 只证明 Structural Prompt/strict response/complete-source integration；S3.5 的两调用 smoke 只证明 typed PPA projection、非权威 classification、evidence-linked hypothesis 与 complete-source integration。三者都不外推为多 kernel、正确优化、稳定 PPA 收益或产品 optimize/full。
+不得把 S3.1–S3.8 合并成一次大提交。S3.2 的一次真实 replay 只证明当前 baseline/Target/suite/toolchain 组合；S3.4 的两调用真实 model smoke 只证明 Structural Prompt/strict response/complete-source integration；S3.5 的两调用 smoke 只证明 typed PPA projection、非权威 classification、evidence-linked hypothesis 与 complete-source integration；S3.6 的两调用 smoke 只证明 typed Pragma action/hypothesis 与 complete-source integration。四者都不外推为多 kernel、正确优化、稳定 PPA 收益或产品 optimize/full。S3.7 解除产品门禁前必须完成一次内部 Structural→Bottleneck→Pragma 全链路演练。

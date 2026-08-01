@@ -1,8 +1,8 @@
 """Typed per-level dispatch for injected Stage 3 providers and executors.
 
-S3.5 needs Structural and Bottleneck model components to coexist behind the
-single provider/executor interfaces consumed by the deterministic state
-machine.  Dispatch is explicit by ``OptimizationLevel``; it performs no source
+S3.6 needs Structural, Bottleneck, and Pragma model components to coexist
+behind the single provider/executor interfaces consumed by the deterministic
+state machine.  Dispatch is explicit by ``OptimizationLevel``; it performs no source
 inspection and requires identical prospective budget increments so preflight
 accounting remains exact before a request is routed.
 """
@@ -22,7 +22,7 @@ from .provider import HypothesisProvider, HypothesisRequest
 from .state import HypothesisRecord, OptimizationLevel
 
 
-DISPATCH_SCHEMA_VERSION = 1
+DISPATCH_SCHEMA_VERSION = 2
 
 
 class LevelDispatchHypothesisProvider:

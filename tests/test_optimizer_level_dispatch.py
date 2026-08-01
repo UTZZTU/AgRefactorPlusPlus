@@ -32,7 +32,7 @@ def parent():
 
 
 def hrequest(level):
-    evidence = ("ppa-baseline",) if level is OptimizationLevel.BOTTLENECK else ()
+    evidence = ("ppa-baseline",) if level in {OptimizationLevel.BOTTLENECK, OptimizationLevel.PRAGMA} else ()
     return HypothesisRequest(
         run_id="dispatch",
         level=level,
@@ -48,16 +48,20 @@ class LevelDispatchProviderTests(unittest.TestCase):
     def test_routes_by_explicit_level(self):
         structural = FakeHypothesisProvider(name="structural")
         bottleneck = FakeHypothesisProvider(name="bottleneck")
+        pragma = FakeHypothesisProvider(name="pragma")
         dispatch = LevelDispatchHypothesisProvider(
             {
                 OptimizationLevel.STRUCTURAL: structural,
                 OptimizationLevel.BOTTLENECK: bottleneck,
+                OptimizationLevel.PRAGMA: pragma,
             }
         )
-        result = dispatch.propose(hrequest(OptimizationLevel.BOTTLENECK))
+        result = dispatch.propose(hrequest(OptimizationLevel.PRAGMA))
         self.assertEqual(len(result), 1)
         self.assertEqual(structural.call_count, 0)
-        self.assertEqual(bottleneck.call_count, 1)
+        self.assertEqual(bottleneck.call_count, 0)
+        self.assertEqual(pragma.call_count, 1)
+        self.assertEqual(dispatch.levels, (OptimizationLevel.BOTTLENECK, OptimizationLevel.PRAGMA, OptimizationLevel.STRUCTURAL))
 
     def test_missing_level_is_rejected(self):
         dispatch = LevelDispatchHypothesisProvider(
@@ -115,15 +119,19 @@ class LevelDispatchExecutorTests(unittest.TestCase):
     def test_routes_by_explicit_level(self):
         structural = FakeCandidateExecutor(name="structural")
         bottleneck = FakeCandidateExecutor(name="bottleneck")
+        pragma = FakeCandidateExecutor(name="pragma")
         dispatch = LevelDispatchCandidateExecutor(
             {
                 OptimizationLevel.STRUCTURAL: structural,
                 OptimizationLevel.BOTTLENECK: bottleneck,
+                OptimizationLevel.PRAGMA: pragma,
             }
         )
-        dispatch.execute(self.request(OptimizationLevel.BOTTLENECK))
+        dispatch.execute(self.request(OptimizationLevel.PRAGMA))
         self.assertEqual(structural.call_count, 0)
-        self.assertEqual(bottleneck.call_count, 1)
+        self.assertEqual(bottleneck.call_count, 0)
+        self.assertEqual(pragma.call_count, 1)
+        self.assertEqual(dispatch.levels, (OptimizationLevel.BOTTLENECK, OptimizationLevel.PRAGMA, OptimizationLevel.STRUCTURAL))
 
     def test_missing_level_is_rejected(self):
         dispatch = LevelDispatchCandidateExecutor(

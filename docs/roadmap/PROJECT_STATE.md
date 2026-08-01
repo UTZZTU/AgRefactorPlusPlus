@@ -6,8 +6,8 @@
 
 ```text
 branch=stage2-general-feedback
-baseline_before_this_package=c881dea0ea68f0fbf7c2b359bd270f362827a90f
-latest_deterministic_regression=1823/1823
+baseline_before_this_package=f5a46d62cca864828e6d1ec3bbe7c5b2ef200f8a
+latest_deterministic_regression=1890/1890
 post_cli_real_smoke=accepted
 post_cli_real_smoke_run_id=post-cli-real-smoke-20260726_192331
 post_cli_real_smoke_artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifacts
@@ -20,13 +20,16 @@ STAGE3_S3_2_QUALIFICATION_AND_PPA_EVIDENCE=accepted
 STAGE3_S3_3_DETERMINISTIC_OPTIMIZER_STATE_MACHINE=accepted
 STAGE3_S3_4_STRUCTURAL_MODEL_INTEGRATION=accepted
 STAGE3_S3_5_BOTTLENECK_MODEL_INTEGRATION=accepted
+STAGE3_S3_6_PRAGMA_MODEL_INTEGRATION=accepted
 stage3_s34_real_structural_smoke=accepted
 stage3_s34_real_structural_smoke_claim_scope=structural_model_contract_only
 stage3_s35_real_bottleneck_smoke=accepted
 stage3_s35_real_bottleneck_smoke_claim_scope=bottleneck_model_contract_only
+stage3_s36_real_pragma_smoke=accepted
+stage3_s36_real_pragma_smoke_claim_scope=pragma_model_contract_only
 stage3_s32_real_replay=accepted
 stage3_s32_real_replay_artifact_root=/data/agrefactor_runs/stage3_s32_real_replay_20260730T153256Z_2390707
-NEXT_STEP=STAGE3_IMPLEMENTATION_STEP_6
+NEXT_STEP=STAGE3_IMPLEMENTATION_STEP_7
 ```
 
 最终提交 SHA 以 `stage2-general-feedback` 当前 HEAD 为准；本文不复制会因自身提交而立刻过期的最终 SHA。
@@ -69,7 +72,7 @@ python -m agrefactor.cli refactor \
 - operator-full / agent-safe / Hidden suppression 边界；
 - Structural optimization layered Prompt、strict hypothesis JSON、complete-source model contract；
 - real model call safe audit、shared LLM budget accounting 与显式 qualification adapter boundary；
-- typed agent-safe PPA projection、非权威 Bottleneck classification、evidence-linked hypothesis 与 per-level dispatch。
+- typed agent-safe PPA projection、非权威 Bottleneck classification、evidence-linked hypothesis、typed non-authoritative Pragma action 与完整三层 dispatch。
 
 ## 3. 最新真实 smoke
 
@@ -97,7 +100,7 @@ artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifact
 
 ## 4. 当前不能宣称
 
-- 真实 model-backed Structural/Bottleneck hypothesis/source contract 等于已通过 correctness、综合或 PPA；
+- 真实 model-backed Structural/Bottleneck/Pragma hypothesis/source contract 等于已通过 correctness、综合或 PPA；
 - 产品 `optimize/full` 已解除门禁；
 - 任意 Vitis 版本或器件支持；
 - 稳定模型修复/优化成功率；
@@ -122,7 +125,7 @@ candidate state/schema
 + deterministic tests
 ```
 
-S3.1–S3.5 已验收：当前具备 candidate/checkpoint foundation、独立 Stage 3 qualification、typed PPA evidence、latency comparator、exact validation cache identity、完整 deterministic safe-v1 level/round/budget/rollback/resume 状态机，以及 real model-backed Structural 和 Bottleneck hypothesis/complete-source contracts。S3.5 新增 typed agent-safe PPA projection、明确非权威的 model classification、unknown 安全退化和 evidence-linked rewrite；bounded smoke 只证明两次真实模型调用的合同闭环，不等于候选正确、已综合、PPA 改善、产品 `optimize/full` 或多 kernel 优化。下一包严格为 S3.6 Pragma Model Integration。
+S3.1–S3.6 已验收：当前具备 candidate/checkpoint foundation、独立 Stage 3 qualification、typed PPA evidence、latency comparator、exact validation cache identity、完整 deterministic safe-v1 level/round/budget/rollback/resume 状态机，以及 real model-backed Structural、Bottleneck 和 Pragma hypothesis/complete-source contracts。S3.6 新增 typed directive/target/parameter policy、非权威 Pragma action、unknown 安全弃权和三层 dispatch；bounded smoke 只证明两次真实模型调用的合同闭环，不等于候选正确、已综合、PPA 改善、产品 `optimize/full` 或多 kernel 优化。下一包严格为 S3.7 Product Adapters，并要求在解除产品门禁前完成内部三层全链路演练。
 
 ## 6. 当前权威文档
 
@@ -139,7 +142,9 @@ S3.1–S3.5 已验收：当前具备 candidate/checkpoint foundation、独立 St
 11. [S3.4 decision record](STAGE3_S34_DECISION_RECORD.md)
 12. [S3.5 Bottleneck Model Integration acceptance](../acceptance/stage3/stage3_s35_bottleneck_model_integration_acceptance.md)
 13. [S3.5 decision record](STAGE3_S35_DECISION_RECORD.md)
-14. [最新真实产品 smoke acceptance](../acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md)
+14. [S3.6 Pragma Model Integration acceptance](../acceptance/stage3/stage3_s36_pragma_model_integration_acceptance.md)
+15. [S3.6 decision record](STAGE3_S36_DECISION_RECORD.md)
+16. [最新真实产品 smoke acceptance](../acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md)
 
 ## 7. 工程原则
 

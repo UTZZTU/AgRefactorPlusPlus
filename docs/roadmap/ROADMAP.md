@@ -1063,8 +1063,9 @@ S3.2 deterministic regression — 85/85 focused, 135/135 optimizer, 1643/1643 fu
 S3.2 real replay — Vitis HLS 2023.2 accepted; model calls=0
 S3.3 deterministic state machine — 46/46 focused, 181/181 optimizer, 1689/1689 full; model/network/Vitis calls=0
 S3.4 Structural model integration — 52/52 focused, 233/233 optimizer, 1741/1741 full; bounded real smoke=2 LLM calls, no Vitis/compile/CSIM/CSYNTH
-S3.5 Bottleneck model integration — 80/80 focused, 313/313 optimizer, 1821/1821 full; bounded real smoke=2 LLM calls, typed PPA fixture, no Vitis/compile/CSIM/CSYNTH
-next — S3.6 Pragma Model Integration
+S3.5 Bottleneck model integration — 82/82 focused, 315/315 optimizer, 1823/1823 full; bounded real smoke=2 LLM calls, typed PPA fixture, no Vitis/compile/CSIM/CSYNTH
+S3.6 Pragma model integration — 75/75 focused, 382/382 optimizer, 1890/1890 full; bounded real smoke=2 LLM calls, typed PPA fixture, no Vitis/compile/CSIM/CSYNTH
+next — S3.7 Product Adapters
 ```
 
 详细文档：[`STAGE3_SAFE_OPTIMIZER.md`](STAGE3_SAFE_OPTIMIZER.md)。
@@ -1325,7 +1326,7 @@ Gate acceptance、abstention、rejection、negative transfer、retrieval 后成�
 | Stage 0 | 基线能力保留；真实端到端样例仍主要集中于 DFS |
 | Stage 1 | Core 已关闭；Hardening 按后续真实需求推进 |
 | Stage 2 | 已关闭；Pre-Stage-3 产品化合同已关闭 |
-| Stage 3 | 进行中；S3.1-S3.5 已验收，下一包为 S3.6 |
+| Stage 3 | 进行中；S3.1-S3.6 已验收，下一包为 S3.7 |
 | Stage 4 | 未开始；当前 RAG 不等于 Memory Applicability Gate |
 | Stage 5 | 未开始；当前 TargetProfile 不等于真实版本迁移 |
 | Stage 6 | 未开始；尚未形成系统 benchmark、消融和重复实验 |
@@ -1339,11 +1340,11 @@ Stage 3 当前严格按冻结实现包推进：
 3. S3.3 Deterministic Optimizer State Machine — 已验收；
 4. S3.4 Structural Model Integration — 已验收；
 5. S3.5 Bottleneck Model Integration — 已验收；
-6. S3.6 Pragma Model Integration — 当前下一包；
-7. S3.7 产品适配；
+6. S3.6 Pragma Model Integration — 已验收；
+7. S3.7 产品适配 — 当前下一包；
 8. S3.8 多 kernel 真实验收与 `simple_iter` 公平对照。
 
-S3.3 已保持 FakeProvider/FakeExecutor 与确定性 fixtures；S3.4 接入 Structural hypothesis/complete-source；S3.5 接入 typed PPA projection、非权威 Bottleneck classification 与 evidence-linked rewrite，二者均以两次模型调用、零 Vitis 的 bounded smoke 验收。不得把后续 S3.6–S3.8 合并，不得把 contract-valid source 或 model classification 冒充 correctness/PPA/tool fact，也不得提前解除产品门禁。
+S3.3 已保持 FakeProvider/FakeExecutor 与确定性 fixtures；S3.4 接入 Structural hypothesis/complete-source；S3.5 接入 typed PPA projection、非权威 Bottleneck classification 与 evidence-linked rewrite；S3.6 接入 typed non-authoritative Pragma action、strict directive policy 与 complete-source rewrite，三者均以两次模型调用、零 Vitis 的 bounded smoke 验收。不得把后续 S3.7–S3.8 合并，不得把 contract-valid source、model classification 或 pragma action 冒充 correctness/PPA/tool fact；S3.7 解除产品门禁前必须完成内部三层全链路演练。
 
 Stage 1 Hardening 不单独阻塞主线；当 Stage 2–5 的真实功能依赖某项
 Hardening 时，先补齐并做真实验收，再继续对应 Stage。
