@@ -37,7 +37,11 @@ from agrefactor.models import (
     ModelSpec,
     estimate_model_cost,
 )
-from agrefactor.models.candidate_adapter import CandidateResponseContract
+from agrefactor.models.candidate_adapter import (
+    CandidateResponseContract,
+    CandidateResponseError,
+    candidate_response_reason_codes,
+)
 from agrefactor.prompts.optimization import (
     PRAGMA_ALLOWED_SIGNAL_FIELDS,
     PragmaAnalysisPromptRequest,
@@ -47,9 +51,13 @@ from agrefactor.prompts.optimization import (
 from agrefactor.runtime.budget import BudgetManager
 
 from .bottleneck_model import BottleneckEvidenceView
-from .execution import CandidateExecutionRequest, CandidateExecutionResult
+from .execution import (
+    CandidateExecutionRequest,
+    CandidateExecutionResult,
+    CandidateGenerationAbstained,
+)
 from .policy import BudgetIncrement
-from .provider import HypothesisRequest
+from .provider import HypothesisGenerationAbstained, HypothesisRequest
 from .qualification import CandidateQualificationResult
 from .state import HypothesisRecord, HypothesisRisk, OptimizationLevel
 from .structural_model import StructuralModelArtifactWriter
@@ -57,8 +65,10 @@ from .structural_model import StructuralModelArtifactWriter
 
 PRAGMA_MODEL_SCHEMA_VERSION = 1
 PRAGMA_RESPONSE_SCHEMA_VERSION = 1
-_MODEL_CALL_KIND_ANALYSIS = "pragma_analysis"
-_MODEL_CALL_KIND_REWRITE = "pragma_rewrite"
+PRAGMA_MODEL_CALL_KIND_ANALYSIS = "pragma_analysis"
+PRAGMA_MODEL_CALL_KIND_REWRITE = "pragma_rewrite"
+_MODEL_CALL_KIND_ANALYSIS = PRAGMA_MODEL_CALL_KIND_ANALYSIS
+_MODEL_CALL_KIND_REWRITE = PRAGMA_MODEL_CALL_KIND_REWRITE
 _JSON_FENCE_RE = re.compile(
     r"^```[ \t]*json[ \t]*\r?\n(?P<body>.*)```$",
     re.DOTALL | re.IGNORECASE,
@@ -69,7 +79,9 @@ _ALLOWED_SIGNAL_FIELDS = frozenset(PRAGMA_ALLOWED_SIGNAL_FIELDS)
 
 _BIND_STORAGE_TYPES = {
     "ram_1p",
+    "ram_1wnr",
     "ram_2p",
+    "ram_s2p",
     "ram_t2p",
     "rom_1p",
     "rom_2p",
@@ -595,6 +607,7 @@ class _PragmaModelEndpoint:
         call_kind: str,
         response: ModelResponse,
         error: Exception,
+        error_reason_codes: tuple[str, ...] | None = None,
     ) -> None:
         self._artifacts.append(
             call_kind=call_kind,
@@ -603,6 +616,11 @@ class _PragmaModelEndpoint:
             response=response,
             response_valid=False,
             error_code=type(error).__name__,
+            error_reason_codes=(
+                candidate_response_reason_codes(error)
+                if error_reason_codes is None
+                else error_reason_codes
+            ),
         )
 
 
@@ -732,8 +750,6 @@ class PragmaModelHypothesisProvider(_PragmaModelEndpoint):
                 )
                 for index, draft in enumerate(parsed.actions, start=1)
             )
-            for action in actions:
-                self._artifacts.write_action(action)
             hypotheses = tuple(
                 HypothesisRecord(
                     hypothesis_id=f"hyp-pragma-r{request.round_number}-{index}",
@@ -758,14 +774,21 @@ class PragmaModelHypothesisProvider(_PragmaModelEndpoint):
                 )
                 for index, draft in enumerate(parsed.hypotheses, start=1)
             )
-        except Exception as exc:
+        except PragmaModelContractError as exc:
             self._record_invalid(
                 prompt=prompt,
                 call_kind=_MODEL_CALL_KIND_ANALYSIS,
                 response=response,
                 error=exc,
+                error_reason_codes=("analysis_response_contract_invalid",),
             )
-            raise
+            raise HypothesisGenerationAbstained(
+                reason_code="hypothesis_response_contract_abstention",
+                error_code=type(exc).__name__,
+                detail_codes=("analysis_response_contract_invalid",),
+            ) from exc
+        for action in actions:
+            self._artifacts.write_action(action)
         self._record_valid(
             prompt=prompt,
             call_kind=_MODEL_CALL_KIND_ANALYSIS,
@@ -944,7 +967,14 @@ class PragmaModelCandidateExecutor:
         if request.level is not OptimizationLevel.PRAGMA:
             raise ValueError("S3.6 executor supports Pragma only")
         self._requests.append(request)
-        generated = self._generator.generate(request)
+        try:
+            generated = self._generator.generate(request)
+        except CandidateResponseError as exc:
+            raise CandidateGenerationAbstained(
+                reason_code="candidate_response_contract_abstention",
+                error_code=type(exc).__name__,
+                detail_codes=candidate_response_reason_codes(exc),
+            ) from exc
         qualification = self._qualifier.qualify(request, generated.source)
         if not isinstance(qualification, CandidateQualificationResult):
             raise TypeError("qualifier must return CandidateQualificationResult")
@@ -1016,13 +1046,14 @@ def _pragma_parameters(kind: PragmaKind, value: Mapping[str, Any]) -> dict[str, 
         if data:
             raise PragmaModelContractError("dataflow parameters must be empty")
     elif kind is PragmaKind.INLINE:
+        if not data:
+            return {}
         if set(data) != {"mode"} or data["mode"] not in {
-            "on",
             "off",
             "recursive",
         }:
             raise PragmaModelContractError(
-                "inline parameters must be exactly mode=on|off|recursive"
+                "inline parameters must be empty or exactly mode=off|recursive"
             )
     elif kind is PragmaKind.BIND_STORAGE:
         _exact_keys(data, {"type", "impl", "latency"})

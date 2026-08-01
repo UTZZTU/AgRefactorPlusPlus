@@ -173,6 +173,26 @@ class CandidateResponseContractTests(unittest.TestCase):
         )
         self.assertEqual(proposed.strip(), REPAIRED.strip())
 
+
+    def test_accepts_raw_complete_cpp_replacement(self):
+        contract = CandidateResponseContract.from_candidate(TASK, CURRENT)
+        proposed = contract.extract_and_validate(REPAIRED)
+        self.assertEqual(proposed.strip(), REPAIRED.strip())
+
+    def test_explicit_abstention_has_stable_reason_code(self):
+        contract = CandidateResponseContract.from_candidate(TASK, CURRENT)
+        with self.assertRaises(CandidateResponseError) as captured:
+            contract.extract_and_validate("AGREFACTOR_ABSTAIN")
+        self.assertEqual(captured.exception.reason_codes, ("explicit_abstention",))
+
+    def test_contract_exposes_safe_reason_codes(self):
+        contract = CandidateResponseContract.from_candidate(TASK, CURRENT)
+        changed = REPAIRED.replace("const int *input", "int *input")
+        with self.assertRaises(CandidateResponseError) as captured:
+            contract.extract_and_validate(f"```cpp\n{changed}\n```")
+        self.assertEqual(captured.exception.reason_codes, ("top_interface_changed",))
+        self.assertNotIn("candidate_top", repr(captured.exception.reason_codes))
+
     def test_rejects_leading_think_block(self):
         contract = CandidateResponseContract.from_candidate(TASK, CURRENT)
         with self.assertRaises(CandidateResponseError):

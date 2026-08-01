@@ -25,7 +25,8 @@ if TYPE_CHECKING:
     from agrefactor.optimization.state import HypothesisRecord
 
 
-OPTIMIZATION_PROMPT_SCHEMA_VERSION = 1
+OPTIMIZATION_PROMPT_SCHEMA_VERSION = 2
+CANDIDATE_REWRITE_ABSTENTION_TOKEN = "AGREFACTOR_ABSTAIN"
 STRUCTURAL_HYPOTHESIS_PURPOSE = "optimizer_structural_hypothesis"
 STRUCTURAL_REWRITE_PURPOSE = "optimizer_structural_rewrite"
 BOTTLENECK_ANALYSIS_PURPOSE = "optimizer_bottleneck_analysis"
@@ -225,8 +226,10 @@ class StructuralOptimizationPromptBuilder:
                     "artifact_name": "candidate_kernel",
                     "language": "cpp",
                     "complete_replacement": True,
-                    "fenced_code_block": True,
+                    "fenced_code_block_preferred": True,
+                    "raw_complete_source_allowed": True,
                     "commentary_allowed": False,
+                    "explicit_abstention_token": CANDIDATE_REWRITE_ABSTENTION_TOKEN,
                     "top_function_interface_must_remain_unchanged": True,
                 },
             },
@@ -245,6 +248,8 @@ class StructuralOptimizationPromptBuilder:
             "- Never infer, request, or mention Hidden evaluation content.",
             "- Propose causal Structural changes: algorithms, loop organization, function boundaries, data layout, memory access order, local buffering, producer/consumer structure, or dataflow structure.",
             "- Do not disguise a pragma-only edit as a Structural hypothesis.",
+            "- Structural planning must not add, remove, or modify HLS pragmas/directives; directive ownership belongs to the later Pragma level.",
+            "- Emit a hypothesis only when it is implementable as a concrete source-only change under these invariants; otherwise return an empty hypotheses array.",
             "- Do not claim that compilation, simulation, synthesis, or PPA improvement has already succeeded.",
             "- Return strict JSON only; no Markdown and no commentary.",
             "",
@@ -295,13 +300,15 @@ class StructuralOptimizationPromptBuilder:
             "",
             "System invariants:",
             "- Implement only the selected causal hypothesis.",
+            "- Do not add, remove, or modify HLS pragmas/directives; Structural rewrite owns source structure, while the later Pragma level owns directive edits.",
             "- Preserve functional behavior and the exact top-function interface.",
             "- Return the complete replacement translation unit, not a patch, diff, excerpt, or explanation.",
             "- Do not define main unless the top function itself is main.",
             "- Never weaken tests or fabricate compile, simulation, synthesis, or PPA success.",
             "- Never infer, request, or mention Hidden evaluation content.",
             "- Structural intent is carried by the explicit hypothesis; no static string matcher will certify the edit.",
-            "- Return exactly one fenced C++ block and no text outside it.",
+            "- Prefer exactly one fenced C++ block. A raw complete translation unit with no prose is also accepted.",
+            f"- If the selected change cannot be implemented safely and non-trivially, return exactly {CANDIDATE_REWRITE_ABSTENTION_TOKEN} and nothing else.",
         ]
         if request.family_instruction:
             lines.extend(["", "Model-family instruction:", request.family_instruction])
@@ -331,7 +338,7 @@ class StructuralOptimizationPromptBuilder:
                 request.parent_source,
                 "```",
                 "",
-                "Return exactly one complete replacement C++ source block.",
+                f"Return one complete changed C++ translation unit, or exactly {CANDIDATE_REWRITE_ABSTENTION_TOKEN} when safe implementation is unavailable.",
             ]
         )
 
@@ -504,8 +511,10 @@ class BottleneckOptimizationPromptBuilder:
                     "artifact_name": "candidate_kernel",
                     "language": "cpp",
                     "complete_replacement": True,
-                    "fenced_code_block": True,
+                    "fenced_code_block_preferred": True,
+                    "raw_complete_source_allowed": True,
                     "commentary_allowed": False,
+                    "explicit_abstention_token": CANDIDATE_REWRITE_ABSTENTION_TOKEN,
                     "top_function_interface_must_remain_unchanged": True,
                 },
             },
@@ -553,6 +562,7 @@ class BottleneckOptimizationPromptBuilder:
             f"- Return at most {request.max_classifications} classifications and {request.max_hypotheses} hypotheses, in priority order.",
             "- classification_index is one-based and must reference a non-unknown classification.",
             "- Hypothesis evidence must be a subset of its classification evidence.",
+            "- Emit a Bottleneck hypothesis only when a concrete source-only causal change is available without adding, removing, or modifying HLS pragmas; otherwise keep the classification and omit its hypothesis.",
             "- Use exactly the keys shown above; do not invent evidence IDs or tool facts.",
         ]
         if request.family_instruction:
@@ -601,6 +611,7 @@ class BottleneckOptimizationPromptBuilder:
             "",
             "System invariants:",
             "- Implement only the selected evidence-linked Bottleneck hypothesis.",
+            "- Do not add, remove, or modify HLS pragmas/directives; Bottleneck rewrite owns causal source changes, while the later Pragma level owns directive edits.",
             "- Treat the classification as a non-authoritative model inference that still requires full qualification.",
             "- Preserve functional behavior and the exact top-function interface.",
             "- Return the complete replacement translation unit, not a patch, diff, excerpt, or explanation.",
@@ -608,7 +619,8 @@ class BottleneckOptimizationPromptBuilder:
             "- Never weaken tests or fabricate compile, simulation, synthesis, or PPA success.",
             "- Never infer, request, or mention Hidden evaluation content.",
             "- No static matcher will certify Bottleneck intent; qualification and PPA evidence remain authoritative.",
-            "- Return exactly one fenced C++ block and no text outside it.",
+            "- Prefer exactly one fenced C++ block. A raw complete translation unit with no prose is also accepted.",
+            f"- If the selected source-only change cannot be implemented safely and non-trivially, return exactly {CANDIDATE_REWRITE_ABSTENTION_TOKEN} and nothing else.",
         ]
         if request.family_instruction:
             lines.extend(["", "Model-family instruction:", request.family_instruction])
@@ -639,7 +651,7 @@ class BottleneckOptimizationPromptBuilder:
                 request.parent_source,
                 "```",
                 "",
-                "Return exactly one complete replacement C++ source block.",
+                f"Return one complete changed C++ translation unit, or exactly {CANDIDATE_REWRITE_ABSTENTION_TOKEN} when safe implementation is unavailable.",
             ]
         )
 
@@ -812,8 +824,10 @@ class PragmaOptimizationPromptBuilder:
                     "artifact_name": "candidate_kernel",
                     "language": "cpp",
                     "complete_replacement": True,
-                    "fenced_code_block": True,
+                    "fenced_code_block_preferred": True,
+                    "raw_complete_source_allowed": True,
                     "commentary_allowed": False,
+                    "explicit_abstention_token": CANDIDATE_REWRITE_ABSTENTION_TOKEN,
                     "top_function_interface_must_remain_unchanged": True,
                 },
             },
@@ -853,13 +867,24 @@ class PragmaOptimizationPromptBuilder:
             "Allowed signal_fields exact-string array:",
             signals,
             "- resources_used and resources_available are containers, not valid signal_fields; cite exact leaf paths.",
+            "- Evidence values are nested under metrics in the input JSON, but signal_fields MUST omit the metrics. prefix; use initiation_interval_max, never metrics.initiation_interval_max.",
+            "",
+            "Directive/target compatibility matrix (exact):",
+            "- pipeline -> loop or function",
+            "- unroll -> loop",
+            "- array_partition -> array",
+            "- dataflow -> function or region",
+            "- inline -> function",
+            "- bind_storage -> non-interface local array only; top-level interface arrays require INTERFACE storage options and are outside safe-v1",
+            "- bind_op -> operation",
+            "- unknown -> unknown",
             "",
             "Directive-specific parameters (exact keys only):",
             '- pipeline: {"ii":positive_integer optional,"rewind":boolean optional}',
             '- unroll: {"factor":positive_integer optional,"skip_exit_check":boolean optional}; empty means complete unroll proposal',
             '- array_partition: {"type":"complete|block|cyclic","factor":positive_integer when block/cyclic,"dim":positive_integer optional}',
             '- dataflow: {}',
-            '- inline: {"mode":"on|off|recursive"}',
+            '- inline: {} for ordinary INLINE, or {"mode":"off|recursive"}; the string on is not a Vitis HLS pragma argument',
             '- bind_storage: {"type":"ram_1p|ram_2p|ram_t2p|rom_1p|rom_2p|rom_np|fifo","impl":"auto|bram|bram_ecc|lutram|uram|uram_ecc|memory|srl","latency":non_negative_integer optional}',
             '- bind_op: {"op":"add|sub|mul|div|rem|fadd|fsub|fmul|fdiv|dadd|dsub|dmul|ddiv","impl":"fabric|dsp|maxdsp|fulldsp|meddsp|primitivedsp","latency":non_negative_integer optional}',
             '- unknown: {}; target_kind=unknown; target_ref=null; empty evidence and signals',
@@ -867,6 +892,12 @@ class PragmaOptimizationPromptBuilder:
             "",
             "Output JSON contract:",
             '{"schema_version":1,"actions":[{"kind":"...","target_kind":"...","target_ref":"... or null","parameters":{},"claim":"...","confidence":"low|medium|high","supporting_evidence_ids":["..."],"signal_fields":["..."]}],"hypotheses":[{"action_index":1,"claim":"...","supporting_evidence_ids":["..."],"expected_benefit":{"metric":"latency","direction":"decrease"},"risk":"low|medium|high","modification_scope":["..."],"verification_plan":["preflight","public","csynth","hidden"]}]}',
+            "Valid executable shape example (copy the key structure, but use only supplied evidence/targets):",
+            '{"schema_version":1,"actions":[{"kind":"pipeline","target_kind":"loop","target_ref":"top.loop_i","parameters":{"ii":1},"claim":"Propose one loop pipeline action for later qualification.","confidence":"medium","supporting_evidence_ids":["SUPPLIED_EVIDENCE_ID"],"signal_fields":["latency_cycles_max"]}],"hypotheses":[{"action_index":1,"claim":"Apply only the selected pipeline action.","supporting_evidence_ids":["SUPPLIED_EVIDENCE_ID"],"expected_benefit":{"metric":"latency","direction":"decrease"},"risk":"medium","modification_scope":["selected loop pragma only"],"verification_plan":["preflight","public","csynth","hidden"]}]}',
+            "Valid safe-unknown shape example:",
+            '{"schema_version":1,"actions":[{"kind":"unknown","target_kind":"unknown","target_ref":null,"parameters":{},"claim":"Evidence or target applicability is insufficient.","confidence":"low","supporting_evidence_ids":[],"signal_fields":[]}],"hypotheses":[]}',
+            "- The placeholder SUPPLIED_EVIDENCE_ID must be replaced by the exact evidence_id in the request; never return the placeholder literally.",
+            "- Before returning, self-check every action against the compatibility matrix, parameter schema, exact evidence ID, and exact signal-field allowlist.",
             f"- Return at most {request.max_actions} actions and {request.max_hypotheses} hypotheses, in priority order.",
             "- action_index is one-based and must reference a non-unknown action.",
             "- Hypothesis evidence must be a subset of its action evidence.",
@@ -928,7 +959,8 @@ class PragmaOptimizationPromptBuilder:
             "- Never weaken tests or fabricate compile, simulation, synthesis, or PPA success.",
             "- Never infer, request, or mention Hidden evaluation content.",
             "- No source-string or pragma-count matcher will certify the result; downstream qualification remains authoritative.",
-            "- Return exactly one fenced cpp code block and no other text.",
+            "- Prefer exactly one fenced cpp block. A raw complete translation unit with no prose is also accepted.",
+            f"- If the typed target cannot be located or the directive cannot be applied without guessing, return exactly {CANDIDATE_REWRITE_ABSTENTION_TOKEN} and nothing else.",
         ]
         if request.family_instruction:
             lines.extend(["", "Model-family instruction:", request.family_instruction])
@@ -958,7 +990,7 @@ class PragmaOptimizationPromptBuilder:
                 request.parent_source,
                 "```",
                 "",
-                "Return exactly one complete replacement C++ source block.",
+                f"Return one complete changed C++ translation unit, or exactly {CANDIDATE_REWRITE_ABSTENTION_TOKEN} when safe implementation is unavailable.",
             ]
         )
 

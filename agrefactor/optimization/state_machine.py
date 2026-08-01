@@ -23,10 +23,12 @@ from .execution import (
     CandidateExecutionRequest,
     CandidateExecutionResult,
     CandidateExecutor,
+    CandidateGenerationAbstained,
 )
 from .policy import BudgetIncrement, SafeOptimizerPolicy
 from .ppa import LatencyPpaComparator, PpaComparisonDecision, PpaEvidence
 from .provider import (
+    HypothesisGenerationAbstained,
     HypothesisProvider,
     HypothesisRequest,
     normalize_hypothesis,
@@ -53,11 +55,13 @@ def _utc_now() -> datetime:
 @dataclass(frozen=True, slots=True)
 class OptimizerRunCounters:
     provider_calls: int = 0
+    hypothesis_generation_abstentions: int = 0
     proposed_hypotheses: int = 0
     valid_hypotheses: int = 0
     invalid_hypotheses: int = 0
     selected_hypotheses: int = 0
     executor_calls: int = 0
+    candidate_generation_abstentions: int = 0
     accepted_candidates: int = 0
     rejected_candidates: int = 0
     blocked_candidates: int = 0
@@ -77,11 +81,13 @@ class OptimizerRunCounters:
     def to_dict(self) -> dict[str, int]:
         return {
             "provider_calls": self.provider_calls,
+            "hypothesis_generation_abstentions": self.hypothesis_generation_abstentions,
             "proposed_hypotheses": self.proposed_hypotheses,
             "valid_hypotheses": self.valid_hypotheses,
             "invalid_hypotheses": self.invalid_hypotheses,
             "selected_hypotheses": self.selected_hypotheses,
             "executor_calls": self.executor_calls,
+            "candidate_generation_abstentions": self.candidate_generation_abstentions,
             "accepted_candidates": self.accepted_candidates,
             "rejected_candidates": self.rejected_candidates,
             "blocked_candidates": self.blocked_candidates,
@@ -329,6 +335,26 @@ class DeterministicOptimizerStateMachine:
             if not isinstance(response, (list, tuple)):
                 raise TypeError("provider must return a list or tuple")
             considered = tuple(response[: limits.hypotheses_per_round])
+        except HypothesisGenerationAbstained as exc:
+            self._consume_invocation(self._provider.budget_increment)
+            self._counters = self._counters.increment(
+                provider_calls=1,
+                hypothesis_generation_abstentions=1,
+            )
+            self._record_decision(
+                event="hypothesis_generation_abstained",
+                action="advance_level_without_hypothesis",
+                reason=exc.reason_code,
+                metadata={
+                    "error_code": exc.error_code,
+                    "detail_codes": list(exc.detail_codes),
+                    "best_correct_candidate_id": self._state.best_correct_candidate_id,
+                    "automatic_retry": False,
+                    "hypothesis_created": False,
+                },
+            )
+            self._advance_level("hypothesis_generation_abstained")
+            return
         except Exception as exc:  # noqa: BLE001 - provider boundary is explicit.
             # The invocation was launched, so simulated/physical usage is
             # consumed even when the provider boundary raises.
@@ -433,6 +459,29 @@ class DeterministicOptimizerStateMachine:
             execution = self._executor.execute(request)
             if not isinstance(execution, CandidateExecutionResult):
                 raise TypeError("executor returned an invalid result type")
+        except CandidateGenerationAbstained as exc:
+            self._consume_invocation(self._executor.budget_increment)
+            self._counters = self._counters.increment(
+                executor_calls=1,
+                candidate_generation_abstentions=1,
+            )
+            self._record_decision(
+                event="candidate_generation_abstained",
+                action="advance_level_without_candidate",
+                reason=exc.reason_code,
+                hypothesis_id=hypothesis.hypothesis_id,
+                metadata={
+                    "candidate_id_reserved_but_not_created": candidate_id,
+                    "error_code": exc.error_code,
+                    "detail_codes": list(exc.detail_codes),
+                    "best_correct_candidate_id": self._state.best_correct_candidate_id,
+                    "automatic_retry": False,
+                    "candidate_created": False,
+                    "qualification_started": False,
+                },
+            )
+            self._advance_level("candidate_generation_abstained")
+            return
         except Exception as exc:  # noqa: BLE001 - executor boundary is explicit.
             self._consume_invocation(self._executor.budget_increment)
             self._counters = self._counters.increment(executor_calls=1)
@@ -504,6 +553,8 @@ class DeterministicOptimizerStateMachine:
             reason=optimizer_decision["optimizer_reason"],
             candidate_id=candidate_id,
             hypothesis_id=hypothesis.hypothesis_id,
+            level=level,
+            round_number=round_number,
             metadata={
                 "qualification_status": qualification.status.value,
                 "candidate_status": terminal_candidate.status.value,
@@ -849,13 +900,21 @@ class DeterministicOptimizerStateMachine:
         reason: str,
         candidate_id: str | None = None,
         hypothesis_id: str | None = None,
+        level: OptimizationLevel | str | None = None,
+        round_number: int | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> None:
         timestamp = self._timestamp()
+        decision_level = (
+            self._state.current_level.value
+            if level is None
+            else (level.value if isinstance(level, OptimizationLevel) else str(level))
+        )
+        decision_round = self._state.current_round if round_number is None else round_number
         self._artifacts.append_decision(
             event=event,
-            level=self._state.current_level.value,
-            round_number=self._state.current_round,
+            level=decision_level,
+            round_number=decision_round,
             candidate_id=candidate_id,
             hypothesis_id=hypothesis_id,
             action=action,
@@ -873,8 +932,8 @@ class DeterministicOptimizerStateMachine:
             ),
             message=reason,
             metadata={
-                "level": self._state.current_level.value,
-                "round": self._state.current_round,
+                "level": decision_level,
+                "round": decision_round,
                 "candidate_id": candidate_id,
                 "hypothesis_id": hypothesis_id,
                 "action": action,

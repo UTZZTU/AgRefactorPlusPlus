@@ -9,17 +9,21 @@
 |---|---|
 | `validate-task` | 校验并规范化 TaskSpec JSON；不调用模型或工具 |
 | `run` | 高级复现、dry-run 和兼容迁移入口 |
-| `refactor` | 当前正式普通执行入口 |
-| `optimize` | Stage 3 前保留但拒绝执行 |
-| `full` | Stage 3 前保留但拒绝执行 |
+| `refactor` | 正式 source-only refactor 入口 |
+| `optimize` | 正式 Stage 3 safe-v1 优化入口 |
+| `full` | refactor correctness accepted 后进入 Stage 3 safe-v1 |
 
 ## 普通命令格式
 
 ```bash
-python -m agrefactor.cli refactor SOURCE   --top TOP   --model MODEL
+python -m agrefactor.cli refactor SOURCE --top TOP --model MODEL
+python -m agrefactor.cli optimize CANDIDATE --top TOP --model MODEL \
+  --reference-source ORIGINAL --reference-top ORIGINAL_TOP \
+  --public-test PUBLIC.cpp --hidden-test HIDDEN.cpp
+python -m agrefactor.cli full SOURCE --top TOP --model MODEL
 ```
 
-`optimize/full` 注册相同的 source 参数合同，但当前不会执行优化。
+Direct `optimize` 不生成自己的 correctness oracle，必须提供独立 reference 和至少一个 Public/Hidden suite。`full` 从 accepted refactor phase 获取同一组 typed evidence；refactor 未 accepted 时不会进入优化。
 
 ## 输入、模型与 Target
 
@@ -36,6 +40,10 @@ python -m agrefactor.cli refactor SOURCE   --top TOP   --model MODEL
 | `--part` | Profile 默认 | 非空字符串 | 器件覆盖 |
 | `--clock-period` | Profile 默认 | 有限正数 | ns |
 | `--replace-compile-flag` | Profile 默认 | 可重复字符串 | 替换完整 compile flag 列表 |
+| `--reference-source` | direct optimize 必填 | 独立 C/C++ 文件 | correctness reference；不得与 candidate 同一路径 |
+| `--reference-top` | `--top` | 非空字符串 | reference top function |
+| `--optimizer-profile` | `safe-v1` | `safe-v1` | 冻结 2/2/3 策略 |
+| `--optimization-objective` | `latency` | `latency` | v1 唯一正式 objective |
 
 对于未验证统一 effort 参数的 Generic OpenAI-compatible endpoint，隐式默认 `medium` 不会阻断模型；具体模型/部署映射属于后续工作。用户显式传入不受支持的 effort 时，当前 typed Profile 仍可拒绝。
 
@@ -104,4 +112,4 @@ Cost 币种来自已验证 pricing snapshot；没有可用币种时不能填写 
 
 ## 当前未开放
 
-模型采样参数、完整 TargetProfile 覆盖、资源限制、Memory/RAG、自动模型路由、优化器参数、迁移参数和 cosim budget 当前不属于普通 source-only CLI。详见 [产品能力待办](../roadmap/PRODUCT_CAPABILITY_BACKLOG.md)。
+模型采样参数、完整 TargetProfile 覆盖、资源限制、Memory/RAG、自动模型路由、level-specific rounds/beam/cache path、迁移参数和 cosim budget 当前不属于普通 source-only CLI。详见 [产品能力待办](../roadmap/PRODUCT_CAPABILITY_BACKLOG.md)。

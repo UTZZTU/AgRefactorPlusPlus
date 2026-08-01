@@ -187,7 +187,9 @@ class StructuralRewritePromptTests(unittest.TestCase):
         self.assertEqual(prompt.manifest["purpose"], STRUCTURAL_REWRITE_PURPOSE)
         contract = prompt.manifest["output_contract"]
         self.assertTrue(contract["complete_replacement"])
-        self.assertTrue(contract["fenced_code_block"])
+        self.assertTrue(contract["fenced_code_block_preferred"])
+        self.assertTrue(contract["raw_complete_source_allowed"])
+        self.assertEqual(contract["explicit_abstention_token"], "AGREFACTOR_ABSTAIN")
         self.assertFalse(contract["commentary_allowed"])
         self.assertTrue(contract["top_function_interface_must_remain_unchanged"])
 
@@ -218,6 +220,24 @@ class StructuralRewritePromptTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             self.request(hypothesis=invalid)
+
+    def test_rewrite_prompt_supports_explicit_safe_abstention(self):
+        prompt = self.builder.build_rewrite(self.request())
+        body = "\n".join(message.content for message in prompt.messages)
+        self.assertIn("AGREFACTOR_ABSTAIN", body)
+        self.assertIn("raw complete translation unit", body)
+
+    def test_hypothesis_prompt_requires_source_only_executability(self):
+        prompt = self.builder.build_hypothesis(
+            StructuralHypothesisPromptRequest(
+                task=task(),
+                parent_candidate_id="baseline",
+                parent_source=SOURCE,
+                round_number=1,
+                max_hypotheses=3,
+            )
+        )
+        self.assertIn("implementable as a concrete source-only change", prompt.messages[0].content)
 
     def test_rewrite_prompt_explicitly_avoids_static_certification(self):
         prompt = self.builder.build_rewrite(self.request())
@@ -254,6 +274,13 @@ class StructuralRewritePromptTests(unittest.TestCase):
             rendered = "\n".join(message.content for message in prompt.messages)
             self.assertNotIn(str(hidden), rendered)
             self.assertNotIn("NEVER_EXPOSE_THIS", rendered)
+
+
+    def test_rewrite_reserves_pragma_edits_for_pragma_level(self):
+        prompt = StructuralOptimizationPromptBuilder().build_rewrite(self.request())
+        body = "\n".join(message.content for message in prompt.messages)
+        self.assertIn("Do not add, remove, or modify HLS pragmas/directives", body)
+        self.assertIn("Pragma level owns directive edits", body)
 
 
 if __name__ == "__main__":

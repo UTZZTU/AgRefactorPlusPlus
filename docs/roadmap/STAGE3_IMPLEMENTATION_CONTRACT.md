@@ -2,7 +2,7 @@
 
 > **状态：** FROZEN
 > **冻结范围：** Stage 3 安全三级优化器
-> **实现状态：** 进行中；S3.1–S3.6 已验收，下一包为 S3.7
+> **实现状态：** 进行中；S3.1–S3.7 已验收，下一包为 S3.8
 > **前置基线：** Pre-Stage-3 已关闭，最新 CLI 后真实 source-only smoke 已通过
 > **变更规则：** 任何语义变更必须有明确决策记录、测试和本文更新，不能在实现中静默改写合同。
 
@@ -676,12 +676,21 @@ error
 
 ### S3.7 Product Adapters
 
-进入/关闭条件：解除产品门禁前必须完成一次内部 baseline qualification → Structural → Bottleneck → Pragma → qualification/PPA → rollback/best_correct → unified artifacts 全链路演练。
+状态：**ACCEPTED_AFTER_TARGET_HOST_GATE**（28/28 S3.7 focused，402/402 optimizer regression，1941/1941 full deterministic；内部真实产品链路强制三层 analysis、条件 rewrite、typed no-retry abstention，并执行真实 baseline/candidate Vitis compile、CSIM、CSYNTH）。
 
--真实 `optimize`；
--真实 `full`；
--refactor failure gate；
--统一 output/identity。
+- 普通 `optimize` 和 `full` 接入 accepted safe-v1 Structural → Bottleneck → Pragma 状态机；
+- direct `optimize` 强制独立 reference source、至少一个 provided Public 和一个 provided Hidden suite，拒绝 candidate-dependent oracle；
+- `full` 只从 accepted refactor formal result 接收 typed baseline/reference/suite handoff；refactor failure 不进入 optimize；
+- baseline 在任何优化模型调用前完成真实 Stage 3 qualification；失败时模型调用数为 0，不静默退化；
+- baseline 与所有候选共享 target、toolchain fingerprint、reference、Public/Hidden suite identity 和 exact validation cache contract；
+- normal product policy 保持 safe-v1 2/2/3；内部 gate 的每层一个 physical round 只用于 bounded acceptance，不改变产品策略；
+- root execution identity 与 linked Stage 3 identity 共同记录 policy、candidate lineage、checkpoint、best_correct、terminal、physical budget 和 safe model calls；
+- unified product output 合并 optimizer candidate、validation、usage 和 pricing，不持久化 raw Prompt/response/reasoning；
+- safe model-call artifact writer 使用 schema v2；读取兼容 v1/v2，其中历史 v1 可缺少或可选携带 `error_reason_codes`；
+- 模型分类/action/hypothesis 继续 non-authoritative，Hidden 不进入模型，source-string/regex 不作为权威 gate；
+- 产品门禁已解除，但 S3.7 只证明产品接线与一次 bounded full chain，不宣称多 kernel 或稳定 PPA 收益。
+
+精确消歧见 `STAGE3_S37_DECISION_RECORD.md`。
 
 ### S3.8 Evaluation
 
@@ -725,3 +734,7 @@ error
 7. 必要时重新做真实 acceptance。
 
 不得因为某个模型输出不方便而弱化 correctness、Hidden、budget 或 best_correct 不变量。
+
+S3.7 v8 hardening: model response contract failures become typed no-retry abstentions; best_correct survives; semantic call/decision/candidate/qualification linkage replaces mandatory rewrite counts.
+
+S3.7 v9 observer rule: `optimizer/candidate_index.json` is authoritative only in its canonical versioned `{schema_version, candidates}` form and must be parsed through the product contract; acceptance fixtures may not define a parallel flat schema.

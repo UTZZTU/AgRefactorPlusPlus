@@ -19,6 +19,8 @@ from agrefactor.models import (
     TokenUsage,
 )
 from agrefactor.optimization import (
+    CandidateGenerationAbstained,
+    HypothesisGenerationAbstained,
     BottleneckAnalysisResponseContract,
     BottleneckClassificationRecord,
     BottleneckConfidence,
@@ -510,11 +512,16 @@ class BottleneckProviderTests(unittest.TestCase):
             provider = BottleneckModelHypothesisProvider(
                 registry=registry, effective_config=config, task=task(), budget=budget, artifacts=artifacts
             )
-            with self.assertRaises(BottleneckModelContractError):
+            with self.assertRaises(HypothesisGenerationAbstained) as captured:
                 provider.propose(hypothesis_request())
+            self.assertEqual(captured.exception.error_code, "BottleneckModelContractError")
             record = json.loads(artifacts.path.read_text().splitlines()[0])
             self.assertFalse(record["response_valid"])
             self.assertEqual(record["call_kind"], "bottleneck_analysis")
+            self.assertEqual(
+                record["error_reason_codes"],
+                ["analysis_response_contract_invalid"],
+            )
 
     def test_provider_exception_is_audited(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -527,6 +534,7 @@ class BottleneckProviderTests(unittest.TestCase):
             record = json.loads(artifacts.path.read_text().splitlines()[0])
             self.assertEqual(record["error_code"], "RuntimeError")
             self.assertIsNone(record["response_sha256"])
+            self.assertEqual(record["error_reason_codes"], [])
 
 
 class FakeQualifier:
@@ -594,6 +602,34 @@ class BottleneckGenerationAndIntegrationTests(unittest.TestCase):
             )
             with self.assertRaises(CandidateResponseError):
                 generator.generate(execution_request(hyp))
+
+    def test_executor_converts_candidate_contract_failure_to_safe_abstention(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            hyp = provider_hypothesis(root / "analysis")
+            registry, config, _, budget, artifacts = endpoint(
+                [response("AGREFACTOR_ABSTAIN")], root / "rewrite"
+            )
+            qualifier = FakeQualifier()
+            executor = BottleneckModelCandidateExecutor(
+                generator=BottleneckModelCandidateGenerator(
+                    registry=registry,
+                    effective_config=config,
+                    task=task(),
+                    budget=budget,
+                    artifacts=artifacts,
+                ),
+                qualifier=qualifier,
+            )
+            with self.assertRaises(CandidateGenerationAbstained) as captured:
+                executor.execute(execution_request(hyp))
+            self.assertEqual(
+                captured.exception.detail_codes,
+                ("explicit_abstention",),
+            )
+            self.assertEqual(len(qualifier.calls), 0)
+            record = json.loads(artifacts.path.read_text().splitlines()[-1])
+            self.assertEqual(record["error_reason_codes"], ["explicit_abstention"])
 
     def test_executor_delegates_qualification(self):
         with tempfile.TemporaryDirectory() as directory:

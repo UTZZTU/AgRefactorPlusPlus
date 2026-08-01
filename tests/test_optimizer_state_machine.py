@@ -9,6 +9,7 @@ import unittest
 from agrefactor.optimization import (
     BudgetIncrement,
     CandidateExecutionResult,
+    CandidateGenerationAbstained,
     CandidateRecord,
     CandidateStatus,
     DeterministicOptimizerStateMachine,
@@ -16,6 +17,7 @@ from agrefactor.optimization import (
     FakeExecutionOutcome,
     FakeExecutionStatus,
     FakeHypothesisProvider,
+    HypothesisGenerationAbstained,
     HypothesisRecord,
     HypothesisRequest,
     HypothesisRisk,
@@ -662,6 +664,9 @@ class DeterministicOptimizerStateMachineTests(unittest.TestCase):
         self.assertGreaterEqual(len(decision_lines), 2)
         payload = json.loads(decision_lines[-1])
         self.assertEqual(payload["candidate_id"], "cand-1")
+        self.assertEqual(payload["event"], "candidate_terminal")
+        self.assertEqual(payload["level"], "structural")
+        self.assertEqual(payload["round_number"], 1)
         serialized = json.dumps(payload).lower()
         self.assertNotIn("hidden_report", serialized)
         self.assertEqual(result.state.executed_candidate_count, 1)
@@ -713,6 +718,89 @@ class DeterministicOptimizerStateMachineTests(unittest.TestCase):
         self.assertEqual(result.counters.provider_calls, 1)
         self.assertEqual(result.budget_usage["llm_calls"], 1)
         self.assertEqual(result.state.executed_candidate_count, 0)
+
+    def test_candidate_generation_abstention_preserves_best_correct_and_advances(self):
+        class AbstainingExecutor(FakeCandidateExecutor):
+            def execute(self, request):
+                if request.level is OptimizationLevel.BOTTLENECK:
+                    raise CandidateGenerationAbstained(
+                        reason_code="candidate_response_contract_abstention",
+                        error_code="CandidateResponseError",
+                        detail_codes=("semantic_unchanged",),
+                    )
+                return super().execute(request)
+
+        harness = Harness(self, executor=AbstainingExecutor())
+        result = harness.engine.run()
+        self.assertIn(result.terminal_status, {
+            OptimizerTerminalStatus.ACCEPTED_IMPROVED,
+            OptimizerTerminalStatus.ACCEPTED_NO_IMPROVEMENT,
+        })
+        self.assertEqual(result.counters.candidate_generation_abstentions, 1)
+        self.assertNotEqual(result.state.terminal_status, OptimizerTerminalStatus.ERROR)
+        decisions = [
+            json.loads(line)
+            for line in (harness.root / "decisions.jsonl").read_text().splitlines()
+        ]
+        abstention = next(
+            item for item in decisions
+            if item["event"] == "candidate_generation_abstained"
+        )
+        self.assertEqual(abstention["level"], "bottleneck")
+        self.assertEqual(abstention["metadata"]["detail_codes"], ["semantic_unchanged"])
+        self.assertIs(abstention["metadata"]["candidate_created"], False)
+        self.assertIs(abstention["metadata"]["qualification_started"], False)
+        self.assertIs(abstention["metadata"]["automatic_retry"], False)
+
+    def test_hypothesis_contract_abstention_advances_without_retry(self):
+        class AbstainingProvider(FakeHypothesisProvider):
+            def propose(self, request):
+                if request.level is OptimizationLevel.BOTTLENECK:
+                    self._requests.append(request)
+                    raise HypothesisGenerationAbstained(
+                        reason_code="hypothesis_response_contract_abstention",
+                        error_code="BottleneckModelContractError",
+                        detail_codes=("analysis_response_contract_invalid",),
+                    )
+                return super().propose(request)
+
+        harness = Harness(self, provider=AbstainingProvider())
+        result = harness.engine.run()
+        self.assertNotEqual(result.terminal_status, OptimizerTerminalStatus.ERROR)
+        self.assertEqual(result.counters.hypothesis_generation_abstentions, 1)
+        decisions = [
+            json.loads(line)
+            for line in (harness.root / "decisions.jsonl").read_text().splitlines()
+        ]
+        events = [item["event"] for item in decisions]
+        self.assertIn("hypothesis_generation_abstained", events)
+        self.assertEqual(
+            sum(1 for item in decisions if item["event"] == "hypothesis_generation_abstained"),
+            1,
+        )
+
+    def test_abstaining_executor_consumes_declared_budget_once(self):
+        class AbstainingExecutor(FakeCandidateExecutor):
+            def execute(self, request):
+                raise CandidateGenerationAbstained(
+                    reason_code="candidate_response_contract_abstention",
+                    error_code="CandidateResponseError",
+                    detail_codes=("explicit_abstention",),
+                )
+
+        executor = AbstainingExecutor(
+            budget_increment=BudgetIncrement(llm_calls=1)
+        )
+        budget = BudgetManager(BudgetLimits(max_llm_calls=3), clock=lambda: 0.0)
+        harness = Harness(self, executor=executor, budget=budget)
+        result = harness.engine.run()
+        self.assertEqual(result.budget_usage["llm_calls"], 3)
+        self.assertEqual(result.counters.executor_calls, 3)
+        self.assertEqual(result.counters.candidate_generation_abstentions, 3)
+        self.assertEqual(
+            result.terminal_status,
+            OptimizerTerminalStatus.ACCEPTED_NO_IMPROVEMENT,
+        )
 
     def test_executor_exception_is_terminal_error_without_candidate(self):
         class RaisingExecutor(FakeCandidateExecutor):

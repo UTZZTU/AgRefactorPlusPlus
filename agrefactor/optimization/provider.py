@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
+import re
 from typing import Any, Protocol, runtime_checkable
 
 from .policy import BudgetIncrement
@@ -21,7 +22,49 @@ from .state import (
 )
 
 
-PROVIDER_SCHEMA_VERSION = 2
+PROVIDER_SCHEMA_VERSION = 3
+_SAFE_REASON_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+class HypothesisGenerationAbstained(RuntimeError):
+    """Typed recoverable stop for one model hypothesis response.
+
+    The provider call occurred, but the returned content did not satisfy the
+    frozen typed response contract. The state machine may preserve the current
+    best-correct candidate and continue to the next level without retrying.
+    Transport, credential, filesystem, and artifact failures must not use this
+    exception.
+    """
+
+    def __init__(
+        self,
+        *,
+        reason_code: str,
+        error_code: str,
+        detail_codes: tuple[str, ...] = (),
+    ) -> None:
+        reason = str(reason_code).strip()
+        error = str(error_code).strip()
+        details = tuple(dict.fromkeys(str(code).strip() for code in detail_codes))
+        if not _SAFE_REASON_RE.fullmatch(reason):
+            raise ValueError("reason_code must be a safe token")
+        if not error or any(char.isspace() for char in error):
+            raise ValueError("error_code must be a non-empty token")
+        if not all(_SAFE_REASON_RE.fullmatch(code) for code in details):
+            raise ValueError("detail_codes must contain safe tokens")
+        super().__init__(f"{reason}:{error}")
+        self.reason_code = reason
+        self.error_code = error
+        self.detail_codes = details
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "reason_code": self.reason_code,
+            "error_code": self.error_code,
+            "detail_codes": list(self.detail_codes),
+            "recoverable": True,
+            "automatic_retry": False,
+        }
 
 
 @dataclass(frozen=True, slots=True)

@@ -25,6 +25,8 @@ from .registry import ModelRegistry
 
 
 _CANDIDATE_ARTIFACT = "candidate_kernel"
+CANDIDATE_EXPLICIT_ABSTENTION_TOKEN = "AGREFACTOR_ABSTAIN"
+_REASON_CODE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _CPP_LANGUAGES = frozenset({"cpp", "c++", "cxx"})
 _CANDIDATE_PURPOSES = frozenset(
     {
@@ -45,7 +47,34 @@ _PATCH_LINE_RE = re.compile(
 
 
 class CandidateResponseError(ValueError):
-    """Raised when a candidate model response violates its contract."""
+    """Raised when a candidate model response violates its contract.
+
+    ``reason_codes`` are stable, agent-safe protocol diagnostics. They never
+    contain source text, model output, Hidden evidence, or free-form provider
+    content, so callers may persist them in optimizer audit artifacts.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_codes: Sequence[str] = (),
+    ) -> None:
+        super().__init__(message)
+        normalized = tuple(dict.fromkeys(str(code).strip() for code in reason_codes))
+        if not normalized:
+            normalized = ("candidate_response_invalid",)
+        if not all(_REASON_CODE_RE.fullmatch(code) for code in normalized):
+            raise ValueError("candidate response reason codes must be safe tokens")
+        self.reason_codes = normalized
+
+
+def candidate_response_reason_codes(error: BaseException) -> tuple[str, ...]:
+    """Return stable safe reason codes for one candidate response failure."""
+
+    if isinstance(error, CandidateResponseError):
+        return error.reason_codes
+    return ()
 
 
 def _copy_json_mapping(
@@ -210,52 +239,66 @@ class CandidateResponseContract:
         """Extract one replacement and enforce deterministic safeguards."""
 
         proposed = _extract_complete_cpp_replacement(response_text)
-        issues = self.validate_replacement(proposed)
+        issues = self._replacement_issues(proposed)
         if issues:
             raise CandidateResponseError(
                 "candidate response violated deterministic contract: "
-                + "; ".join(issues)
+                + "; ".join(message for _, message in issues),
+                reason_codes=tuple(code for code, _ in issues),
             )
         return proposed
 
     def validate_replacement(self, proposed: str) -> tuple[str, ...]:
+        """Return human-readable deterministic contract issues."""
+
+        return tuple(message for _, message in self._replacement_issues(proposed))
+
+    def validate_replacement_reason_codes(self, proposed: str) -> tuple[str, ...]:
+        """Return stable safe reason codes without source or response content."""
+
+        return tuple(code for code, _ in self._replacement_issues(proposed))
+
+    def _replacement_issues(self, proposed: str) -> tuple[tuple[str, str], ...]:
         _validate_required_text(proposed, "proposed candidate")
-        issues: list[str] = []
+        issues: list[tuple[str, str]] = []
 
         if _PATCH_LINE_RE.search(proposed):
-            issues.append("response contains patch or diff markers")
+            issues.append(("patch_or_diff", "response contains patch or diff markers"))
 
         definitions = _find_function_definitions(
             proposed,
             self.top_function_name,
         )
         if not definitions:
-            issues.append(
-                "missing required top function definition: "
-                + self.top_function_name
-            )
+            issues.append((
+                "missing_top_function",
+                "missing required top function definition: " + self.top_function_name,
+            ))
         elif len(definitions) > 1:
-            issues.append(
-                "multiple definitions of required top function: "
-                + self.top_function_name
-            )
+            issues.append((
+                "multiple_top_definitions",
+                "multiple definitions of required top function: " + self.top_function_name,
+            ))
         elif definitions[0] != self.interface_header:
-            issues.append(
-                "top function interface was changed: "
-                + self.top_function_name
-            )
+            issues.append((
+                "top_interface_changed",
+                "top function interface was changed: " + self.top_function_name,
+            ))
 
         if self.top_function_name != "main" and _find_function_definitions(
             proposed,
             "main",
         ):
-            issues.append("candidate replacement must not define main")
+            issues.append(("defines_main", "candidate replacement must not define main"))
 
         if (
             _semantic_sha256(proposed)
             == self.current_candidate_semantic_sha256
         ):
-            issues.append("candidate replacement is semantically unchanged")
+            issues.append((
+                "semantic_unchanged",
+                "candidate replacement is semantically unchanged",
+            ))
 
         return tuple(issues)
 
@@ -612,37 +655,51 @@ class CandidateModelAdapter:
 def _extract_complete_cpp_replacement(response_text: str) -> str:
     if not isinstance(response_text, str) or not response_text.strip():
         raise CandidateResponseError(
-            "model response must not be empty"
+            "model response must not be empty",
+            reason_codes=("empty_response",),
         )
 
     cleaned = response_text.strip()
-    matches = list(_FENCE_RE.finditer(cleaned))
-    if len(matches) != 1 or cleaned.count("```") != 2:
+    if cleaned == CANDIDATE_EXPLICIT_ABSTENTION_TOKEN:
         raise CandidateResponseError(
-            "model response must contain exactly one fenced C++ block"
+            "model explicitly abstained from candidate generation",
+            reason_codes=("explicit_abstention",),
         )
 
-    match = matches[0]
-    if match.group("language").lower() not in _CPP_LANGUAGES:
-        raise CandidateResponseError(
-            "model response code block must use a C++ language tag"
-        )
-    outside = (
-        cleaned[: match.start()] + cleaned[match.end() :]
-    ).strip()
-    if outside:
-        raise CandidateResponseError(
-            "model response must not contain commentary outside the C++ block"
-        )
+    if "```" not in cleaned:
+        code = cleaned
+    else:
+        matches = list(_FENCE_RE.finditer(cleaned))
+        if len(matches) != 1 or cleaned.count("```") != 2:
+            raise CandidateResponseError(
+                "model response must contain exactly one fenced C++ block",
+                reason_codes=("malformed_code_fence",),
+            )
+        match = matches[0]
+        if match.group("language").lower() not in _CPP_LANGUAGES:
+            raise CandidateResponseError(
+                "model response code block must use a C++ language tag",
+                reason_codes=("invalid_language_tag",),
+            )
+        outside = (
+            cleaned[: match.start()] + cleaned[match.end() :]
+        ).strip()
+        if outside:
+            raise CandidateResponseError(
+                "model response must not contain commentary outside the C++ block",
+                reason_codes=("commentary_outside_code",),
+            )
+        code = match.group("code").strip()
 
-    code = match.group("code").strip()
     if not code:
         raise CandidateResponseError(
-            "model returned an empty C++ block"
+            "model returned an empty C++ replacement",
+            reason_codes=("empty_code",),
         )
     if _PATCH_LINE_RE.search(code):
         raise CandidateResponseError(
-            "model response must be a complete replacement, not a patch or diff"
+            "model response must be a complete replacement, not a patch or diff",
+            reason_codes=("patch_or_diff",),
         )
     return code
 

@@ -38,7 +38,11 @@ from agrefactor.models import (
     ModelSpec,
     estimate_model_cost,
 )
-from agrefactor.models.candidate_adapter import CandidateResponseContract
+from agrefactor.models.candidate_adapter import (
+    CandidateResponseContract,
+    CandidateResponseError,
+    candidate_response_reason_codes,
+)
 from agrefactor.prompts.optimization import (
     BOTTLENECK_ALLOWED_SIGNAL_FIELDS,
     BottleneckAnalysisPromptRequest,
@@ -47,10 +51,14 @@ from agrefactor.prompts.optimization import (
 )
 from agrefactor.runtime.budget import BudgetManager
 
-from .execution import CandidateExecutionRequest, CandidateExecutionResult
+from .execution import (
+    CandidateExecutionRequest,
+    CandidateExecutionResult,
+    CandidateGenerationAbstained,
+)
 from .policy import BudgetIncrement
 from .ppa import PpaEvidence
-from .provider import HypothesisRequest
+from .provider import HypothesisGenerationAbstained, HypothesisRequest
 from .qualification import CandidateQualificationResult
 from .state import (
     CandidateRecord,
@@ -64,8 +72,10 @@ from .structural_model import StructuralModelArtifactWriter
 
 BOTTLENECK_MODEL_SCHEMA_VERSION = 1
 BOTTLENECK_RESPONSE_SCHEMA_VERSION = 1
-_MODEL_CALL_KIND_ANALYSIS = "bottleneck_analysis"
-_MODEL_CALL_KIND_REWRITE = "bottleneck_rewrite"
+BOTTLENECK_MODEL_CALL_KIND_ANALYSIS = "bottleneck_analysis"
+BOTTLENECK_MODEL_CALL_KIND_REWRITE = "bottleneck_rewrite"
+_MODEL_CALL_KIND_ANALYSIS = BOTTLENECK_MODEL_CALL_KIND_ANALYSIS
+_MODEL_CALL_KIND_REWRITE = BOTTLENECK_MODEL_CALL_KIND_REWRITE
 _JSON_FENCE_RE = re.compile(
     r"^```[ \t]*json[ \t]*\r?\n(?P<body>.*)```$",
     re.DOTALL | re.IGNORECASE,
@@ -723,6 +733,7 @@ class _BottleneckModelEndpoint:
         call_kind: str,
         response: ModelResponse,
         error: Exception,
+        error_reason_codes: tuple[str, ...] | None = None,
     ) -> None:
         self._artifacts.append(
             call_kind=call_kind,
@@ -731,6 +742,11 @@ class _BottleneckModelEndpoint:
             response=response,
             response_valid=False,
             error_code=type(error).__name__,
+            error_reason_codes=(
+                candidate_response_reason_codes(error)
+                if error_reason_codes is None
+                else error_reason_codes
+            ),
         )
 
 
@@ -859,8 +875,6 @@ class BottleneckModelHypothesisProvider(_BottleneckModelEndpoint):
                 )
                 for index, draft in enumerate(parsed.classifications, start=1)
             )
-            for classification in classifications:
-                self._artifacts.write_classification(classification)
             hypotheses = tuple(
                 HypothesisRecord(
                     hypothesis_id=(
@@ -889,14 +903,21 @@ class BottleneckModelHypothesisProvider(_BottleneckModelEndpoint):
                 )
                 for index, draft in enumerate(parsed.hypotheses, start=1)
             )
-        except Exception as exc:
+        except BottleneckModelContractError as exc:
             self._record_invalid(
                 prompt=prompt,
                 call_kind=_MODEL_CALL_KIND_ANALYSIS,
                 response=response,
                 error=exc,
+                error_reason_codes=("analysis_response_contract_invalid",),
             )
-            raise
+            raise HypothesisGenerationAbstained(
+                reason_code="hypothesis_response_contract_abstention",
+                error_code=type(exc).__name__,
+                detail_codes=("analysis_response_contract_invalid",),
+            ) from exc
+        for classification in classifications:
+            self._artifacts.write_classification(classification)
         self._record_valid(
             prompt=prompt,
             call_kind=_MODEL_CALL_KIND_ANALYSIS,
@@ -1080,7 +1101,14 @@ class BottleneckModelCandidateExecutor:
         if request.level is not OptimizationLevel.BOTTLENECK:
             raise ValueError("S3.5 executor supports Bottleneck only")
         self._requests.append(request)
-        generated = self._generator.generate(request)
+        try:
+            generated = self._generator.generate(request)
+        except CandidateResponseError as exc:
+            raise CandidateGenerationAbstained(
+                reason_code="candidate_response_contract_abstention",
+                error_code=type(exc).__name__,
+                detail_codes=candidate_response_reason_codes(exc),
+            ) from exc
         qualification = self._qualifier.qualify(request, generated.source)
         if not isinstance(qualification, CandidateQualificationResult):
             raise TypeError("qualifier must return CandidateQualificationResult")

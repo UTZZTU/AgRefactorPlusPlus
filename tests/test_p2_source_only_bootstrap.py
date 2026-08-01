@@ -544,29 +544,24 @@ class P2SourceOnlyBootstrapTests(unittest.TestCase):
         self.assertEqual(args.command, "run")
         self.assertEqual(args.task_file, Path("task.json"))
 
-    def test_optimize_and_full_do_not_fake_stage3_execution(self):
-        with tempfile.TemporaryDirectory() as directory:
-            source = Path(directory) / "kernel.cpp"
-            source.write_text(ORIGINAL, encoding="utf-8")
-            for command in ("optimize", "full"):
-                stderr = io.StringIO()
-                exit_code = main(
-                    [
-                        command,
-                        str(source),
-                        "--top",
-                        "top",
-                        "--model",
-                        "deepseek-v4-flash",
-                    ],
-                    stdout=io.StringIO(),
-                    stderr=stderr,
-                )
-                self.assertEqual(exit_code, 2)
-                self.assertIn(
-                    "Stage-3 optimizer",
-                    stderr.getvalue(),
-                )
+    def test_optimize_and_full_product_adapters_are_registered(self):
+        parser = build_parser()
+        optimize = parser.parse_args(
+            [
+                "optimize", "candidate.cpp", "--top", "top",
+                "--reference-source", "original.cpp",
+                "--public-test", "public.cpp",
+                "--hidden-test", "hidden.cpp",
+                "--model", "deepseek-v4-flash",
+            ]
+        )
+        full = parser.parse_args(
+            ["full", "kernel.cpp", "--top", "top", "--model", "deepseek-v4-flash"]
+        )
+        self.assertEqual(optimize.command, "optimize")
+        self.assertEqual(optimize.reference_source, Path("original.cpp"))
+        self.assertEqual(full.command, "full")
+        self.assertIsNone(full.reference_source)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,23 @@
 # 变更记录
 
+## 2026-08-01 — Stage 3.7 Product Adapters
+
+- v8 distinguishes recoverable model output-contract abstention from terminal infrastructure failure across Structural, Bottleneck and Pragma analysis/rewrite;
+- records stable safe reason codes without raw response/reasoning, performs no automatic retry, creates no fake candidate, and preserves `best_correct`;
+- fixes candidate-terminal decision level/round provenance and baseline-rejection zero-counter identity;
+- replaces fixed rewrite/call-count acceptance with semantic call → decision → candidate → qualification linkage: three analyses are mandatory, rewrites are conditional, and the acceptance run requires at least one real candidate qualification (4–6 accepted calls);
+- validates 28/28 focused, 402/402 optimizer and 1941/1941 target-host deterministic regression.
+
+- enabled normal `optimize` and `full` through the accepted safe-v1 three-level state machine;
+- required direct optimize to use an independent reference and provided Public/Hidden suites;
+- added accepted-refactor typed handoff and a hard refactor-failure gate for full mode;
+- enforced baseline qualification before any optimization-model call and no silent fallback;
+- added real product qualification/PPA adapters with exact target/toolchain/suite cache identity;
+- added linked Stage 3 execution identity and unified safe budget/model/output reporting;
+- added the initial bounded internal Structural/Bottleneck/Pragma chain; v8 supersedes its fixed rewrite assumptions with semantic 3–6 call observation and a 4–6 call acceptance range requiring real candidate qualification;
+- retained non-authoritative model decisions, Hidden suppression, best_correct protection and no static source authority gate;
+- accepted 17/17 focused, 389/389 optimizer and 1914/1914 full deterministic regression.
+
 ## 2026-08-01 — Stage 3.6 Pragma Model Integration
 
 - added typed, evidence-linked non-authoritative Pragma actions and strict response contract;
@@ -270,3 +288,19 @@ Public/Hidden 与通用反馈：
 - 明确 `PROJECT_STATE.md` 保持简洁，详细依据由 ROADMAP 和各 Stage 文档承载。
 - 明确任何核心路线变更必须同步更新 Roadmap、Goal Traceability、Project State、Stage 文档和 Changelog。
 <!-- AGREFPP_ROADMAP_EXPANSION:END -->
+
+### S3.7 v3 contract hardening
+
+- Structural and Bottleneck rewrites explicitly preserve HLS pragma/directive ownership for the Pragma level; this prevents an earlier layer from consuming the later layer's product-gate responsibility.
+- The Pragma prompt now carries an exact directive/target matrix, exact signal-field naming reminder, and complete executable/unknown JSON shapes.
+- The typed INLINE contract matches Vitis HLS syntax: `{}` means ordinary `INLINE`; only `off` and `recursive` are argument modes. The invented `on` string is rejected.
+- `ram_1wnr` and `ram_s2p` are accepted typed BIND_STORAGE types for the pinned Vitis HLS 2023.2 contract.
+- Strict local parsing, five-to-six-call branch-aware acceptance, no retry, non-authoritative model decisions, qualification, and best-correct rollback remain unchanged.
+### S3.7 v7 branch-aware acceptance
+
+- corrected the real product smoke to accept a strict five-call Pragma safe abstention or a six-call Pragma rewrite/qualification branch;
+- required all three analysis calls, mandatory Structural/Bottleneck rewrites, typed non-authoritative Pragma action artifacts, and branch-consistent hypothesis/rewrite evidence;
+- kept automatic retry disabled and did not add source-string or regex authority gates.
+
+- v9 corrects the S3.7 real-smoke observer to parse the canonical versioned `candidate_index.json` schema through the product serializer/parser instead of assuming a flat candidate-id mapping;
+- smoke fixtures now emit the real frozen candidate-index artifact and explicitly reject the obsolete flat test-only shape, preventing observer and fixture bugs from masking each other;

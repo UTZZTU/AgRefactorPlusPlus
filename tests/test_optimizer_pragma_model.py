@@ -19,6 +19,8 @@ from agrefactor.models import (
     TokenUsage,
 )
 from agrefactor.optimization import (
+    CandidateGenerationAbstained,
+    HypothesisGenerationAbstained,
     CandidateExecutionRequest,
     CandidateRecord,
     CandidateStatus,
@@ -398,10 +400,32 @@ class PragmaParameterTests(unittest.TestCase):
                 )
             )
 
-    def test_inline_requires_explicit_mode(self):
+    def test_inline_without_arguments_is_valid(self):
+        parsed = self.contract().parse(
+            analysis_json(kind="inline", target_kind="function", parameters={})
+        )
+        self.assertEqual(parsed.actions[0].parameters, {})
+
+    def test_inline_off_and_recursive_modes_are_valid(self):
+        for mode in ("off", "recursive"):
+            with self.subTest(mode=mode):
+                parsed = self.contract().parse(
+                    analysis_json(
+                        kind="inline",
+                        target_kind="function",
+                        parameters={"mode": mode},
+                    )
+                )
+                self.assertEqual(parsed.actions[0].parameters, {"mode": mode})
+
+    def test_inline_on_alias_is_rejected(self):
         with self.assertRaises(PragmaModelContractError):
             self.contract().parse(
-                analysis_json(kind="inline", target_kind="function", parameters={})
+                analysis_json(
+                    kind="inline",
+                    target_kind="function",
+                    parameters={"mode": "on"},
+                )
             )
 
     def test_bind_storage_exact_schema(self):
@@ -413,6 +437,20 @@ class PragmaParameterTests(unittest.TestCase):
             )
         )
         self.assertEqual(parsed.actions[0].parameters["impl"], "bram")
+
+    def test_bind_storage_accepts_2023_2_ram_1wnr_and_ram_s2p_types(self):
+        for storage_type in ("ram_1wnr", "ram_s2p"):
+            with self.subTest(storage_type=storage_type):
+                parsed = self.contract().parse(
+                    analysis_json(
+                        kind="bind_storage",
+                        target_kind="array",
+                        parameters={"type": storage_type, "impl": "bram"},
+                    )
+                )
+                self.assertEqual(
+                    parsed.actions[0].parameters["type"], storage_type
+                )
 
     def test_bind_op_rejects_unknown_impl(self):
         with self.assertRaises(PragmaModelContractError):
@@ -602,11 +640,16 @@ class PragmaProviderTests(unittest.TestCase):
                 budget=budget,
                 artifacts=artifacts,
             )
-            with self.assertRaises(PragmaModelContractError):
+            with self.assertRaises(HypothesisGenerationAbstained) as captured:
                 provider.propose(hypothesis_request())
+            self.assertEqual(captured.exception.error_code, "PragmaModelContractError")
             record = json.loads(artifacts.path.read_text().splitlines()[0])
             self.assertFalse(record["response_valid"])
             self.assertEqual(record["call_kind"], "pragma_analysis")
+            self.assertEqual(
+                record["error_reason_codes"],
+                ["analysis_response_contract_invalid"],
+            )
 
     def test_provider_exception_is_audited(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -625,6 +668,7 @@ class PragmaProviderTests(unittest.TestCase):
             record = json.loads(artifacts.path.read_text().splitlines()[0])
             self.assertEqual(record["error_code"], "RuntimeError")
             self.assertIsNone(record["response_sha256"])
+            self.assertEqual(record["error_reason_codes"], [])
 
 
 class FakeQualifier:
@@ -730,6 +774,34 @@ class PragmaGenerationAndIntegrationTests(unittest.TestCase):
                     )
                 )
             self.assertEqual(fake.calls, [])
+
+    def test_executor_converts_candidate_contract_failure_to_safe_abstention(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            hyp = provider_hypothesis(root / "analysis")
+            registry, config, _, budget, artifacts = endpoint(
+                [response("AGREFACTOR_ABSTAIN")], root / "rewrite"
+            )
+            qualifier = FakeQualifier()
+            executor = PragmaModelCandidateExecutor(
+                generator=PragmaModelCandidateGenerator(
+                    registry=registry,
+                    effective_config=config,
+                    task=task(),
+                    budget=budget,
+                    artifacts=artifacts,
+                ),
+                qualifier=qualifier,
+            )
+            with self.assertRaises(CandidateGenerationAbstained) as captured:
+                executor.execute(execution_request(hyp))
+            self.assertEqual(
+                captured.exception.detail_codes,
+                ("explicit_abstention",),
+            )
+            self.assertEqual(len(qualifier.calls), 0)
+            record = json.loads(artifacts.path.read_text().splitlines()[-1])
+            self.assertEqual(record["error_reason_codes"], ["explicit_abstention"])
 
     def test_executor_delegates_qualification(self):
         with tempfile.TemporaryDirectory() as directory:

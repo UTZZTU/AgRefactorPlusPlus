@@ -288,10 +288,29 @@ class BottleneckRewritePromptTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             rewrite_request(safe_context={"hidden_report": "x"})
 
+    def test_rewrite_prompt_supports_explicit_safe_abstention(self):
+        prompt = BottleneckOptimizationPromptBuilder().build_rewrite(rewrite_request())
+        body = "\n".join(message.content for message in prompt.messages)
+        contract = prompt.manifest["output_contract"]
+        self.assertTrue(contract["raw_complete_source_allowed"])
+        self.assertEqual(contract["explicit_abstention_token"], "AGREFACTOR_ABSTAIN")
+        self.assertIn("source-only change cannot be implemented", body)
+
+    def test_analysis_omits_non_source_only_hypotheses(self):
+        prompt = BottleneckOptimizationPromptBuilder().build_analysis(analysis_request())
+        self.assertIn("concrete source-only causal change", prompt.messages[0].content)
+
     def test_rewrite_explicitly_keeps_qualification_authoritative(self):
         system = BottleneckOptimizationPromptBuilder().build_rewrite(rewrite_request()).messages[0].content
         self.assertIn("requires full qualification", system)
         self.assertIn("qualification and PPA evidence remain authoritative", system)
+
+
+    def test_rewrite_reserves_pragma_edits_for_pragma_level(self):
+        prompt = BottleneckOptimizationPromptBuilder().build_rewrite(rewrite_request())
+        body = "\n".join(message.content for message in prompt.messages)
+        self.assertIn("Do not add, remove, or modify HLS pragmas/directives", body)
+        self.assertIn("Pragma level owns directive edits", body)
 
 
 if __name__ == "__main__":

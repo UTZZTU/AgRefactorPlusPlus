@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
+import re
 from hashlib import sha256
 from typing import Any, Protocol, runtime_checkable
 
@@ -26,7 +27,48 @@ from .qualification import (
 from .state import CandidateRecord, HypothesisRecord, OptimizationLevel
 
 
-EXECUTION_SCHEMA_VERSION = 1
+EXECUTION_SCHEMA_VERSION = 2
+_SAFE_REASON_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+class CandidateGenerationAbstained(RuntimeError):
+    """Typed recoverable stop for one selected candidate rewrite.
+
+    This represents a model response that could not safely materialize the
+    selected hypothesis. It is not a toolchain, qualification, repository, or
+    infrastructure error. The state machine may preserve ``best_correct`` and
+    continue to the next optimization level without retrying the model call.
+    """
+
+    def __init__(
+        self,
+        *,
+        reason_code: str,
+        error_code: str,
+        detail_codes: tuple[str, ...] = (),
+    ) -> None:
+        reason = str(reason_code).strip()
+        error = str(error_code).strip()
+        details = tuple(dict.fromkeys(str(code).strip() for code in detail_codes))
+        if not _SAFE_REASON_RE.fullmatch(reason):
+            raise ValueError("reason_code must be a safe token")
+        if not error or any(char.isspace() for char in error):
+            raise ValueError("error_code must be a non-empty token")
+        if not all(_SAFE_REASON_RE.fullmatch(code) for code in details):
+            raise ValueError("detail_codes must contain safe tokens")
+        super().__init__(f"{reason}:{error}")
+        self.reason_code = reason
+        self.error_code = error
+        self.detail_codes = details
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "reason_code": self.reason_code,
+            "error_code": self.error_code,
+            "detail_codes": list(self.detail_codes),
+            "recoverable": True,
+            "automatic_retry": False,
+        }
 
 
 class FakeExecutionStatus(str, Enum):

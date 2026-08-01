@@ -13,6 +13,13 @@ from .run_output import (
     resolve_output_mode,
     write_rejection_support_artifacts,
 )
+from .stage3_optimizer import (
+    AcceptedOptimizationMaterial,
+    ProductOptimizerRequest,
+    Stage3ProductOptimizationPhase,
+    build_direct_optimization_material,
+    write_direct_optimize_execution_identity,
+)
 from .source_bootstrap import (
     SourceBootstrapPhase,
     SourceBootstrapRequest,
@@ -25,6 +32,9 @@ from .source_bootstrap import (
 
 __all__ = [
     "PRODUCT_RUN_SUMMARY_SCHEMA_VERSION",
+    "AcceptedOptimizationMaterial",
+    "ProductOptimizerRequest",
+    "Stage3ProductOptimizationPhase",
     "CapturedProductStreams",
     "ProductOutputMode",
     "SourceBootstrapPhase",
@@ -32,6 +42,7 @@ __all__ = [
     "SourceBootstrapRunResult",
     "SourceCommandRejected",
     "SourceRunLayout",
+    "build_direct_optimization_material",
     "build_product_summary",
     "build_rejection_summary",
     "build_test_source_plan",
@@ -40,5 +51,6 @@ __all__ = [
     "render_product_output",
     "resolve_output_mode",
     "run_source_command",
+    "write_direct_optimize_execution_identity",
     "write_rejection_support_artifacts",
 ]

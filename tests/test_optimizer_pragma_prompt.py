@@ -182,6 +182,41 @@ class PragmaAnalysisPromptTests(unittest.TestCase):
         self.assertIn("not an authoritative statement", text)
         self.assertIn("kind=unknown", text)
 
+    def test_prompt_contains_exact_directive_target_compatibility_matrix(self):
+        prompt = PragmaOptimizationPromptBuilder().build_analysis(self.request())
+        text = "\n".join(message.content for message in prompt.messages)
+        for rule in (
+            "pipeline -> loop or function",
+            "unroll -> loop",
+            "array_partition -> array",
+            "dataflow -> function or region",
+            "inline -> function",
+            "bind_op -> operation",
+            "unknown -> unknown",
+        ):
+            self.assertIn(rule, text)
+
+    def test_prompt_disambiguates_nested_metrics_from_signal_field_names(self):
+        prompt = PragmaOptimizationPromptBuilder().build_analysis(self.request())
+        text = "\n".join(message.content for message in prompt.messages)
+        self.assertIn("signal_fields MUST omit the metrics. prefix", text)
+        self.assertIn("never metrics.initiation_interval_max", text)
+
+    def test_prompt_contains_complete_executable_and_unknown_shapes(self):
+        prompt = PragmaOptimizationPromptBuilder().build_analysis(self.request())
+        text = "\n".join(message.content for message in prompt.messages)
+        self.assertIn("Valid executable shape example", text)
+        self.assertIn("Valid safe-unknown shape example", text)
+        self.assertIn("SUPPLIED_EVIDENCE_ID", text)
+        self.assertIn("self-check every action", text)
+
+    def test_prompt_matches_official_inline_argument_shape(self):
+        prompt = PragmaOptimizationPromptBuilder().build_analysis(self.request())
+        text = "\n".join(message.content for message in prompt.messages)
+        self.assertIn("inline: {} for ordinary INLINE", text)
+        self.assertIn('mode\":\"off|recursive', text)
+        self.assertNotIn('mode\":\"on|off|recursive', text)
+
     def test_evidence_projection_excludes_raw_report_and_hidden(self):
         payload = evidence()
         self.assertFalse(payload["raw_report_included"])
@@ -250,6 +285,14 @@ class PragmaRewritePromptTests(unittest.TestCase):
         self.assertEqual(prompt.manifest["purpose"], PRAGMA_REWRITE_PURPOSE)
         self.assertTrue(prompt.manifest["output_contract"]["complete_replacement"])
         self.assertFalse(prompt.manifest["static_pragma_gate"])
+
+    def test_rewrite_prompt_supports_explicit_safe_abstention(self):
+        prompt = PragmaOptimizationPromptBuilder().build_rewrite(self.request())
+        body = "\n".join(message.content for message in prompt.messages)
+        contract = prompt.manifest["output_contract"]
+        self.assertTrue(contract["raw_complete_source_allowed"])
+        self.assertEqual(contract["explicit_abstention_token"], "AGREFACTOR_ABSTAIN")
+        self.assertIn("typed target cannot be located", body)
 
     def test_rewrite_contains_selected_action_and_complete_source(self):
         prompt = PragmaOptimizationPromptBuilder().build_rewrite(self.request())

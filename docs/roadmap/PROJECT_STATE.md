@@ -6,7 +6,7 @@
 
 ```text
 branch=stage2-general-feedback
-baseline_before_this_package=f5a46d62cca864828e6d1ec3bbe7c5b2ef200f8a
+baseline_before_this_package=197327af79382327f2711119225d47e8ea060e00
 latest_deterministic_regression=1890/1890
 post_cli_real_smoke=accepted
 post_cli_real_smoke_run_id=post-cli-real-smoke-20260726_192331
@@ -101,7 +101,7 @@ artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifact
 ## 4. 当前不能宣称
 
 - 真实 model-backed Structural/Bottleneck/Pragma hypothesis/source contract 等于已通过 correctness、综合或 PPA；
-- 产品 `optimize/full` 已解除门禁；
+- 产品 `optimize/full` 已解除门禁，但尚无多 kernel、重复实验或稳定 PPA 收益结论；
 - 任意 Vitis 版本或器件支持；
 - 稳定模型修复/优化成功率；
 - Legacy RAG 等于 Memory Applicability Gate；
@@ -125,7 +125,7 @@ candidate state/schema
 + deterministic tests
 ```
 
-S3.1–S3.6 已验收：当前具备 candidate/checkpoint foundation、独立 Stage 3 qualification、typed PPA evidence、latency comparator、exact validation cache identity、完整 deterministic safe-v1 level/round/budget/rollback/resume 状态机，以及 real model-backed Structural、Bottleneck 和 Pragma hypothesis/complete-source contracts。S3.6 新增 typed directive/target/parameter policy、非权威 Pragma action、unknown 安全弃权和三层 dispatch；bounded smoke 只证明两次真实模型调用的合同闭环，不等于候选正确、已综合、PPA 改善、产品 `optimize/full` 或多 kernel 优化。下一包严格为 S3.7 Product Adapters，并要求在解除产品门禁前完成内部三层全链路演练。
+S3.1–S3.7 已验收：当前具备 candidate/checkpoint foundation、独立 Stage 3 qualification、typed PPA evidence、latency comparator、exact validation cache identity、完整 deterministic safe-v1 level/round/budget/rollback/resume 状态机、real model-backed Structural/Bottleneck/Pragma contracts，以及普通 `optimize/full` Product Adapters。S3.7 强制 direct optimize 独立 reference 与 provided Public/Hidden、full accepted-refactor handoff、baseline-before-model qualification、shared budget/trace、linked Stage 3 execution identity。内部真实 gate 必须触达三层 analysis；rewrite 由 executable hypothesis 与 complete-source contract 决定，可 qualification 或 typed no-retry abstention。模型合同失败不再摧毁已有 best_correct；网络/工具/文件系统错误仍硬失败。该证据只证明产品接线和 bounded chain；下一包严格为 S3.8 Evaluation。
 
 ## 6. 当前权威文档
 
@@ -144,7 +144,9 @@ S3.1–S3.6 已验收：当前具备 candidate/checkpoint foundation、独立 St
 13. [S3.5 decision record](STAGE3_S35_DECISION_RECORD.md)
 14. [S3.6 Pragma Model Integration acceptance](../acceptance/stage3/stage3_s36_pragma_model_integration_acceptance.md)
 15. [S3.6 decision record](STAGE3_S36_DECISION_RECORD.md)
-16. [最新真实产品 smoke acceptance](../acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md)
+16. [S3.7 Product Adapters acceptance](../acceptance/stage3/stage3_s37_product_adapters_acceptance.md)
+17. [S3.7 decision record](STAGE3_S37_DECISION_RECORD.md)
+18. [最新真实产品 smoke acceptance](../acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md)
 
 ## 7. 工程原则
 
@@ -154,3 +156,9 @@ S3.1–S3.6 已验收：当前具备 candidate/checkpoint foundation、独立 St
 - 不用 deterministic tests 冒充真实工具验收；
 - 只实现有当前 consumer 的 schema、registry 和 budget；
 - Stage 3 每个包先冻结范围、再实现、再做确定性与真实证据验收。
+
+S3.7 v8 hardening: all three model levels use typed no-retry analysis/rewrite abstention with safe reason codes; acceptance correlates calls, decisions, candidates and qualification rather than requiring stochastic rewrites; product qualification authority is unchanged.
+
+S3.7 v9 observer correction: acceptance reads the canonical versioned candidate-index artifact through the product parser; real fixtures use the same serializer and obsolete flat fixtures are rejected.
+
+S3.7 closure hygiene: the status header now explicitly marks Product Adapters accepted, the acceptance package label is V9, and safe model-call artifacts write schema v2 with documented v1/v2 read compatibility. Product behavior and the S3.8 next-package boundary are unchanged.

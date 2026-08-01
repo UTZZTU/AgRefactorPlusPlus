@@ -10,7 +10,7 @@ Stage 1=closed
 Stage 2=closed
 Pre-Stage-3=closed
 Stage 3 planning=frozen
-Stage 3 implementation=in progress; S3.1-S3.6 accepted
+Stage 3 implementation=in progress; S3.1-S3.7 accepted
 Stage 4=not started
 Stage 5=not started
 Stage 6=not started
@@ -23,12 +23,12 @@ Stage 6=not started
 | TargetProfile | Vitis 2023.2 committed profile、executable/settings、part、clock、compile flags、Tcl、parser identity、resource schema、per-field provenance | 多版本、更多设备/platform、版本特定 parser | Stage 5 扩展 | 至少一组真实 source/target 版本矩阵 |
 | 双模式版本处理 | `refactor/optimize/full` 数据结构预留；普通 source-only refactor 已实现 | migrate mode、SourceProfile、source baseline、migration report | Stage 5 | 一组真实旧版→目标版迁移 |
 | Model API Registry | Modern/Legacy/repair 统一 typed runtime；DeepSeek 真实 smoke；固定模型路径 | authorized auto pool、具体部署 reasoning mapping | 后续 hardening | 用户授权模型池与选择证据 |
-| 分层 Prompt | Shared builder、Target/model/evidence/scope/output layers；Candidate/Testbench consumers；S3.4 Structural、S3.5 Bottleneck、S3.6 Pragma analysis/rewrite Prompt 与 identity | S3.7 产品 consumer | Stage 3 | optimize/full unified prompt identity |
-| 结构化反馈与状态机 | Preflight、CSYNTH、Public/Hidden、repair、owner、next action、Hidden suppression；S3.2 qualification/PPA；S3.3 deterministic engine；S3.4 Structural、S3.5 Bottleneck、S3.6 typed Pragma consumer | S3.7 product orchestration | Stage 3 | full three-level internal exercise |
+| 分层 Prompt | Shared builder、Target/model/evidence/scope/output layers；Candidate/Testbench consumers；S3.4 Structural、S3.5 Bottleneck、S3.6 Pragma analysis/rewrite Prompt 与 identity | S3.7 product consumer 已接通；S3.8 evaluation consumer | Stage 3 | optimize/full unified prompt identity |
+| 结构化反馈与状态机 | Preflight、CSYNTH、Public/Hidden、repair、owner、next action、Hidden suppression；S3.2 qualification/PPA；S3.3 deterministic engine；S3.4 Structural、S3.5 Bottleneck、S3.6 typed Pragma consumer | S3.7 product orchestration 已完成；S3.8 multi-kernel orchestration | Stage 3 | full three-level internal exercise |
 | Multi-type ground truth | 7 baselines、7/7 full chains、9/9 fault matrix、16/16 labels | 更广 kernel/版本/设备统计 | Stage 6 | 固定 benchmark 扩展 |
-| 安全三级优化器 | S3.1 state/checkpoint；S3.2 qualification/PPA/cache；S3.3 deterministic engine；S3.4 Structural、S3.5 Bottleneck、S3.6 Pragma real model hypothesis/complete-source integration；Legacy `opt.simple_iter` 仍仅为 baseline | S3.7 optimize/full、S3.8 evaluation | Stage 3 | S3.7 internal full-chain exercise |
+| 安全三级优化器 | S3.1 state/checkpoint；S3.2 qualification/PPA/cache；S3.3 deterministic engine；S3.4 Structural、S3.5 Bottleneck、S3.6 Pragma real model hypothesis/complete-source integration；Legacy `opt.simple_iter` 仍仅为 baseline | S3.7 optimize/full 已完成、S3.8 evaluation | Stage 3 | S3.7 internal full-chain accepted；S3.8 fixed evaluation protocol |
 | Memory Applicability Gate | Legacy RAG 正负 trial 可作为 baseline | schema、score、abstention、off/gated/always | Stage 4 | 负迁移和弃权实验 |
-| BudgetManager | LLM/Tool/Compile/CSIM/CSYNTH/wall-time 硬控制；Token/Cost observed-only；S3.3 fallback；S3.4–S3.6 real LLM prospective/physical accounting | S3.7 mixed model/tool product orchestration 与未来 cosim | Stage 3/后续 | full-chain physical budget evidence |
+| BudgetManager | LLM/Tool/Compile/CSIM/CSYNTH/wall-time 硬控制；Token/Cost observed-only；S3.3 fallback；S3.4–S3.6 real LLM prospective/physical accounting | S3.7 mixed model/tool product orchestration 已完成；未来 cosim | Stage 3/后续 | full-chain physical budget evidence |
 | 版本迁移 | 长期目标保留 | 真实 source→target 修复、验证、优化和报告 | Stage 5 | migration acceptance |
 | 论文评测 | 真实工具证据和审计基础已具备 | safe optimizer 与 simple_iter、公平预算、多 kernel 重复实验、消融 | Stage 6 | 固定评测协议 |
 
@@ -198,6 +198,26 @@ loop regexes or warning patterns as an authoritative Pragma gate. Generic
 `optimize/full` remains gated; S3.7 must complete an internal three-level full
 chain before removing those gates.
 
+### 已完成 S3.7
+
+```text
+normal optimize/full product adapters
+direct optimize independent reference + provided Public/Hidden
+full accepted-refactor typed handoff
+baseline qualification before optimization model calls
+shared BudgetManager/TraceRecorder across product phases
+linked root + Stage 3 execution identity
+unified safe model-call/output artifacts
+28/28 S3.7 focused
+402/402 optimizer regression
+1941/1941 full deterministic regression
+internal real chain: 6 LLM calls + real Vitis compile/CSIM/CSYNTH
+```
+
+S3.7 proves product wiring and one bounded full chain. It does not prove stable
+PPA improvement, general model quality, multi-kernel success or superiority to
+`simple_iter`; those remain S3.8.
+
 ## 完成声明检查表
 
 任何未来“已完成”声明必须同时回答：
@@ -209,3 +229,9 @@ chain before removing those gates.
 5. 是否有真实端到端 evidence？
 6. artifact 是否足以复现？
 7. 是否明确不能外推的边界？
+
+S3.7 v8 hardening: all three analysis/rewrite contracts support typed no-retry abstention with safe reason codes; semantic event linkage replaces fixed-call assumptions while real qualification remains authoritative.
+
+S3.7 v9 traceability: real-smoke candidate persistence is verified through `candidate_index_from_dict`; fixtures use `candidate_index_to_dict` and reject obsolete flat mappings.
+
+S3.7 closure hygiene: safe model-call artifacts now write explicit schema v2; the reader accepts both historical v1 shapes and v2. This is an audit-schema governance correction only and does not change optimization authority or execution.

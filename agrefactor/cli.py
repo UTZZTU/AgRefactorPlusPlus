@@ -375,7 +375,7 @@ def build_parser() -> argparse.ArgumentParser:
             source_command,
             help=(
                 "Run the normal source-only product entrypoint. "
-                "Optimize/full execution remains gated until Stage 3."
+                "Stage 3 safe-v1 is available for optimize/full."
             ),
         )
         source_parser.set_defaults(
@@ -394,6 +394,31 @@ def build_parser() -> argparse.ArgumentParser:
             required=True,
             help="Explicit source top function name.",
         )
+        source_parser.add_argument(
+            "--reference-source",
+            type=Path,
+            help=(
+                "Independent reference source required by direct optimize; "
+                "full mode obtains this from the refactor phase."
+            ),
+        )
+        source_parser.add_argument(
+            "--reference-top",
+            help="Reference top function for direct optimize. Defaults to --top.",
+        )
+        if source_command in {"optimize", "full"}:
+            source_parser.add_argument(
+                "--optimizer-profile",
+                choices=("safe-v1",),
+                default="safe-v1",
+                help="Typed optimizer policy profile. Stage 3 v1 supports only safe-v1.",
+            )
+            source_parser.add_argument(
+                "--optimization-objective",
+                choices=("latency",),
+                default="latency",
+                help="Optimization objective. Stage 3 v1 supports only latency.",
+            )
         source_parser.add_argument(
             "--model",
             required=True,
@@ -840,7 +865,7 @@ def _run_legacy_refactor(
     if task.mode is not RunMode.REFACTOR:
         raise ValueError(
             "Legacy execution currently supports only mode='refactor'. "
-            "Use --dry-run for optimize/full until their adapters are added."
+            "Use the normal optimize/full source commands; advanced legacy run supports refactor only."
         )
 
     runner = UnifiedRunner(

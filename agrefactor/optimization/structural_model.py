@@ -39,6 +39,7 @@ from agrefactor.models import (
 from agrefactor.models.candidate_adapter import (
     CandidateResponseContract,
     CandidateResponseError,
+    candidate_response_reason_codes,
 )
 from agrefactor.prompts.optimization import (
     StructuralHypothesisPromptRequest,
@@ -51,17 +52,26 @@ from .execution import (
     CandidateExecutionRequest,
     CandidateExecutionResult,
     CandidateExecutor,
+    CandidateGenerationAbstained,
 )
 from .policy import BudgetIncrement
-from .provider import HypothesisProvider, HypothesisRequest
+from .provider import (
+    HypothesisGenerationAbstained,
+    HypothesisProvider,
+    HypothesisRequest,
+)
 from .qualification import CandidateQualificationResult
 from .state import HypothesisRecord, HypothesisRisk, OptimizationLevel
 
 
 STRUCTURAL_MODEL_SCHEMA_VERSION = 1
+MODEL_CALL_ARTIFACT_SCHEMA_VERSION = 2
+MODEL_CALL_ARTIFACT_SUPPORTED_READ_VERSIONS = frozenset({1, 2})
 STRUCTURAL_HYPOTHESIS_RESPONSE_SCHEMA_VERSION = 1
-_MODEL_CALL_KIND_HYPOTHESIS = "structural_hypothesis"
-_MODEL_CALL_KIND_REWRITE = "structural_rewrite"
+STRUCTURAL_MODEL_CALL_KIND_HYPOTHESIS = "structural_hypothesis"
+STRUCTURAL_MODEL_CALL_KIND_REWRITE = "structural_rewrite"
+_MODEL_CALL_KIND_HYPOTHESIS = STRUCTURAL_MODEL_CALL_KIND_HYPOTHESIS
+_MODEL_CALL_KIND_REWRITE = STRUCTURAL_MODEL_CALL_KIND_REWRITE
 _JSON_FENCE_RE = re.compile(r"^```[ \t]*json[ \t]*\r?\n(?P<body>.*)```$", re.DOTALL | re.IGNORECASE)
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -86,11 +96,12 @@ class StructuralModelCallRecord:
     response_sha256: str | None
     response_valid: bool
     error_code: str | None
+    error_reason_codes: tuple[str, ...]
     usage: Mapping[str, Any]
     finish_reason: str | None
     timestamp_utc: str
 
-    schema_version = STRUCTURAL_MODEL_SCHEMA_VERSION
+    schema_version = MODEL_CALL_ARTIFACT_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
         if isinstance(self.sequence, bool) or self.sequence < 1:
@@ -112,6 +123,16 @@ class StructuralModelCallRecord:
             raise ValueError("response_sha256 must be lowercase SHA-256 or null")
         if not isinstance(self.response_valid, bool):
             raise TypeError("response_valid must be boolean")
+        reasons = tuple(self.error_reason_codes)
+        if not all(
+            isinstance(code, str)
+            and re.fullmatch(r"[a-z][a-z0-9_]*", code)
+            for code in reasons
+        ):
+            raise ValueError("error_reason_codes must contain safe tokens")
+        if self.response_valid and reasons:
+            raise ValueError("valid model calls must not carry error_reason_codes")
+        object.__setattr__(self, "error_reason_codes", reasons)
         object.__setattr__(self, "prompt_manifest", _safe_json_object(self.prompt_manifest, "prompt_manifest"))
         object.__setattr__(self, "usage", _safe_json_object(self.usage, "usage"))
 
@@ -128,10 +149,78 @@ class StructuralModelCallRecord:
             "response_sha256": self.response_sha256,
             "response_valid": self.response_valid,
             "error_code": self.error_code,
+            "error_reason_codes": list(self.error_reason_codes),
             "usage": dict(self.usage),
             "finish_reason": self.finish_reason,
             "timestamp_utc": self.timestamp_utc,
         }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "StructuralModelCallRecord":
+        """Read current v2 and both historical v1 model-call artifact shapes.
+
+        Writers emit v2. Historical v1 records are accepted either without
+        ``error_reason_codes`` or with the backward-compatible optional
+        extension that S3.7 v8/v9 wrote before the schema bump.
+        """
+
+        if not isinstance(value, Mapping):
+            raise TypeError("model call record must be a mapping")
+        payload = dict(value)
+        version = payload.get("schema_version")
+        if (
+            isinstance(version, bool)
+            or version not in MODEL_CALL_ARTIFACT_SUPPORTED_READ_VERSIONS
+        ):
+            raise ValueError("unsupported model call artifact schema_version")
+
+        common_fields = {
+            "schema_version",
+            "sequence",
+            "call_kind",
+            "logical_model_name",
+            "provider_name",
+            "model_id",
+            "prompt_identity_sha256",
+            "prompt_manifest",
+            "response_sha256",
+            "response_valid",
+            "error_code",
+            "usage",
+            "finish_reason",
+            "timestamp_utc",
+        }
+        if version == 1:
+            required_fields = common_fields
+            allowed_fields = common_fields | {"error_reason_codes"}
+        else:
+            required_fields = common_fields | {"error_reason_codes"}
+            allowed_fields = required_fields
+
+        missing = required_fields - set(payload)
+        unknown = set(payload) - allowed_fields
+        if missing or unknown:
+            raise ValueError(
+                "model call record fields do not match schema "
+                f"(missing={sorted(missing)}, unknown={sorted(unknown)})"
+            )
+
+        return cls(
+            sequence=payload["sequence"],
+            call_kind=payload["call_kind"],
+            logical_model_name=payload["logical_model_name"],
+            provider_name=payload["provider_name"],
+            model_id=payload["model_id"],
+            prompt_identity_sha256=payload["prompt_identity_sha256"],
+            prompt_manifest=payload["prompt_manifest"],
+            response_sha256=payload["response_sha256"],
+            response_valid=payload["response_valid"],
+            error_code=payload["error_code"],
+            error_reason_codes=tuple(payload.get("error_reason_codes", ())),
+            usage=payload["usage"],
+            finish_reason=payload["finish_reason"],
+            timestamp_utc=payload["timestamp_utc"],
+        )
 
 
 class StructuralModelArtifactWriter:
@@ -169,6 +258,7 @@ class StructuralModelArtifactWriter:
         response: ModelResponse | None,
         response_valid: bool,
         error_code: str | None,
+        error_reason_codes: Sequence[str] = (),
     ) -> StructuralModelCallRecord:
         manifest = _safe_json_object(prompt_manifest, "prompt_manifest")
         prompt_sha = manifest.get("prompt_identity_sha256")
@@ -188,6 +278,7 @@ class StructuralModelArtifactWriter:
             response_sha256=(None if response is None else sha256(response.text.encode("utf-8")).hexdigest()),
             response_valid=response_valid,
             error_code=error_code,
+            error_reason_codes=tuple(error_reason_codes),
             usage=({} if response is None else response.usage.to_dict()),
             finish_reason=None if response is None else response.finish_reason,
             timestamp_utc=timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -398,7 +489,15 @@ class _StructuralModelEndpoint:
             error_code=None,
         )
 
-    def _record_invalid(self, *, prompt, call_kind: str, response: ModelResponse, error: Exception) -> None:
+    def _record_invalid(
+        self,
+        *,
+        prompt,
+        call_kind: str,
+        response: ModelResponse,
+        error: Exception,
+        error_reason_codes: tuple[str, ...] | None = None,
+    ) -> None:
         self._artifacts.append(
             call_kind=call_kind,
             effective_config=self._effective_config,
@@ -406,6 +505,11 @@ class _StructuralModelEndpoint:
             response=response,
             response_valid=False,
             error_code=type(error).__name__,
+            error_reason_codes=(
+                candidate_response_reason_codes(error)
+                if error_reason_codes is None
+                else error_reason_codes
+            ),
         )
 
 
@@ -517,14 +621,19 @@ class StructuralModelHypothesisProvider(_StructuralModelEndpoint):
                 )
                 for index, draft in enumerate(drafts, start=1)
             )
-        except Exception as exc:
+        except StructuralModelContractError as exc:
             self._record_invalid(
                 prompt=prompt,
                 call_kind=_MODEL_CALL_KIND_HYPOTHESIS,
                 response=response,
                 error=exc,
+                error_reason_codes=("analysis_response_contract_invalid",),
             )
-            raise
+            raise HypothesisGenerationAbstained(
+                reason_code="hypothesis_response_contract_abstention",
+                error_code=type(exc).__name__,
+                detail_codes=("analysis_response_contract_invalid",),
+            ) from exc
         self._record_valid(
             prompt=prompt,
             call_kind=_MODEL_CALL_KIND_HYPOTHESIS,
@@ -703,7 +812,14 @@ class StructuralModelCandidateExecutor:
         if request.level is not OptimizationLevel.STRUCTURAL:
             raise ValueError("S3.4 executor supports Structural only")
         self._requests.append(request)
-        generated = self._generator.generate(request)
+        try:
+            generated = self._generator.generate(request)
+        except CandidateResponseError as exc:
+            raise CandidateGenerationAbstained(
+                reason_code="candidate_response_contract_abstention",
+                error_code=type(exc).__name__,
+                detail_codes=candidate_response_reason_codes(exc),
+            ) from exc
         qualification = self._qualifier.qualify(request, generated.source)
         if not isinstance(qualification, CandidateQualificationResult):
             raise TypeError("qualifier must return CandidateQualificationResult")

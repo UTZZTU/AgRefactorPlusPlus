@@ -16,7 +16,7 @@ import sys
 import tempfile
 from typing import Any, TextIO
 
-from agrefactor.runtime import RunResult
+from agrefactor.runtime import RunPhase, RunResult
 
 
 PRODUCT_RUN_SUMMARY_SCHEMA_VERSION = 1
@@ -150,6 +150,11 @@ def build_product_summary(
         raise TypeError("result must be a RunResult")
     root = Path(artifact_root).expanduser().resolve()
     identity = _read_json(root / "execution_identity.json")
+    stage3_identity = (
+        _read_json(root / "stage3_execution_identity.json")
+        if (root / "stage3_execution_identity.json").is_file()
+        else {}
+    )
     phase = result.phases[-1] if result.phases else None
     phase_metadata = {} if phase is None else dict(phase.metadata)
     accepted = bool(result.succeeded and phase_metadata.get("accepted") is True)
@@ -161,12 +166,17 @@ def build_product_summary(
     suites = identity.get("suites", [])
     public_status = _suite_status(suites, "public")
     hidden_status = _suite_status(suites, "hidden")
+    if accepted and phase is not None and phase.phase is RunPhase.OPTIMIZE:
+        public_status = "passed"
+        hidden_status = "passed"
     failed_stage = None if accepted else _failed_stage(identity, phase_metadata)
-    candidate_path = root / "refactor" / "final_candidate.cpp"
+    candidate_path = root / "optimize" / "final_candidate.cpp"
+    if not candidate_path.is_file():
+        candidate_path = root / "refactor" / "final_candidate.cpp"
     if not candidate_path.is_file():
         candidate_path = root / "bootstrap" / "initial_candidate.cpp"
-    budget = _summary_budget(identity)
-    pricing = _summary_pricing(identity)
+    budget = _summary_budget(identity, stage3_identity=stage3_identity)
+    pricing = _summary_pricing(identity, stage3_identity=stage3_identity)
     repairs = {
         "used": _nonnegative_int(phase_metadata.get("repair_attempt_count")),
         "limit": _repair_limit(root),
@@ -202,6 +212,11 @@ def build_product_summary(
             "root": str(root),
             "details": str(root / "full_result.json"),
             "manifest": str(root / "run_artifact_manifest.json"),
+            "stage3_identity": (
+                str(root / "stage3_execution_identity.json")
+                if (root / "stage3_execution_identity.json").is_file()
+                else None
+            ),
         },
         **budget,
         "pricing": pricing,
@@ -209,6 +224,7 @@ def build_product_summary(
             "cost_estimation_quality", "unavailable"
         ),
         "execution_identity": _safe_execution_identity(identity),
+        "optimizer": _optimizer_summary(stage3_identity),
         "phases": phases,
     }
     _assert_summary_safe(payload)
@@ -313,7 +329,7 @@ def finalize_product_artifacts(
     shutil.copyfile(captured.stderr_path, root / "stderr.log")
     _atomic_json(root / "full_result.json", result.to_dict())
     identity = _read_json(root / "execution_identity.json")
-    _atomic_json(root / "model_calls.json", _model_calls_payload(identity))
+    _atomic_json(root / "model_calls.json", _model_calls_payload(identity, artifact_root=root))
     _atomic_json(
         root / "tool_calls.json",
         _tool_calls_payload(
@@ -343,7 +359,7 @@ def write_rejection_support_artifacts(
     )
     identity_path = root / "execution_identity.json"
     identity = _read_json(identity_path) if identity_path.is_file() else {}
-    _atomic_json(root / "model_calls.json", _model_calls_payload(identity))
+    _atomic_json(root / "model_calls.json", _model_calls_payload(identity, artifact_root=root))
     _atomic_json(
         root / "tool_calls.json",
         {
@@ -454,35 +470,44 @@ def _cost_line(summary: Mapping[str, Any]) -> str:
     return text
 
 
-def _summary_budget(identity: Mapping[str, Any]) -> dict[str, Any]:
+def _summary_budget(
+    identity: Mapping[str, Any],
+    *,
+    stage3_identity: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     budget = identity.get("budget", {})
     budget_map = budget if isinstance(budget, Mapping) else {}
     contract = budget_map.get("contract", {})
     contract_map = contract if isinstance(contract, Mapping) else {}
+    usage = None if budget_map.get("usage") is None else dict(budget_map.get("usage", {}))
+    if isinstance(stage3_identity, Mapping):
+        stage3_usage = stage3_identity.get("budget_usage")
+        if isinstance(stage3_usage, Mapping):
+            usage = dict(stage3_usage)
     return {
         "system_defaults": dict(contract_map.get("system_defaults", {})),
-        "system_safety_ceilings": dict(
-            contract_map.get("system_safety_ceilings", {})
-        ),
+        "system_safety_ceilings": dict(contract_map.get("system_safety_ceilings", {})),
         "user_requested": dict(contract_map.get("user_requested", {})),
-        "effective_hard_limits": dict(
-            contract_map.get("effective_hard_limits", {})
-        ),
+        "effective_hard_limits": dict(contract_map.get("effective_hard_limits", {})),
         "soft_budgets": dict(contract_map.get("soft_usage_budgets", {})),
-        "usage": (
-            None
-            if budget_map.get("usage") is None
-            else dict(budget_map.get("usage", {}))
-        ),
+        "usage": usage,
         "remaining": dict(budget_map.get("remaining_hard_budget", {})),
         "hard_budget_exhausted": budget_map.get("hard_budget_exhaustion"),
-        "soft_budget_exceeded": dict(
-            budget_map.get("soft_budget_exceeded", {})
-        ),
+        "soft_budget_exceeded": dict(budget_map.get("soft_budget_exceeded", {})),
     }
 
 
-def _summary_pricing(identity: Mapping[str, Any]) -> dict[str, Any]:
+def _summary_pricing(
+    identity: Mapping[str, Any],
+    *,
+    stage3_identity: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    if isinstance(stage3_identity, Mapping):
+        calls = stage3_identity.get("model_calls")
+        if isinstance(calls, Mapping):
+            pricing = calls.get("pricing")
+            if isinstance(pricing, Mapping):
+                return dict(pricing)
     pricing = _mapping_path(identity, "model", "pricing")
     return dict(pricing) if isinstance(pricing, Mapping) else {
         "snapshot_sha256": None,
@@ -557,10 +582,59 @@ def _safe_execution_identity(identity: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _model_calls_payload(identity: Mapping[str, Any]) -> dict[str, Any]:
+def _optimizer_summary(stage3_identity: Mapping[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(stage3_identity, Mapping) or not stage3_identity:
+        return None
+    final_candidate = stage3_identity.get("final_candidate")
+    final_map = final_candidate if isinstance(final_candidate, Mapping) else {}
+    state = stage3_identity.get("state")
+    state_map = state if isinstance(state, Mapping) else {}
+    return {
+        "terminal_status": stage3_identity.get("terminal_status"),
+        "best_correct_candidate_id": state_map.get("best_correct_candidate_id"),
+        "best_ppa_candidate_id": state_map.get("best_ppa_candidate_id"),
+        "executed_candidate_count": state_map.get("executed_candidate_count"),
+        "final_candidate_sha256": final_map.get("sha256"),
+        "identity_sha256": stage3_identity.get("identity_sha256"),
+    }
+
+
+def _read_safe_model_calls(artifact_root: Path) -> list[dict[str, Any]]:
+    path = artifact_root / "optimize" / "model" / "model_calls.jsonl"
+    if not path.is_file() or path.is_symlink():
+        return []
+    records: list[dict[str, Any]] = []
+    for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"optimizer model_calls.jsonl line {line_number} is invalid JSON"
+            ) from exc
+        if not isinstance(value, Mapping) or value.get("sequence") != line_number:
+            raise ValueError("optimizer model-call sequence must be contiguous")
+        copied = _redact_secrets(dict(value))
+        if not isinstance(copied, dict):
+            raise TypeError("optimizer model-call record must remain an object")
+        records.append(copied)
+    return records
+
+
+def _model_calls_payload(
+    identity: Mapping[str, Any],
+    *,
+    artifact_root: Path | None = None,
+) -> dict[str, Any]:
     model = _mapping_path(identity, "model", "value")
     prompt = identity.get("prompt_identity", {})
     pricing = _mapping_path(identity, "model", "pricing")
+    calls = [] if artifact_root is None else _read_safe_model_calls(artifact_root)
+    stage3 = {}
+    if artifact_root is not None and (artifact_root / "stage3_execution_identity.json").is_file():
+        stage3 = _read_json(artifact_root / "stage3_execution_identity.json")
+        stage3_calls = stage3.get("model_calls")
+        if isinstance(stage3_calls, Mapping) and isinstance(stage3_calls.get("pricing"), Mapping):
+            pricing = stage3_calls["pricing"]
     return {
         "schema_version": _PRODUCT_ARTIFACT_SCHEMA_VERSION,
         "evidence_view": "operator_full",
@@ -568,7 +642,10 @@ def _model_calls_payload(identity: Mapping[str, Any]) -> dict[str, Any]:
         "model": dict(model) if isinstance(model, Mapping) else {},
         "prompt_identity": dict(prompt) if isinstance(prompt, Mapping) else {},
         "pricing": dict(pricing) if isinstance(pricing, Mapping) else {},
+        "optimizer_calls": calls,
+        "optimizer_call_count": len(calls),
         "plaintext_prompts_persisted": False,
+        "plaintext_responses_persisted": False,
     }
 
 

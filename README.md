@@ -73,8 +73,9 @@ independent Public/Hidden validation, bounded Testbench and Candidate repair,
 structured terminal results, Execution Identity, artifact manifests, and shared
 budget accounting.
 
-The safe optimizer, Memory Applicability Gate, and version-migration runtime are
-separate roadmap stages and are not presented as completed features.
+The safe-v1 three-level optimizer and its `optimize/full` product adapters are
+available. Memory Applicability Gate and version-migration runtime remain
+separate later roadmap stages.
 
 For the exact implementation and validation boundary, see:
 
@@ -164,6 +165,39 @@ python -m agrefactor.cli refactor \
   --hidden-coverage-rounds 3 \
   --public-generation-trajectories 2 \
   --hidden-generation-trajectories 2 \
+  --public-tests auto \
+  --hidden-tests auto
+```
+
+### Direct safe optimization
+
+```bash
+python -m agrefactor.cli optimize candidate.cpp \
+  --top candidate_top \
+  --reference-source original.cpp \
+  --reference-top original_top \
+  --public-test public_tb.cpp \
+  --hidden-test hidden_tb.cpp \
+  --model deepseek-v4-flash \
+  --optimizer-profile safe-v1 \
+  --optimization-objective latency
+```
+
+Direct optimize requires an independent reference and provided Public/Hidden
+suites. `full` runs the accepted refactor pipeline first, then optimizes its
+accepted candidate with the exact qualified suites:
+
+Model analysis or rewrite output that does not satisfy its typed contract is a
+controlled, no-retry abstention for that level: the optimizer preserves
+`best_correct`, records safe reason codes, and continues when possible. Network,
+credential, filesystem, toolchain, and qualification infrastructure failures
+remain hard errors. Contract validation never certifies source applicability or
+PPA; real compile, Public/Hidden CSIM, CSYNTH, and typed PPA remain authoritative.
+
+```bash
+python -m agrefactor.cli full kernel.cpp \
+  --top kernel_top \
+  --model deepseek-v4-flash \
   --public-tests auto \
   --hidden-tests auto
 ```

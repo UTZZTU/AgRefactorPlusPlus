@@ -17,6 +17,8 @@ from agrefactor.models import (
     CandidateResponseError,
 )
 from agrefactor.optimization import (
+    CandidateGenerationAbstained,
+    HypothesisGenerationAbstained,
     CandidateExecutionRequest,
     CandidateRecord,
     CandidateStatus,
@@ -26,6 +28,8 @@ from agrefactor.optimization import (
     HypothesisRecord,
     HypothesisRequest,
     HypothesisRisk,
+    MODEL_CALL_ARTIFACT_SCHEMA_VERSION,
+    MODEL_CALL_ARTIFACT_SUPPORTED_READ_VERSIONS,
     OptimizationLevel,
     OptimizerCheckpointWriter,
     OptimizerState,
@@ -35,6 +39,7 @@ from agrefactor.optimization import (
     StructuralCandidateGenerationResult,
     StructuralHypothesisResponseContract,
     StructuralModelArtifactWriter,
+    StructuralModelCallRecord,
     StructuralModelCandidateExecutor,
     StructuralModelCandidateGenerator,
     StructuralModelContractError,
@@ -315,6 +320,9 @@ class StructuralModelArtifactWriterTests(unittest.TestCase):
                 error_code=None,
             )
             self.assertEqual(record.sequence, 2)
+            self.assertEqual(record.schema_version, MODEL_CALL_ARTIFACT_SCHEMA_VERSION)
+            payload = json.loads(writer.path.read_text(encoding="utf-8").splitlines()[-1])
+            self.assertEqual(payload["schema_version"], 2)
 
     def test_writer_rejects_unsafe_manifest_key(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -344,6 +352,77 @@ class StructuralModelArtifactWriterTests(unittest.TestCase):
             text = writer.path.read_text(encoding="utf-8")
             self.assertNotIn(raw, text)
             self.assertIn(hashlib.sha256(raw.encode()).hexdigest(), text)
+
+
+    def test_v1_without_reason_codes_is_read_compatible(self):
+        payload = {
+            "schema_version": 1,
+            "sequence": 1,
+            "call_kind": "structural_hypothesis",
+            "logical_model_name": "fixture",
+            "provider_name": "fixture",
+            "model_id": "fixture",
+            "prompt_identity_sha256": "a" * 64,
+            "prompt_manifest": {"prompt_identity_sha256": "a" * 64},
+            "response_sha256": None,
+            "response_valid": False,
+            "error_code": "StructuralModelContractError",
+            "usage": {},
+            "finish_reason": "stop",
+            "timestamp_utc": "2026-08-01T00:00:00Z",
+        }
+        record = StructuralModelCallRecord.from_dict(payload)
+        self.assertEqual(record.error_reason_codes, ())
+        self.assertEqual(record.to_dict()["schema_version"], 2)
+
+    def test_v1_optional_reason_code_extension_is_read_compatible(self):
+        payload = {
+            "schema_version": 1,
+            "sequence": 1,
+            "call_kind": "structural_rewrite",
+            "logical_model_name": "fixture",
+            "provider_name": "fixture",
+            "model_id": "fixture",
+            "prompt_identity_sha256": "a" * 64,
+            "prompt_manifest": {"prompt_identity_sha256": "a" * 64},
+            "response_sha256": None,
+            "response_valid": False,
+            "error_code": "CandidateResponseError",
+            "error_reason_codes": ["explicit_abstention"],
+            "usage": {},
+            "finish_reason": "stop",
+            "timestamp_utc": "2026-08-01T00:00:00Z",
+        }
+        record = StructuralModelCallRecord.from_dict(payload)
+        self.assertEqual(record.error_reason_codes, ("explicit_abstention",))
+        self.assertEqual(
+            MODEL_CALL_ARTIFACT_SUPPORTED_READ_VERSIONS,
+            frozenset({1, 2}),
+        )
+
+    def test_v2_requires_reason_codes_and_unknown_versions_are_rejected(self):
+        payload = {
+            "schema_version": 2,
+            "sequence": 1,
+            "call_kind": "structural_hypothesis",
+            "logical_model_name": "fixture",
+            "provider_name": "fixture",
+            "model_id": "fixture",
+            "prompt_identity_sha256": "a" * 64,
+            "prompt_manifest": {"prompt_identity_sha256": "a" * 64},
+            "response_sha256": None,
+            "response_valid": False,
+            "error_code": "StructuralModelContractError",
+            "usage": {},
+            "finish_reason": "stop",
+            "timestamp_utc": "2026-08-01T00:00:00Z",
+        }
+        with self.assertRaises(ValueError):
+            StructuralModelCallRecord.from_dict(payload)
+        payload["schema_version"] = 3
+        payload["error_reason_codes"] = []
+        with self.assertRaises(ValueError):
+            StructuralModelCallRecord.from_dict(payload)
 
 
 class StructuralModelHypothesisProviderTests(unittest.TestCase):
@@ -400,11 +479,16 @@ class StructuralModelHypothesisProviderTests(unittest.TestCase):
             provider = StructuralModelHypothesisProvider(
                 registry=registry, effective_config=config, task=task(), budget=budget, artifacts=artifacts
             )
-            with self.assertRaises(StructuralModelContractError):
+            with self.assertRaises(HypothesisGenerationAbstained) as captured:
                 provider.propose(hypothesis_request())
+            self.assertEqual(captured.exception.error_code, "StructuralModelContractError")
             record = json.loads(artifacts.path.read_text(encoding="utf-8"))
             self.assertFalse(record["response_valid"])
             self.assertEqual(record["call_kind"], "structural_hypothesis")
+            self.assertEqual(
+                record["error_reason_codes"],
+                ["analysis_response_contract_invalid"],
+            )
 
     def test_provider_exception_is_audited(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -417,6 +501,7 @@ class StructuralModelHypothesisProviderTests(unittest.TestCase):
             record = json.loads(artifacts.path.read_text(encoding="utf-8"))
             self.assertEqual(record["error_code"], "RuntimeError")
             self.assertIsNone(record["response_sha256"])
+            self.assertEqual(record["error_reason_codes"], [])
 
 
 class FakeQualifier:
@@ -475,6 +560,34 @@ class StructuralCandidateGenerationAndIntegrationTests(unittest.TestCase):
             )
             with self.assertRaises(CandidateResponseError):
                 generator.generate(execution_request())
+
+    def test_executor_converts_candidate_contract_failure_to_safe_abstention(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            hyp = structural_hypothesis()
+            registry, config, _, budget, artifacts = endpoint(
+                [response("AGREFACTOR_ABSTAIN")], root / "rewrite"
+            )
+            qualifier = FakeQualifier()
+            executor = StructuralModelCandidateExecutor(
+                generator=StructuralModelCandidateGenerator(
+                    registry=registry,
+                    effective_config=config,
+                    task=task(),
+                    budget=budget,
+                    artifacts=artifacts,
+                ),
+                qualifier=qualifier,
+            )
+            with self.assertRaises(CandidateGenerationAbstained) as captured:
+                executor.execute(execution_request(hypothesis=hyp))
+            self.assertEqual(
+                captured.exception.detail_codes,
+                ("explicit_abstention",),
+            )
+            self.assertEqual(len(qualifier.calls), 0)
+            record = json.loads(artifacts.path.read_text().splitlines()[-1])
+            self.assertEqual(record["error_reason_codes"], ["explicit_abstention"])
 
     def test_executor_delegates_qualification_after_generation(self):
         with tempfile.TemporaryDirectory() as directory:

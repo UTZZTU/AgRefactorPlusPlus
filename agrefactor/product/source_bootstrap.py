@@ -439,7 +439,7 @@ class SourceBootstrapRequest:
             is TestSourceSelectionMode.NONE
         ):
             raise ValueError(
-                "normal refactor execution requires at least one "
+                "normal refactor/full execution requires at least one "
                 "Public suite; use auto or --public-test"
             )
         if not isinstance(self.budget_contract, EffectiveRunBudget):
@@ -977,12 +977,17 @@ class SourceBootstrapPhase:
         self._public_testbench_prompt_evidence: tuple[
             Mapping[str, Any], ...
         ] = ()
+        self._accepted_optimization_material = None
+
+    @property
+    def accepted_optimization_material(self):
+        return self._accepted_optimization_material
 
     def __call__(self, context: RunContext) -> PhaseResult:
-        if self._request.mode is not RunMode.REFACTOR:
+        if self._request.mode not in {RunMode.REFACTOR, RunMode.FULL}:
             raise ValueError(
-                "source bootstrap execution currently supports refactor; "
-                "optimize/full remain gated until the Stage-3 optimizer"
+                "source bootstrap execution supports refactor/full only; "
+                "direct optimize uses the Stage 3 product adapter"
             )
         bootstrap_root = self._layout.artifact_root / "bootstrap"
         bootstrap_root.mkdir(parents=True, exist_ok=True)
@@ -1186,6 +1191,7 @@ class SourceBootstrapPhase:
             testbench_path=preflight_suite.testbench_path,
             test_suites=suites,
         )
+        identity_task = _product_identity_task(formal_task, self._request.mode)
 
         public_preparation = None
         if (
@@ -1240,7 +1246,7 @@ class SourceBootstrapPhase:
             if not public_preparation.succeeded:
                 identity_summary = self._write_execution_identity(
                     context=context,
-                    normalized_task=formal_task,
+                    normalized_task=identity_task,
                     suites=suites,
                     execution_status="failed",
                     initial_candidate_path=(
@@ -1312,6 +1318,7 @@ class SourceBootstrapPhase:
                     ),
                     test_suites=suites,
                 )
+                identity_task = _product_identity_task(formal_task, self._request.mode)
 
         _atomic_json(
             bootstrap_root / "normalized_task.json",
@@ -1398,7 +1405,7 @@ class SourceBootstrapPhase:
             )
         identity_summary = self._write_execution_identity(
             context=context,
-            normalized_task=formal_task,
+            normalized_task=identity_task,
             suites=suites,
             execution_status=(
                 "accepted" if accepted else formal_result.status.value
@@ -1423,6 +1430,26 @@ class SourceBootstrapPhase:
                 else None
             ),
         )
+        if accepted:
+            from .stage3_optimizer import AcceptedOptimizationMaterial
+
+            self._accepted_optimization_material = AcceptedOptimizationMaterial(
+                baseline_source_path=final_candidate_path,
+                reference_source_path=self._request.source_path,
+                top_function=candidate_top,
+                reference_top_function=self._request.top_function,
+                target=self._request.target,
+                suites=tuple(suites),
+                suite_codes=dict(suite_codes),
+                preflight_suite_id=preflight_suite.suite_id,
+                provenance={
+                    "kind": "accepted_refactor_handoff",
+                    "formal_task_id": formal_task.task_id,
+                    "source_run_id": context.run_id,
+                    "execution_identity": identity_summary,
+                },
+            )
+
         metadata.update(
             {
                 "source_bootstrap": True,
@@ -2244,6 +2271,27 @@ def _build_generation_settings(
     )
 
 
+
+def _product_identity_task(formal_task: TaskSpec, requested_mode: RunMode) -> TaskSpec:
+    """Keep refactor validation internal while root identity reflects full mode."""
+
+    if not isinstance(formal_task, TaskSpec):
+        raise TypeError("formal_task must be TaskSpec")
+    mode = requested_mode if isinstance(requested_mode, RunMode) else RunMode(requested_mode)
+    if mode is RunMode.REFACTOR:
+        return formal_task
+    if mode is not RunMode.FULL:
+        raise ValueError("source bootstrap root identity supports refactor/full only")
+    return TaskSpec(
+        task_id=formal_task.task_id,
+        kernel_path=formal_task.kernel_path,
+        kernel_name=formal_task.kernel_name,
+        target=formal_task.target,
+        mode=RunMode.FULL,
+        testbench_path=formal_task.testbench_path,
+        test_suites=formal_task.test_suites,
+    )
+
 def run_source_command(
     args,
     *,
@@ -2253,12 +2301,6 @@ def run_source_command(
     """Execute one normal source command using internally managed paths."""
 
     mode = RunMode(args.command)
-    if mode is not RunMode.REFACTOR:
-        raise ValueError(
-            f"{mode.value} command is reserved by the frozen CLI contract "
-            "but execution remains gated until the Stage-3 optimizer; "
-            "no placeholder optimization result is produced"
-        )
 
     source = Path(args.source).expanduser().resolve()
     run_id = (
@@ -2367,39 +2409,81 @@ def run_source_command(
         require_complete_execution_identity=True,
     )
 
-    generation_settings = _build_generation_settings(
-        request,
-        layout,
-        debug=bool(getattr(args, "debug", False)),
-    )
-    generation_adapter = LegacyRefactorAdapter(
-        generation_settings
-    )
-    candidate_adapter = CandidateModelAdapter(
-        registry=model_runtime.registry,
-        effective_config=model_runtime.effective_config,
-    )
+    phase = None
+    generation_settings = None
+    handlers: dict[RunPhase, Callable[[RunContext], PhaseResult]] = {}
+    direct_material = None
 
-    def formal_builder(
-        task: TaskSpec,
-        formal_request: CandidateRepairOrchestrationRequest,
-    ):
-        del task
-        return build_candidate_repair_phase(
-            model_adapter=candidate_adapter,
-            request=formal_request,
-            work_root=layout.work_root / "formal_validation",
-            artifact_root=layout.artifact_root,
-            csynth_timelimit=request.csynth_timeout_s,
-            csim_timelimit=request.csim_timeout_s,
+    if mode in {RunMode.REFACTOR, RunMode.FULL}:
+        generation_settings = _build_generation_settings(
+            request,
+            layout,
+            debug=bool(getattr(args, "debug", False)),
+        )
+        generation_adapter = LegacyRefactorAdapter(generation_settings)
+        candidate_adapter = CandidateModelAdapter(
+            registry=model_runtime.registry,
+            effective_config=model_runtime.effective_config,
         )
 
-    phase = SourceBootstrapPhase(
-        request=request,
-        layout=layout,
-        generation_adapter=generation_adapter,
-        formal_phase_builder=formal_builder,
-    )
+        def formal_builder(
+            task: TaskSpec,
+            formal_request: CandidateRepairOrchestrationRequest,
+        ):
+            del task
+            return build_candidate_repair_phase(
+                model_adapter=candidate_adapter,
+                request=formal_request,
+                work_root=layout.work_root / "formal_validation",
+                artifact_root=layout.artifact_root,
+                csynth_timelimit=request.csynth_timeout_s,
+                csim_timelimit=request.csim_timeout_s,
+            )
+
+        phase = SourceBootstrapPhase(
+            request=request,
+            layout=layout,
+            generation_adapter=generation_adapter,
+            formal_phase_builder=formal_builder,
+        )
+        handlers[RunPhase.REFACTOR] = phase
+    else:
+        from .stage3_optimizer import build_direct_optimization_material
+
+        direct_material = build_direct_optimization_material(
+            source_path=source,
+            top_function=request.top_function,
+            reference_source_path=getattr(args, "reference_source", None),
+            reference_top_function=getattr(args, "reference_top", None),
+            public_test_paths=args.public_tests_provided,
+            hidden_test_paths=args.hidden_tests_provided,
+            target=target,
+        )
+
+    if mode in {RunMode.OPTIMIZE, RunMode.FULL}:
+        from .stage3_optimizer import (
+            ProductOptimizerRequest,
+            Stage3ProductOptimizationPhase,
+        )
+
+        handlers[RunPhase.OPTIMIZE] = Stage3ProductOptimizationPhase(
+            ProductOptimizerRequest(
+                run_id=run_id,
+                mode=mode,
+                registry=model_runtime.registry,
+                effective_model_config=model_runtime.effective_config,
+                budget_contract=budget,
+                artifact_root=layout.artifact_root,
+                work_root=layout.work_root,
+                csim_timeout_s=request.csim_timeout_s,
+                csynth_timeout_s=request.csynth_timeout_s,
+                optimizer_profile=getattr(args, "optimizer_profile", "safe-v1"),
+                optimization_objective=getattr(args, "optimization_objective", "latency"),
+                direct_material=direct_material,
+                refactor_phase=phase,
+            )
+        )
+
     source_task = TaskSpec(
         task_id=f"{run_id}.source",
         kernel_path=str(source),
@@ -2408,7 +2492,7 @@ def run_source_command(
         mode=mode,
     )
     runner = UnifiedRunner(
-        {RunPhase.REFACTOR: phase},
+        handlers,
         budget_limits=budget.to_budget_limits(),
     )
     with capture_product_streams(
@@ -2423,7 +2507,9 @@ def run_source_command(
             trace_path=layout.artifact_root / "trace.jsonl",
             artifact_root=layout.artifact_root,
             run_metadata={
-                "execution_mode": "source_bootstrap",
+                "execution_mode": (
+                    "source_bootstrap" if mode is RunMode.REFACTOR else "stage3_product"
+                ),
                 "legacy_mode": False,
                 "model_selection": "user_fixed",
                 "model_defaults_source": (
@@ -2454,23 +2540,33 @@ def run_source_command(
                     "csim_timeout_s": request.csim_timeout_s,
                     "csynth_timeout_s": request.csynth_timeout_s,
                     "public_coverage_enabled": (
-                        generation_settings.enable_tb_coverage_loop
+                        False if generation_settings is None
+                        else generation_settings.enable_tb_coverage_loop
                     ),
                     "effective_public_rounds": (
-                        generation_settings.public_tb_rounds
+                        None if generation_settings is None
+                        else generation_settings.public_tb_rounds
                     ),
                     "effective_public_trajectories": (
-                        generation_settings.public_tb_trajectories
+                        None if generation_settings is None
+                        else generation_settings.public_tb_trajectories
                     ),
                     "effective_hidden_rounds": (
-                        generation_settings.hidden_tb_rounds
+                        None if generation_settings is None
+                        else generation_settings.hidden_tb_rounds
                     ),
                     "effective_hidden_trajectories": (
-                        generation_settings.hidden_tb_trajectories
+                        None if generation_settings is None
+                        else generation_settings.hidden_tb_trajectories
                     ),
                 },
                 "budget_contract": budget.to_dict(),
-                "pre_stage3_step": "P0 Step C dual generation profiles",
+                "pre_stage3_step": (
+                    "P0 Step C dual generation profiles"
+                    if mode is RunMode.REFACTOR
+                    else None
+                ),
+                "stage3_product_adapter": mode in {RunMode.OPTIMIZE, RunMode.FULL},
             },
         )
     finalize_product_artifacts(

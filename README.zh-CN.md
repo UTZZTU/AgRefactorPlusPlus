@@ -160,6 +160,37 @@ python -m agrefactor.cli refactor \
   --hidden-tests auto
 ```
 
+### 直接安全优化
+
+```bash
+python -m agrefactor.cli optimize candidate.cpp \
+  --top candidate_top \
+  --reference-source original.cpp \
+  --reference-top original_top \
+  --public-test public_tb.cpp \
+  --hidden-test hidden_tb.cpp \
+  --model deepseek-v4-flash \
+  --optimizer-profile safe-v1 \
+  --optimization-objective latency
+```
+
+直接 optimize 必须提供独立 reference 和 provided Public/Hidden suites。`full`
+先运行已验收的 refactor 流程，再使用同一组已验证 suites 优化 accepted candidate：
+
+模型 analysis 或 rewrite 输出若不满足 typed contract，会成为该层的可控、
+不重试 abstention：优化器保留 `best_correct`、记录安全原因码，并在可行时继续。
+网络、凭据、文件系统、工具链和 qualification 基础设施错误仍然硬失败。合同校验
+不会证明源码适用性或 PPA；真实 compile、Public/Hidden CSIM、CSYNTH 与 typed PPA
+仍是权威裁决。
+
+```bash
+python -m agrefactor.cli full kernel.cpp \
+  --top kernel_top \
+  --model deepseek-v4-flash \
+  --public-tests auto \
+  --hidden-tests auto
+```
+
 通过 `--output-dir` 可以把单次运行保存到精确目录。查看完整参数合同：
 
 ```bash
