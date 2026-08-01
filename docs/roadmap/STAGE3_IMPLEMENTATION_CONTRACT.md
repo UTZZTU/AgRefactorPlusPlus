@@ -2,7 +2,7 @@
 
 > **状态：** FROZEN
 > **冻结范围：** Stage 3 安全三级优化器
-> **实现状态：** 进行中；S3.1 已验收，下一包为 S3.2
+> **实现状态：** 进行中；S3.1–S3.3 已验收，下一包为 S3.4
 > **前置基线：** Pre-Stage-3 已关闭，最新 CLI 后真实 source-only smoke 已通过
 > **变更规则：** 任何语义变更必须有明确决策记录、测试和本文更新，不能在实现中静默改写合同。
 
@@ -609,14 +609,18 @@ error
 
 ### S3.3 Deterministic Optimizer State Machine
 
-状态：**NEXT**。
+状态：**ACCEPTED**（46/46 S3.3 focused，181/181 optimizer regression，1689/1689 full deterministic；真实模型/网络/Vitis/CSIM/CSYNTH 调用均为 0）。
 
-- level/round transitions；
--policy counters；
--budget exhaustion；
--rollback；
--FakeProvider hypotheses；
--无真实网络/Vitis。
+- typed frozen `safe-v1` policy 与 Structural → Bottleneck → Pragma transitions；
+- 2/2/3 rounds、每轮 3 提 1 执行、总 executed candidates 上限 7；
+- injected provider/executor protocols、deterministic FakeProvider/FakeExecutor；
+- provider-order first-valid selection、malformed/unsafe hypothesis 拒绝；
+- shared BudgetManager prospective preflight、budget exhaustion fallback；
+- PPA improve/regress/infeasible/incomparable decision、best pointer protection 与 rollback；
+- immutable hypothesis artifacts、decision audit stream、checkpointed next action 与 resume 去重；
+- 无真实网络模型或 Vitis，未解除产品 `optimize/full` 门禁。
+
+精确消歧见 `STAGE3_S33_DECISION_RECORD.md`。
 
 ### S3.4 Structural Model Integration
 

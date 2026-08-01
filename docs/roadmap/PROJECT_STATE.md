@@ -6,8 +6,8 @@
 
 ```text
 branch=stage2-general-feedback
-baseline_before_this_package=9e55601f873e46e6edf83b5092970e47fbe132c0
-latest_deterministic_regression=1643/1643
+baseline_before_this_package=1ef34ef63d0f0ed82b0de3da22b20c9346f6bed8
+latest_deterministic_regression=1689/1689
 post_cli_real_smoke=accepted
 post_cli_real_smoke_run_id=post-cli-real-smoke-20260726_192331
 post_cli_real_smoke_artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifacts
@@ -17,9 +17,10 @@ STAGE3_IMPLEMENTATION_ALLOWED=true
 STAGE3_IMPLEMENTATION_STARTED=true
 STAGE3_S3_1_CANDIDATE_STATE_FOUNDATION=accepted
 STAGE3_S3_2_QUALIFICATION_AND_PPA_EVIDENCE=accepted
+STAGE3_S3_3_DETERMINISTIC_OPTIMIZER_STATE_MACHINE=accepted
 stage3_s32_real_replay=accepted
 stage3_s32_real_replay_artifact_root=/data/agrefactor_runs/stage3_s32_real_replay_20260730T153256Z_2390707
-NEXT_STEP=STAGE3_IMPLEMENTATION_STEP_3
+NEXT_STEP=STAGE3_IMPLEMENTATION_STEP_4
 ```
 
 最终提交 SHA 以 `stage2-general-feedback` 当前 HEAD 为准；本文不复制会因自身提交而立刻过期的最终 SHA。
@@ -87,8 +88,8 @@ artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifact
 
 ## 4. 当前不能宣称
 
-- `optimize/full` 已实现；
-- S3.3 deterministic optimizer state machine 已实现；
+- 真实 model-backed Structural optimization 已实现；
+- 产品 `optimize/full` 已解除门禁；
 - 任意 Vitis 版本或器件支持；
 - 稳定模型修复/优化成功率；
 - Legacy RAG 等于 Memory Applicability Gate；
@@ -112,7 +113,7 @@ candidate state/schema
 + deterministic tests
 ```
 
-S3.1 与 S3.2 已验收：当前具备 candidate/checkpoint foundation、独立 Stage 3 qualification、typed PPA evidence、latency comparator 与 exact validation cache identity。S3.2 只完成一次既有 baseline 的真实 replay，不等于产品 `optimize/full` 或多 kernel 优化；下一包严格为 S3.3 Deterministic Optimizer State Machine。
+S3.1–S3.3 已验收：当前具备 candidate/checkpoint foundation、独立 Stage 3 qualification、typed PPA evidence、latency comparator、exact validation cache identity，以及完整 deterministic safe-v1 level/round/budget/rollback/resume 状态机。S3.3 使用 FakeProvider/FakeExecutor，不等于真实模型优化、产品 `optimize/full` 或多 kernel 优化；下一包严格为 S3.4 Structural Model Integration。
 
 ## 6. 当前权威文档
 
@@ -123,7 +124,9 @@ S3.1 与 S3.2 已验收：当前具备 candidate/checkpoint foundation、独立 
 5. [REPRODUCTION_STATUS.md](../guides/REPRODUCTION_STATUS.md)
 6. [S3.1 Candidate State Foundation acceptance](../acceptance/stage3/stage3_s31_candidate_state_foundation_acceptance.md)
 7. [S3.2 Qualification and PPA Evidence acceptance](../acceptance/stage3/stage3_s32_qualification_ppa_acceptance.md)
-8. [最新真实产品 smoke acceptance](../acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md)
+8. [S3.3 Deterministic Optimizer State Machine acceptance](../acceptance/stage3/stage3_s33_deterministic_optimizer_state_machine_acceptance.md)
+9. [S3.3 decision record](STAGE3_S33_DECISION_RECORD.md)
+10. [最新真实产品 smoke acceptance](../acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md)
 
 ## 7. 工程原则
 

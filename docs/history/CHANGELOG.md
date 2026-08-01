@@ -4,6 +4,17 @@
 
 ## 未发布
 
+### Stage 3.3 Deterministic Optimizer State Machine
+
+- 新增 typed frozen `SafeOptimizerPolicy`，精确实现 Structural 2 → Bottleneck 2 → Pragma 3、每轮 3 提 1 执行与总 7 candidate 上限。
+- 新增 injected hypothesis provider/candidate executor contracts、deterministic FakeProvider/FakeExecutor 和 S3.2-compatible qualification/PPA fixtures。
+- 新增 provider-order first-valid selection；malformed、Bottleneck 无 evidence、Hidden-like unsafe hypothesis 在执行前拒绝，不引入静态源码启发式权威门禁。
+- 新增 shared BudgetManager prospective preflight、budget exhaustion zero-launch fallback、policy/physical counter separation。
+- 新增 PPA improve/regress/infeasible/incomparable decision、best_correct/best_ppa protection、rollback、blocked/review/error terminal mapping。
+- 新增 immutable hypothesis artifacts、deterministic decisions.jsonl、checkpointed next action、`step()` 与 resume 去重。
+- 新增 46 个 S3.3 focused tests；optimizer regression 181/181，全量 deterministic regression 1689/1689。
+- 本包未调用真实模型、网络、Vitis、CSIM 或 CSYNTH，未修改产品 CLI；`optimize/full` 继续门禁。下一包为 S3.4 Structural Model Integration。
+
 ### Stage 3.2 Qualification and PPA Evidence
 
 - 新增独立 Stage 3 qualification orchestration，严格执行 source → Preflight → Public → CSYNTH → Hidden → PPA → feasibility，不改写 Stage 2 已验收顺序。

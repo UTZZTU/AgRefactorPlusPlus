@@ -1,5 +1,38 @@
 """Safe optimizer state, qualification, PPA, cache, and checkpoint contracts."""
 
+from .artifacts import (
+    ARTIFACT_SCHEMA_VERSION,
+    OptimizerArtifactStore,
+    OptimizerDecisionRecord,
+)
+from .execution import (
+    EXECUTION_SCHEMA_VERSION,
+    CandidateExecutionRequest,
+    CandidateExecutionResult,
+    CandidateExecutor,
+    FakeCandidateExecutor,
+    FakeExecutionOutcome,
+    FakeExecutionStatus,
+)
+from .policy import (
+    POLICY_SCHEMA_VERSION,
+    BudgetIncrement,
+    LevelPolicy,
+    SafeOptimizerPolicy,
+)
+from .provider import (
+    PROVIDER_SCHEMA_VERSION,
+    FakeHypothesisProvider,
+    HypothesisProvider,
+    HypothesisRequest,
+    normalize_hypothesis,
+)
+from .state_machine import (
+    STATE_MACHINE_SCHEMA_VERSION,
+    DeterministicOptimizerStateMachine,
+    OptimizerRunCounters,
+    OptimizerRunResult,
+)
 from .cache import (
     CACHE_SCHEMA_VERSION,
     VALIDATION_PIPELINE_VERSION,
@@ -91,5 +124,28 @@ __all__ = [
     "candidate_index_to_dict",
     "initialize_qualified_baseline",
     "normalize_candidate_index",
+    "ARTIFACT_SCHEMA_VERSION",
+    "EXECUTION_SCHEMA_VERSION",
+    "POLICY_SCHEMA_VERSION",
+    "PROVIDER_SCHEMA_VERSION",
+    "STATE_MACHINE_SCHEMA_VERSION",
+    "BudgetIncrement",
+    "CandidateExecutionRequest",
+    "CandidateExecutionResult",
+    "CandidateExecutor",
+    "DeterministicOptimizerStateMachine",
+    "FakeCandidateExecutor",
+    "FakeExecutionOutcome",
+    "FakeExecutionStatus",
+    "FakeHypothesisProvider",
+    "HypothesisProvider",
+    "HypothesisRequest",
+    "LevelPolicy",
+    "OptimizerArtifactStore",
+    "OptimizerDecisionRecord",
+    "OptimizerRunCounters",
+    "OptimizerRunResult",
+    "SafeOptimizerPolicy",
+    "normalize_hypothesis",
     "suite_identity_from_file",
 ]

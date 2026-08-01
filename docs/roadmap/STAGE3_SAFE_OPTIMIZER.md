@@ -7,7 +7,8 @@ PLANNING_FROZEN=true
 IMPLEMENTATION_STARTED=true
 S3_1_CANDIDATE_STATE_FOUNDATION=accepted
 S3_2_QUALIFICATION_AND_PPA_EVIDENCE=accepted
-CURRENT_PACKAGE=S3.3_DETERMINISTIC_OPTIMIZER_STATE_MACHINE
+S3_3_DETERMINISTIC_OPTIMIZER_STATE_MACHINE=accepted
+CURRENT_PACKAGE=S3.4_STRUCTURAL_MODEL_INTEGRATION
 AUTHORITATIVE_CONTRACT=STAGE3_IMPLEMENTATION_CONTRACT.md
 ```
 
@@ -74,7 +75,7 @@ Level 1 Structural Optimization
 ```text
 S3.1 Candidate state/checkpoint/best_correct — accepted
 S3.2 Qualification and PPA evidence adapters — accepted
-S3.3 Deterministic hypothesis and policy state machine — next
+S3.3 Deterministic hypothesis and policy state machine — accepted
 S3.4 Model-backed Structural level
 S3.5 Bottleneck level
 S3.6 Pragma level

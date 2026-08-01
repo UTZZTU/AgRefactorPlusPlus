@@ -10,7 +10,7 @@ Stage 1=closed
 Stage 2=closed
 Pre-Stage-3=closed
 Stage 3 planning=frozen
-Stage 3 implementation=in progress; S3.1-S3.2 accepted
+Stage 3 implementation=in progress; S3.1-S3.3 accepted
 Stage 4=not started
 Stage 5=not started
 Stage 6=not started
@@ -24,11 +24,11 @@ Stage 6=not started
 | 双模式版本处理 | `refactor/optimize/full` 数据结构预留；普通 source-only refactor 已实现 | migrate mode、SourceProfile、source baseline、migration report | Stage 5 | 一组真实旧版→目标版迁移 |
 | Model API Registry | Modern/Legacy/repair 统一 typed runtime；DeepSeek 真实 smoke；固定模型路径 | authorized auto pool、具体部署 reasoning mapping | 后续 hardening | 用户授权模型池与选择证据 |
 | 分层 Prompt | Shared builder、Target/model/evidence/scope/output layers，Candidate/Testbench consumers | Stage 3 optimization hypothesis Prompt | Stage 3 | optimization prompt identity |
-| 结构化反馈与状态机 | Preflight、CSYNTH、Public/Hidden、repair、owner、next action、Hidden suppression；S3.2 新增独立 qualification 与 typed PPA/feasibility evidence | S3.3 deterministic optimizer transition/policy evidence | Stage 3 | S3.3 candidate decision state tests |
+| 结构化反馈与状态机 | Preflight、CSYNTH、Public/Hidden、repair、owner、next action、Hidden suppression；S3.2 qualification/PPA；S3.3 deterministic level/round/budget/rollback/resume engine | S3.4–S3.6 model-backed level consumers | Stage 3 | Structural model integration evidence |
 | Multi-type ground truth | 7 baselines、7/7 full chains、9/9 fault matrix、16/16 labels | 更广 kernel/版本/设备统计 | Stage 6 | 固定 benchmark 扩展 |
-| 安全三级优化器 | S3.1 已完成 state/checkpoint foundation；S3.2 已完成独立 qualification、PPA adapter、latency comparator、exact cache identity 和一次真实 baseline replay；Legacy `opt.simple_iter` 仍仅为 baseline | S3.3 三级状态机、S3.4-S3.6 model-backed levels、S3.7 optimize/full、S3.8 evaluation | Stage 3 | S3.3 deterministic optimizer state machine |
+| 安全三级优化器 | S3.1 state/checkpoint；S3.2 qualification/PPA/cache；S3.3 safe-v1 deterministic 三级状态机、预算、回滚与 resume；Legacy `opt.simple_iter` 仍仅为 baseline | S3.4-S3.6 model-backed levels、S3.7 optimize/full、S3.8 evaluation | Stage 3 | S3.4 bounded Structural model smoke |
 | Memory Applicability Gate | Legacy RAG 正负 trial 可作为 baseline | schema、score、abstention、off/gated/always | Stage 4 | 负迁移和弃权实验 |
-| BudgetManager | LLM/Tool/Compile/CSIM/CSYNTH/wall-time 硬控制；Token/Cost observed-only | Stage 3 candidate停止和 best_correct fallback；未来 cosim | Stage 3/后续 | budget exhaustion returns best_correct |
+| BudgetManager | LLM/Tool/Compile/CSIM/CSYNTH/wall-time 硬控制；Token/Cost observed-only；S3.3 candidate停止和 best_correct fallback 已完成 | 未来 cosim 与真实 S3.4+ adapter usage | Stage 3/后续 | bounded real Structural smoke |
 | 版本迁移 | 长期目标保留 | 真实 source→target 修复、验证、优化和报告 | Stage 5 | migration acceptance |
 | 论文评测 | 真实工具证据和审计基础已具备 | safe optimizer 与 simple_iter、公平预算、多 kernel 重复实验、消融 | Stage 6 | 固定评测协议 |
 
@@ -106,16 +106,24 @@ cache-hit replay with zero real-tool counter delta
 
 S3.2 没有调用模型，没有实现多轮搜索、三级策略或正式 `optimize/full`。
 
-### 下一包 S3.3
+### 已完成 S3.3
 
 ```text
-level/round transitions
-policy counters
-budget exhaustion
-rollback
-FakeProvider hypotheses
+typed frozen safe-v1 policy
+structural 2 → bottleneck 2 → pragma 3
+3 proposed / 1 selected / 1 executed per round
+max 7 executed candidates
+FakeProvider/FakeExecutor
+prospective shared BudgetManager preflight
+PPA decision + best pointer protection + rollback
+checkpointed next action + resume deduplication
+46/46 focused
+181/181 optimizer regression
+1689/1689 full deterministic regression
 no real network model or Vitis
 ```
+
+S3.3 没有实现真实 optimization prompt/source rewrite，也没有解除产品 `optimize/full` 门禁。下一包为 S3.4 Structural Model Integration。
 
 ## 完成声明检查表
 
