@@ -265,3 +265,16 @@ product-oriented execution and validation architecture.
 
 Use, citation, and redistribution must respect the original project, its paper,
 its authors, and all applicable licensing terms.
+
+## Stage 3.8 Evaluation
+
+The S3.8 package runs a bounded real matrix across direct `optimize`, live
+source-only `full`, and independently qualified Legacy `simple_iter`. The
+default acceptance profile is three distinct kernels × two repeats × three
+arms. It reports correctness, PPA, invalid ratio, rollback, calls and wall time,
+without claiming stable superiority.
+
+S3.8 V2 correction: the initial target-host run retained valid product-arm
+evidence but exposed a Legacy qualification-observer defect. Stage 3 closes
+only after the six `simple_iter` units are rerun and prove actual model execution
+plus independent qualification.

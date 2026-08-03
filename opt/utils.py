@@ -149,27 +149,40 @@ def run_cmd(
         }
 
 
-def get_model(vendor: str) -> OpenAI:
-    """
-    Return an OpenAI client configured for the given vendor.
+def get_model(
+    vendor: str,
+    *,
+    api_key_env: str | None = None,
+    base_url: str | None = None,
+) -> OpenAI:
+    """Return an OpenAI-compatible client without changing legacy defaults.
 
-    Env:
-      - OPENAI_API_KEY
-      - GEMINI_API_KEY
+    Stage 3.8 uses the optional arguments to bind ``simple_iter`` to the same
+    provider endpoint and credential environment as the safe optimizer.  Calls
+    that omit them preserve the historical OPENAI_API_KEY/GEMINI_API_KEY
+    behavior.
     """
+
     v = vendor.lower().strip()
-
     if v == "openai":
-        key = os.getenv("OPENAI_API_KEY")
+        env_name = api_key_env or "OPENAI_API_KEY"
+        key = os.getenv(env_name)
         if not key:
-            raise RuntimeError("OPENAI_API_KEY is not set.")
-        return OpenAI(api_key=key)
+            raise RuntimeError(f"{env_name} is not set.")
+        kwargs: Dict[str, Any] = {"api_key": key}
+        if base_url is not None:
+            cleaned = base_url.strip()
+            if not cleaned:
+                raise ValueError("base_url must not be empty")
+            kwargs["base_url"] = cleaned
+        return OpenAI(**kwargs)
 
     if v == "gemini":
-        key = os.getenv("GEMINI_API_KEY")
+        env_name = api_key_env or "GEMINI_API_KEY"
+        key = os.getenv(env_name)
         if not key:
-            raise RuntimeError("GEMINI_API_KEY is not set.")
-        return OpenAI(api_key=key, base_url=_GEMINI_BASE_URL)
+            raise RuntimeError(f"{env_name} is not set.")
+        return OpenAI(api_key=key, base_url=base_url or _GEMINI_BASE_URL)
 
     raise ValueError(f"Unsupported vendor: {vendor!r}. Use 'gemini' or 'openai'.")
 
@@ -179,23 +192,58 @@ def get_response(
     model: str,
     messages: List[Dict[str, Any]],
     reasoning_effort: str | None = None,
+    *,
+    max_attempts: int | None = None,
+    retry_sleep_s: float = 2.0,
+    max_tokens: int | None = None,
+    safe_errors: bool = False,
 ):
-    failed = True
-    resp = None
-    while failed:
-        failed = False
+    """Get one model response with an optional bounded transport retry count.
+
+    ``max_attempts=None`` retains the legacy retry-until-success behavior.
+    Stage 3.8 always supplies ``1`` so the Legacy arm cannot silently receive
+    more physical calls than its declared evaluation budget.
+    """
+
+    if max_attempts is not None and (
+        isinstance(max_attempts, bool)
+        or not isinstance(max_attempts, int)
+        or max_attempts < 1
+    ):
+        raise ValueError("max_attempts must be a positive integer or null")
+    if isinstance(retry_sleep_s, bool) or retry_sleep_s < 0:
+        raise ValueError("retry_sleep_s must be non-negative")
+    if max_tokens is not None and (
+        isinstance(max_tokens, bool)
+        or not isinstance(max_tokens, int)
+        or max_tokens < 1
+    ):
+        raise ValueError("max_tokens must be a positive integer or null")
+    if not isinstance(safe_errors, bool):
+        raise TypeError("safe_errors must be boolean")
+    attempts = 0
+    while True:
+        attempts += 1
         try:
-            resp = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                reasoning_effort=reasoning_effort
-            )
-        except Exception as e:
-            failed = True
-            print(f"[get_response] Exception: {e!r}")
-            traceback.print_exc()
-            time.sleep(2)
-    return resp.choices[0].message
+            request: Dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+            }
+            if reasoning_effort is not None:
+                request["reasoning_effort"] = reasoning_effort
+            if max_tokens is not None:
+                request["max_tokens"] = max_tokens
+            response = client.chat.completions.create(**request)
+            return response.choices[0].message
+        except Exception as exc:
+            if safe_errors:
+                print(f"[get_response] Exception: {type(exc).__name__}")
+            else:
+                print(f"[get_response] Exception: {exc!r}")
+                traceback.print_exc()
+            if max_attempts is not None and attempts >= max_attempts:
+                raise
+            time.sleep(retry_sleep_s)
 
 
 _FENCE_RE = re.compile(

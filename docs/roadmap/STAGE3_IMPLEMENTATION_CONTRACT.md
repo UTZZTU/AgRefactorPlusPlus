@@ -2,7 +2,7 @@
 
 > **状态：** FROZEN
 > **冻结范围：** Stage 3 安全三级优化器
-> **实现状态：** 进行中；S3.1–S3.7 已验收，下一包为 S3.8
+> **实现状态：** 进行中；S3.1–S3.7 已验收，S3.8 V2 Legacy correction 待目标主机重跑
 > **前置基线：** Pre-Stage-3 已关闭，最新 CLI 后真实 source-only smoke 已通过
 > **变更规则：** 任何语义变更必须有明确决策记录、测试和本文更新，不能在实现中静默改写合同。
 
@@ -694,10 +694,48 @@ error
 
 ### S3.8 Evaluation
 
--多 kernel；
--相同模型/Target/budget/repeats；
--与 `simple_iter` 比较；
--正确性、成功率、latency/II/resource、invalid ratio、rollback、calls 和 wall time。
+状态：**ACCEPTED_ONLY_AFTER_TARGET_HOST_MATRIX**。实现以 S3.7 closure commit
+`84b6fac0a00469fc9651f5f6553b50febedb21c7` 为唯一前置。
+
+冻结 acceptance profile：
+
+```text
+3 distinct committed kernels
+× 2 repeats
+× safe-optimize / source-full / simple-iter
+= 18 real experiment units
+```
+
+- 三个 arm 使用相同 concrete model、effective provider parameters、Target、
+  Public/Hidden identities、硬预算和 repeats；
+- direct optimize 使用独立 reference；source-full 必须真实执行
+  refactor→typed handoff→optimize；
+- `simple_iter` 仅为 Legacy baseline，输入 baseline 和最终 selected candidate
+  都通过相同独立 qualification；其内部 testbench 不是 correctness authority；
+- 所有模型自动重试关闭，Hidden 不进入模型，Legacy 评测日志不保存 raw
+  Prompt/response/reasoning；
+- canonical report 记录 correctness/success、latency/II/resource、invalid ratio、
+  rollback、best_correct、LLM/tool/compile/CSIM/CSYNTH calls 和 wall time；
+- 完整矩阵、零 infrastructure failure、至少一个 direct optimize accepted、
+  至少一个 live source-full accepted、三个 kernel 均观察到真实 CSYNTH 后才关闭；
+- candidate failure 是评测结果，不得伪装成 infrastructure success 或强制改写；
+- 两次 repeats 不支持 statistical significance 或 stable superiority 声明。
+
+精确消歧见 `STAGE3_S38_DECISION_RECORD.md`。
+
+
+#### S3.8 V2 Legacy comparison evidence correction
+
+- external qualification observer order is the full accepted Stage 3 sequence:
+  `source → preflight → public → csynth → hidden → ppa → feasibility`;
+- product run-record schema v1 remains readable; corrected Legacy records write
+  schema v2 and must prove baseline qualification, Legacy process start, safe
+  evaluation artifact observation, and at least one physical model call;
+- accepted/rejected Legacy candidates additionally require independent final
+  qualification evidence;
+- observer, adapter, and record-contract invariant failures are infrastructure
+  failures, never candidate failures;
+- S3.8 cannot close unless all six Legacy comparison units actually execute.
 
 ## 21. Acceptance Matrix
 

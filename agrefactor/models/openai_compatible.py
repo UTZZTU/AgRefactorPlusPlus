@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -25,8 +26,87 @@ class MissingModelCredentialError(OpenAICompatibleProviderError):
     """Raised when the configured API-key environment variable is absent."""
 
 
+_PROVIDER_REASON_CODE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+_PROVIDER_DIAGNOSTIC_KEYS = frozenset(
+    {
+        "response_id",
+        "choices_count",
+        "message_present",
+        "content_present",
+        "content_chars",
+        "content_shape",
+        "reasoning_content_present",
+        "reasoning_content_chars",
+        "finish_reason",
+        "usage_present",
+        "usage_field_names",
+    }
+)
+
+
 class OpenAICompatibleResponseError(OpenAICompatibleProviderError):
-    """Raised when an endpoint returns an unusable response."""
+    """Raised when an endpoint returns an unusable response.
+
+    ``reason_codes`` and ``diagnostics`` are stable, agent-safe observability
+    fields. They never contain raw prompts, raw response content, reasoning
+    text, source code, Hidden evidence, credentials, or free-form SDK errors.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_code: str = "provider_response_invalid",
+        diagnostics: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        code = reason_code.strip() if isinstance(reason_code, str) else ""
+        if not _PROVIDER_REASON_CODE_RE.fullmatch(code):
+            raise ValueError("provider reason code must be a safe token")
+        self.reason_codes = (code,)
+        self.diagnostics: dict[str, Any] = {}
+        if diagnostics is not None:
+            self.add_diagnostics(diagnostics)
+
+    def add_diagnostics(
+        self,
+        diagnostics: Mapping[str, Any],
+    ) -> "OpenAICompatibleResponseError":
+        if not isinstance(diagnostics, Mapping):
+            raise TypeError("provider diagnostics must be a mapping")
+        normalized: dict[str, Any] = {}
+        for raw_key, value in diagnostics.items():
+            key = str(raw_key)
+            if key not in _PROVIDER_DIAGNOSTIC_KEYS:
+                raise ValueError(
+                    f"provider diagnostic key is not allowlisted: {key}"
+                )
+            if value is None or isinstance(value, (bool, int)):
+                normalized[key] = value
+            elif isinstance(value, str):
+                if len(value) > 256:
+                    raise ValueError(
+                        "provider diagnostic string is too long"
+                    )
+                normalized[key] = value
+            elif isinstance(value, (list, tuple)):
+                items = list(value)
+                if not all(
+                    isinstance(item, str) and len(item) <= 128
+                    for item in items
+                ):
+                    raise TypeError(
+                        "provider diagnostic sequences must contain "
+                        "short strings"
+                    )
+                normalized[key] = items
+            else:
+                raise TypeError(
+                    "provider diagnostic values must be scalar or "
+                    "string sequences"
+                )
+        self.diagnostics.update(normalized)
+        return self
 
 
 _RESERVED_PARAMETER_NAMES = {
@@ -43,6 +123,114 @@ def _read(value: Any, name: str, default: Any = None) -> Any:
     return getattr(value, name, default)
 
 
+def _usage_field_names(usage: Any) -> list[str]:
+    if usage is None:
+        return []
+    known = (
+        "prompt_tokens",
+        "input_tokens",
+        "completion_tokens",
+        "output_tokens",
+        "prompt_cache_hit_tokens",
+        "cached_tokens",
+        "prompt_cache_miss_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+        "prompt_tokens_details",
+        "input_tokens_details",
+        "completion_tokens_details",
+        "output_tokens_details",
+    )
+    return [
+        name
+        for name in known
+        if _read(usage, name) is not None
+    ]
+
+
+def _provider_response_diagnostics(
+    response: Any,
+    *,
+    choices: Any = None,
+    message: Any = None,
+    content: Any = None,
+    content_observed: bool = False,
+    finish_reason: Any = None,
+) -> dict[str, Any]:
+    usage = _read(response, "usage")
+    response_id = _read(response, "id")
+    reasoning_content = (
+        _read(message, "reasoning_content")
+        if message is not None
+        else None
+    )
+    if content is None:
+        content_shape = "none"
+        content_chars = 0
+    elif isinstance(content, str):
+        content_shape = "string"
+        content_chars = len(content)
+    elif isinstance(content, (list, tuple)):
+        content_shape = "sequence"
+        content_chars = sum(
+            len(text)
+            for block in content
+            for text in (_read(block, "text"),)
+            if isinstance(text, str)
+        )
+    else:
+        content_shape = "unsupported"
+        content_chars = 0
+
+    return {
+        "response_id": (
+            response_id
+            if (
+                isinstance(response_id, str)
+                and len(response_id) <= 256
+            )
+            else None
+        ),
+        "choices_count": (
+            len(choices)
+            if isinstance(choices, (list, tuple))
+            else None
+        ),
+        "message_present": message is not None,
+        "content_present": (
+            content_observed and content is not None
+        ),
+        "content_chars": content_chars,
+        "content_shape": content_shape,
+        "reasoning_content_present": bool(reasoning_content),
+        "reasoning_content_chars": (
+            len(reasoning_content)
+            if isinstance(reasoning_content, str)
+            else 0
+        ),
+        "finish_reason": (
+            finish_reason
+            if (
+                isinstance(finish_reason, str)
+                and len(finish_reason) <= 256
+            )
+            else None
+        ),
+        "usage_present": usage is not None,
+        "usage_field_names": _usage_field_names(usage),
+    }
+
+
+def _empty_content_reason_code(finish_reason: Any) -> str:
+    if finish_reason == "length":
+        return "provider_finish_length"
+    if finish_reason == "content_filter":
+        return "provider_content_filtered"
+    if finish_reason == "insufficient_system_resource":
+        return "provider_insufficient_system_resource"
+    return "provider_empty_final_content"
+
+
 def _require_non_negative_int(
     value: Any,
     *,
@@ -52,7 +240,8 @@ def _require_non_negative_int(
         return 0
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise OpenAICompatibleResponseError(
-            f"{field_name} must be a non-negative integer"
+            f"{field_name} must be a non-negative integer",
+            reason_code="provider_usage_field_invalid",
         )
     return value
 
@@ -70,7 +259,8 @@ def _optional_non_negative_int(
         or value < 0
     ):
         raise OpenAICompatibleResponseError(
-            f"{field_name} must be a non-negative integer or None"
+            f"{field_name} must be a non-negative integer or None",
+            reason_code="provider_usage_field_invalid",
         )
     return value
 
@@ -116,7 +306,8 @@ def _coalesce_usage_int(
         )
         raise OpenAICompatibleResponseError(
             f"conflicting usage fields for {field_name}: "
-            + details
+            + details,
+            reason_code="provider_usage_field_conflict",
         )
     return expected
 
@@ -151,18 +342,21 @@ def _normalize_usage_breakdown(
             assert cache_miss is not None
             if cache_miss > prompt_tokens:
                 raise OpenAICompatibleResponseError(
-                    "usage cache partition exceeds prompt_tokens"
+                    "usage cache partition exceeds prompt_tokens",
+                    reason_code="provider_usage_field_invalid",
                 )
             cache_hit = prompt_tokens - cache_miss
         elif cache_miss is None:
             if cache_hit > prompt_tokens:
                 raise OpenAICompatibleResponseError(
-                    "usage cache partition exceeds prompt_tokens"
+                    "usage cache partition exceeds prompt_tokens",
+                    reason_code="provider_usage_field_invalid",
                 )
             cache_miss = prompt_tokens - cache_hit
         elif cache_hit + cache_miss != prompt_tokens:
             raise OpenAICompatibleResponseError(
-                "usage cache partition must equal prompt_tokens"
+                "usage cache partition must equal prompt_tokens",
+                reason_code="provider_usage_field_invalid",
             )
 
     cache_read = _coalesce_usage_int(
@@ -208,7 +402,8 @@ def _normalize_usage_breakdown(
         and thinking > completion_tokens
     ):
         raise OpenAICompatibleResponseError(
-            "usage reasoning tokens exceed completion_tokens"
+            "usage reasoning tokens exceed completion_tokens",
+            reason_code="provider_usage_field_invalid",
         )
 
     values = (
@@ -230,7 +425,12 @@ def _normalize_usage_breakdown(
     )
 
 
-def _normalize_content(content: Any) -> str:
+def _normalize_content(
+    content: Any,
+    *,
+    finish_reason: Any,
+    diagnostics: Mapping[str, Any],
+) -> str:
     """Normalize common Chat Completions content representations."""
 
     if isinstance(content, str):
@@ -238,7 +438,11 @@ def _normalize_content(content: Any) -> str:
         if cleaned:
             return cleaned
         raise OpenAICompatibleResponseError(
-            "response message content is empty"
+            "response message content is empty",
+            reason_code=_empty_content_reason_code(
+                finish_reason
+            ),
+            diagnostics=diagnostics,
         )
 
     if isinstance(content, (list, tuple)):
@@ -250,9 +454,23 @@ def _normalize_content(content: Any) -> str:
         cleaned = "".join(text_parts).strip()
         if cleaned:
             return cleaned
+        raise OpenAICompatibleResponseError(
+            "response message content is empty",
+            reason_code=_empty_content_reason_code(
+                finish_reason
+            ),
+            diagnostics=diagnostics,
+        )
 
+    reason_code = (
+        _empty_content_reason_code(finish_reason)
+        if content is None
+        else "provider_unsupported_content_shape"
+    )
     raise OpenAICompatibleResponseError(
-        "response message content is missing or unsupported"
+        "response message content is missing or unsupported",
+        reason_code=reason_code,
+        diagnostics=diagnostics,
     )
 
 
@@ -370,52 +588,78 @@ class OpenAICompatibleProvider(ModelProvider):
         choices = _read(response, "choices")
         if not isinstance(choices, (list, tuple)) or not choices:
             raise OpenAICompatibleResponseError(
-                "response contains no choices"
+                "response contains no choices",
+                reason_code="provider_no_choices",
+                diagnostics=_provider_response_diagnostics(
+                    response,
+                    choices=choices,
+                ),
             )
 
         first_choice = choices[0]
-        message = _read(first_choice, "message")
-        if message is None:
-            raise OpenAICompatibleResponseError(
-                "first choice contains no message"
-            )
-
-        text = _normalize_content(
-            _read(message, "content")
-        )
         finish_reason = _read(
             first_choice,
             "finish_reason",
         )
+        message = _read(first_choice, "message")
+        if message is None:
+            raise OpenAICompatibleResponseError(
+                "first choice contains no message",
+                reason_code="provider_missing_message",
+                diagnostics=_provider_response_diagnostics(
+                    response,
+                    choices=choices,
+                    finish_reason=finish_reason,
+                ),
+            )
+
+        content = _read(message, "content")
+        response_diagnostics = _provider_response_diagnostics(
+            response,
+            choices=choices,
+            message=message,
+            content=content,
+            content_observed=True,
+            finish_reason=finish_reason,
+        )
+        text = _normalize_content(
+            content,
+            finish_reason=finish_reason,
+            diagnostics=response_diagnostics,
+        )
 
         usage_object = _read(response, "usage")
-        prompt_tokens = (
-            _coalesce_usage_int(
-                usage_object,
-                field_name="prompt tokens",
-                paths=(
-                    ("prompt_tokens",),
-                    ("input_tokens",),
-                ),
+        try:
+            prompt_tokens = (
+                _coalesce_usage_int(
+                    usage_object,
+                    field_name="prompt tokens",
+                    paths=(
+                        ("prompt_tokens",),
+                        ("input_tokens",),
+                    ),
+                )
+                or 0
             )
-            or 0
-        )
-        completion_tokens = (
-            _coalesce_usage_int(
-                usage_object,
-                field_name="completion tokens",
-                paths=(
-                    ("completion_tokens",),
-                    ("output_tokens",),
-                ),
+            completion_tokens = (
+                _coalesce_usage_int(
+                    usage_object,
+                    field_name="completion tokens",
+                    paths=(
+                        ("completion_tokens",),
+                        ("output_tokens",),
+                    ),
+                )
+                or 0
             )
-            or 0
-        )
-        usage_breakdown = _normalize_usage_breakdown(
-            usage_object,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-        )
+            usage_breakdown = _normalize_usage_breakdown(
+                usage_object,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+            )
+        except OpenAICompatibleResponseError as exc:
+            exc.add_diagnostics(response_diagnostics)
+            raise
 
         response_model = _read(response, "model")
         if not isinstance(response_model, str) or not response_model.strip():

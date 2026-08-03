@@ -1,22 +1,29 @@
 # naive implementation with openai API
 
-import os, argparse, dotenv, json, shutil, shlex, subprocess
+import os, argparse, dotenv, hashlib, json, shutil, subprocess, time
 from datetime import datetime
 from typing import Tuple, Optional, Dict, Any
 import xml.etree.ElementTree as ET
 
 from autogen.agentchat.group import ContextVariables
 
-from flow.tools.csynth import make_csynth_script
+from flow.tools.csynth import make_csynth_script, resolve_csynth_command
+from agrefactor.config import resolve_target_profile
 from flow.tools.general import run_cmd
 from opt.tools.testbench import gen_tb_prior
 from opt.utils import get_model, get_response, extract_c_or_cpp_code
+from opt.simple_iter.harness import (
+    LEGACY_HARNESS_CONTRACT_VERSION,
+    LegacyHarnessResult,
+    run_legacy_harness,
+)
 
 
 dotenv.load_dotenv('.env', override=True)
 RUN_DIR = os.getenv('RUN_DIR')
 WORK_DIR = os.getenv('WORK_DIR')
 RESOURCE_UTILIZATION_LIMIT = 0.8
+_EVALUATION_SAFE_LOG = False
 
 
 def remove_hls_pragmas(code: str) -> str:
@@ -33,13 +40,20 @@ def remove_hls_pragmas(code: str) -> str:
 
 
 def log_output(output_dir: str, message: str, role: str = None) -> None:
-    """Log message to both stdout and output.txt for capture by parallel_eval.py"""
+    """Log output while keeping S3.8 model-facing content audit-safe."""
+    content = str(message)
+    if _EVALUATION_SAFE_LOG:
+        content = (
+            f"<REDACTED_CONTENT sha256="
+            f"{hashlib.sha256(content.encode('utf-8')).hexdigest()} "
+            f"chars={len(content)}>"
+        )
     if role:
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        formatted_message = f"[{ts}] {role.upper()}:\n{message}\n" + ("-" * 80)
+        formatted_message = f"[{ts}] {role.upper()}:\n{content}\n" + ("-" * 80)
     else:
-        formatted_message = message
-    
+        formatted_message = content
+
     print(formatted_message)
     os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "output.txt"), "a", encoding="utf-8") as f:
@@ -51,11 +65,19 @@ def run_csynth(
     top_kernel_name: str,
     curr_code: str,
     timelimit: int = 300,
+    *,
+    target_profile: str | None = None,
 ):
     os.makedirs(work_dir, exist_ok=True)
     file_list = {f"{top_kernel_name}.cpp": curr_code}
-    make_csynth_script(work_dir, top_kernel_name, file_list)
-    cmd = "vitis-run --mode hls --tcl vitis.tcl"
+    profile = resolve_target_profile(target_profile)
+    make_csynth_script(
+        work_dir,
+        top_kernel_name,
+        file_list,
+        target_profile=profile,
+    )
+    cmd = resolve_csynth_command(profile)["command"]
     print(f">>> Synthesizing in {work_dir}... <<<")
     result = run_cmd(work_dir, cmd, timelimit)
     rpt_path = os.path.join(work_dir, "csynth", "solution", "syn", "report", f"{top_kernel_name}_csynth.rpt")
@@ -95,55 +117,21 @@ def run_tb(
     output_dir: str,
     orig_code_path: str,
     optimized_code_path: str,
-    tb_path: str
-) -> Tuple[int, Optional[str]]:
-    """
-    Compile and run 'csim' in output_dir.
+    tb_path: str,
+    *,
+    reference_top_name: str,
+    candidate_top_name: str,
+) -> LegacyHarnessResult:
+    """Run the typed, reference-isolated Legacy host harness."""
 
-    Returns:
-      (1, error_log) if compilation fails (also prints the error log)
-      (2, stderr)    if running ./csim returns non-zero
-      (0, None)      if everything succeeds
-    """
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Quote paths for safety in shell
-    tb_q = shlex.quote(tb_path)
-    orig_q = shlex.quote(orig_code_path)
-    ref_q = shlex.quote(optimized_code_path)
-
-    compile_cmd = f"g++ -I$XILINX_HLS/include -O2 -Wno-unknown-pragmas {tb_q} {orig_q} {ref_q} -o csim"
-
-    # 1) Compile
-    compile_res = subprocess.run(
-        compile_cmd,
-        cwd=output_dir,
-        shell=True,              # allow $XILINX_HLS expansion
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT # capture all compiler logs together
+    return run_legacy_harness(
+        output_dir=output_dir,
+        reference_path=orig_code_path,
+        candidate_path=optimized_code_path,
+        testbench_path=tb_path,
+        reference_top_name=reference_top_name,
+        candidate_top_name=candidate_top_name,
     )
-    if compile_res.returncode != 0:
-        error_log = compile_res.stdout or ""
-        print(error_log)
-        return (1, error_log)
-
-    # 2) Run
-    run_res = subprocess.run(
-        "./csim",
-        cwd=output_dir,
-        shell=True,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
-    if run_res.returncode != 0:
-        # Return only stderr per requirement
-        return (2, run_res.stderr or "")
-
-    # 3) Success
-    return (0, None)
-
 
 def safe_int_parse(text: Optional[str]) -> Optional[int]:
     """Safely parse an integer from text, handling 'undef' and other non-numeric values."""
@@ -279,21 +267,35 @@ def parse_xml_report(xml_path: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def persist_best_design(output_dir: str, best_design: Optional[Dict[str, Any]], limit: float = RESOURCE_UTILIZATION_LIMIT) -> None:
-    """Write the best design (if any) to best_design.json for downstream aggregation."""
+def persist_best_design(
+    output_dir: str,
+    best_design: Optional[Dict[str, Any]],
+    limit: float = RESOURCE_UTILIZATION_LIMIT,
+    *,
+    no_best_reason: str = "No design met latency/resource constraints",
+) -> None:
+    """Write the best design and selected source for downstream evaluation."""
     os.makedirs(output_dir, exist_ok=True)
     payload: Dict[str, Any]
     if best_design:
-        payload = best_design
+        payload = dict(best_design)
+        round_dir = payload.get("round_dir")
+        if isinstance(round_dir, str) and round_dir:
+            source = os.path.join(output_dir, round_dir, "optimized_code.cpp")
+            if os.path.isfile(source):
+                selected = os.path.join(output_dir, "best_candidate.cpp")
+                shutil.copyfile(source, selected)
+                payload["best_candidate_path"] = selected
     else:
         payload = {
             "found": False,
             "resource_limit": limit,
-            "reason": "No design met latency/resource constraints",
+            "reason": no_best_reason,
         }
     out_path = os.path.join(output_dir, "best_design.json")
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
+        json.dump(payload, f, indent=2, ensure_ascii=False, sort_keys=True)
+        f.write("\n")
     status = "found" if best_design else "not found"
     log_output(output_dir, f"BEST_DESIGN_STATUS: {status} (saved to {out_path})", "tool")
 
@@ -372,13 +374,22 @@ Here is the result summary for your reference:
 """
     if add_raw_rpt:
         user_message += f"Here is the raw report (trimmed):\n\n{raw_rpt}"
-    print(user_message)
+    if _EVALUATION_SAFE_LOG:
+        print(
+            "<REDACTED_FEEDBACK sha256="
+            + hashlib.sha256(user_message.encode("utf-8")).hexdigest()
+            + f" chars={len(user_message)}>"
+        )
+    else:
+        print(user_message)
     return user_message
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--kernel_path', type=str, required=True)
+    parser.add_argument('--reference_path', type=str, default=None, help='Independent reference source used only by the host harness')
+    parser.add_argument('--reference_top_name', type=str, default='original_top', help='Required strong reference symbol')
     parser.add_argument('--top_name', type=str, required=True)
     parser.add_argument('--config_path', type=str, default=None)
     parser.add_argument('--gen_bench_prior', action=argparse.BooleanOptionalAction, default=True)
@@ -386,19 +397,52 @@ def main():
     parser.add_argument('--iterations', type=int, default=4, help='Number of iterations per run')
     parser.add_argument('--output_dir', type=str, default=None, help='Isolated working directory (optional)')
     parser.add_argument('--add_raw_rpt', action=argparse.BooleanOptionalAction, default=True, help='Include truncated raw report in feedback')
-    parser.add_argument('--reasoning_effort', type=str, default='high', help='Reasoning effort of the model (default: high)')
+    parser.add_argument('--reasoning_effort', type=str, default='high', help='Requested reasoning effort (default: high)')
+    parser.add_argument('--provider_reasoning_effort', type=str, default=None, help='Effective provider reasoning value used for fair evaluation')
+    parser.add_argument('--max_output_tokens', type=int, default=None, help='Effective provider output-token ceiling')
+    parser.add_argument('--testbench_path', type=str, default=None, help='Provided evaluation testbench; avoids model-generated testbench')
+    parser.add_argument('--target', type=str, default='vitis-2023.2-default', help='Named TargetProfile used for synthesis')
+    parser.add_argument('--base_url', type=str, default=None, help='Optional OpenAI-compatible endpoint')
+    parser.add_argument('--api_key_env', type=str, default=None, help='Credential environment variable')
+    parser.add_argument('--max_model_attempts', type=int, default=None, help='Maximum physical attempts for each model request')
+    parser.add_argument('--csynth_timeout_s', type=int, default=600, help='Per-CSYNTH timeout')
+    parser.add_argument('--evaluation_mode', action='store_true', help='Write bounded S3.8 Legacy-arm metadata')
     args = parser.parse_known_args()[0]
-    
+    global _EVALUATION_SAFE_LOG
+    _EVALUATION_SAFE_LOG = bool(args.evaluation_mode)
+
     kernel_path = args.kernel_path
     top_name = args.top_name
     vendor = 'gemini' if 'gemini' in args.model else 'openai'
     model_name = args.model
+    provider_reasoning_effort = (
+        args.provider_reasoning_effort
+        if args.provider_reasoning_effort is not None
+        else args.reasoning_effort
+    )
     agent_model_config = {
         "api_type": "google" if vendor == "gemini" else "openai",
         "model": model_name,
-        "reasoning_effort": args.reasoning_effort,
+        "reasoning_effort": provider_reasoning_effort,
     }
-    client = get_model(vendor)
+    client = get_model(
+        vendor,
+        api_key_env=args.api_key_env,
+        base_url=args.base_url,
+    )
+    started_at = time.monotonic()
+    model_calls = 0
+    completed_rounds = 0
+    compile_calls = 0
+    csim_calls = 0
+    csynth_calls = 0
+    tool_calls = 0
+    model_output_abstentions = 0
+    model_output_reason_counts: Dict[str, int] = {}
+    synthesis_successes = 0
+    harness_attempts = 0
+    harness_passes = 0
+    harness_failure_counts: Dict[str, int] = {}
     
     # Use provided output_dir or fall back to default
     if args.output_dir:
@@ -409,7 +453,75 @@ def main():
         print(f'Using default working directory: {output_dir}')
     
     os.makedirs(output_dir, exist_ok=True)  # ensure trace/log/outputs can be written
-    
+
+    reference_path = args.reference_path
+    if args.evaluation_mode and not reference_path:
+        raise ValueError("--reference_path is required in evaluation mode")
+    if reference_path is None:
+        reference_path = args.kernel_path
+    reference_path = os.path.abspath(reference_path)
+    if not os.path.isfile(reference_path):
+        raise FileNotFoundError(f"reference source not found: {reference_path}")
+    reference_top_name = args.reference_top_name.strip()
+    if not reference_top_name:
+        raise ValueError("reference_top_name must not be empty")
+
+    def write_evaluation_summary(status: str) -> None:
+        if not args.evaluation_mode:
+            return
+        best_path = os.path.join(output_dir, "best_candidate.cpp")
+        evaluation = {
+            "schema_version": 3,
+            "arm": "simple-iter",
+            "status": status,
+            "model": model_name,
+            "target": args.target,
+            "requested_reasoning_effort": args.reasoning_effort,
+            "provider_reasoning_effort": provider_reasoning_effort,
+            "max_output_tokens": args.max_output_tokens,
+            "requested_iterations": args.iterations,
+            "completed_rounds": completed_rounds,
+            "model_calls": model_calls,
+            "tool_calls": tool_calls,
+            "compile_calls": compile_calls,
+            "csim_calls": csim_calls,
+            "csynth_calls": csynth_calls,
+            "automatic_model_retry": (
+                args.max_model_attempts is None or args.max_model_attempts > 1
+            ),
+            "max_model_attempts": args.max_model_attempts,
+            "provided_testbench": bool(args.testbench_path),
+            "reference_path_provided": bool(args.reference_path),
+            "reference_isolated": True,
+            "reference_top_name": reference_top_name,
+            "candidate_top_name": top_name,
+            "harness_contract_version": LEGACY_HARNESS_CONTRACT_VERSION,
+            "harness_contract_activated": True,
+            "model_output_abstentions": model_output_abstentions,
+            "model_output_reason_counts": dict(sorted(model_output_reason_counts.items())),
+            "synthesis_successes": synthesis_successes,
+            "harness_attempts": harness_attempts,
+            "harness_passes": harness_passes,
+            "harness_failure_counts": dict(sorted(harness_failure_counts.items())),
+            "best_candidate_harness_validated": bool(
+                best_path and os.path.isfile(best_path) and harness_passes > 0
+            ),
+            "wall_time_s": time.monotonic() - started_at,
+            "best_candidate_path": best_path if os.path.isfile(best_path) else None,
+            "raw_prompt_response_persisted": False,
+            "hidden_evidence_exposed": False,
+        }
+        temporary = os.path.join(output_dir, ".simple_iter_evaluation.tmp")
+        final = os.path.join(output_dir, "simple_iter_evaluation.json")
+        with open(temporary, "w", encoding="utf-8") as stream:
+            json.dump(evaluation, stream, indent=2, ensure_ascii=False, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, final)
+
+    write_evaluation_summary("running")
+
     with open(kernel_path, 'r') as f:
         curr_code = f.read()
         
@@ -421,7 +533,19 @@ def main():
     else:
         top_signature = None
         
-    if args.gen_bench_prior:
+    if args.testbench_path:
+        tb_path = os.path.abspath(args.testbench_path)
+        if not os.path.isfile(tb_path):
+            raise FileNotFoundError(f"provided testbench not found: {tb_path}")
+        shutil.copyfile(tb_path, os.path.join(output_dir, "tb.cpp"))
+        initial_prompt = f"""\
+```
+{curr_code}
+```
+
+Give me the optimized HLS code. The top level function name must remain: {top_name}. Preserve its exact interface. Define exactly one strong `{top_name}` function in every build. Do not define `{reference_top_name}`, do not use weak aliases, and do not hide the top function behind conditional compilation. Provide a self-contained code in one ```c++ ... ``` block.
+"""
+    elif args.gen_bench_prior:
         context_variables = ContextVariables(data={
             "orig_code": curr_code,
             "kernel_name": top_name,
@@ -468,21 +592,58 @@ Give me the optimized HLS code. The top level function name should be: {top_name
     best_design: Optional[Dict[str, Any]] = None
     for t in range(args.iterations):
         print(f'Running round {t}')
+        model_calls += 1
+        write_evaluation_summary("model_call_started")
         resp = get_response(
             client,
             model_name,
             messages,
-            reasoning_effort=args.reasoning_effort
+            reasoning_effort=provider_reasoning_effort,
+            max_attempts=args.max_model_attempts,
+            max_tokens=args.max_output_tokens,
+            safe_errors=args.evaluation_mode,
         )
 
         # log assistant/model output
-        log_output(output_dir, resp.content, "assistant")
-        messages.append({"role": "assistant", "content": resp.content})
+        response_content = resp.content if isinstance(resp.content, str) else ""
+        log_output(output_dir, response_content, "assistant")
+        messages.append({"role": "assistant", "content": response_content})
+        completed_rounds += 1
 
-        # parse code block and strip any HLS pragmas
-        curr_code = extract_c_or_cpp_code(resp.content)
+        # A malformed/empty model response is a no-retry Legacy abstention for
+        # this iteration, not a process crash.
+        try:
+            curr_code = extract_c_or_cpp_code(response_content)
+        except ValueError:
+            reason = (
+                "empty_model_content"
+                if not response_content.strip()
+                else "missing_or_ambiguous_code_fence"
+            )
+            model_output_abstentions += 1
+            model_output_reason_counts[reason] = (
+                model_output_reason_counts.get(reason, 0) + 1
+            )
+            user_msg = (
+                "The previous response was not a usable C/C++ candidate. "
+                "Return exactly one fenced ```c++ ... ``` block defining only "
+                f"the strong top function {top_name}."
+            )
+            messages.append({"role": "user", "content": user_msg})
+            log_output(output_dir, f"MODEL_OUTPUT_ABSTAINED: {reason}", "tool")
+            write_evaluation_summary("model_output_abstained")
+            continue
 
-        csynth_status, error_msg, rpt_path, xml_path = run_csynth(os.path.join(output_dir, f"round_{t}"), top_name, curr_code)
+        csynth_calls += 1
+        tool_calls += 1
+        write_evaluation_summary("csynth_started")
+        csynth_status, error_msg, rpt_path, xml_path = run_csynth(
+            os.path.join(output_dir, f"round_{t}"),
+            top_name,
+            curr_code,
+            timelimit=args.csynth_timeout_s,
+            target_profile=args.target,
+        )
         if csynth_status == "timeout":
             user_msg = "the code timeout. try less aggressive optimizations."
             messages.append({"role": "user", "content": user_msg})
@@ -493,23 +654,43 @@ Give me the optimized HLS code. The top level function name should be: {top_name
             log_output(output_dir, user_msg, "user")
         else:
             assert csynth_status == "succeeded"
-            with open(os.path.join(output_dir, f"round_{t}", 'optimized_code.cpp'), 'w') as f:
+            synthesis_successes += 1
+            round_dir = os.path.join(output_dir, f"round_{t}")
+            with open(os.path.join(round_dir, 'optimized_code.cpp'), 'w') as f:
                 f.write(curr_code)
             log_output(output_dir, f"Synthesizability success at round {t}", "tool")
-            shutil.copy(args.kernel_path, os.path.join(output_dir, f"round_{t}", 'orig_code.cpp'))
-            shutil.copy(os.path.join(output_dir, "tb.cpp"), os.path.join(output_dir, f"round_{t}", "tb.cpp"))
-            ret_code, msg = run_tb(os.path.join(output_dir, f"round_{t}"), 'orig_code.cpp', 'optimized_code.cpp', 'tb.cpp')
-            if ret_code != 0:
-                user_msg = "able to synthesis but TB failed. The error: "
-                if ret_code == 1: 
-                    log_output(output_dir, '[ERROR] TB failed to compile')
-                    user_msg += "TB failed to compile. "
-                if ret_code == 2: 
-                    log_output(output_dir, '[ERROR] code not correct')
-                    user_msg += "code not correct. "
-                if msg: 
-                    log_output(output_dir, msg)
-                    user_msg += f"error message from tb: {msg}"
+            shutil.copy(reference_path, os.path.join(round_dir, 'orig_code.cpp'))
+            shutil.copy(os.path.join(output_dir, "tb.cpp"), os.path.join(round_dir, "tb.cpp"))
+            harness_attempts += 1
+            harness_result = run_tb(
+                round_dir,
+                'orig_code.cpp',
+                'optimized_code.cpp',
+                'tb.cpp',
+                reference_top_name=reference_top_name,
+                candidate_top_name=top_name,
+            )
+            compile_calls += harness_result.compile_calls
+            csim_calls += harness_result.csim_calls
+            tool_calls += harness_result.tool_calls
+            if harness_result.passed:
+                harness_passes += 1
+            else:
+                harness_failure_counts[harness_result.reason_code] = (
+                    harness_failure_counts.get(harness_result.reason_code, 0) + 1
+                )
+            write_evaluation_summary("candidate_tested")
+            if not harness_result.passed:
+                user_msg = (
+                    "The candidate synthesized but failed the isolated host harness. "
+                    f"reason_code={harness_result.reason_code}; "
+                    f"failure_owner={harness_result.failure_owner}. "
+                    f"Define only one strong {top_name} and never define "
+                    f"{reference_top_name}."
+                )
+                if harness_result.message:
+                    log_output(output_dir, harness_result.message)
+                    user_msg += f" Tool output: {harness_result.message}"
                 messages.append({"role": "user", "content": user_msg})
             else:
                 log_output(output_dir, '[Success] Simulation success')
@@ -572,7 +753,24 @@ Give me the optimized HLS code. The top level function name should be: {top_name
                         )
                 messages.append({"role": "user", "content": new_solution_message(raw_rpt, result_summary, args.add_raw_rpt)})
                 
-    persist_best_design(output_dir, best_design)
+    if best_design is not None:
+        no_best_reason = "best candidate selected"
+    elif model_calls > 0 and model_output_abstentions == model_calls:
+        no_best_reason = "All model outputs abstained before candidate synthesis"
+    elif harness_attempts > 0 and harness_passes == 0:
+        no_best_reason = "No candidate passed the reference-isolated host harness"
+    elif harness_passes > 0:
+        no_best_reason = "No harness-passing design met latency/resource selection"
+    elif synthesis_successes == 0:
+        no_best_reason = "No model candidate completed synthesis"
+    else:
+        no_best_reason = "No Legacy candidate was selected"
+    persist_best_design(
+        output_dir,
+        best_design,
+        no_best_reason=no_best_reason,
+    )
+    write_evaluation_summary("completed")
     return 0
 
 

@@ -713,6 +713,7 @@ class _BottleneckModelEndpoint:
                 response=response,
                 response_valid=False,
                 error_code=type(exc).__name__,
+                error_reason_codes=candidate_response_reason_codes(exc),
             )
             raise
 

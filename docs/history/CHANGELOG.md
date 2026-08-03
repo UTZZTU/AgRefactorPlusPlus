@@ -304,3 +304,30 @@ Public/Hidden 与通用反馈：
 
 - v9 corrects the S3.7 real-smoke observer to parse the canonical versioned `candidate_index.json` schema through the product serializer/parser instead of assuming a flat candidate-id mapping;
 - smoke fixtures now emit the real frozen candidate-index artifact and explicitly reject the obsolete flat test-only shape, preventing observer and fixture bugs from masking each other;
+
+
+### S3.8 bounded multi-kernel evaluation implementation
+
+- added a frozen three-kernel, two-repeat, three-arm real evaluation protocol;
+- added live direct `optimize` and source-only `full` orchestration;
+- adapted Legacy `simple_iter` to the same endpoint, effective provider request
+  parameters, TargetProfile, no-retry and hard-ceiling contract;
+- independently qualifies Legacy baseline and selected candidate with Public,
+  Hidden, CSYNTH and typed PPA evidence;
+- added safe incremental Legacy audit records without raw prompts/responses;
+- added canonical JSON/CSV metrics for correctness, PPA, invalid ratio, rollback,
+  calls, wall time and infrastructure/candidate failure separation;
+- does not claim statistical significance or stable superiority.
+
+### S3.8 V2 Legacy observer and acceptance correction
+
+- corrected external qualification observation from a truncated four-stage
+  tuple to the accepted seven-stage Stage 3 order;
+- reclassified observer/record-contract defects as infrastructure failures;
+- separated protocol v1, run-record v2, and report v2 while retaining product
+  run-record v1 read compatibility;
+- added targeted resume retry for only the `simple-iter` arm;
+- strengthened Stage 3 closure to require all six Legacy units to prove actual
+  model execution and safe evaluation artifacts;
+- invalidated the V1 false-positive fair-comparison gate while preserving its
+  twelve real product records and external diagnostics.

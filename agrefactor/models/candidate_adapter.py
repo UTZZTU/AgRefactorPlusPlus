@@ -70,11 +70,32 @@ class CandidateResponseError(ValueError):
 
 
 def candidate_response_reason_codes(error: BaseException) -> tuple[str, ...]:
-    """Return stable safe reason codes for one candidate response failure."""
+    """Return stable safe reason codes for one model response failure.
+
+    Candidate contract errors remain authoritative. Provider adapters may also
+    expose an immutable ``reason_codes`` sequence; it is accepted only after
+    the same safe-token validation and never from exception text.
+    """
 
     if isinstance(error, CandidateResponseError):
         return error.reason_codes
-    return ()
+    observed = getattr(error, "reason_codes", ())
+    if isinstance(observed, (str, bytes)) or not isinstance(
+        observed,
+        Sequence,
+    ):
+        return ()
+    if not all(isinstance(code, str) for code in observed):
+        return ()
+    normalized = tuple(
+        dict.fromkeys(code.strip() for code in observed)
+    )
+    if not normalized or not all(
+        _REASON_CODE_RE.fullmatch(code)
+        for code in normalized
+    ):
+        return ()
+    return normalized
 
 
 def _copy_json_mapping(

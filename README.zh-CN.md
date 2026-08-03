@@ -251,3 +251,14 @@ AgRefactor++ 是原始
 更适合长期维护的执行与验证架构。
 
 使用、引用或分发本仓库时，应尊重原项目论文、作者贡献和所有适用的许可条款。
+
+## Stage 3.8 评测
+
+S3.8 包运行 direct `optimize`、真实 source-only `full` 与独立 qualification 的
+Legacy `simple_iter`。默认验收矩阵为三个不同 kernel × 两次重复 × 三个 arm，
+报告 correctness、PPA、invalid ratio、rollback、调用数和 wall time，不宣称
+稳定优于基线。
+
+S3.8 V2 修正：首次目标主机运行保留了有效产品路径证据，但暴露了 Legacy
+qualification 观察器缺陷。只有 6 个 `simple_iter` 单元重跑并证明真实模型调用及
+独立 qualification 后，Stage 3 才能关闭。
