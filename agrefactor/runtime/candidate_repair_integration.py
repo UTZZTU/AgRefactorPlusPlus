@@ -480,6 +480,12 @@ class LocalCandidateValidationHandlerFactory:
                         request.suite_testbench_codes
                     ),
                     timelimit=self._csim_timelimit,
+                    execution_backend="native_vitis",
+                    candidate_top_function=(
+                        request.candidate_top_function
+                        or request.task.kernel_name
+                    ),
+                    target_profile=request.task.target,
                 ),
                 split=EvaluationSplit.PUBLIC,
             )

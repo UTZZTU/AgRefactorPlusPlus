@@ -54,8 +54,25 @@ class CsimSuiteEvaluator:
         self,
         *,
         executor: LegacyCsimExecutor | None = None,
+        executor_identity: str = (
+            "flow.tools.csim.run_csim"
+        ),
     ) -> None:
+        if not isinstance(executor_identity, str):
+            raise TypeError(
+                "executor_identity must be a string"
+            )
+        identity = executor_identity.strip()
+        if not identity:
+            raise ValueError(
+                "executor_identity must not be empty"
+            )
         self._executor = executor
+        self._executor_identity = identity
+
+    @property
+    def executor_identity(self) -> str:
+        return self._executor_identity
 
     def evaluate(
         self,
@@ -105,6 +122,9 @@ class CsimSuiteEvaluator:
             invocation=invocation,
             invocation_path=invocation_path,
             source_provenance=source_provenance,
+            executor_identity=(
+                self._executor_identity
+            ),
         )
 
         if trace is not None:
@@ -200,6 +220,7 @@ class CsimSuiteEvaluator:
         invocation: Mapping[str, Any] | None,
         invocation_path: Path,
         source_provenance: TestSourceProvenance | None,
+        executor_identity: str,
     ) -> TestEvaluationEvidence:
         status, summary = cls._normalize_status(legacy_status)
 
@@ -230,12 +251,46 @@ class CsimSuiteEvaluator:
             simulation_execution,
         )
 
+        execution_backend = (
+            invocation.get("execution_backend")
+            if isinstance(invocation, Mapping)
+            else None
+        )
         details: dict[str, Any] = {
-            "executor": "flow.tools.csim.run_csim",
+            "executor": executor_identity,
+            "execution_backend": (
+                execution_backend
+                if isinstance(
+                    execution_backend,
+                    str,
+                )
+                else "host_differential"
+            ),
+            "native_vitis_csim": bool(
+                isinstance(invocation, Mapping)
+                and invocation.get(
+                    "native_vitis_csim"
+                )
+                is True
+            ),
             "legacy_status": legacy_status,
             "case_counts_complete": case_counts_complete,
             "compile_execution": compile_execution,
             "simulation_execution": simulation_execution,
+            "toolchain_version_status": (
+                invocation.get(
+                    "toolchain_version_verification",
+                    {},
+                ).get("status")
+                if isinstance(invocation, Mapping)
+                and isinstance(
+                    invocation.get(
+                        "toolchain_version_verification"
+                    ),
+                    Mapping,
+                )
+                else None
+            ),
         }
         if diagnostic:
             details["diagnostic"] = diagnostic

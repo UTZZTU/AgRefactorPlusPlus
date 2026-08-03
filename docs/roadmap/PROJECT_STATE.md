@@ -288,3 +288,29 @@ repair descendant, restarts complete Optimize qualification, uses one shared
 BudgetManager and changes `best_correct` only after full qualification and PPA
 comparison.
 <!-- PRE_STAGE4_P4_0B_R_CONTRACT:END -->
+
+<!-- PRE_STAGE4_P4_0C_NATIVE_VITIS_CSIM:BEGIN -->
+## P4-0C Public native Vitis CSIM accepted
+
+```text
+P4_0C_PUBLIC_NATIVE_VITIS_CSIM_IMPLEMENTED=true
+P4_0C_PUBLIC_NATIVE_VITIS_CSIM_ACCEPTANCE=accepted_real_vitis
+P4_0C_UNIFIED_STAGE_ORDER=preflight_public_native_csim_csynth_hidden
+P4_0C_PUBLIC_BACKEND=native_vitis
+P4_0C_HIDDEN_BACKEND=host_differential
+P4_0C_NETWORK_LLM_USED=false
+P4_0C_FOCUSED_TESTS=23
+P4_0C_FULL_REGRESSION=2089
+P4_0C_CACHE_PIPELINE=prestage4-native-vitis-csim-v1
+P4_0C_CANDIDATE_REPAIR_PREFIX=task_aware
+P4_0C_STAGE2_SMOKE_ORDER=preflight_public_csynth_hidden
+P4_0C_STAGE2_SMOKE_BUDGET=5_tool_2_compile_1_csynth_2_csim
+STAGE4_ALLOWED=false
+NEXT_IMPLEMENTATION_PACKAGE=P4-0D_PUBLIC_RTL_COSIM
+```
+
+The accepted real smoke uses a committed model-independent sample and
+actual Vitis HLS `csim_design`. It proves the new Public tool stage and
+ordering only; it is not a network-model, arbitrary-kernel or
+stable-optimization claim.
+<!-- PRE_STAGE4_P4_0C_NATIVE_VITIS_CSIM:END -->

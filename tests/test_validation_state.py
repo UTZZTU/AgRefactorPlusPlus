@@ -108,26 +108,35 @@ class ValidationStateMachineTests(unittest.TestCase):
             ValidationTransitionKind.ACCEPT,
         )
 
-    def test_public_then_hidden_order(self):
+    def test_public_then_csynth_then_hidden_order(self):
         machine = ValidationStateMachine(
             make_task(public=True, hidden=True)
         )
-        first = self.go(
+        public = self.go(
             machine,
-            ValidationState.CSYNTH,
+            ValidationState.PREFLIGHT,
             FeedbackRouteAction.CONTINUE_VALIDATION,
         )
-        second = self.go(
+        csynth = self.go(
             machine,
-            first.next_state,
+            public.next_state,
+            FeedbackRouteAction.CONTINUE_VALIDATION,
+        )
+        hidden = self.go(
+            machine,
+            csynth.next_state,
             FeedbackRouteAction.CONTINUE_VALIDATION,
         )
         self.assertEqual(
-            first.next_state,
+            public.next_state,
             ValidationState.PUBLIC_EVALUATION,
         )
         self.assertEqual(
-            second.next_state,
+            csynth.next_state,
+            ValidationState.CSYNTH,
+        )
+        self.assertEqual(
+            hidden.next_state,
             ValidationState.HIDDEN_EVALUATION,
         )
 

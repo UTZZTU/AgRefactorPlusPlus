@@ -232,13 +232,15 @@ class ScenarioFactory:
         handlers = {}
         states = [
             ValidationState.PREFLIGHT,
-            ValidationState.CSYNTH,
         ]
         if any(
             suite.split is EvaluationSplit.PUBLIC
             for suite in request.task.test_suites
         ):
-            states.append(ValidationState.PUBLIC_EVALUATION)
+            states.append(
+                ValidationState.PUBLIC_EVALUATION
+            )
+        states.append(ValidationState.CSYNTH)
         if any(
             suite.split is EvaluationSplit.HIDDEN
             for suite in request.task.test_suites
@@ -529,6 +531,18 @@ class CandidateValidationPlanContractTests(unittest.TestCase):
                 ].inputs.candidate_code,
                 P1,
             )
+            self.assertEqual(
+                handlers[
+                    ValidationState.PUBLIC_EVALUATION
+                ].inputs.execution_backend,
+                "native_vitis",
+            )
+            self.assertEqual(
+                handlers[
+                    ValidationState.HIDDEN_EVALUATION
+                ].inputs.execution_backend,
+                "host_differential",
+            )
 
     def test_missing_declared_suite_code_is_rejected(self):
         adapter, _ = make_adapter([])
@@ -776,8 +790,8 @@ class CandidateRepairValidationOrchestratorTests(unittest.TestCase):
             repair_states[:3],
             [
                 ValidationState.PREFLIGHT,
-                ValidationState.CSYNTH,
                 ValidationState.PUBLIC_EVALUATION,
+                ValidationState.CSYNTH,
             ],
         )
 

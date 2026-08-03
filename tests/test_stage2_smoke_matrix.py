@@ -80,8 +80,8 @@ def _case(**overrides):
         "hidden_secret_marker": "SECRET",
         "ground_truth": _truth(),
         "expected_budget": Stage2SmokeBudgetExpectation(
-            tool_calls=6,
-            compile_calls=3,
+            tool_calls=5,
+            compile_calls=2,
             csynth_calls=1,
             csim_calls=2,
         ),
@@ -223,8 +223,8 @@ class Stage2SmokeCorpusTests(unittest.TestCase):
             self.assertEqual(
                 case.expected_budget.to_dict(),
                 {
-                    "tool_calls": 6,
-                    "compile_calls": 3,
+                    "tool_calls": 5,
+                    "compile_calls": 2,
                     "csynth_calls": 1,
                     "csim_calls": 2,
                     "llm_calls": 0,

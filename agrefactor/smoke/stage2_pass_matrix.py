@@ -39,8 +39,8 @@ from .stage2_matrix import (
 
 _EXPECTED_PASS_STAGES = (
     ValidationState.PREFLIGHT,
-    ValidationState.CSYNTH,
     ValidationState.PUBLIC_EVALUATION,
+    ValidationState.CSYNTH,
     ValidationState.HIDDEN_EVALUATION,
 )
 

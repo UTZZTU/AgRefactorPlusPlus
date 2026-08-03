@@ -654,6 +654,13 @@ class ProductQualificationAdapter:
                     candidate_code=candidate_code,
                     suite_testbench_codes=public_codes,
                     timelimit=self._csim_timeout_s,
+                    execution_backend="native_vitis",
+                    candidate_top_function=(
+                        self._material.top_function
+                    ),
+                    target_profile=(
+                        self._material.target
+                    ),
                 ),
                 split=EvaluationSplit.PUBLIC,
             ),
@@ -798,11 +805,26 @@ class ProductQualificationAdapter:
         return None
 
     def recovery_budget_increment(self) -> BudgetIncrement:
-        suite_count = len(self._material.suites)
+        public_count = sum(
+            1
+            for suite in self._material.suites
+            if suite.split is EvaluationSplit.PUBLIC
+        )
+        hidden_count = sum(
+            1
+            for suite in self._material.suites
+            if suite.split is EvaluationSplit.HIDDEN
+        )
         return BudgetIncrement(
-            tool_calls=10 + 2 * suite_count,
-            compile_calls=6 + suite_count,
-            csim_calls=suite_count,
+            tool_calls=(
+                10
+                + public_count
+                + 2 * hidden_count
+            ),
+            compile_calls=6 + hidden_count,
+            csim_calls=(
+                public_count + hidden_count
+            ),
             csynth_calls=1,
         )
 

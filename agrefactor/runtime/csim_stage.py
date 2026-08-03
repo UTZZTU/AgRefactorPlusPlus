@@ -13,7 +13,10 @@ from typing import Any
 
 from autogen.agentchat.group import ContextVariables
 
-from agrefactor.config import EvaluationSplit
+from agrefactor.config import (
+    EvaluationSplit,
+    TargetProfile,
+)
 from agrefactor.evaluation.csim_suite import (
     CsimSuiteEvaluationResult,
     CsimSuiteEvaluator,
@@ -86,6 +89,9 @@ class CsimStageInputs:
     candidate_code: str
     suite_testbench_codes: Mapping[str, str]
     timelimit: int = 60
+    execution_backend: str = "host_differential"
+    candidate_top_function: str | None = None
+    target_profile: TargetProfile | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -141,6 +147,56 @@ class CsimStageInputs:
                 )
             normalized[suite_id] = raw_code
 
+        if not isinstance(
+            self.execution_backend,
+            str,
+        ):
+            raise TypeError(
+                "execution_backend must be a string"
+            )
+        backend = self.execution_backend.strip()
+        if backend not in {
+            "host_differential",
+            "native_vitis",
+        }:
+            raise ValueError(
+                "execution_backend must be "
+                "host_differential or native_vitis"
+            )
+
+        top = self.candidate_top_function
+        if top is not None:
+            if not isinstance(top, str):
+                raise TypeError(
+                    "candidate_top_function must be "
+                    "a string or null"
+                )
+            top = top.strip() or None
+
+        if backend == "native_vitis":
+            if top is None:
+                raise ValueError(
+                    "native_vitis requires "
+                    "candidate_top_function"
+                )
+            if not isinstance(
+                self.target_profile,
+                TargetProfile,
+            ):
+                raise ValueError(
+                    "native_vitis requires "
+                    "TargetProfile"
+                )
+        elif self.target_profile is not None:
+            if not isinstance(
+                self.target_profile,
+                TargetProfile,
+            ):
+                raise TypeError(
+                    "target_profile must be "
+                    "TargetProfile or null"
+                )
+
         if (
             isinstance(self.timelimit, bool)
             or not isinstance(self.timelimit, int)
@@ -163,6 +219,16 @@ class CsimStageInputs:
             "suite_testbench_codes",
             normalized,
         )
+        object.__setattr__(
+            self,
+            "execution_backend",
+            backend,
+        )
+        object.__setattr__(
+            self,
+            "candidate_top_function",
+            top,
+        )
 
 
 class CsimValidationStageHandler:
@@ -178,8 +244,8 @@ class CsimValidationStageHandler:
     path-safe agent view before composition.
     """
 
-    handler_version = 1
-    semantics_version = 1
+    handler_version = 2
+    semantics_version = 2
     source = "test_evaluation"
 
     def __init__(
@@ -240,9 +306,38 @@ class CsimValidationStageHandler:
                 "TestEvaluationFeedbackComposer or null"
             )
 
+        if (
+            inputs.execution_backend
+            == "native_vitis"
+            and normalized_split
+            is not EvaluationSplit.PUBLIC
+        ):
+            raise ValueError(
+                "native Vitis CSIM is Public-only; "
+                "Hidden remains host differential"
+            )
+
         self._inputs = inputs
         self._split = normalized_split
-        self._evaluator = evaluator or CsimSuiteEvaluator()
+        if evaluator is not None:
+            self._evaluator = evaluator
+        elif (
+            inputs.execution_backend
+            == "native_vitis"
+        ):
+            from flow.tools.vitis_csim import (
+                run_vitis_csim,
+            )
+
+            self._evaluator = CsimSuiteEvaluator(
+                executor=run_vitis_csim,
+                executor_identity=(
+                    "flow.tools.vitis_csim."
+                    "run_vitis_csim"
+                ),
+            )
+        else:
+            self._evaluator = CsimSuiteEvaluator()
         self._feedback_adapter = (
             feedback_adapter
             or TestEvaluationFeedbackAdapter()
@@ -310,6 +405,15 @@ class CsimValidationStageHandler:
                         self._inputs.suite_testbench_codes[
                             suite.suite_id
                         ]
+                    ),
+                    "candidate_top_function": (
+                        self._inputs.candidate_top_function
+                    ),
+                    "target_profile": (
+                        self._inputs.target_profile
+                    ),
+                    "csim_execution_backend": (
+                        self._inputs.execution_backend
                     ),
                 }
             )
@@ -394,6 +498,13 @@ class CsimValidationStageHandler:
                     is EvaluationSplit.PUBLIC
                     else "hidden_fail_fast"
                 ),
+                "execution_backend": (
+                    self._inputs.execution_backend
+                ),
+                "native_vitis_csim": (
+                    self._inputs.execution_backend
+                    == "native_vitis"
+                ),
                 "suite_work_dir_layout": (
                     f"{self._split.value}/suite_NNN"
                 ),
@@ -408,6 +519,13 @@ class CsimValidationStageHandler:
             "semantics_version": self.semantics_version,
             "shared_budget": True,
             "split": self._split.value,
+            "execution_backend": (
+                self._inputs.execution_backend
+            ),
+            "native_vitis_csim": (
+                self._inputs.execution_backend
+                == "native_vitis"
+            ),
             "declared_suite_count": len(suites),
             "attempted_suite_count": len(
                 attempted_suite_ids
@@ -440,6 +558,16 @@ class CsimValidationStageHandler:
             "suite_version": evidence.suite.suite_version,
             "split": evidence.suite.split.value,
             "evaluation_status": evidence.status.value,
+            "execution_backend": (
+                result.evidence.details.get(
+                    "execution_backend"
+                )
+            ),
+            "native_vitis_csim": (
+                result.evidence.details.get(
+                    "native_vitis_csim"
+                )
+            ),
             "source_provenance": (
                 None if provenance is None else provenance.to_dict()
             ),
@@ -527,9 +655,20 @@ class CsimValidationStageHandler:
                 self.semantics_version
             ),
             "legacy_status": result.legacy_status,
+            "execution_backend": (
+                self._inputs.execution_backend
+            ),
+            "native_vitis_csim": (
+                self._inputs.execution_backend
+                == "native_vitis"
+            ),
         }
 
-        if result.legacy_status == "csim_failed":
+        if result.evidence.timed_out:
+            category = FeedbackCategory.TIMEOUT
+            owner = FeedbackOwner.EVALUATOR
+            stage = FeedbackStage.CSIM
+        elif result.legacy_status == "csim_failed":
             category = FeedbackCategory.FUNCTIONAL_MISMATCH
             owner = FeedbackOwner.CANDIDATE
             stage = FeedbackStage.CSIM
@@ -569,9 +708,6 @@ class CsimValidationStageHandler:
                 }
                 for item in diagnostics
             ]
-        elif result.evidence.timed_out:
-            category = FeedbackCategory.TIMEOUT
-            owner = FeedbackOwner.UNKNOWN
         elif any(
             item.category
             is FeedbackCategory.TOOLCHAIN_FAILURE
@@ -597,6 +733,13 @@ class CsimValidationStageHandler:
                     self.semantics_version
                 ),
                 "legacy_status": result.legacy_status,
+                "execution_backend": (
+                    self._inputs.execution_backend
+                ),
+                "native_vitis_csim": (
+                    self._inputs.execution_backend
+                    == "native_vitis"
+                ),
             }
         )
         return FeedbackReport(
@@ -627,8 +770,28 @@ class CsimValidationStageHandler:
         owner = FeedbackOwner.UNKNOWN
         stage = FeedbackStage.TEST
         summary = "CSIM executor raised an evidenced error"
+        verification = invocation.get(
+            "toolchain_version_verification"
+        )
+        verification_status = (
+            verification.get("status")
+            if isinstance(verification, Mapping)
+            else None
+        )
 
-        if (
+        if verification_status not in {
+            None,
+            "matched",
+            "detected",
+        }:
+            category = FeedbackCategory.TOOLCHAIN_FAILURE
+            owner = FeedbackOwner.TOOLCHAIN
+            stage = FeedbackStage.CSIM
+            summary = (
+                "Native Vitis CSIM toolchain "
+                "verification failed"
+            )
+        elif (
             isinstance(budget, Mapping)
             and budget.get("status") == "blocked"
         ):
@@ -739,6 +902,16 @@ class CsimValidationStageHandler:
                 ),
                 "runtime_semantics_version": (
                     self.semantics_version
+                ),
+                "execution_backend": (
+                    self._inputs.execution_backend
+                ),
+                "native_vitis_csim": (
+                    self._inputs.execution_backend
+                    == "native_vitis"
+                ),
+                "toolchain_version_status": (
+                    verification_status
                 ),
             },
         )
@@ -974,6 +1147,27 @@ def read_csim_invocation_summary(
         return None
 
     return {
+        "execution_backend": value.get(
+            "execution_backend",
+            "host_differential",
+        ),
+        "native_vitis_csim": (
+            value.get("native_vitis_csim")
+            is True
+        ),
+        "toolchain_version_status": (
+            value.get(
+                "toolchain_version_verification",
+                {},
+            ).get("status")
+            if isinstance(
+                value.get(
+                    "toolchain_version_verification"
+                ),
+                Mapping,
+            )
+            else None
+        ),
         "budget": (
             CsimValidationStageHandler._budget_summary(
                 value.get("budget")

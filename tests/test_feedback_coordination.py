@@ -154,7 +154,7 @@ class ValidationFeedbackCoordinatorTests(
             FeedbackOwner.CANDIDATE,
         )
 
-    def test_public_pass_advances_to_hidden(self):
+    def test_public_pass_advances_to_csynth(self):
         result = self.coordinate(
             report(source="test_evaluation"),
             ValidationState.PUBLIC_EVALUATION,
@@ -163,7 +163,7 @@ class ValidationFeedbackCoordinatorTests(
 
         self.assertEqual(
             result.transition.next_state,
-            ValidationState.HIDDEN_EVALUATION,
+            ValidationState.CSYNTH,
         )
         self.assertEqual(
             result.selected_feedback_items,

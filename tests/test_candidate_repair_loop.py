@@ -229,7 +229,13 @@ class RecordingValidator:
         return value
 
 
-def passed_result(stages=(ValidationState.PREFLIGHT, ValidationState.CSYNTH)):
+def passed_result(
+    stages=(
+        ValidationState.PREFLIGHT,
+        ValidationState.PUBLIC_EVALUATION,
+        ValidationState.CSYNTH,
+    )
+):
     return CandidateValidationResult(
         passed=True,
         completed_stages=stages,
@@ -256,16 +262,19 @@ def failed_result(
     route = make_route(report, action=action)
     stages = {
         ValidationState.PREFLIGHT: (ValidationState.PREFLIGHT,),
-        ValidationState.CSYNTH: (ValidationState.PREFLIGHT, ValidationState.CSYNTH),
         ValidationState.PUBLIC_EVALUATION: (
             ValidationState.PREFLIGHT,
-            ValidationState.CSYNTH,
             ValidationState.PUBLIC_EVALUATION,
+        ),
+        ValidationState.CSYNTH: (
+            ValidationState.PREFLIGHT,
+            ValidationState.PUBLIC_EVALUATION,
+            ValidationState.CSYNTH,
         ),
         ValidationState.HIDDEN_EVALUATION: (
             ValidationState.PREFLIGHT,
-            ValidationState.CSYNTH,
             ValidationState.PUBLIC_EVALUATION,
+            ValidationState.CSYNTH,
             ValidationState.HIDDEN_EVALUATION,
         ),
     }[state]
@@ -348,7 +357,11 @@ class CandidateValidationContractTests(unittest.TestCase):
             public_testbench_code=PUBLIC_TB,
             attempt=1,
             source_failure_state=ValidationState.CSYNTH,
-            required_prefix=(ValidationState.PREFLIGHT, ValidationState.CSYNTH),
+            required_prefix=(
+                ValidationState.PREFLIGHT,
+                ValidationState.PUBLIC_EVALUATION,
+                ValidationState.CSYNTH,
+            ),
             budget=budget,
         )
         self.assertIs(request.budget, budget)
@@ -388,7 +401,11 @@ class CandidateValidationContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             CandidateValidationResult(
                 passed=False,
-                completed_stages=(ValidationState.PREFLIGHT, ValidationState.CSYNTH),
+                completed_stages=(
+                    ValidationState.PREFLIGHT,
+                    ValidationState.PUBLIC_EVALUATION,
+                    ValidationState.CSYNTH,
+                ),
                 summary="failed",
                 feedback=report,
                 route_decision=make_route(report),
@@ -454,7 +471,17 @@ class BoundedCandidateRepairLoopTests(unittest.TestCase):
 
     def test_success_sets_last_validated_candidate(self):
         provider = SequenceProvider([fenced(PROPOSAL_1)])
-        validator = RecordingValidator([passed_result((ValidationState.PREFLIGHT, ValidationState.CSYNTH, ValidationState.PUBLIC_EVALUATION))])
+        validator = RecordingValidator(
+            [
+                passed_result(
+                    (
+                        ValidationState.PREFLIGHT,
+                        ValidationState.PUBLIC_EVALUATION,
+                        ValidationState.CSYNTH,
+                    )
+                )
+            ]
+        )
         loop, budget = self.make_loop(provider, validator)
         result = loop.run(make_request(max_attempts=2))
         self.assertTrue(result.succeeded)

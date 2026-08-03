@@ -44,9 +44,11 @@ def _baseline_truth(
 
 
 def _baseline_budget() -> Stage2SmokeBudgetExpectation:
+    # Preflight=1 tool/1 compile, Public native CSIM=1 tool/0 compile,
+    # CSYNTH=1 tool/1 csynth, Hidden host differential=2 tools/1 compile.
     return Stage2SmokeBudgetExpectation(
-        tool_calls=6,
-        compile_calls=3,
+        tool_calls=5,
+        compile_calls=2,
         csynth_calls=1,
         csim_calls=2,
     )

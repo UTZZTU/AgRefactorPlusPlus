@@ -29,7 +29,9 @@ from .state import (
 
 
 QUALIFICATION_SCHEMA_VERSION = 1
-QUALIFICATION_PIPELINE_VERSION = "stage3-qualification-v1"
+QUALIFICATION_PIPELINE_VERSION = (
+    "prestage4-native-vitis-csim-v1"
+)
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _SAFE_METADATA_FIELDS = frozenset(
     {
@@ -48,6 +50,9 @@ _SAFE_METADATA_FIELDS = frozenset(
         "stopped_early",
         "stop_reason",
         "execution_policy",
+        "execution_backend",
+        "native_vitis_csim",
+        "toolchain_version_status",
         "category_counts",
         "severity_counts",
         "owner_counts",

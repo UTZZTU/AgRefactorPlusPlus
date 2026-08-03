@@ -56,8 +56,7 @@ class _PassingHandlerFactory:
                     is ValidationState.PUBLIC_EVALUATION
                 ):
                     context.budget.consume(
-                        tool_calls=2,
-                        compile_calls=1,
+                        tool_calls=1,
                         csim_calls=1,
                     )
                 elif (
@@ -210,8 +209,8 @@ class Stage2SmokePassMatrixRunnerTests(unittest.TestCase):
         _, _, result = self._run()
         expected = (
             ValidationState.PREFLIGHT,
-            ValidationState.CSYNTH,
             ValidationState.PUBLIC_EVALUATION,
+            ValidationState.CSYNTH,
             ValidationState.HIDDEN_EVALUATION,
         )
         for case_result in result.case_results:
@@ -226,8 +225,8 @@ class Stage2SmokePassMatrixRunnerTests(unittest.TestCase):
             self.assertEqual(
                 case_result.budget_delta.to_dict(),
                 {
-                    "tool_calls": 6,
-                    "compile_calls": 3,
+                    "tool_calls": 5,
+                    "compile_calls": 2,
                     "csynth_calls": 1,
                     "csim_calls": 2,
                     "llm_calls": 0,
@@ -241,8 +240,8 @@ class Stage2SmokePassMatrixRunnerTests(unittest.TestCase):
         self.assertEqual(
             result.expected_total_budget.to_dict(),
             {
-                "tool_calls": 12,
-                "compile_calls": 6,
+                "tool_calls": 10,
+                "compile_calls": 4,
                 "csynth_calls": 2,
                 "csim_calls": 4,
                 "llm_calls": 0,
@@ -250,8 +249,8 @@ class Stage2SmokePassMatrixRunnerTests(unittest.TestCase):
                 "cost_usd": 0.0,
             },
         )
-        self.assertEqual(result.total_usage.tool_calls, 12)
-        self.assertEqual(result.total_usage.compile_calls, 6)
+        self.assertEqual(result.total_usage.tool_calls, 10)
+        self.assertEqual(result.total_usage.compile_calls, 4)
         self.assertEqual(result.total_usage.csynth_calls, 2)
         self.assertEqual(result.total_usage.csim_calls, 4)
 
@@ -377,8 +376,8 @@ class Stage2SmokePassMatrixRunnerTests(unittest.TestCase):
         self.assertEqual(
             expected.to_dict(),
             {
-                "tool_calls": 42,
-                "compile_calls": 21,
+                "tool_calls": 35,
+                "compile_calls": 14,
                 "csynth_calls": 7,
                 "csim_calls": 14,
                 "llm_calls": 0,

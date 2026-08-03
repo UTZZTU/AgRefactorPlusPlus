@@ -199,7 +199,7 @@ class ValidationOrchestratorTests(unittest.TestCase):
 
         self.assertEqual(
             calls,
-            ["preflight", "csynth", "public", "hidden"],
+            ["preflight", "public", "csynth", "hidden"],
         )
         self.assertTrue(result.accepted)
 
@@ -325,7 +325,10 @@ class ValidationOrchestratorTests(unittest.TestCase):
             result.final_state,
             ValidationState.BLOCKED,
         )
-        self.assertEqual(calls, ["preflight", "csynth"])
+        self.assertEqual(
+            calls,
+            ["preflight", "public", "csynth"],
+        )
 
     def test_hidden_data_not_in_result_or_trace(self):
         with tempfile.TemporaryDirectory() as directory:

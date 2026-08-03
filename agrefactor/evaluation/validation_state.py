@@ -492,14 +492,12 @@ class ValidationStateMachine:
         state: ValidationState,
     ) -> ValidationState:
         if state is ValidationState.PREFLIGHT:
-            return ValidationState.CSYNTH
-        if state is ValidationState.CSYNTH:
             if self._public:
                 return ValidationState.PUBLIC_EVALUATION
-            if self._hidden:
-                return ValidationState.HIDDEN_EVALUATION
-            return ValidationState.ACCEPTED
+            return ValidationState.CSYNTH
         if state is ValidationState.PUBLIC_EVALUATION:
+            return ValidationState.CSYNTH
+        if state is ValidationState.CSYNTH:
             if self._hidden:
                 return ValidationState.HIDDEN_EVALUATION
             return ValidationState.ACCEPTED

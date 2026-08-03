@@ -578,3 +578,33 @@ separate P4-0B-R recovery contract; it does not implement Optimize recovery,
 native Vitis CSIM, COSIM, model configuration, mode-specific budgets, or
 `dynamic-v1`.
 <!-- PRE_STAGE4_P4_0B_TYPED_PREFLIGHT:END -->
+
+<!-- PRE_STAGE4_P4_0C_NATIVE_VITIS_CSIM:BEGIN -->
+## P4-0C Public native Vitis CSIM checkpoint
+
+```text
+P4_0C_PUBLIC_NATIVE_VITIS_CSIM_IMPLEMENTED=true
+P4_0C_UNIFIED_STAGE_ORDER=true
+P4_0C_PUBLIC_BACKEND=native_vitis
+P4_0C_HIDDEN_BACKEND=host_differential
+P4_0C_NETWORK_LLM_USED=false
+P4_0C_NEW_FOCUSED_TESTS=23
+P4_0C_FULL_REGRESSION=2089
+P4_0C_REAL_VITIS_SMOKE=accepted
+P4_0C_CACHE_PIPELINE=prestage4-native-vitis-csim-v1
+P4_0C_PUBLIC_CSIM_OPTIMIZE_RECOVERY=false
+P4_0C_CANDIDATE_REPAIR_PREFIX=task_aware
+P4_0C_STAGE2_SMOKE_ORDER=preflight_public_csynth_hidden
+P4_0C_STAGE2_SMOKE_BUDGET=5_tool_2_compile_1_csynth_2_csim
+NEXT_PRE_STAGE4_PACKAGE=P4-0D_PUBLIC_RTL_COSIM
+```
+
+P4-0C executes the Public suite through actual Vitis HLS `csim_design`,
+with Candidate as the design source and Original/reference plus Public
+Testbench as `-tb` sources. Refactor and Optimize now share the order
+Preflight → Public native CSIM → CSYNTH → Hidden. Hidden remains an
+independent operator-only host differential gate.
+
+See the [decision record](PRE_STAGE4_P4_0C_DECISION_RECORD.md) and
+[acceptance](../acceptance/pre-stage4/p4_0c_public_native_vitis_csim_acceptance.md).
+<!-- PRE_STAGE4_P4_0C_NATIVE_VITIS_CSIM:END -->

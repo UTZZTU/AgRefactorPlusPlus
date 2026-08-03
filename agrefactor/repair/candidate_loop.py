@@ -54,8 +54,8 @@ from .protocol import (
 
 _CANONICAL_VALIDATION_ORDER = (
     ValidationState.PREFLIGHT,
-    ValidationState.CSYNTH,
     ValidationState.PUBLIC_EVALUATION,
+    ValidationState.CSYNTH,
     ValidationState.HIDDEN_EVALUATION,
 )
 _ALLOWED_REPAIR_STATES = frozenset(
@@ -70,15 +70,35 @@ _STAGE_BY_REPAIR_STATE = {
         {FeedbackStage.TEST, FeedbackStage.CSIM}
     ),
 }
-_REQUIRED_PREFIX_BY_REPAIR_STATE = {
-    ValidationState.PREFLIGHT: (ValidationState.PREFLIGHT,),
-    ValidationState.CSYNTH: (ValidationState.PREFLIGHT, ValidationState.CSYNTH),
-    ValidationState.PUBLIC_EVALUATION: (
-        ValidationState.PREFLIGHT,
-        ValidationState.CSYNTH,
-        ValidationState.PUBLIC_EVALUATION,
-    ),
-}
+_LEGAL_COMPLETED_STAGE_SEQUENCES = frozenset(
+    {
+        (ValidationState.PREFLIGHT,),
+        (
+            ValidationState.PREFLIGHT,
+            ValidationState.PUBLIC_EVALUATION,
+        ),
+        (
+            ValidationState.PREFLIGHT,
+            ValidationState.PUBLIC_EVALUATION,
+            ValidationState.CSYNTH,
+        ),
+        (
+            ValidationState.PREFLIGHT,
+            ValidationState.PUBLIC_EVALUATION,
+            ValidationState.CSYNTH,
+            ValidationState.HIDDEN_EVALUATION,
+        ),
+        (
+            ValidationState.PREFLIGHT,
+            ValidationState.CSYNTH,
+        ),
+        (
+            ValidationState.PREFLIGHT,
+            ValidationState.CSYNTH,
+            ValidationState.HIDDEN_EVALUATION,
+        ),
+    }
+)
 
 
 class CandidateRepairAttemptStatus(str, Enum):
@@ -161,8 +181,11 @@ class CandidateValidationRequest:
         state = _validation_state(self.source_failure_state)
         object.__setattr__(self, "source_failure_state", state)
         prefix = tuple(_validation_state(item) for item in self.required_prefix)
-        if prefix != _required_prefix(state):
-            raise ValueError("required_prefix must match the source failure state")
+        if prefix != _required_prefix(self.task, state):
+            raise ValueError(
+                "required_prefix must match the source failure state "
+                "and the task's declared Public/Hidden suites"
+            )
         object.__setattr__(self, "required_prefix", prefix)
         if not isinstance(self.budget, BudgetManager):
             raise TypeError("budget must be a BudgetManager")
@@ -708,7 +731,10 @@ class BoundedCandidateRepairLoop:
                 public_testbench_code=request.public_testbench_code,
                 attempt=attempt_number,
                 source_failure_state=failure_state,
-                required_prefix=_required_prefix(failure_state),
+                required_prefix=_required_prefix(
+                    request.task,
+                    failure_state,
+                ),
                 budget=self._budget,
             )
 
@@ -913,29 +939,11 @@ def _build_prompt(
 def _validate_completed_stages(
     stages: tuple[ValidationState, ...],
 ) -> None:
-    if stages[0] is not ValidationState.PREFLIGHT:
+    if stages not in _LEGAL_COMPLETED_STAGE_SEQUENCES:
         raise ValueError(
-            "completed_stages must start with preflight"
-        )
-    if len(stages) > 1 and (
-        stages[1] is not ValidationState.CSYNTH
-    ):
-        raise ValueError(
-            "completed_stages must place csynth after preflight"
-        )
-    tail = stages[2:]
-    legal_tails = {
-        (),
-        (ValidationState.PUBLIC_EVALUATION,),
-        (ValidationState.HIDDEN_EVALUATION,),
-        (
-            ValidationState.PUBLIC_EVALUATION,
-            ValidationState.HIDDEN_EVALUATION,
-        ),
-    }
-    if tail not in legal_tails:
-        raise ValueError(
-            "completed_stages must follow a declared validation plan"
+            "completed_stages must follow either "
+            "Preflight -> Public -> CSYNTH -> Hidden "
+            "or the no-Public Preflight -> CSYNTH -> Hidden plan"
         )
 
 
@@ -949,11 +957,40 @@ def _validate_completed_prefix(
         )
 
 
-def _required_prefix(state: ValidationState) -> tuple[ValidationState, ...]:
+def _declared_validation_order(
+    task: TaskSpec,
+) -> tuple[ValidationState, ...]:
+    if not isinstance(task, TaskSpec):
+        raise TypeError("task must be a TaskSpec")
+    order = [ValidationState.PREFLIGHT]
+    if any(
+        suite.split is EvaluationSplit.PUBLIC
+        for suite in task.test_suites
+    ):
+        order.append(ValidationState.PUBLIC_EVALUATION)
+    order.append(ValidationState.CSYNTH)
+    if any(
+        suite.split is EvaluationSplit.HIDDEN
+        for suite in task.test_suites
+    ):
+        order.append(ValidationState.HIDDEN_EVALUATION)
+    return tuple(order)
+
+
+def _required_prefix(
+    task: TaskSpec,
+    state: ValidationState,
+) -> tuple[ValidationState, ...]:
+    normalized = _validation_state(state)
+    order = _declared_validation_order(task)
     try:
-        return _REQUIRED_PREFIX_BY_REPAIR_STATE[state]
-    except KeyError as exc:
-        raise ValueError(f"No repair validation prefix for {state.value}") from exc
+        index = order.index(normalized)
+    except ValueError as exc:
+        raise ValueError(
+            f"No repair validation prefix for {normalized.value} "
+            "under the task's declared suites"
+        ) from exc
+    return order[: index + 1]
 
 
 def _validate_repair_context(
