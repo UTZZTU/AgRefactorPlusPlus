@@ -380,12 +380,13 @@ class P2SourceOnlyBootstrapTests(unittest.TestCase):
                 budget.snapshot().llm_calls,
                 1,
             )
-            # Auto Public preparation physically compiles once, and the
-            # independent formal Stage-2 adjudicator compiles once again.
-            # Both launches share and consume the same BudgetManager.
+            # Auto Public preparation executes the four-launch staged
+            # compatibility plan, and the independent formal Stage-2
+            # adjudicator stub consumes one additional compile call.
+            # All five launches share the same BudgetManager.
             self.assertEqual(
                 budget.snapshot().compile_calls,
-                2,
+                5,
             )
 
     def test_bootstrap_supports_multiple_provided_public_and_auto_hidden(self):

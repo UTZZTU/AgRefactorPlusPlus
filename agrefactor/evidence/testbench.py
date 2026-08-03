@@ -11,6 +11,50 @@ class TestbenchStage(str, Enum):
     RUN = "run"
 
 
+class TestbenchPreflightComponent(str, Enum):
+    TESTBENCH = "testbench"
+    REFERENCE = "reference"
+    CANDIDATE = "candidate"
+    SYMBOL_CHECK = "symbol_check"
+    LINK = "link"
+    TOOLCHAIN = "toolchain"
+    CONFIGURATION = "configuration"
+
+
+class TestbenchPreflightReasonCode(str, Enum):
+    PASSED = "passed"
+    TESTBENCH_COMPILE_FAILED = "testbench_compile_failed"
+    REFERENCE_COMPILE_FAILED = "reference_compile_failed"
+    CANDIDATE_COMPILE_FAILED = "candidate_compile_failed"
+    CANDIDATE_TOP_MISSING = "candidate_top_missing"
+    REFERENCE_TOP_MISSING = "reference_top_missing"
+    INTERFACE_MISMATCH = "interface_mismatch"
+    LINK_FAILED = "link_failed"
+    TOOLCHAIN_FAILED = "toolchain_failed"
+    CONFIGURATION_FAILED = "configuration_failed"
+    OWNERSHIP_UNKNOWN = "ownership_unknown"
+
+
+class TestbenchPreflightSubstage(str, Enum):
+    TESTBENCH_COMPILE = "testbench_compile"
+    REFERENCE_COMPILE = "reference_compile"
+    CANDIDATE_COMPILE = "candidate_compile"
+    TESTBENCH_SYMBOL_CHECK = "testbench_symbol_check"
+    REFERENCE_SYMBOL_CHECK = "reference_symbol_check"
+    CANDIDATE_SYMBOL_CHECK = "candidate_symbol_check"
+    REFERENCE_INTERFACE_CHECK = "reference_interface_check"
+    CANDIDATE_INTERFACE_CHECK = "candidate_interface_check"
+    LINK = "link"
+
+
+class TestbenchPreflightSubstepStatus(str, Enum):
+    PASSED = "passed"
+    FAILED = "failed"
+    ERROR = "error"
+    BLOCKED = "blocked"
+    SKIPPED = "skipped"
+
+
 class TestbenchPreflightStatus(str, Enum):
     PASSED = "passed"
     FAILED = "failed"
@@ -40,6 +84,7 @@ class TestbenchFailureOwner(str, Enum):
     ORIGINAL = "original"
     CANDIDATE = "candidate"
     TOOLCHAIN = "toolchain"
+    CONFIGURATION = "configuration"
     UNKNOWN = "unknown"
 
 
@@ -71,6 +116,67 @@ class TestbenchDiagnostic:
 
 
 @dataclass(frozen=True, slots=True)
+class TestbenchPreflightSubstep:
+    substage: TestbenchPreflightSubstage
+    component: TestbenchPreflightComponent
+    status: TestbenchPreflightSubstepStatus
+    command: tuple[str, ...]
+    return_code: int | None
+    failure_kind: TestbenchFailureKind = TestbenchFailureKind.NONE
+    stdout: str = ""
+    stderr: str = ""
+    artifact: str | None = None
+    duration_s: float = 0.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "substage",
+            self.substage
+            if isinstance(self.substage, TestbenchPreflightSubstage)
+            else TestbenchPreflightSubstage(str(self.substage)),
+        )
+        object.__setattr__(
+            self,
+            "component",
+            self.component
+            if isinstance(self.component, TestbenchPreflightComponent)
+            else TestbenchPreflightComponent(str(self.component)),
+        )
+        object.__setattr__(
+            self,
+            "status",
+            self.status
+            if isinstance(self.status, TestbenchPreflightSubstepStatus)
+            else TestbenchPreflightSubstepStatus(str(self.status)),
+        )
+        object.__setattr__(
+            self,
+            "failure_kind",
+            self.failure_kind
+            if isinstance(self.failure_kind, TestbenchFailureKind)
+            else TestbenchFailureKind(str(self.failure_kind)),
+        )
+        object.__setattr__(self, "command", tuple(self.command))
+        if self.duration_s < 0:
+            raise ValueError("substep duration_s must be non-negative")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "substage": self.substage.value,
+            "component": self.component.value,
+            "status": self.status.value,
+            "command": list(self.command),
+            "return_code": self.return_code,
+            "failure_kind": self.failure_kind.value,
+            "stdout": self.stdout,
+            "stderr": self.stderr,
+            "artifact": self.artifact,
+            "duration_s": self.duration_s,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class TestbenchPreflightResult:
     status: TestbenchPreflightStatus
     stage: TestbenchStage
@@ -83,6 +189,74 @@ class TestbenchPreflightResult:
     stderr: str = ""
     artifacts: tuple[str, ...] = ()
     duration_s: float = 0.0
+    reason_codes: tuple[TestbenchPreflightReasonCode, ...] = ()
+    failed_component: TestbenchPreflightComponent | None = None
+    substeps: tuple[TestbenchPreflightSubstep, ...] = ()
+
+    def __post_init__(self) -> None:
+        status = (
+            self.status
+            if isinstance(self.status, TestbenchPreflightStatus)
+            else TestbenchPreflightStatus(str(self.status))
+        )
+        stage = (
+            self.stage
+            if isinstance(self.stage, TestbenchStage)
+            else TestbenchStage(str(self.stage))
+        )
+        kind = (
+            self.failure_kind
+            if isinstance(self.failure_kind, TestbenchFailureKind)
+            else TestbenchFailureKind(str(self.failure_kind))
+        )
+        owner = (
+            self.failure_owner
+            if isinstance(self.failure_owner, TestbenchFailureOwner)
+            else TestbenchFailureOwner(str(self.failure_owner))
+        )
+        reasons = tuple(
+            item
+            if isinstance(item, TestbenchPreflightReasonCode)
+            else TestbenchPreflightReasonCode(str(item))
+            for item in self.reason_codes
+        )
+        if not reasons:
+            reasons = _default_preflight_reason_codes(
+                status=status,
+                kind=kind,
+                owner=owner,
+            )
+        component = (
+            None
+            if self.failed_component is None
+            else self.failed_component
+            if isinstance(
+                self.failed_component,
+                TestbenchPreflightComponent,
+            )
+            else TestbenchPreflightComponent(
+                str(self.failed_component)
+            )
+        )
+        steps = tuple(self.substeps)
+        if not all(
+            isinstance(item, TestbenchPreflightSubstep)
+            for item in steps
+        ):
+            raise TypeError(
+                "substeps must contain TestbenchPreflightSubstep values"
+            )
+        object.__setattr__(self, "status", status)
+        object.__setattr__(self, "stage", stage)
+        object.__setattr__(self, "failure_kind", kind)
+        object.__setattr__(self, "failure_owner", owner)
+        object.__setattr__(self, "reason_codes", reasons)
+        object.__setattr__(self, "failed_component", component)
+        object.__setattr__(self, "substeps", steps)
+
+    @property
+    def reason_code(self) -> TestbenchPreflightReasonCode:
+        return self.reason_codes[0]
 
     @property
     def succeeded(self) -> bool:
@@ -100,6 +274,8 @@ class TestbenchPreflightResult:
             return "inspect_original"
         if self.failure_owner is TestbenchFailureOwner.TOOLCHAIN:
             return "inspect_toolchain"
+        if self.failure_owner is TestbenchFailureOwner.CONFIGURATION:
+            return "inspect_configuration"
         return "inspect_compile_failure"
 
     def to_dict(self) -> dict[str, Any]:
@@ -115,5 +291,61 @@ class TestbenchPreflightResult:
             "stderr": self.stderr,
             "artifacts": list(self.artifacts),
             "duration_s": self.duration_s,
+            "reason_code": self.reason_code.value,
+            "reason_codes": [
+                item.value for item in self.reason_codes
+            ],
+            "failed_component": (
+                None
+                if self.failed_component is None
+                else self.failed_component.value
+            ),
+            "ownership_resolved": (
+                self.failure_owner
+                is not TestbenchFailureOwner.UNKNOWN
+            ),
+            "substeps": [
+                item.to_dict() for item in self.substeps
+            ],
             "next_action": self.next_action,
         }
+
+
+def _default_preflight_reason_codes(
+    *,
+    status: TestbenchPreflightStatus,
+    kind: TestbenchFailureKind,
+    owner: TestbenchFailureOwner,
+) -> tuple[TestbenchPreflightReasonCode, ...]:
+    if status is TestbenchPreflightStatus.PASSED:
+        return (TestbenchPreflightReasonCode.PASSED,)
+    if kind is TestbenchFailureKind.LINKAGE_MISMATCH:
+        return (
+            TestbenchPreflightReasonCode.INTERFACE_MISMATCH,
+        )
+    if kind is TestbenchFailureKind.LINK_ERROR:
+        reasons = [TestbenchPreflightReasonCode.LINK_FAILED]
+        if owner is TestbenchFailureOwner.UNKNOWN:
+            reasons.append(
+                TestbenchPreflightReasonCode.OWNERSHIP_UNKNOWN
+            )
+        return tuple(reasons)
+    if owner is TestbenchFailureOwner.CANDIDATE:
+        return (
+            TestbenchPreflightReasonCode.CANDIDATE_COMPILE_FAILED,
+        )
+    if owner is TestbenchFailureOwner.ORIGINAL:
+        return (
+            TestbenchPreflightReasonCode.REFERENCE_COMPILE_FAILED,
+        )
+    if owner is TestbenchFailureOwner.TESTBENCH:
+        return (
+            TestbenchPreflightReasonCode.TESTBENCH_COMPILE_FAILED,
+        )
+    if owner is TestbenchFailureOwner.TOOLCHAIN:
+        return (TestbenchPreflightReasonCode.TOOLCHAIN_FAILED,)
+    if owner is TestbenchFailureOwner.CONFIGURATION:
+        return (
+            TestbenchPreflightReasonCode.CONFIGURATION_FAILED,
+        )
+    return (TestbenchPreflightReasonCode.OWNERSHIP_UNKNOWN,)

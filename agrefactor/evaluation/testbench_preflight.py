@@ -23,9 +23,12 @@ from agrefactor.runtime.budget import (
 )
 
 
+# Compatibility minimum for staged execution without explicit top names.
+# Product paths with both top contracts prospectively require 9 tool calls
+# and 6 compiler-family calls; the exact request is written per invocation.
 PREFLIGHT_COMPILE_BUDGET_INCREMENT = {
-    "tool_calls": 1,
-    "compile_calls": 1,
+    "tool_calls": 4,
+    "compile_calls": 4,
 }
 
 
@@ -388,6 +391,33 @@ class TestbenchPreflight:
         self._include_dirs = tuple(Path(item) for item in include_dirs)
 
     def compile_and_link(
+        self,
+        *,
+        work_dir: str | Path,
+        testbench_code: str,
+        original_code: str,
+        candidate_code: str,
+        budget: BudgetManager | None = None,
+        original_top_function: str | None = None,
+        candidate_top_function: str | None = None,
+    ) -> TestbenchPreflightResult:
+        from .staged_preflight import run_staged_preflight
+
+        return run_staged_preflight(
+            compiler=self._compiler,
+            timeout_s=self._timeout_s,
+            extra_flags=self._extra_flags,
+            include_dirs=self._include_dirs,
+            work_dir=work_dir,
+            testbench_code=testbench_code,
+            original_code=original_code,
+            candidate_code=candidate_code,
+            budget=budget,
+            original_top_function=original_top_function,
+            candidate_top_function=candidate_top_function,
+        )
+
+    def _compile_and_link_legacy(
         self,
         *,
         work_dir: str | Path,

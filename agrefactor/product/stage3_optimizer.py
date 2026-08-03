@@ -619,6 +619,12 @@ class ProductQualificationAdapter:
                     testbench_code=self._material.preflight_code,
                     original_code=self._material.reference_code,
                     candidate_code=candidate_code,
+                    original_top_function=(
+                        self._material.reference_top_function
+                    ),
+                    candidate_top_function=(
+                        self._material.top_function
+                    ),
                 )
             ),
             QualificationStage.PUBLIC: CsimValidationStageHandler(

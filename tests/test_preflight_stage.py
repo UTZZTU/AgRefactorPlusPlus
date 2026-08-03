@@ -118,8 +118,8 @@ class PreflightValidationStageHandlerTests(
             self.assertTrue(
                 report.metadata["physical_execution"]
             )
-            self.assertEqual(usage.tool_calls, 1)
-            self.assertEqual(usage.compile_calls, 1)
+            self.assertEqual(usage.tool_calls, 4)
+            self.assertEqual(usage.compile_calls, 4)
             self.assertTrue(
                 (
                     Path(directory)

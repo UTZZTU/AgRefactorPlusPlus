@@ -59,6 +59,9 @@ _OWNER_MAP = {
     TestbenchFailureOwner.ORIGINAL: FeedbackOwner.ORIGINAL,
     TestbenchFailureOwner.CANDIDATE: FeedbackOwner.CANDIDATE,
     TestbenchFailureOwner.TOOLCHAIN: FeedbackOwner.TOOLCHAIN,
+    TestbenchFailureOwner.CONFIGURATION: (
+        FeedbackOwner.CONFIGURATION
+    ),
     TestbenchFailureOwner.UNKNOWN: FeedbackOwner.UNKNOWN,
 }
 
@@ -104,6 +107,18 @@ class TestbenchPreflightFeedbackAdapter:
                 "failure_kind": result.failure_kind.value,
                 "failure_owner": result.failure_owner.value,
                 "next_action": result.next_action,
+                "preflight_reason_code": (
+                    result.reason_code.value
+                ),
+                "preflight_reason_codes": [
+                    item.value for item in result.reason_codes
+                ],
+                "failed_component": (
+                    None
+                    if result.failed_component is None
+                    else result.failed_component.value
+                ),
+                "substep_count": len(result.substeps),
                 "duration_s": result.duration_s,
             },
         )
@@ -157,6 +172,14 @@ class TestbenchPreflightFeedbackAdapter:
                     ),
                     "preflight_status": result.status.value,
                     "next_action": result.next_action,
+                    "preflight_reason_code": (
+                        result.reason_code.value
+                    ),
+                    "failed_component": (
+                        None
+                        if result.failed_component is None
+                        else result.failed_component.value
+                    ),
                     "fallback_item": True,
                 },
             ),
@@ -189,6 +212,14 @@ class TestbenchPreflightFeedbackAdapter:
                 "column": diagnostic.column,
                 "preflight_status": result.status.value,
                 "next_action": result.next_action,
+                "preflight_reason_code": (
+                    result.reason_code.value
+                ),
+                "failed_component": (
+                    None
+                    if result.failed_component is None
+                    else result.failed_component.value
+                ),
             },
         )
 

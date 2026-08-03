@@ -14,8 +14,13 @@ from .testbench import (
     TestbenchDiagnostic,
     TestbenchFailureKind,
     TestbenchFailureOwner,
+    TestbenchPreflightComponent,
+    TestbenchPreflightReasonCode,
     TestbenchPreflightResult,
     TestbenchPreflightStatus,
+    TestbenchPreflightSubstage,
+    TestbenchPreflightSubstep,
+    TestbenchPreflightSubstepStatus,
     TestbenchStage,
 )
 
@@ -31,7 +36,12 @@ __all__ = [
     "TestbenchDiagnostic",
     "TestbenchFailureKind",
     "TestbenchFailureOwner",
+    "TestbenchPreflightComponent",
+    "TestbenchPreflightReasonCode",
     "TestbenchPreflightResult",
     "TestbenchPreflightStatus",
+    "TestbenchPreflightSubstage",
+    "TestbenchPreflightSubstep",
+    "TestbenchPreflightSubstepStatus",
     "TestbenchStage",
 ]

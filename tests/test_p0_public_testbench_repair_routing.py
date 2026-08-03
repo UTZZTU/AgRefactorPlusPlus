@@ -154,8 +154,8 @@ class P0PublicTestbenchRepairRoutingTests(unittest.TestCase):
             budget = BudgetManager(
                 BudgetLimits(
                     max_llm_calls=2,
-                    max_tool_calls=4,
-                    max_compile_calls=4,
+                    max_tool_calls=5,
+                    max_compile_calls=5,
                 )
             )
             with patch.object(
@@ -223,8 +223,12 @@ class P0PublicTestbenchRepairRoutingTests(unittest.TestCase):
                 rendered,
             )
             self.assertEqual(
+                budget.snapshot().tool_calls,
+                5,
+            )
+            self.assertEqual(
                 budget.snapshot().compile_calls,
-                2,
+                5,
             )
 
     def test_prompt_identity_aggregates_testbench_repair_call(self):

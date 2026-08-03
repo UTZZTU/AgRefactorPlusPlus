@@ -55,6 +55,10 @@ _SAFE_METADATA_FIELDS = frozenset(
         "failure_kind",
         "failure_owner",
         "next_action",
+        "preflight_reason_code",
+        "preflight_reason_codes",
+        "failed_component",
+        "substep_count",
         "legacy_status",
         "execution_exception_type",
         "operator_invocation_available",
@@ -885,6 +889,20 @@ class Stage3QualificationOrchestrator:
                 decision.action,
                 stage,
             )
+            if stage is QualificationStage.PREFLIGHT:
+                typed_reason = report.metadata.get(
+                    "preflight_reason_code"
+                )
+                if (
+                    isinstance(typed_reason, str)
+                    and typed_reason
+                    and typed_reason != "passed"
+                ):
+                    reasons = tuple(
+                        dict.fromkeys(
+                            (typed_reason, *reasons)
+                        )
+                    )
         step = QualificationStepRecord(
             stage=stage,
             outcome=outcome,

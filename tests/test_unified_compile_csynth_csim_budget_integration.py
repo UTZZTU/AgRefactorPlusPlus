@@ -280,7 +280,7 @@ class UnifiedFullToolBudgetIntegrationTests(
                                 root,
                                 BudgetLimits(
                                     max_tool_calls=10,
-                                    max_compile_calls=2,
+                                    max_compile_calls=4,
                                     max_csynth_calls=0,
                                     max_csim_calls=1,
                                 ),
@@ -297,12 +297,12 @@ class UnifiedFullToolBudgetIntegrationTests(
             result.phases[0].metadata["resource"],
             "csynth_calls",
         )
-        preflight_launch.assert_called_once()
+        self.assertEqual(preflight_launch.call_count, 4)
         probe.assert_not_called()
         tool_launch.assert_not_called()
         self.assertIsNotNone(result.budget_usage)
-        self.assertEqual(result.budget_usage.tool_calls, 1)
-        self.assertEqual(result.budget_usage.compile_calls, 1)
+        self.assertEqual(result.budget_usage.tool_calls, 4)
+        self.assertEqual(result.budget_usage.compile_calls, 4)
         self.assertEqual(result.budget_usage.csynth_calls, 0)
         self.assertEqual(result.budget_usage.csim_calls, 0)
         self.assertEqual(
@@ -314,7 +314,7 @@ class UnifiedFullToolBudgetIntegrationTests(
             "blocked_by_budget",
         )
 
-    def test_total_limit_one_blocks_csynth_after_preflight(
+    def test_total_limit_four_blocks_csynth_after_preflight(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -343,8 +343,8 @@ class UnifiedFullToolBudgetIntegrationTests(
                             result = self.run_with_limits(
                                 root,
                                 BudgetLimits(
-                                    max_tool_calls=1,
-                                    max_compile_calls=2,
+                                    max_tool_calls=4,
+                                    max_compile_calls=4,
                                     max_csynth_calls=1,
                                     max_csim_calls=1,
                                 ),
@@ -355,12 +355,12 @@ class UnifiedFullToolBudgetIntegrationTests(
             result.phases[0].metadata["resource"],
             "tool_calls",
         )
-        preflight_launch.assert_called_once()
+        self.assertEqual(preflight_launch.call_count, 4)
         probe.assert_not_called()
         tool_launch.assert_not_called()
         self.assertIsNotNone(result.budget_usage)
-        self.assertEqual(result.budget_usage.tool_calls, 1)
-        self.assertEqual(result.budget_usage.compile_calls, 1)
+        self.assertEqual(result.budget_usage.tool_calls, 4)
+        self.assertEqual(result.budget_usage.compile_calls, 4)
         self.assertEqual(result.budget_usage.csynth_calls, 0)
         self.assertEqual(result.budget_usage.csim_calls, 0)
 
@@ -394,8 +394,8 @@ class UnifiedFullToolBudgetIntegrationTests(
                             result = self.run_with_limits(
                                 root,
                                 BudgetLimits(
-                                    max_tool_calls=4,
-                                    max_compile_calls=1,
+                                    max_tool_calls=7,
+                                    max_compile_calls=4,
                                     max_csynth_calls=1,
                                     max_csim_calls=1,
                                 ),
@@ -417,12 +417,12 @@ class UnifiedFullToolBudgetIntegrationTests(
             result.phases[0].metadata["resource"],
             "compile_calls",
         )
-        preflight_launch.assert_called_once()
+        self.assertEqual(preflight_launch.call_count, 4)
         probe.assert_called_once()
         self.assertEqual(tool_launch.call_count, 1)
         self.assertIsNotNone(result.budget_usage)
-        self.assertEqual(result.budget_usage.tool_calls, 2)
-        self.assertEqual(result.budget_usage.compile_calls, 1)
+        self.assertEqual(result.budget_usage.tool_calls, 5)
+        self.assertEqual(result.budget_usage.compile_calls, 4)
         self.assertEqual(result.budget_usage.csynth_calls, 1)
         self.assertEqual(result.budget_usage.csim_calls, 0)
         self.assertEqual(
@@ -438,7 +438,7 @@ class UnifiedFullToolBudgetIntegrationTests(
             "blocked_by_budget",
         )
 
-    def test_total_limit_three_blocks_full_csim_plan(
+    def test_total_limit_six_blocks_full_csim_plan(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -468,8 +468,8 @@ class UnifiedFullToolBudgetIntegrationTests(
                             result = self.run_with_limits(
                                 root,
                                 BudgetLimits(
-                                    max_tool_calls=3,
-                                    max_compile_calls=2,
+                                    max_tool_calls=6,
+                                    max_compile_calls=5,
                                     max_csynth_calls=1,
                                     max_csim_calls=1,
                                 ),
@@ -486,12 +486,12 @@ class UnifiedFullToolBudgetIntegrationTests(
             result.phases[0].metadata["resource"],
             "tool_calls",
         )
-        preflight_launch.assert_called_once()
+        self.assertEqual(preflight_launch.call_count, 4)
         probe.assert_called_once()
         self.assertEqual(tool_launch.call_count, 1)
         self.assertIsNotNone(result.budget_usage)
-        self.assertEqual(result.budget_usage.tool_calls, 2)
-        self.assertEqual(result.budget_usage.compile_calls, 1)
+        self.assertEqual(result.budget_usage.tool_calls, 5)
+        self.assertEqual(result.budget_usage.compile_calls, 4)
         self.assertEqual(result.budget_usage.csynth_calls, 1)
         self.assertEqual(result.budget_usage.csim_calls, 0)
         self.assertEqual(
@@ -533,8 +533,8 @@ class UnifiedFullToolBudgetIntegrationTests(
                             result = self.run_with_limits(
                                 root,
                                 BudgetLimits(
-                                    max_tool_calls=4,
-                                    max_compile_calls=2,
+                                    max_tool_calls=7,
+                                    max_compile_calls=5,
                                     max_csynth_calls=1,
                                     max_csim_calls=1,
                                 ),
@@ -557,12 +557,12 @@ class UnifiedFullToolBudgetIntegrationTests(
             )
 
         self.assertEqual(result.status, RunStatus.SUCCEEDED)
-        preflight_launch.assert_called_once()
+        self.assertEqual(preflight_launch.call_count, 4)
         probe.assert_called_once()
         self.assertEqual(tool_launch.call_count, 3)
         self.assertIsNotNone(result.budget_usage)
-        self.assertEqual(result.budget_usage.tool_calls, 4)
-        self.assertEqual(result.budget_usage.compile_calls, 2)
+        self.assertEqual(result.budget_usage.tool_calls, 7)
+        self.assertEqual(result.budget_usage.compile_calls, 5)
         self.assertEqual(result.budget_usage.csynth_calls, 1)
         self.assertEqual(result.budget_usage.csim_calls, 1)
         self.assertEqual(

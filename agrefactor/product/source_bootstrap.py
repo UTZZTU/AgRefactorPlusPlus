@@ -1334,6 +1334,10 @@ class SourceBootstrapPhase:
             family_instruction=(
                 self._request.effective_model_config.family_instruction
             ),
+            reference_top_function=(
+                self._request.top_function
+            ),
+            candidate_top_function=candidate_top,
         )
         _atomic_json(
             bootstrap_root / "formal_validation_request.json",

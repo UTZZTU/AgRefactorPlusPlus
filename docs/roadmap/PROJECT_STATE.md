@@ -153,8 +153,10 @@ Current status at document freeze:
 ```text
 PRE_STAGE4_HARDENING_DESIGN_FROZEN=true
 PRE_STAGE4_HARDENING_IMPLEMENTATION_COMPLETE=false
+P4_0B_TYPED_PREFLIGHT=accepted_local_validation
+P4_0B_R_DESIGN_FROZEN=true
 STAGE4_ALLOWED=false
-NEXT_IMPLEMENTATION_PACKAGE=GLOBAL_TYPED_PREFLIGHT_REPAIR
+NEXT_IMPLEMENTATION_PACKAGE=P4-0B-R_BOUNDED_OPTIMIZE_CANDIDATE_RECOVERY
 ```
 <!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:END -->
 
@@ -211,3 +213,45 @@ Stage 3 closure: all six `simple-iter` records were observer RuntimeErrors befor
 Legacy model execution. The twelve `safe-optimize`/`source-full` records remain
 valid and immutable. V2 must rerun only the six Legacy units under the same
 protocol identity and pass the strengthened fair-comparison gate.
+
+<!-- PRE_STAGE4_P4_0B_TYPED_PREFLIGHT:BEGIN -->
+## P4-0B typed Preflight accepted
+
+```text
+BASE_COMMIT=11df86f199b8da03ed83baf9119841b3610cdad4
+P4_0B_TYPED_PREFLIGHT_IMPLEMENTED=true
+P4_0B_TYPED_PREFLIGHT_ACCEPTANCE=accepted_local_validation
+P4_0B_FOCUSED_TESTS=64
+P4_0B_FULL_REGRESSION_TESTS=2044
+STAGE4_ALLOWED=false
+NEXT_IMPLEMENTATION_PACKAGE=P4-0B-R_BOUNDED_OPTIMIZE_CANDIDATE_RECOVERY
+```
+
+P4-0B replaces mixed compile/link ownership guessing with independent
+Testbench/reference/Candidate compilation, object symbol checks, component LTO
+interface probes, final link, typed reasons, unknown-safe routing, and physical
+staged budget accounting. See the
+[P4-0B decision record](PRE_STAGE4_P4_0B_DECISION_RECORD.md) and
+[acceptance](../acceptance/pre-stage4/p4_0b_typed_preflight_acceptance.md).
+<!-- PRE_STAGE4_P4_0B_TYPED_PREFLIGHT:END -->
+
+<!-- PRE_STAGE4_P4_0B_R_CONTRACT:BEGIN -->
+## P4-0B-R bounded Optimize Candidate recovery design freeze
+
+```text
+P4_0B_R_DESIGN_FROZEN=true
+P4_0B_R_IMPLEMENTED=false
+PLACEMENT=after_P4-0B_before_P4-0C
+INITIAL_REPAIRABLE_STAGES=preflight,csynth_legality
+MAX_REPAIRS_PER_ROOT_OPTIMIZE_CANDIDATE=1
+PUBLIC_CSIM_REPAIR=deferred_default_off
+HIDDEN_REPAIR=false
+PPA_REPAIR=false
+```
+
+The frozen contract is
+[`PRE_STAGE4_P4_0B_R_BOUNDED_OPTIMIZE_CANDIDATE_RECOVERY_CONTRACT.md`](PRE_STAGE4_P4_0B_R_BOUNDED_OPTIMIZE_CANDIDATE_RECOVERY_CONTRACT.md).
+It reuses Candidate-only repair infrastructure while retaining Optimize
+qualification order, Candidate lineage, `best_correct`, PPA comparison, cache,
+and budget authority.
+<!-- PRE_STAGE4_P4_0B_R_CONTRACT:END -->

@@ -226,9 +226,11 @@ configuration_failed
 ownership_unknown
 ```
 
-A Candidate-owned failure rejects only that Candidate, preserves
-`best_correct`, skips later expensive stages, and allows the optimizer to
-continue when policy and budget permit.
+A Candidate-owned failure first stops that Candidate before later expensive
+stages. After P4-0B-R is implemented, only explicitly eligible Preflight or
+CSYNTH-legality failures may create one bounded repair descendant. Otherwise the
+Candidate is rejected. In all cases `best_correct` is preserved and optimizer
+continuation remains subject to policy and budget.
 
 ### 4.2 Public native Vitis CSIM
 
@@ -272,6 +274,27 @@ Original/reference behavior
 Hidden source and detailed Hidden diagnostics never enter generation, repair,
 or optimization prompts. Hidden failure cannot trigger model-visible automatic
 repair.
+
+<!-- PRE_STAGE4_P4_0B_R_CONTRACT:BEGIN -->
+### 4.6 Bounded Optimize Candidate recovery
+
+Optimize and the Optimize phase of Full may perform one bounded recovery for a
+root Candidate only when typed agent-safe evidence proves a Candidate-owned
+Preflight or CSYNTH-legality failure.
+
+The repair creates a new `cand-N` descendant, preserves the originating
+hypothesis and explicit lineage, and restarts qualification from
+Source/Preflight. It never overwrites the failed Candidate or changes
+`best_correct` before complete qualification and objective comparison.
+
+The initial contract excludes Testbench, Reference, toolchain, configuration,
+unknown ownership, unisolated final link, Hidden, COSIM, PPA, timing, resource,
+and non-improvement failures. Public CSIM repair is deferred until native CSIM
+exists and remains default-off unless separately accepted.
+
+See
+[`PRE_STAGE4_P4_0B_R_BOUNDED_OPTIMIZE_CANDIDATE_RECOVERY_CONTRACT.md`](PRE_STAGE4_P4_0B_R_BOUNDED_OPTIMIZE_CANDIDATE_RECOVERY_CONTRACT.md).
+<!-- PRE_STAGE4_P4_0B_R_CONTRACT:END -->
 
 ## 5. Dynamic optimizer contract
 
@@ -410,6 +433,7 @@ effective value.
 ```text
 P4-0A  freeze this documentation contract
 → P4-0B global typed Preflight repair
+→ P4-0B-R bounded Optimize Candidate recovery
 → P4-0C Public native Vitis CSIM and unified stage order
 → P4-0D Public RTL COSIM, budget, timeout, evidence, ownership, cache
 → P4-0E DeepSeek Flash default, .env loading, Thinking/effort profile,
@@ -430,6 +454,8 @@ next behavior package starts.
 Stage 4 may start only when all are true:
 
 - typed Preflight ownership is proven with injected failures;
+- bounded Optimize Candidate recovery has one-attempt lineage, restart,
+  budget, Hidden-suppression, and `best_correct` evidence;
 - Refactor and Optimize both use Public native Vitis CSIM, CSYNTH, Public
   COSIM, and Hidden in the frozen order;
 - COSIM has real invocation evidence, timeout, ownership, cache identity, and
@@ -458,3 +484,25 @@ The following do not block Stage 4:
 - separate user-selected models for every internal role;
 - general sampling controls such as `temperature` and `top_p`;
 - Stage 5 SourceProfile and migration runtime.
+
+<!-- PRE_STAGE4_P4_0B_TYPED_PREFLIGHT:BEGIN -->
+## P4-0B implementation checkpoint
+
+The global typed Preflight implementation is tracked by:
+
+- [`PRE_STAGE4_P4_0B_DECISION_RECORD.md`](PRE_STAGE4_P4_0B_DECISION_RECORD.md)
+- [`p4_0b_typed_preflight_acceptance.md`](../acceptance/pre-stage4/p4_0b_typed_preflight_acceptance.md)
+
+```text
+P4_0B_TYPED_PREFLIGHT_IMPLEMENTED=true
+P4_0B_TYPED_PREFLIGHT_ACCEPTANCE=accepted_local_validation
+P4_0B_FOCUSED_TESTS=64
+P4_0B_FULL_REGRESSION_TESTS=2044
+NEXT_PRE_STAGE4_PACKAGE=P4-0B-R_BOUNDED_OPTIMIZE_CANDIDATE_RECOVERY
+```
+
+P4-0B changes host Preflight only. Its repository closure also freezes the
+separate P4-0B-R recovery contract; it does not implement Optimize recovery,
+native Vitis CSIM, COSIM, model configuration, mode-specific budgets, or
+`dynamic-v1`.
+<!-- PRE_STAGE4_P4_0B_TYPED_PREFLIGHT:END -->

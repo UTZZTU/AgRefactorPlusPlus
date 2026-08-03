@@ -95,6 +95,8 @@ class CandidateValidationPlanRequest:
     suite_testbench_codes: Mapping[str, str]
     attempt: int
     validation_id: str
+    reference_top_function: str | None = None
+    candidate_top_function: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.task, TaskSpec):
@@ -113,6 +115,14 @@ class CandidateValidationPlanRequest:
         if self.attempt < 0:
             raise ValueError("attempt must be non-negative")
         _required_text(self.validation_id, "validation_id")
+        _optional_text(
+            self.reference_top_function,
+            "reference_top_function",
+        )
+        _optional_text(
+            self.candidate_top_function,
+            "candidate_top_function",
+        )
         object.__setattr__(
             self,
             "suite_testbench_codes",
@@ -144,6 +154,8 @@ class CandidateRepairOrchestrationRequest:
     prompt_public_testbench_code: str | None
     max_attempts: int = DEFAULT_CANDIDATE_REPAIR_ATTEMPTS
     family_instruction: str | None = None
+    reference_top_function: str | None = None
+    candidate_top_function: str | None = None
     approved_memory_snippets: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -164,6 +176,14 @@ class CandidateRepairOrchestrationRequest:
         _optional_text(
             self.family_instruction,
             "family_instruction",
+        )
+        _optional_text(
+            self.reference_top_function,
+            "reference_top_function",
+        )
+        _optional_text(
+            self.candidate_top_function,
+            "candidate_top_function",
         )
         if not isinstance(
             self.approved_memory_snippets,
@@ -424,6 +444,13 @@ class LocalCandidateValidationHandlerFactory:
                         ),
                         original_code=request.original_code,
                         candidate_code=request.candidate_code,
+                        original_top_function=(
+                            request.reference_top_function
+                        ),
+                        candidate_top_function=(
+                            request.candidate_top_function
+                            or request.task.kernel_name
+                        ),
                     )
                 )
             ),
@@ -548,6 +575,13 @@ class _OrchestratedCandidateValidator:
             ),
             attempt=request.attempt,
             validation_id=validation_id,
+            reference_top_function=(
+                self._request.reference_top_function
+            ),
+            candidate_top_function=(
+                self._request.candidate_top_function
+                or request.task.kernel_name
+            ),
         )
         handlers = _build_handlers(
             self._handler_factory,
@@ -692,6 +726,13 @@ class CandidateRepairValidationOrchestrator:
             ),
             attempt=0,
             validation_id=f"{validation_id}.initial",
+            reference_top_function=(
+                request.reference_top_function
+            ),
+            candidate_top_function=(
+                request.candidate_top_function
+                or context.task.kernel_name
+            ),
         )
         initial_handlers = _build_handlers(
             self._handler_factory,

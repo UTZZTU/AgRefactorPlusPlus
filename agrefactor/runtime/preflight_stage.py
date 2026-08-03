@@ -38,6 +38,8 @@ class PreflightStageInputs:
     testbench_code: str
     original_code: str
     candidate_code: str
+    original_top_function: str | None = None
+    candidate_top_function: str | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -72,12 +74,29 @@ class PreflightStageInputs:
                 raise ValueError(
                     f"{field_name} must not be empty"
                 )
+        for field_name in (
+            "original_top_function",
+            "candidate_top_function",
+        ):
+            value = getattr(self, field_name)
+            if value is None:
+                continue
+            if not isinstance(value, str):
+                raise TypeError(
+                    f"{field_name} must be a string or null"
+                )
+            cleaned = value.strip()
+            object.__setattr__(
+                self,
+                field_name,
+                cleaned or None,
+            )
 
 
 class PreflightValidationStageHandler:
     """Run preflight and return agent-safe normalized feedback."""
 
-    handler_version = 1
+    handler_version = 2
     source = "testbench_preflight"
 
     def __init__(
@@ -134,6 +153,12 @@ class PreflightValidationStageHandler:
                 original_code=self._inputs.original_code,
                 candidate_code=self._inputs.candidate_code,
                 budget=context.budget,
+                original_top_function=(
+                    self._inputs.original_top_function
+                ),
+                candidate_top_function=(
+                    self._inputs.candidate_top_function
+                ),
             )
         except BudgetExceededError as exc:
             return self._budget_report(
@@ -232,6 +257,14 @@ class PreflightValidationStageHandler:
                 "next_action": (
                     "stop_budget_exhausted"
                 ),
+                "preflight_reason_code": (
+                    "budget_exhausted"
+                ),
+                "preflight_reason_codes": [
+                    "budget_exhausted"
+                ],
+                "failed_component": None,
+                "substep_count": 0,
                 "physical_execution": False,
                 "shared_budget": True,
                 "operator_invocation_available": (
@@ -303,5 +336,19 @@ def read_preflight_invocation_summary(
             execution.get("timeout")
             if isinstance(execution, dict)
             else None
+        ),
+        "preflight_reason_code": value.get(
+            "reason_code"
+        ),
+        "preflight_reason_codes": value.get(
+            "reason_codes"
+        ),
+        "failed_component": value.get(
+            "failed_component"
+        ),
+        "substep_count": (
+            len(value.get("substeps", ()))
+            if isinstance(value.get("substeps"), list)
+            else 0
         ),
     }

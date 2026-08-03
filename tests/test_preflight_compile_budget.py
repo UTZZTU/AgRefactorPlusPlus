@@ -166,11 +166,11 @@ class PreflightCompileBudgetTests(unittest.TestCase):
         )
         launch.assert_not_called()
 
-    def test_success_consumes_compile_once(self) -> None:
+    def test_success_consumes_complete_staged_plan(self) -> None:
         budget = BudgetManager(
             BudgetLimits(
-                max_tool_calls=1,
-                max_compile_calls=1,
+                max_tool_calls=4,
+                max_compile_calls=4,
             )
         )
 
@@ -187,10 +187,14 @@ class PreflightCompileBudgetTests(unittest.TestCase):
             invocation = self.read_invocation(directory)
 
         self.assertTrue(result.succeeded)
-        launch.assert_called_once()
+        self.assertEqual(launch.call_count, 4)
         usage = budget.snapshot()
-        self.assertEqual(usage.tool_calls, 1)
-        self.assertEqual(usage.compile_calls, 1)
+        self.assertEqual(usage.tool_calls, 4)
+        self.assertEqual(usage.compile_calls, 4)
+        self.assertEqual(
+            invocation["budget"]["requested_total_increment"],
+            {"tool_calls": 4, "compile_calls": 4},
+        )
         self.assertEqual(
             invocation["budget"]["status"],
             "consumed",
@@ -203,8 +207,8 @@ class PreflightCompileBudgetTests(unittest.TestCase):
     def test_compile_failure_consumes_once(self) -> None:
         budget = BudgetManager(
             BudgetLimits(
-                max_tool_calls=1,
-                max_compile_calls=1,
+                max_tool_calls=4,
+                max_compile_calls=4,
             )
         )
 
@@ -233,8 +237,8 @@ class PreflightCompileBudgetTests(unittest.TestCase):
     def test_timeout_consumes_once(self) -> None:
         budget = BudgetManager(
             BudgetLimits(
-                max_tool_calls=1,
-                max_compile_calls=1,
+                max_tool_calls=4,
+                max_compile_calls=4,
             )
         )
 
@@ -268,8 +272,8 @@ class PreflightCompileBudgetTests(unittest.TestCase):
     def test_missing_compiler_consumes_once(self) -> None:
         budget = BudgetManager(
             BudgetLimits(
-                max_tool_calls=1,
-                max_compile_calls=1,
+                max_tool_calls=4,
+                max_compile_calls=4,
             )
         )
 

@@ -23,6 +23,8 @@ _SAFE_ITEM_KEYS = frozenset(
         "column",
         "preflight_status",
         "next_action",
+        "preflight_reason_code",
+        "failed_component",
         "fallback_item",
     }
 )
@@ -33,6 +35,10 @@ _SAFE_REPORT_KEYS = frozenset(
         "failure_kind",
         "failure_owner",
         "next_action",
+        "preflight_reason_code",
+        "preflight_reason_codes",
+        "failed_component",
+        "substep_count",
         "duration_s",
     }
 )
