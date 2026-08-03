@@ -449,6 +449,78 @@ P4-0A  freeze this documentation contract
 Each package is independently diagnosable, reversible, and accepted before the
 next behavior package starts.
 
+### 8.1 Frozen real-validation cadence
+
+The implementation order also freezes when real tools and network models become
+authoritative evidence. Deterministic tests remain necessary but never stand in
+for real Vitis or real provider execution.
+
+```text
+P4-0C
+  real committed sample(s)
+  + real Public native Vitis CSIM invocation
+  + typed invocation/evidence/order checks
+  network LLM output is not an acceptance dependency;
+  fixed or deterministic Candidate material is allowed to isolate CSIM
+
+P4-0D
+  real committed sample(s)
+  + real Public native Vitis CSIM
+  + real CSYNTH
+  + real Public RTL COSIM
+  + Hidden final gate
+  network LLM output is still not the core acceptance dependency
+
+P4-0E
+  first post-hardening real network-model smoke
+  + real sample
+  + selected endpoint/API-key environment
+  + .env precedence
+  + Thinking/reasoning evidence
+  + proof that secrets and private reasoning are not persisted
+
+P4-0F
+  measured real end-to-end runs on the stable validation pipeline
+  + observed LLM/tool/compile/CSIM/CSYNTH/COSIM/wall-time consumption
+  + evidence-based mode defaults and Full Optimize reserves
+  no stable model-quality or PPA-superiority claim
+
+P4-0G
+  targeted real network-model Optimize and Full smoke
+  + real bottleneck diagnosis/action selection
+  + generated Candidate
+  + complete qualification and rollback/best_correct evidence
+  stochastic rewrite success is not required for every run
+
+P4-0H
+  formal repeated multi-kernel revalidation
+  + real network LLM
+  + real Vitis pipeline
+  + Refactor/Optimize/Full
+  + fault injection
+  + budget exhaustion
+  + infrastructure-failure accounting
+  this is the authoritative Pre-Stage-4 real-evidence matrix
+```
+
+Earlier targeted real smokes are required to expose integration failures near
+the package that introduces them; they do not replace P4-0H. Conversely, P4-0H
+must not be the first time the post-hardening code calls a real provider.
+
+Historical Stage 3 network/Vitis evidence remains valid for its original
+contract and commit only. It does not prove the P4-0C through P4-0G pipeline.
+
+Every real-network run continues to obey:
+
+```text
+user-selected/frozen model and endpoint
+one shared hard BudgetManager
+no secret persistence
+no private reasoning persistence
+Hidden source/details excluded from model-visible evidence
+exact repository commit and artifact identity
+```
+
 ## 9. Pre-Stage-4 closure criteria
 
 Stage 4 may start only when all are true:
