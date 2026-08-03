@@ -422,10 +422,30 @@ class ProductStage3OptimizerIntegrationTests(unittest.TestCase):
 
         class Qualification:
             def __init__(self, **_kwargs):
-                pass
+                self.recovery_evidence_calls = 0
 
             def qualify_baseline(self, candidate):
                 return baseline_result(candidate)
+
+            def recovery_evidence(
+                self,
+                _candidate_id,
+                _qualification,
+            ):
+                self.recovery_evidence_calls += 1
+                return None
+
+            def recovery_budget_increment(self):
+                from agrefactor.optimization import (
+                    BudgetIncrement,
+                )
+
+                return BudgetIncrement()
+
+            def validate_recovery(self, _request):
+                raise AssertionError(
+                    "ineligible recovery must not validate"
+                )
 
         provider = FakeHypothesisProvider()
         executor = FakeCandidateExecutor(
@@ -544,6 +564,12 @@ class ProductStage3OptimizerIntegrationTests(unittest.TestCase):
         )
         self.assertIs(identity["boundaries"]["static_source_gate_used"], False)
         self.assertIs(identity["boundaries"]["hidden_evidence_exposed"], False)
+        recovery = identity["boundaries"][
+            "bounded_optimize_candidate_recovery"
+        ]
+        self.assertEqual(recovery["attempted"], 0)
+        self.assertEqual(recovery["validated"], 0)
+        self.assertEqual(recovery["ineligible"], 2)
         self.assertTrue((artifact_root / "optimize" / "final_candidate.cpp").is_file())
 
 

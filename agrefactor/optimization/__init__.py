@@ -151,6 +151,21 @@ from .structural_model import (
     StructuralQualificationAdapter,
 )
 
+from .recovery import (
+    OPTIMIZE_RECOVERY_SCHEMA_VERSION,
+    MAX_OPTIMIZE_RECOVERIES_PER_ROOT_CANDIDATE,
+    BoundedOptimizeCandidateRecoveryCoordinator,
+    BoundedRecoveryOptimizerStateMachine,
+    OptimizeCandidateRecoveryCoordinator,
+    OptimizeCandidateRecoveryRequest,
+    OptimizeCandidateRecoveryResult,
+    OptimizeRecoveryEvidence,
+    OptimizeRecoveryStage,
+    OptimizeRecoveryStatus,
+    OptimizeRecoveryValidationRequest,
+    OptimizeRecoveryValidator,
+    empty_optimize_recovery_summary,
+)
 
 __all__ = [
     "CACHE_SCHEMA_VERSION",
@@ -274,5 +289,18 @@ __all__ = [
     "StructuralModelContractError",
     "StructuralModelHypothesisProvider",
     "StructuralQualificationAdapter",
+    "OPTIMIZE_RECOVERY_SCHEMA_VERSION",
+    "MAX_OPTIMIZE_RECOVERIES_PER_ROOT_CANDIDATE",
+    "BoundedOptimizeCandidateRecoveryCoordinator",
+    "BoundedRecoveryOptimizerStateMachine",
+    "OptimizeCandidateRecoveryCoordinator",
+    "OptimizeCandidateRecoveryRequest",
+    "OptimizeCandidateRecoveryResult",
+    "OptimizeRecoveryEvidence",
+    "OptimizeRecoveryStage",
+    "OptimizeRecoveryStatus",
+    "OptimizeRecoveryValidationRequest",
+    "OptimizeRecoveryValidator",
+    "empty_optimize_recovery_summary",
     "suite_identity_from_file",
 ]

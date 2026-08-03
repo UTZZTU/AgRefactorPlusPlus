@@ -156,7 +156,7 @@ PRE_STAGE4_HARDENING_IMPLEMENTATION_COMPLETE=false
 P4_0B_TYPED_PREFLIGHT=accepted_local_validation
 P4_0B_R_DESIGN_FROZEN=true
 STAGE4_ALLOWED=false
-NEXT_IMPLEMENTATION_PACKAGE=P4-0B-R_BOUNDED_OPTIMIZE_CANDIDATE_RECOVERY
+NEXT_IMPLEMENTATION_PACKAGE=P4-0C_PUBLIC_NATIVE_VITIS_CSIM
 ```
 <!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:END -->
 
@@ -224,7 +224,7 @@ P4_0B_TYPED_PREFLIGHT_ACCEPTANCE=accepted_local_validation
 P4_0B_FOCUSED_TESTS=64
 P4_0B_FULL_REGRESSION_TESTS=2044
 STAGE4_ALLOWED=false
-NEXT_IMPLEMENTATION_PACKAGE=P4-0B-R_BOUNDED_OPTIMIZE_CANDIDATE_RECOVERY
+NEXT_IMPLEMENTATION_PACKAGE=P4-0C_PUBLIC_NATIVE_VITIS_CSIM
 ```
 
 P4-0B replaces mixed compile/link ownership guessing with independent
@@ -236,22 +236,25 @@ staged budget accounting. See the
 <!-- PRE_STAGE4_P4_0B_TYPED_PREFLIGHT:END -->
 
 <!-- PRE_STAGE4_P4_0B_R_CONTRACT:BEGIN -->
-## P4-0B-R bounded Optimize Candidate recovery design freeze
+## P4-0B-R bounded Optimize Candidate recovery accepted
 
 ```text
 P4_0B_R_DESIGN_FROZEN=true
-P4_0B_R_IMPLEMENTED=false
-PLACEMENT=after_P4-0B_before_P4-0C
-INITIAL_REPAIRABLE_STAGES=preflight,csynth_legality
+P4_0B_R_IMPLEMENTED=true
+P4_0B_R_R1_PREFLIGHT_RECOVERY=accepted
+P4_0B_R_R2_CSYNTH_LEGALITY_RECOVERY=accepted
 MAX_REPAIRS_PER_ROOT_OPTIMIZE_CANDIDATE=1
-PUBLIC_CSIM_REPAIR=deferred_default_off
+PUBLIC_CSIM_REPAIR=false
 HIDDEN_REPAIR=false
 PPA_REPAIR=false
+P4_0B_R_FOCUSED_TESTS=22
+P4_0B_R_FULL_REGRESSION=2066
+STAGE4_ALLOWED=false
+NEXT_IMPLEMENTATION_PACKAGE=P4-0C_PUBLIC_NATIVE_VITIS_CSIM
 ```
 
-The frozen contract is
-[`PRE_STAGE4_P4_0B_R_BOUNDED_OPTIMIZE_CANDIDATE_RECOVERY_CONTRACT.md`](PRE_STAGE4_P4_0B_R_BOUNDED_OPTIMIZE_CANDIDATE_RECOVERY_CONTRACT.md).
-It reuses Candidate-only repair infrastructure while retaining Optimize
-qualification order, Candidate lineage, `best_correct`, PPA comparison, cache,
-and budget authority.
+The implementation retains failed Candidate records, creates a new contiguous
+repair descendant, restarts complete Optimize qualification, uses one shared
+BudgetManager and changes `best_correct` only after full qualification and PPA
+comparison.
 <!-- PRE_STAGE4_P4_0B_R_CONTRACT:END -->

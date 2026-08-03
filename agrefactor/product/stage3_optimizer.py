@@ -34,14 +34,23 @@ from agrefactor.config import (
     TestSourceSpec,
     TestSuiteSpec,
 )
-from agrefactor.models import EffectiveModelConfig, ModelRegistry
+from agrefactor.evaluation import FeedbackRouteAction, FeedbackRouter
+from agrefactor.evidence import FeedbackReport
+from agrefactor.models import (
+    CandidateModelAdapter,
+    EffectiveModelConfig,
+    ModelRegistry,
+)
 from agrefactor.optimization import (
     BottleneckModelArtifactWriter,
+    BoundedOptimizeCandidateRecoveryCoordinator,
+    BoundedRecoveryOptimizerStateMachine,
     BottleneckModelCandidateExecutor,
     BottleneckModelCandidateGenerator,
     BottleneckModelHypothesisProvider,
     BudgetIncrement,
     CandidateQualificationRequest,
+    CandidateExecutionResult,
     CandidateQualificationResult,
     CandidateRecord,
     CandidateStatus,
@@ -49,6 +58,9 @@ from agrefactor.optimization import (
     LevelDispatchCandidateExecutor,
     LevelDispatchHypothesisProvider,
     OptimizationLevel,
+    OptimizeRecoveryEvidence,
+    OptimizeRecoveryStage,
+    OptimizeRecoveryValidationRequest,
     OptimizerArtifactStore,
     OptimizerCheckpointWriter,
     OptimizerRunCounters,
@@ -60,6 +72,8 @@ from agrefactor.optimization import (
     PragmaModelHypothesisProvider,
     QualificationEvidenceCache,
     QualificationStage,
+    QualificationStatus,
+    QualificationStepOutcome,
     SafeOptimizerPolicy,
     Stage3QualificationOrchestrator,
     StructuralModelArtifactWriter,
@@ -67,6 +81,7 @@ from agrefactor.optimization import (
     StructuralModelCandidateGenerator,
     StructuralModelHypothesisProvider,
     ValidationCacheIdentity,
+    empty_optimize_recovery_summary,
     build_toolchain_fingerprint,
     initialize_qualified_baseline,
     suite_identity_from_file,
@@ -549,6 +564,11 @@ class ProductQualificationAdapter:
             )
             for suite in material.suites
         )
+        self._recovery_router = FeedbackRouter()
+        self._recovery_reports: dict[
+            str,
+            dict[QualificationStage, tuple[FeedbackReport, Any]],
+        ] = {}
 
     def qualify_baseline(self, candidate: CandidateRecord) -> CandidateQualificationResult:
         if not isinstance(candidate, CandidateRecord):
@@ -655,6 +675,21 @@ class ProductQualificationAdapter:
                 split=EvaluationSplit.HIDDEN,
             ),
         }
+        handlers[QualificationStage.PREFLIGHT] = (
+            self._capture_recovery_handler(
+                candidate.candidate_id,
+                QualificationStage.PREFLIGHT,
+                handlers[QualificationStage.PREFLIGHT],
+            )
+        )
+        handlers[QualificationStage.CSYNTH] = (
+            self._capture_recovery_handler(
+                candidate.candidate_id,
+                QualificationStage.CSYNTH,
+                handlers[QualificationStage.CSYNTH],
+            )
+        )
+
         cache_identity = ValidationCacheIdentity.build(
             source_sha256=candidate.source_sha256,
             effective_target=self._material.target.to_effective_dict(),
@@ -682,6 +717,130 @@ class ProductQualificationAdapter:
             resource_limits=self._material.target.resource_limits.to_dict(),
         )
         return orchestrator.run(optimize_context, request)
+
+    def _capture_recovery_handler(
+        self,
+        candidate_id: str,
+        stage: QualificationStage,
+        handler,
+    ):
+        def captured(context: RunContext):
+            report = handler(context)
+            if not isinstance(report, FeedbackReport):
+                return report
+            if report.metadata.get("evidence_view") != "agent_safe":
+                return report
+            decision = self._recovery_router.route(
+                report,
+                decision_id=(
+                    f"{context.run_id}.{candidate_id}."
+                    f"{stage.value}.recovery-decision"
+                ),
+            )
+            self._recovery_reports.setdefault(candidate_id, {})[stage] = (
+                report,
+                decision,
+            )
+            return report
+
+        return captured
+
+    def recovery_evidence(
+        self,
+        candidate_id: str,
+        qualification: CandidateQualificationResult,
+    ) -> OptimizeRecoveryEvidence | None:
+        if (
+            not isinstance(qualification, CandidateQualificationResult)
+            or qualification.candidate_id != candidate_id
+            or qualification.status is not QualificationStatus.REJECTED
+        ):
+            return None
+        records = self._recovery_reports.get(candidate_id, {})
+        for stage, recovery_stage in (
+            (QualificationStage.PREFLIGHT, OptimizeRecoveryStage.PREFLIGHT),
+            (QualificationStage.CSYNTH, OptimizeRecoveryStage.CSYNTH),
+        ):
+            step = next(
+                (
+                    item
+                    for item in qualification.steps
+                    if item.stage is stage
+                    and item.outcome is QualificationStepOutcome.FAILED
+                ),
+                None,
+            )
+            if (
+                step is None
+                or step.route_action is not FeedbackRouteAction.REPAIR_CANDIDATE
+            ):
+                continue
+            captured = records.get(stage)
+            if captured is None:
+                return None
+            report, decision = captured
+            reasons = tuple(
+                code
+                for code in step.reason_codes
+                if code not in {f"{stage.value}_failed", "repair_candidate"}
+            )
+            if recovery_stage is OptimizeRecoveryStage.CSYNTH and not reasons:
+                reasons = ("candidate_csynth_legality_failed",)
+            try:
+                return OptimizeRecoveryEvidence(
+                    stage=recovery_stage,
+                    feedback=report,
+                    route_decision=decision,
+                    reason_codes=reasons,
+                )
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    def recovery_budget_increment(self) -> BudgetIncrement:
+        suite_count = len(self._material.suites)
+        return BudgetIncrement(
+            tool_calls=10 + 2 * suite_count,
+            compile_calls=6 + suite_count,
+            csim_calls=suite_count,
+            csynth_calls=1,
+        )
+
+    def validate_recovery(
+        self,
+        request: OptimizeRecoveryValidationRequest,
+    ) -> CandidateExecutionResult:
+        if not isinstance(request, OptimizeRecoveryValidationRequest):
+            raise TypeError(
+                "request must be OptimizeRecoveryValidationRequest"
+            )
+        candidate_root = self._work_root / request.candidate_id
+        candidate_root.mkdir(parents=True, exist_ok=True)
+        source_path = candidate_root / "source.cpp"
+        source_path.write_bytes(request.source)
+        candidate = CandidateRecord(
+            candidate_id=request.candidate_id,
+            sequence=request.sequence,
+            parent_candidate_id=request.source_candidate.candidate_id,
+            hypothesis_id=request.hypothesis.hypothesis_id,
+            level=request.hypothesis.level,
+            source_sha256=sha256(request.source).hexdigest(),
+            source_artifact=f"candidates/{request.candidate_id}/source.cpp",
+            status=CandidateStatus.GENERATED,
+            budget_before=request.budget_before,
+            created_at_utc=request.created_at_utc,
+        )
+        qualification = self._qualify_candidate(
+            candidate=candidate,
+            source_path=source_path,
+            qualification_id=(
+                f"{self._context.run_id}.{request.candidate_id}.recovery"
+            ),
+        )
+        return CandidateExecutionResult(
+            source=request.source,
+            qualification=qualification,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -775,6 +934,7 @@ class Stage3ProductOptimizationPhase:
             raise TypeError("request must be ProductOptimizerRequest")
         self._request = request
         self._last_result = None
+        self._recovery_summary = empty_optimize_recovery_summary()
 
     @property
     def last_result(self):
@@ -864,6 +1024,38 @@ class Stage3ProductOptimizationPhase:
                 },
             )
 
+        required_recovery_capabilities = (
+            "recovery_evidence",
+            "recovery_budget_increment",
+            "validate_recovery",
+        )
+        missing_recovery_capabilities = tuple(
+            name
+            for name in required_recovery_capabilities
+            if not callable(getattr(qualifier, name, None))
+        )
+        if missing_recovery_capabilities:
+            raise TypeError(
+                "Product qualification adapter is missing "
+                "P4-0B-R recovery capabilities: "
+                + ", ".join(missing_recovery_capabilities)
+            )
+
+        recovery_adapter = CandidateModelAdapter(
+            registry=self._request.registry,
+            effective_config=self._request.effective_model_config,
+        )
+        recovery = BoundedOptimizeCandidateRecoveryCoordinator(
+            model_adapter=recovery_adapter,
+            validator=qualifier,
+            evidence_provider=qualifier.recovery_evidence,
+            task=material.task,
+            original_code=material.reference_code,
+            budget=context.budget,
+            validation_increment=qualifier.recovery_budget_increment(),
+            artifact_root=root / "recovery",
+        )
+
         artifacts = UnifiedStage3ModelArtifactWriter(root / "model")
         structural_provider = StructuralModelHypothesisProvider(
             registry=self._request.registry,
@@ -933,12 +1125,13 @@ class Stage3ProductOptimizationPhase:
         if self._request.acceptance_one_physical_round_per_level:
             provider = _OnePhysicalRoundProvider(provider, context.budget)
             executor = _OnePhysicalRoundExecutor(executor, context.budget)
-        engine = DeterministicOptimizerStateMachine(
+        engine = BoundedRecoveryOptimizerStateMachine(
             state=state,
             candidates=candidates,
             checkpoint_writer=checkpoint_writer,
             provider=provider,
             executor=executor,
+            recovery_coordinator=recovery,
             budget=context.budget,
             trace=context.trace,
             policy=SafeOptimizerPolicy.safe_v1(),
@@ -946,6 +1139,7 @@ class Stage3ProductOptimizationPhase:
             resume=False,
         )
         run_result = engine.run()
+        self._recovery_summary = dict(recovery.summary())
         self._last_result = run_result
         terminal = run_result.terminal_status
         best_id = run_result.state.best_correct_candidate_id
@@ -989,7 +1183,8 @@ class Stage3ProductOptimizationPhase:
                 "shared_trace": True,
                 "static_optimization_gate_used": False,
                 "hidden_evidence_exposed": False,
-                "correctness_repair_attempts": 0,
+                "correctness_repair_attempts": self._recovery_summary.get("attempted", 0),
+                "optimize_candidate_recovery": dict(self._recovery_summary),
             },
         )
 
@@ -1056,7 +1251,8 @@ class Stage3ProductOptimizationPhase:
                 "static_source_gate_used": False,
                 "hidden_evidence_exposed": False,
                 "model_hypotheses_authoritative": False,
-                "candidate_correctness_repair_attempts": 0,
+                "candidate_correctness_repair_attempts": self._recovery_summary.get("attempted", 0),
+                "bounded_optimize_candidate_recovery": dict(self._recovery_summary),
                 "silent_refactor_fallback": False,
                 "acceptance_one_physical_round_per_level": (
                     self._request.acceptance_one_physical_round_per_level

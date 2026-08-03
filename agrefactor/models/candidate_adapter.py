@@ -144,6 +144,7 @@ class CandidateModelRequest:
     prompt: LayeredPrompt
     task: TaskSpec
     current_candidate: str
+    response_contract: CandidateResponseContract | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.prompt, LayeredPrompt):
@@ -154,6 +155,26 @@ class CandidateModelRequest:
             self.current_candidate,
             "current_candidate",
         )
+        if (
+            self.response_contract is not None
+            and not isinstance(
+                self.response_contract,
+                CandidateResponseContract,
+            )
+        ):
+            raise TypeError(
+                "response_contract must be "
+                "CandidateResponseContract or None"
+            )
+        if (
+            self.response_contract is not None
+            and self.response_contract.top_function_name
+            != self.task.kernel_name
+        ):
+            raise ValueError(
+                "response_contract top function does not "
+                "match the TaskSpec"
+            )
         self._validate_prompt_manifest()
 
     def _validate_prompt_manifest(self) -> None:
@@ -626,9 +647,12 @@ class CandidateModelAdapter:
         ):
             raise TypeError("after_provider_response must be callable or None")
 
-        contract = CandidateResponseContract.from_candidate(
-            request.task,
-            request.current_candidate,
+        contract = (
+            request.response_contract
+            or CandidateResponseContract.from_candidate(
+                request.task,
+                request.current_candidate,
+            )
         )
         parameters = self._effective_config.parameters
 

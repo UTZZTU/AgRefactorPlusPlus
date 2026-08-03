@@ -1,6 +1,6 @@
 # Pre-Stage-4 P4-0B-R Contract — Bounded Optimize Candidate Recovery
 
-> **Status:** design frozen; implementation not yet claimed.
+> **Status:** R1 and R2 implementation accepted after 22 focused tests and 2066 complete regression tests.
 >
 > **Placement:** after accepted P4-0B Global Typed Preflight and before P4-0C
 > Public native Vitis CSIM.
@@ -242,3 +242,22 @@ P4-0B-R does not implement:
 - Hidden repair;
 - PPA-driven in-place repair;
 - more than one recovery attempt per root Candidate.
+
+<!-- PRE_STAGE4_P4_0B_R_IMPLEMENTATION:BEGIN -->
+## 15. Implementation acceptance
+
+```text
+P4_0B_R_IMPLEMENTED=true
+P4_0B_R_R1_PREFLIGHT_RECOVERY=accepted
+P4_0B_R_R2_CSYNTH_LEGALITY_RECOVERY=accepted
+P4_0B_R_MAX_RECOVERIES_PER_ROOT_CANDIDATE=1
+P4_0B_R_FOCUSED_TESTS=22
+P4_0B_R_FULL_REGRESSION=2066
+NEXT_IMPLEMENTATION_PACKAGE=P4-0C_PUBLIC_NATIVE_VITIS_CSIM
+```
+
+See
+[`p4_0b_r_bounded_optimize_recovery_acceptance.md`](../acceptance/pre-stage4/p4_0b_r_bounded_optimize_recovery_acceptance.md)
+and
+[`PRE_STAGE4_P4_0B_R_DECISION_RECORD.md`](PRE_STAGE4_P4_0B_R_DECISION_RECORD.md).
+<!-- PRE_STAGE4_P4_0B_R_IMPLEMENTATION:END -->
