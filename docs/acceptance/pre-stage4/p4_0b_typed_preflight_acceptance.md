@@ -148,12 +148,14 @@ functional equivalence, synthesizability, PPA improvement, model quality, or
 ## Repository closure handoff
 
 ```text
-P4_0B_REPOSITORY_CLOSURE=prepared_for_commit
+P4_0B_REPOSITORY_CLOSURE=accepted
+P4_0B_ACCEPTED_COMMIT=717efb78e4dd53fbe1fdc14d7db78632c227ea1a
 FOCUSED_TEST_COUNT=64
 FULL_REGRESSION_TEST_COUNT=2044
-NEXT_PRE_STAGE4_PACKAGE=P4-0B-R_BOUNDED_OPTIMIZE_CANDIDATE_RECOVERY
+NEXT_PRE_STAGE4_PACKAGE_AT_ACCEPTANCE=P4-0B-R_BOUNDED_OPTIMIZE_CANDIDATE_RECOVERY
 ```
 
-The bounded Optimize recovery contract is design-only at this boundary. It does
-not enlarge the accepted P4-0B behavior claim.
+The repository closure records the accepted P4-0B implementation commit. The
+bounded Optimize recovery package remained a separate later behavior package
+and did not enlarge the P4-0B claim.
 <!-- PRE_STAGE4_P4_0B_REPOSITORY_CLOSURE:END -->

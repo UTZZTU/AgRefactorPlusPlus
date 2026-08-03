@@ -1,8 +1,15 @@
 # Pre-Stage-4 Product and Validation Hardening Contract
 
-> **Status:** design frozen; implementation not yet claimed.
+> **Status:** design frozen; implementation accepted through P4-0C; full
+> Pre-Stage-4 closure remains incomplete.
 >
-> **Repository baseline reviewed:** `84b6fac0a00469fc9651f5f6553b50febedb21c7`
+> **Accepted checkpoints:** P4-0A documentation freeze, P4-0B typed Preflight,
+> P4-0B-R bounded Optimize Candidate recovery, and P4-0C Public native Vitis
+> CSIM.
+>
+> **Current next package:** `P4-0D_PUBLIC_RTL_COSIM`.
+>
+> **Repository baseline originally reviewed:** `84b6fac0a00469fc9651f5f6553b50febedb21c7`
 >
 > This contract freezes the product, validation, model, budget, and CLI changes
 > that must close before Stage 4 Memory Applicability Gate begins. It supersedes

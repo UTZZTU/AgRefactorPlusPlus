@@ -6,9 +6,11 @@
 
 ```text
 branch=stage2-general-feedback
-baseline_before_this_package=197327af79382327f2711119225d47e8ea060e00
-latest_deterministic_regression=2007/2007_expected_after_S38_V2_payload
-post_cli_real_smoke=accepted
+authoritative_head_before_authority_sync=d61004f056e585199177891d576f83070f4dbdbb
+latest_deterministic_regression=2089/2089
+latest_real_validation=p4_0c_public_native_vitis_csim
+latest_real_validation_status=accepted_real_vitis
+post_cli_real_smoke=accepted_historical_pre_hardening
 post_cli_real_smoke_run_id=post-cli-real-smoke-20260726_192331
 post_cli_real_smoke_artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifacts
 PRE_STAGE3_CLOSED=true
@@ -31,7 +33,14 @@ stage3_s36_real_pragma_smoke=accepted
 stage3_s36_real_pragma_smoke_claim_scope=pragma_model_contract_only
 stage3_s32_real_replay=accepted
 stage3_s32_real_replay_artifact_root=/data/agrefactor_runs/stage3_s32_real_replay_20260730T153256Z_2390707
-NEXT_STEP=STAGE3_S3_8_LEGACY_CORRECTION_MATRIX
+PRE_STAGE4_HARDENING_DESIGN_FROZEN=true
+PRE_STAGE4_HARDENING_IMPLEMENTATION_COMPLETE=false
+P4_0A_DOCUMENTATION_CONTRACT=accepted_document_freeze
+P4_0B_TYPED_PREFLIGHT=accepted
+P4_0B_R_BOUNDED_OPTIMIZE_RECOVERY=accepted
+P4_0C_PUBLIC_NATIVE_VITIS_CSIM=accepted_real_vitis
+STAGE4_ALLOWED=false
+NEXT_STEP=P4-0D_PUBLIC_RTL_COSIM
 ```
 
 最终提交 SHA 以 `stage2-general-feedback` 当前 HEAD 为准；本文不复制会因自身提交而立刻过期的最终 SHA。
@@ -148,15 +157,18 @@ truthful per-command CLI parameters
 bottleneck-driven dynamic-v1 optimization
 ```
 
-Current status at document freeze:
+Current status after P4-0C repository closure:
 
 ```text
 PRE_STAGE4_HARDENING_DESIGN_FROZEN=true
 PRE_STAGE4_HARDENING_IMPLEMENTATION_COMPLETE=false
-P4_0B_TYPED_PREFLIGHT=accepted_local_validation
-P4_0B_R_DESIGN_FROZEN=true
+P4_0A_DOCUMENTATION_CONTRACT=accepted_document_freeze
+P4_0B_TYPED_PREFLIGHT=accepted
+P4_0B_R_BOUNDED_OPTIMIZE_RECOVERY=accepted
+P4_0C_PUBLIC_NATIVE_VITIS_CSIM=accepted_real_vitis
+P4_0C_REPOSITORY_CLOSURE=accepted
 STAGE4_ALLOWED=false
-NEXT_IMPLEMENTATION_PACKAGE=P4-0C_PUBLIC_NATIVE_VITIS_CSIM
+NEXT_IMPLEMENTATION_PACKAGE=P4-0D_PUBLIC_RTL_COSIM
 ```
 <!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:END -->
 
@@ -181,7 +193,7 @@ P4_0H_FORMAL_MULTI_KERNEL_NETWORK_LLM_VITIS_REVALIDATION=true
 P4_0H_AUTHORITATIVE_PRE_STAGE4_REAL_EVIDENCE_MATRIX=true
 DETERMINISTIC_TESTS_DO_NOT_EQUAL_REAL_END_TO_END=true
 HISTORICAL_STAGE3_REAL_SMOKE_DOES_NOT_PROVE_NEW_PIPELINE=true
-NEXT_IMPLEMENTATION_PACKAGE=P4-0C_PUBLIC_NATIVE_VITIS_CSIM
+NEXT_IMPLEMENTATION_PACKAGE=P4-0D_PUBLIC_RTL_COSIM
 ```
 
 P4-0C and P4-0D isolate and establish the real validation toolchain before
@@ -253,8 +265,9 @@ P4_0B_TYPED_PREFLIGHT_IMPLEMENTED=true
 P4_0B_TYPED_PREFLIGHT_ACCEPTANCE=accepted_local_validation
 P4_0B_FOCUSED_TESTS=64
 P4_0B_FULL_REGRESSION_TESTS=2044
+P4_0B_ACCEPTED_COMMIT=717efb78e4dd53fbe1fdc14d7db78632c227ea1a
 STAGE4_ALLOWED=false
-NEXT_IMPLEMENTATION_PACKAGE=P4-0C_PUBLIC_NATIVE_VITIS_CSIM
+NEXT_IMPLEMENTATION_PACKAGE_AT_ACCEPTANCE=P4-0B-R_BOUNDED_OPTIMIZE_CANDIDATE_RECOVERY
 ```
 
 P4-0B replaces mixed compile/link ownership guessing with independent
@@ -279,8 +292,9 @@ HIDDEN_REPAIR=false
 PPA_REPAIR=false
 P4_0B_R_FOCUSED_TESTS=22
 P4_0B_R_FULL_REGRESSION=2066
+P4_0B_R_ACCEPTED_COMMIT=fd95204e6702649de662804754e64e96fb5edad4
 STAGE4_ALLOWED=false
-NEXT_IMPLEMENTATION_PACKAGE=P4-0C_PUBLIC_NATIVE_VITIS_CSIM
+NEXT_IMPLEMENTATION_PACKAGE_AT_ACCEPTANCE=P4-0C_PUBLIC_NATIVE_VITIS_CSIM
 ```
 
 The implementation retains failed Candidate records, creates a new contiguous
@@ -305,6 +319,8 @@ P4_0C_CACHE_PIPELINE=prestage4-native-vitis-csim-v1
 P4_0C_CANDIDATE_REPAIR_PREFIX=task_aware
 P4_0C_STAGE2_SMOKE_ORDER=preflight_public_csynth_hidden
 P4_0C_STAGE2_SMOKE_BUDGET=5_tool_2_compile_1_csynth_2_csim
+P4_0C_ACCEPTED_COMMIT=d61004f056e585199177891d576f83070f4dbdbb
+P4_0C_REPOSITORY_CLOSURE=accepted
 STAGE4_ALLOWED=false
 NEXT_IMPLEMENTATION_PACKAGE=P4-0D_PUBLIC_RTL_COSIM
 ```
