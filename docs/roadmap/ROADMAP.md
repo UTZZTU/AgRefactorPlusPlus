@@ -1066,10 +1066,36 @@ S3.4 Structural model integration — 52/52 focused, 233/233 optimizer, 1741/174
 S3.5 Bottleneck model integration — 82/82 focused, 315/315 optimizer, 1823/1823 full; bounded real smoke=2 LLM calls, typed PPA fixture, no Vitis/compile/CSIM/CSYNTH
 S3.6 Pragma model integration — 75/75 focused, 382/382 optimizer, 1890/1890 full; bounded real smoke=2 LLM calls, typed PPA fixture, no Vitis/compile/CSIM/CSYNTH
 S3.7 Product adapters — 28/28 focused, 402/402 optimizer, 1941/1941 full; internal real chain=3 mandatory analyses plus 0–3 conditional rewrites, typed no-retry abstention, and real Vitis qualification
-next — S3.8 Evaluation
+S3.8 evaluation payload — implemented; target-host 18-unit matrix required
 ```
 
 详细文档：[`STAGE3_SAFE_OPTIMIZER.md`](STAGE3_SAFE_OPTIMIZER.md)。
+
+<!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:BEGIN -->
+### 7.6 Pre-Stage-4 Product and Validation Hardening
+
+Before Stage 4 begins, the product must close the frozen contract in
+[`PRE_STAGE4_PRODUCT_VALIDATION_HARDENING_CONTRACT.md`](PRE_STAGE4_PRODUCT_VALIDATION_HARDENING_CONTRACT.md).
+
+The accepted implementation order is:
+
+```text
+typed Preflight
+→ Public native Vitis CSIM
+→ CSYNTH
+→ Public RTL COSIM
+→ Hidden
+→ DeepSeek Flash/.env/Thinking hardening
+→ mode-specific budgets and truthful CLI
+→ bottleneck-driven dynamic-v1
+→ complete revalidation
+→ Pre-Stage-4 closure
+```
+
+This section freezes design only. None of the new behavior may be described as
+implemented until its own code, deterministic tests, real-tool evidence, and
+documentation synchronization are accepted.
+<!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:END -->
 
 ## 8. Stage 4 — Memory Applicability Gate
 
@@ -1327,7 +1353,7 @@ Gate acceptance、abstention、rejection、negative transfer、retrieval 后成�
 | Stage 0 | 基线能力保留；真实端到端样例仍主要集中于 DFS |
 | Stage 1 | Core 已关闭；Hardening 按后续真实需求推进 |
 | Stage 2 | 已关闭；Pre-Stage-3 产品化合同已关闭 |
-| Stage 3 | 进行中；S3.1-S3.7 已验收，下一包为 S3.8 |
+| Stage 3 | S3.1-S3.7 已验收；S3.8 implemented and accepted only after target-host 18-unit matrix |
 | Stage 4 | 未开始；当前 RAG 不等于 Memory Applicability Gate |
 | Stage 5 | 未开始；当前 TargetProfile 不等于真实版本迁移 |
 | Stage 6 | 未开始；尚未形成系统 benchmark、消融和重复实验 |
@@ -1343,7 +1369,7 @@ Stage 3 当前严格按冻结实现包推进：
 5. S3.5 Bottleneck Model Integration — 已验收；
 6. S3.6 Pragma Model Integration — 已验收；
 7. S3.7 产品适配 — 已验收；
-8. S3.8 多 kernel 真实验收与 `simple_iter` 公平对照 — 当前下一包。
+8. S3.8 多 kernel 真实验收与 `simple_iter` 公平对照 — 已实现；目标主机矩阵通过后关闭。
 
 S3.3 已保持 FakeProvider/FakeExecutor 与确定性 fixtures；S3.4 接入 Structural hypothesis/complete-source；S3.5 接入 typed PPA projection、非权威 Bottleneck classification 与 evidence-linked rewrite；S3.6 接入 typed non-authoritative Pragma action、strict directive policy 与 complete-source rewrite，三者均以两次模型调用、零 Vitis 的 bounded smoke 验收。不得把后续 S3.7–S3.8 合并，不得把 contract-valid source、model classification 或 pragma action 冒充 correctness/PPA/tool fact；S3.7 已完成内部三层全链路演练并接通产品；S3.8 仍必须独立完成多 kernel、重复实验与公平 `simple_iter` 对照。
 
@@ -1381,3 +1407,19 @@ Hardening 时，先补齐并做真实验收，再继续对应 Stage。
 S3.7 v8 hardening: model output contract failures are typed no-retry abstentions, best_correct is preserved, and acceptance correlates semantic call/decision/candidate/qualification evidence instead of forcing rewrites.
 
 S3.7 v9 correction: the real-smoke observer and fixtures share the canonical versioned candidate-index serializer/parser, eliminating a false negative where qualified candidates were persisted but not recognized.
+
+
+S3.8 v1 freezes a bounded 18-unit matrix: array-map/reduction/nested-stencil,
+two repeats, and safe-optimize/source-full/simple-iter. All arms share the same
+model, effective provider parameters, Target, suites, hard ceilings, and no-retry
+policy. Legacy is independently qualified before and after optimization. Stage
+retention requires a complete matrix, zero infrastructure failures, accepted
+direct optimize and live full evidence, and real CSYNTH on every kernel. No
+stable-superiority claim is allowed.
+
+### S3.8 V2 correction note
+
+The first V1 target-host run cannot close S3.8 because all six Legacy units
+failed in the qualification observer before `simple_iter` model execution. V2
+retains the product evidence and requires a targeted six-unit Legacy rerun with
+physical-call provenance before the route advances to Stage 4.

@@ -2,6 +2,26 @@
 
 本文只记录不属于当前 Stage 3 首包、但不能遗忘的能力。当前执行指针见 [PROJECT_STATE.md](PROJECT_STATE.md)。
 
+<!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:BEGIN -->
+## Moved into the Pre-Stage-4 frozen contract
+
+The following are no longer unsequenced future backlog items. They are mandatory
+before Stage 4 and are governed by
+[`PRE_STAGE4_PRODUCT_VALIDATION_HARDENING_CONTRACT.md`](PRE_STAGE4_PRODUCT_VALIDATION_HARDENING_CONTRACT.md):
+
+- concrete DeepSeek V4 Flash Thinking and graded-effort evidence;
+- default Flash with user model/endpoint/API-key-environment overrides;
+- explicit local `.env` loading without secret persistence;
+- real Public native Vitis CSIM;
+- real Public RTL COSIM with budget, timeout, evidence, and ownership;
+- mode-specific Refactor/Optimize/Full budgets and Full Optimize reserves;
+- truthful Optimize/Full CLI controls;
+- bottleneck-driven `dynamic-v1`.
+
+Historical `safe-v1` remains available only for reproducibility and comparison.
+<!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:END -->
+
+
 ## 已迁移到冻结 Stage 3 合同
 
 以下内容不再是未决 backlog，已经在 [STAGE3_IMPLEMENTATION_CONTRACT.md](STAGE3_IMPLEMENTATION_CONTRACT.md) 中冻结：

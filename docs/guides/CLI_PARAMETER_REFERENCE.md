@@ -110,6 +110,33 @@ Cost 币种来自已验证 pricing snapshot；没有可用币种时不能填写 
 
 `--json/--verbose/--debug` 互斥。
 
+<!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:BEGIN -->
+## Pre-Stage-4 planned parameter contract
+
+The future parameter changes are frozen, but are **not current behavior** until
+their implementation packages are accepted. See
+[`PRE_STAGE4_PRODUCT_VALIDATION_HARDENING_CONTRACT.md`](../roadmap/PRE_STAGE4_PRODUCT_VALIDATION_HARDENING_CONTRACT.md).
+
+Planned normal defaults and controls include:
+
+```text
+--model deepseek-v4-flash
+--api-key-env ENV_NAME
+--reasoning-effort auto|medium|high
+--optimizer-profile safe-v1|dynamic-v1
+--max-optimization-rounds N
+--max-executed-candidates N
+--hypotheses-per-round N
+--cosim-policy off|required
+--max-cosim-calls N
+--cosim-timeout-s N
+--budget-profile refactor-default|optimize-default|full-default
+```
+
+A visible parameter must be consumed and recorded in Execution Identity, or be
+hidden/rejected for that command.
+<!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:END -->
+
 ## 当前未开放
 
 模型采样参数、完整 TargetProfile 覆盖、资源限制、Memory/RAG、自动模型路由、level-specific rounds/beam/cache path、迁移参数和 cosim budget 当前不属于普通 source-only CLI。详见 [产品能力待办](../roadmap/PRODUCT_CAPABILITY_BACKLOG.md)。

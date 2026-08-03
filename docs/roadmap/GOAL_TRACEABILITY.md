@@ -10,7 +10,7 @@ Stage 1=closed
 Stage 2=closed
 Pre-Stage-3=closed
 Stage 3 planning=frozen
-Stage 3 implementation=in progress; S3.1-S3.7 accepted
+Stage 3 implementation=S3.1-S3.7 accepted; S3.8 accepted only after corrected Legacy target-host matrix
 Stage 4=not started
 Stage 5=not started
 Stage 6=not started
@@ -23,10 +23,10 @@ Stage 6=not started
 | TargetProfile | Vitis 2023.2 committed profile、executable/settings、part、clock、compile flags、Tcl、parser identity、resource schema、per-field provenance | 多版本、更多设备/platform、版本特定 parser | Stage 5 扩展 | 至少一组真实 source/target 版本矩阵 |
 | 双模式版本处理 | `refactor/optimize/full` 数据结构预留；普通 source-only refactor 已实现 | migrate mode、SourceProfile、source baseline、migration report | Stage 5 | 一组真实旧版→目标版迁移 |
 | Model API Registry | Modern/Legacy/repair 统一 typed runtime；DeepSeek 真实 smoke；固定模型路径 | authorized auto pool、具体部署 reasoning mapping | 后续 hardening | 用户授权模型池与选择证据 |
-| 分层 Prompt | Shared builder、Target/model/evidence/scope/output layers；Candidate/Testbench consumers；S3.4 Structural、S3.5 Bottleneck、S3.6 Pragma analysis/rewrite Prompt 与 identity | S3.7 product consumer 已接通；S3.8 evaluation consumer | Stage 3 | optimize/full unified prompt identity |
-| 结构化反馈与状态机 | Preflight、CSYNTH、Public/Hidden、repair、owner、next action、Hidden suppression；S3.2 qualification/PPA；S3.3 deterministic engine；S3.4 Structural、S3.5 Bottleneck、S3.6 typed Pragma consumer | S3.7 product orchestration 已完成；S3.8 multi-kernel orchestration | Stage 3 | full three-level internal exercise |
+| 分层 Prompt | Shared builder、Target/model/evidence/scope/output layers；Candidate/Testbench consumers；S3.4 Structural、S3.5 Bottleneck、S3.6 Pragma analysis/rewrite Prompt 与 identity | S3.7 product consumer 已接通；S3.8 bounded multi-kernel evaluation consumer implemented | Stage 3 | optimize/full unified prompt identity |
+| 结构化反馈与状态机 | Preflight、CSYNTH、Public/Hidden、repair、owner、next action、Hidden suppression；S3.2 qualification/PPA；S3.3 deterministic engine；S3.4 Structural、S3.5 Bottleneck、S3.6 typed Pragma consumer | S3.7 product orchestration 已完成；S3.8 3×2×3 real matrix orchestration implemented | Stage 3 | full three-level internal exercise |
 | Multi-type ground truth | 7 baselines、7/7 full chains、9/9 fault matrix、16/16 labels | 更广 kernel/版本/设备统计 | Stage 6 | 固定 benchmark 扩展 |
-| 安全三级优化器 | S3.1 state/checkpoint；S3.2 qualification/PPA/cache；S3.3 deterministic engine；S3.4 Structural、S3.5 Bottleneck、S3.6 Pragma real model hypothesis/complete-source integration；Legacy `opt.simple_iter` 仍仅为 baseline | S3.7 optimize/full 已完成、S3.8 evaluation | Stage 3 | S3.7 internal full-chain accepted；S3.8 fixed evaluation protocol |
+| 安全三级优化器 | S3.1 state/checkpoint；S3.2 qualification/PPA/cache；S3.3 deterministic engine；S3.4 Structural、S3.5 Bottleneck、S3.6 Pragma real model hypothesis/complete-source integration；Legacy `opt.simple_iter` 仍仅为 baseline | S3.7 optimize/full 已完成；S3.8 optimize/full/simple_iter fair evaluation implemented | Stage 3 | S3.7 internal full-chain accepted；S3.8 fixed evaluation protocol |
 | Memory Applicability Gate | Legacy RAG 正负 trial 可作为 baseline | schema、score、abstention、off/gated/always | Stage 4 | 负迁移和弃权实验 |
 | BudgetManager | LLM/Tool/Compile/CSIM/CSYNTH/wall-time 硬控制；Token/Cost observed-only；S3.3 fallback；S3.4–S3.6 real LLM prospective/physical accounting | S3.7 mixed model/tool product orchestration 已完成；未来 cosim | Stage 3/后续 | full-chain physical budget evidence |
 | 版本迁移 | 长期目标保留 | 真实 source→target 修复、验证、优化和报告 | Stage 5 | migration acceptance |
@@ -218,6 +218,26 @@ S3.7 proves product wiring and one bounded full chain. It does not prove stable
 PPA improvement, general model quality, multi-kernel success or superiority to
 `simple_iter`; those remain S3.8.
 
+<!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:BEGIN -->
+## Pre-Stage-4 frozen hardening trace
+
+The Stage 4 entry contract is now frozen in
+[`PRE_STAGE4_PRODUCT_VALIDATION_HARDENING_CONTRACT.md`](PRE_STAGE4_PRODUCT_VALIDATION_HARDENING_CONTRACT.md).
+
+| Hardening target | Current evidence boundary | Required closing evidence |
+|---|---|---|
+| `.env` and API-key environment | README and `.env.example` define local variables; normal CLI behavior must be made explicit | load precedence tests, missing-variable rejection, no-secret artifacts |
+| Flash and Thinking | concrete Flash runtime exists; family effort mapping and historical smoke behavior are not the final role-aware contract | requested/effective/provider evidence for every call role |
+| Preflight ownership | shared Preflight exists; historical Candidate compile ownership was not globally reliable | independent compile/link/symbol fault matrix |
+| Native CSIM | current host differential execution must not be mislabeled as native Vitis CSIM | real `csim_design` invocation and evidence |
+| COSIM | no active RTL call site or budget | real Public COSIM, timeout, ownership, cache, and budget |
+| Mode budgets | one source-run profile is shared | refactor/optimize/full profiles plus Full reserves |
+| CLI truthfulness | broad shared source-command surface exists | consume-or-reject audit for every command |
+| Optimizer control | historical fixed `safe-v1` order exists | accepted `dynamic-v1` diagnosis/action/qualification loop |
+
+Stage 4 remains blocked until the complete Pre-Stage-4 closure gate passes.
+<!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:END -->
+
 ## 完成声明检查表
 
 任何未来“已完成”声明必须同时回答：
@@ -235,3 +255,28 @@ S3.7 v8 hardening: all three analysis/rewrite contracts support typed no-retry a
 S3.7 v9 traceability: real-smoke candidate persistence is verified through `candidate_index_from_dict`; fixtures use `candidate_index_to_dict` and reject obsolete flat mappings.
 
 S3.7 closure hygiene: safe model-call artifacts now write explicit schema v2; the reader accepts both historical v1 shapes and v2. This is an audit-schema governance correction only and does not change optimization authority or execution.
+
+
+### S3.8 implemented pending target-host matrix
+
+```text
+3 kernel categories × 2 repeats × 3 arms = 18 real units
+formal direct optimize
+live source-only full
+Legacy simple_iter with independent baseline/final qualification
+same model/effective provider parameters/Target/suites/budgets
+63/63 S3.8 focused after Legacy observer correction
+405/405 optimizer regression
+2007/2007 target-host full deterministic regression expected
+```
+
+S3.8 records success, PPA, invalid ratio, rollback, physical calls, and wall time.
+It never treats Legacy internal feedback as correctness authority and never
+claims stable superiority from two repeats.
+
+### S3.8 V2 correction trace
+
+The V1 real evidence showed 12 valid product-arm records but six zero-call
+Legacy observer failures. V2 links fair-comparison closure to full qualification
+stage-order observation, Legacy process start, safe evaluation summary, physical
+model calls, and independent final qualification when a candidate exists.

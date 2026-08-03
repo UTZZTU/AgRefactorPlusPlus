@@ -7,7 +7,7 @@
 ```text
 branch=stage2-general-feedback
 baseline_before_this_package=197327af79382327f2711119225d47e8ea060e00
-latest_deterministic_regression=1890/1890
+latest_deterministic_regression=2007/2007_expected_after_S38_V2_payload
 post_cli_real_smoke=accepted
 post_cli_real_smoke_run_id=post-cli-real-smoke-20260726_192331
 post_cli_real_smoke_artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifacts
@@ -21,6 +21,8 @@ STAGE3_S3_3_DETERMINISTIC_OPTIMIZER_STATE_MACHINE=accepted
 STAGE3_S3_4_STRUCTURAL_MODEL_INTEGRATION=accepted
 STAGE3_S3_5_BOTTLENECK_MODEL_INTEGRATION=accepted
 STAGE3_S3_6_PRAGMA_MODEL_INTEGRATION=accepted
+STAGE3_S3_7_PRODUCT_ADAPTERS=accepted
+STAGE3_S3_8_EVALUATION=accepted_only_after_corrected_legacy_matrix
 stage3_s34_real_structural_smoke=accepted
 stage3_s34_real_structural_smoke_claim_scope=structural_model_contract_only
 stage3_s35_real_bottleneck_smoke=accepted
@@ -29,7 +31,7 @@ stage3_s36_real_pragma_smoke=accepted
 stage3_s36_real_pragma_smoke_claim_scope=pragma_model_contract_only
 stage3_s32_real_replay=accepted
 stage3_s32_real_replay_artifact_root=/data/agrefactor_runs/stage3_s32_real_replay_20260730T153256Z_2390707
-NEXT_STEP=STAGE3_IMPLEMENTATION_STEP_7
+NEXT_STEP=STAGE3_S3_8_LEGACY_CORRECTION_MATRIX
 ```
 
 最终提交 SHA 以 `stage2-general-feedback` 当前 HEAD 为准；本文不复制会因自身提交而立刻过期的最终 SHA。
@@ -125,7 +127,36 @@ candidate state/schema
 + deterministic tests
 ```
 
-S3.1–S3.7 已验收：当前具备 candidate/checkpoint foundation、独立 Stage 3 qualification、typed PPA evidence、latency comparator、exact validation cache identity、完整 deterministic safe-v1 level/round/budget/rollback/resume 状态机、real model-backed Structural/Bottleneck/Pragma contracts，以及普通 `optimize/full` Product Adapters。S3.7 强制 direct optimize 独立 reference 与 provided Public/Hidden、full accepted-refactor handoff、baseline-before-model qualification、shared budget/trace、linked Stage 3 execution identity。内部真实 gate 必须触达三层 analysis；rewrite 由 executable hypothesis 与 complete-source contract 决定，可 qualification 或 typed no-retry abstention。模型合同失败不再摧毁已有 best_correct；网络/工具/文件系统错误仍硬失败。该证据只证明产品接线和 bounded chain；下一包严格为 S3.8 Evaluation。
+S3.1–S3.7 已验收：当前具备 candidate/checkpoint foundation、独立 Stage 3 qualification、typed PPA evidence、latency comparator、exact validation cache identity、完整 deterministic safe-v1 level/round/budget/rollback/resume 状态机、real model-backed Structural/Bottleneck/Pragma contracts，以及普通 `optimize/full` Product Adapters。S3.7 强制 direct optimize 独立 reference 与 provided Public/Hidden、full accepted-refactor handoff、baseline-before-model qualification、shared budget/trace、linked Stage 3 execution identity。内部真实 gate 必须触达三层 analysis；rewrite 由 executable hypothesis 与 complete-source contract 决定，可 qualification 或 typed no-retry abstention。模型合同失败不再摧毁已有 best_correct；网络/工具/文件系统错误仍硬失败。S3.8 已实现冻结的 3-kernel × 2-repeat × 3-arm 评测器；只有目标主机完整矩阵通过后才保留并关闭 Stage 3。
+
+<!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:BEGIN -->
+## 5.1 Stage 4 entry blocker: frozen hardening contract
+
+The intended Stage 4 entry is now gated by
+[`PRE_STAGE4_PRODUCT_VALIDATION_HARDENING_CONTRACT.md`](PRE_STAGE4_PRODUCT_VALIDATION_HARDENING_CONTRACT.md).
+
+Frozen targets include:
+
+```text
+default deepseek-v4-flash with user model/endpoint/API-key-env override
+local .env loading without secret persistence
+explicit DeepSeek Thinking with role-based medium/high mapping
+typed component-level Preflight ownership
+Public native Vitis CSIM → CSYNTH → Public RTL COSIM → Hidden
+refactor/optimize/full budget profiles with Full Optimize reserves
+truthful per-command CLI parameters
+bottleneck-driven dynamic-v1 optimization
+```
+
+Current status at document freeze:
+
+```text
+PRE_STAGE4_HARDENING_DESIGN_FROZEN=true
+PRE_STAGE4_HARDENING_IMPLEMENTATION_COMPLETE=false
+STAGE4_ALLOWED=false
+NEXT_IMPLEMENTATION_PACKAGE=GLOBAL_TYPED_PREFLIGHT_REPAIR
+```
+<!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:END -->
 
 ## 6. 当前权威文档
 
@@ -146,6 +177,8 @@ S3.1–S3.7 已验收：当前具备 candidate/checkpoint foundation、独立 St
 15. [S3.6 decision record](STAGE3_S36_DECISION_RECORD.md)
 16. [S3.7 Product Adapters acceptance](../acceptance/stage3/stage3_s37_product_adapters_acceptance.md)
 17. [S3.7 decision record](STAGE3_S37_DECISION_RECORD.md)
+18. [S3.8 evaluation acceptance](../acceptance/stage3/stage3_s38_evaluation_acceptance.md)
+19. [S3.8 decision record](STAGE3_S38_DECISION_RECORD.md)
 18. [最新真实产品 smoke acceptance](../acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md)
 
 ## 7. 工程原则
@@ -162,3 +195,19 @@ S3.7 v8 hardening: all three model levels use typed no-retry analysis/rewrite ab
 S3.7 v9 observer correction: acceptance reads the canonical versioned candidate-index artifact through the product parser; real fixtures use the same serializer and obsolete flat fixtures are rejected.
 
 S3.7 closure hygiene: the status header now explicitly marks Product Adapters accepted, the acceptance package label is V9, and safe model-call artifacts write schema v2 with documented v1/v2 read compatibility. Product behavior and the S3.8 next-package boundary are unchanged.
+
+
+S3.8 implementation boundary: the frozen target-host matrix is 3 committed
+kernel categories × 2 repeats × direct optimize/live source-only full/Legacy
+simple_iter. Legacy inputs and outputs are independently qualified, all arms
+share model/Target/budget/provider parameters, and no stable-superiority claim
+is permitted. The repository payload is retained only after the complete matrix
+has zero infrastructure failures and exercises real Vitis on every kernel.
+
+## S3.8 V2 correction state
+
+The first 18-record target-host run is retained as diagnostic evidence, not
+Stage 3 closure: all six `simple-iter` records were observer RuntimeErrors before
+Legacy model execution. The twelve `safe-optimize`/`source-full` records remain
+valid and immutable. V2 must rerun only the six Legacy units under the same
+protocol identity and pass the strengthened fair-comparison gate.
