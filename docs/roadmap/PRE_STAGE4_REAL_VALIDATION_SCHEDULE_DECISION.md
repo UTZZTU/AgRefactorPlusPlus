@@ -59,5 +59,5 @@ contracts. It does not close any P4-0C through P4-0H acceptance requirement.
 ## Next implementation package
 
 ```text
-NEXT_IMPLEMENTATION_PACKAGE=P4-0C_PUBLIC_NATIVE_VITIS_CSIM
+NEXT_IMPLEMENTATION_PACKAGE_AT_DECISION=P4-0C_PUBLIC_NATIVE_VITIS_CSIM
 ```

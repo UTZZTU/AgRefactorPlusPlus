@@ -1,13 +1,13 @@
 # Pre-Stage-4 Product and Validation Hardening Contract
 
-> **Status:** design frozen; implementation accepted through P4-0C; full
+> **Status:** design frozen; implementation accepted through P4-0D; full
 > Pre-Stage-4 closure remains incomplete.
 >
 > **Accepted checkpoints:** P4-0A documentation freeze, P4-0B typed Preflight,
-> P4-0B-R bounded Optimize Candidate recovery, and P4-0C Public native Vitis
-> CSIM.
+> P4-0B-R bounded Optimize Candidate recovery, P4-0C Public native Vitis CSIM,
+> and P4-0D Public RTL COSIM.
 >
-> **Current next package:** `P4-0D_PUBLIC_RTL_COSIM`.
+> **Current next package:** `P4-0E`.
 >
 > **Repository baseline originally reviewed:** `84b6fac0a00469fc9651f5f6553b50febedb21c7`
 >

@@ -6,10 +6,12 @@
 
 ```text
 branch=stage2-general-feedback
-authoritative_head_before_authority_sync=d61004f056e585199177891d576f83070f4dbdbb
-latest_deterministic_regression=2089/2089
-latest_real_validation=p4_0c_public_native_vitis_csim
+authoritative_head_before_authority_sync=b543604cd311eab4380987b09447842542e3214b
+latest_deterministic_regression=2096/2096
+latest_real_validation=p4_0d_public_rtl_cosim
 latest_real_validation_status=accepted_real_vitis
+latest_real_validation_run_id=p4_0d_public_rtl_cosim_v16_20260804T064831Z_1709639
+latest_real_validation_artifact_root=/data/agrefactor_runs/p4_0d_public_rtl_cosim_v16_20260804T064831Z_1709639
 post_cli_real_smoke=accepted_historical_pre_hardening
 post_cli_real_smoke_run_id=post-cli-real-smoke-20260726_192331
 post_cli_real_smoke_artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifacts
@@ -39,8 +41,11 @@ P4_0A_DOCUMENTATION_CONTRACT=accepted_document_freeze
 P4_0B_TYPED_PREFLIGHT=accepted
 P4_0B_R_BOUNDED_OPTIMIZE_RECOVERY=accepted
 P4_0C_PUBLIC_NATIVE_VITIS_CSIM=accepted_real_vitis
+P4_0D_PUBLIC_RTL_COSIM=accepted_real_vitis
+P4_0D_ACCEPTED_COMMIT=b543604cd311eab4380987b09447842542e3214b
+P4_0D_REPOSITORY_CLOSURE=accepted
 STAGE4_ALLOWED=false
-NEXT_STEP=P4-0D_PUBLIC_RTL_COSIM
+NEXT_STEP=P4-0E
 ```
 
 最终提交 SHA 以 `stage2-general-feedback` 当前 HEAD 为准；本文不复制会因自身提交而立刻过期的最终 SHA。
@@ -65,7 +70,7 @@ python -m agrefactor.cli refactor \
 - Public/Hidden 独立来源与多 suite；
 - 自动 Testbench 生成和有限 repair；
 - Candidate 生成、有限 repair 和正式 Stage 2 裁决；
-- Preflight、Vitis HLS CSYNTH、Public CSIM、Hidden CSIM；
+- Preflight、Public native Vitis CSIM、Vitis CSYNTH、Public RTL COSIM、Hidden differential；
 - 共享 BudgetManager、TraceRecorder 和 Execution Identity；
 - 默认简洁输出和完整 artifacts；
 - 当前 CLI 参数合同及真实 post-CLI smoke。
@@ -77,7 +82,7 @@ python -m agrefactor.cli refactor \
 - 结构化 Feedback、Router、State Machine 和 Validation Orchestrator；
 - Shared Layered Prompt Builder；
 - Candidate/Testbench repair contracts；
-- LLM、Tool、Compile、CSIM、CSYNTH 和 wall-time 硬预算；
+- LLM、Tool、Compile、CSIM、CSYNTH、COSIM 和 wall-time 硬预算；
 - Token/Cost observed-only 记录；
 - 真实工具调用和 suite provenance；
 - operator-full / agent-safe / Hidden suppression 边界；
@@ -88,26 +93,30 @@ python -m agrefactor.cli refactor \
 ## 3. 最新真实 smoke
 
 ```text
-run_id=post-cli-real-smoke-20260726_192331
-model=deepseek-v4-flash
-source=src/heterorefactor/dfs/kernel.cpp
-top=process_top
-status=accepted
+run_id=p4_0d_public_rtl_cosim_v16_20260804T064831Z_1709639
+status=accepted_real_vitis
+preflight=passed
+public_native_vitis_csim=passed
 csynth=passed
-public=passed
+public_rtl_cosim=passed
 hidden=passed
-llm_calls=15
-tool_calls=13
-compile_calls=6
-csim_calls=3
-csynth_calls=2
+llm_calls=0
+tool_calls=15
+compile_calls=7
+csim_calls=2
+csynth_calls=1
+cosim_calls=1
 actual_vitis_version=2023.2
-repository_commit=f80803af65b18015bb0801c05964a6c5c2a83d52
-repository_clean=true
-artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifacts
+network_llm_used=false
+final_scope_verified=true
+accepted_behavior_commit=b543604cd311eab4380987b09447842542e3214b
+repository_closure=accepted
+artifact_root=/data/agrefactor_runs/p4_0d_public_rtl_cosim_v16_20260804T064831Z_1709639
 ```
 
-该 smoke 证明最新 CLI 参数改造后的当前代码基线仍能通过一次真实产品入口。它不是任意 kernel、模型、器件或版本的普适声明。
+该 smoke 使用固定、model-independent 的已提交样例，证明 P4-0D 新增的真实
+Vitis 五阶段链、预算、typed evidence、隔离和最终 scope。它不是网络模型、
+任意 kernel、多版本 Vitis 或稳定 PPA 收益声明。
 
 ## 4. 当前不能宣称
 
@@ -157,7 +166,7 @@ truthful per-command CLI parameters
 bottleneck-driven dynamic-v1 optimization
 ```
 
-Current status after P4-0C repository closure:
+Current status after P4-0D repository closure:
 
 ```text
 PRE_STAGE4_HARDENING_DESIGN_FROZEN=true
@@ -167,8 +176,12 @@ P4_0B_TYPED_PREFLIGHT=accepted
 P4_0B_R_BOUNDED_OPTIMIZE_RECOVERY=accepted
 P4_0C_PUBLIC_NATIVE_VITIS_CSIM=accepted_real_vitis
 P4_0C_REPOSITORY_CLOSURE=accepted
+P4_0D_PUBLIC_RTL_COSIM=accepted_real_vitis
+P4_0D_ACCEPTED_COMMIT=b543604cd311eab4380987b09447842542e3214b
+P4_0D_ACCEPTED_RUN_ID=p4_0d_public_rtl_cosim_v16_20260804T064831Z_1709639
+P4_0D_REPOSITORY_CLOSURE=accepted
 STAGE4_ALLOWED=false
-NEXT_IMPLEMENTATION_PACKAGE=P4-0D_PUBLIC_RTL_COSIM
+NEXT_IMPLEMENTATION_PACKAGE=P4-0E
 ```
 <!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:END -->
 
@@ -186,6 +199,7 @@ P4_0C_REAL_NATIVE_VITIS_CSIM_REQUIRED=true
 P4_0C_NETWORK_LLM_ACCEPTANCE_DEPENDENCY=false
 P4_0D_REAL_CSIM_CSYNTH_COSIM_HIDDEN_REQUIRED=true
 P4_0D_NETWORK_LLM_ACCEPTANCE_DEPENDENCY=false
+P4_0D_REAL_VALIDATION=accepted
 P4_0E_FIRST_POST_HARDENING_NETWORK_LLM_SMOKE=true
 P4_0F_MEASURED_REAL_RUNS_FOR_BUDGET_DEFAULTS=true
 P4_0G_NETWORK_LLM_OPTIMIZE_FULL_SMOKE=true
@@ -193,7 +207,7 @@ P4_0H_FORMAL_MULTI_KERNEL_NETWORK_LLM_VITIS_REVALIDATION=true
 P4_0H_AUTHORITATIVE_PRE_STAGE4_REAL_EVIDENCE_MATRIX=true
 DETERMINISTIC_TESTS_DO_NOT_EQUAL_REAL_END_TO_END=true
 HISTORICAL_STAGE3_REAL_SMOKE_DOES_NOT_PROVE_NEW_PIPELINE=true
-NEXT_IMPLEMENTATION_PACKAGE=P4-0D_PUBLIC_RTL_COSIM
+NEXT_IMPLEMENTATION_PACKAGE=P4-0E
 ```
 
 P4-0C and P4-0D isolate and establish the real validation toolchain before
@@ -206,24 +220,29 @@ Optimize/Full behavior; P4-0H is the repeated multi-kernel closure matrix.
 
 1. [ROADMAP.md](ROADMAP.md)
 2. [GOAL_TRACEABILITY.md](GOAL_TRACEABILITY.md)
-3. [STAGE3_IMPLEMENTATION_CONTRACT.md](STAGE3_IMPLEMENTATION_CONTRACT.md)
-4. [CLI_PARAMETER_REFERENCE.md](../guides/CLI_PARAMETER_REFERENCE.md)
-5. [REPRODUCTION_STATUS.md](../guides/REPRODUCTION_STATUS.md)
-6. [S3.1 Candidate State Foundation acceptance](../acceptance/stage3/stage3_s31_candidate_state_foundation_acceptance.md)
-7. [S3.2 Qualification and PPA Evidence acceptance](../acceptance/stage3/stage3_s32_qualification_ppa_acceptance.md)
-8. [S3.3 Deterministic Optimizer State Machine acceptance](../acceptance/stage3/stage3_s33_deterministic_optimizer_state_machine_acceptance.md)
-9. [S3.3 decision record](STAGE3_S33_DECISION_RECORD.md)
-10. [S3.4 Structural Model Integration acceptance](../acceptance/stage3/stage3_s34_structural_model_integration_acceptance.md)
-11. [S3.4 decision record](STAGE3_S34_DECISION_RECORD.md)
-12. [S3.5 Bottleneck Model Integration acceptance](../acceptance/stage3/stage3_s35_bottleneck_model_integration_acceptance.md)
-13. [S3.5 decision record](STAGE3_S35_DECISION_RECORD.md)
-14. [S3.6 Pragma Model Integration acceptance](../acceptance/stage3/stage3_s36_pragma_model_integration_acceptance.md)
-15. [S3.6 decision record](STAGE3_S36_DECISION_RECORD.md)
-16. [S3.7 Product Adapters acceptance](../acceptance/stage3/stage3_s37_product_adapters_acceptance.md)
-17. [S3.7 decision record](STAGE3_S37_DECISION_RECORD.md)
-18. [S3.8 evaluation acceptance](../acceptance/stage3/stage3_s38_evaluation_acceptance.md)
-19. [S3.8 decision record](STAGE3_S38_DECISION_RECORD.md)
-18. [最新真实产品 smoke acceptance](../acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md)
+3. [Pre-Stage-4 hardening contract](PRE_STAGE4_PRODUCT_VALIDATION_HARDENING_CONTRACT.md)
+4. [Pre-Stage-4 real-validation schedule](PRE_STAGE4_REAL_VALIDATION_SCHEDULE_DECISION.md)
+5. [P4-0D decision record](PRE_STAGE4_P4_0D_DECISION_RECORD.md)
+6. [P4-0D acceptance](../acceptance/pre-stage4/p4_0d_public_rtl_cosim_acceptance.md)
+7. [P4-0D authority-state synchronization](../acceptance/pre-stage4/p4_0d_authority_state_sync_acceptance.md)
+8. [STAGE3_IMPLEMENTATION_CONTRACT.md](STAGE3_IMPLEMENTATION_CONTRACT.md)
+9. [CLI_PARAMETER_REFERENCE.md](../guides/CLI_PARAMETER_REFERENCE.md)
+10. [REPRODUCTION_STATUS.md](../guides/REPRODUCTION_STATUS.md)
+11. [S3.1 Candidate State Foundation acceptance](../acceptance/stage3/stage3_s31_candidate_state_foundation_acceptance.md)
+12. [S3.2 Qualification and PPA Evidence acceptance](../acceptance/stage3/stage3_s32_qualification_ppa_acceptance.md)
+13. [S3.3 Deterministic Optimizer State Machine acceptance](../acceptance/stage3/stage3_s33_deterministic_optimizer_state_machine_acceptance.md)
+14. [S3.3 decision record](STAGE3_S33_DECISION_RECORD.md)
+15. [S3.4 Structural Model Integration acceptance](../acceptance/stage3/stage3_s34_structural_model_integration_acceptance.md)
+16. [S3.4 decision record](STAGE3_S34_DECISION_RECORD.md)
+17. [S3.5 Bottleneck Model Integration acceptance](../acceptance/stage3/stage3_s35_bottleneck_model_integration_acceptance.md)
+18. [S3.5 decision record](STAGE3_S35_DECISION_RECORD.md)
+19. [S3.6 Pragma Model Integration acceptance](../acceptance/stage3/stage3_s36_pragma_model_integration_acceptance.md)
+20. [S3.6 decision record](STAGE3_S36_DECISION_RECORD.md)
+21. [S3.7 Product Adapters acceptance](../acceptance/stage3/stage3_s37_product_adapters_acceptance.md)
+22. [S3.7 decision record](STAGE3_S37_DECISION_RECORD.md)
+23. [S3.8 evaluation acceptance](../acceptance/stage3/stage3_s38_evaluation_acceptance.md)
+24. [S3.8 decision record](STAGE3_S38_DECISION_RECORD.md)
+25. [历史 post-CLI real smoke acceptance](../acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md)
 
 ## 7. 工程原则
 
@@ -322,7 +341,7 @@ P4_0C_STAGE2_SMOKE_BUDGET=5_tool_2_compile_1_csynth_2_csim
 P4_0C_ACCEPTED_COMMIT=d61004f056e585199177891d576f83070f4dbdbb
 P4_0C_REPOSITORY_CLOSURE=accepted
 STAGE4_ALLOWED=false
-NEXT_IMPLEMENTATION_PACKAGE=P4-0D_PUBLIC_RTL_COSIM
+NEXT_IMPLEMENTATION_PACKAGE_AT_ACCEPTANCE=P4-0D_PUBLIC_RTL_COSIM
 ```
 
 The accepted real smoke uses a committed model-independent sample and
@@ -330,3 +349,33 @@ actual Vitis HLS `csim_design`. It proves the new Public tool stage and
 ordering only; it is not a network-model, arbitrary-kernel or
 stable-optimization claim.
 <!-- PRE_STAGE4_P4_0C_NATIVE_VITIS_CSIM:END -->
+
+<!-- PRE_STAGE4_P4_0D_PUBLIC_RTL_COSIM:BEGIN -->
+## P4-0D Public RTL COSIM accepted
+
+```text
+P4_0D_PUBLIC_RTL_COSIM_IMPLEMENTED=true
+P4_0D_PUBLIC_RTL_COSIM_ACCEPTANCE=accepted_real_vitis
+P4_0D_UNIFIED_STAGE_ORDER=preflight_public_native_csim_csynth_public_rtl_cosim_hidden
+P4_0D_COSIM_POLICY_DEFAULT=required
+P4_0D_COSIM_DEFAULT_TIMEOUT_S=900
+P4_0D_COSIM_TIMEOUT_SAFETY_CEILING=7200
+P4_0D_COSIM_REPAIR=false
+P4_0D_TESTBENCH_OUTCOME_TRANSPORT=argv
+P4_0D_CACHE_PIPELINE=prestage4-public-rtl-cosim-v1
+P4_0D_FOCUSED_TESTS=7
+P4_0D_FULL_REGRESSION=2096
+P4_0D_REAL_VITIS_SMOKE=accepted
+P4_0D_NETWORK_LLM_USED=false
+P4_0D_ACCEPTED_RUN_ID=p4_0d_public_rtl_cosim_v16_20260804T064831Z_1709639
+P4_0D_ACCEPTED_COMMIT=b543604cd311eab4380987b09447842542e3214b
+P4_0D_REPOSITORY_CLOSURE=accepted
+STAGE4_ALLOWED=false
+NEXT_IMPLEMENTATION_PACKAGE=P4-0E
+```
+
+The accepted target-host run proves exact focused/full regression and the real
+Vitis 2023.2 chain `Preflight -> Public native Vitis CSIM -> CSYNTH -> Public
+RTL COSIM -> Hidden` with `network_llm_used=false`. It does not close later
+Pre-Stage-4 packages and does not permit Stage 4.
+<!-- PRE_STAGE4_P4_0D_PUBLIC_RTL_COSIM:END -->
