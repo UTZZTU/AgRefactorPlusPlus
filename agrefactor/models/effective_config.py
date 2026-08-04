@@ -12,6 +12,11 @@ from typing import Any
 from .base import ModelSpec
 from .family import ModelFamilyProfile
 from .pricing import ModelPricingSnapshot
+from .call_policy import (
+    ModelCallRole,
+    normalize_requested_reasoning_effort,
+    parameterize_model_call,
+)
 
 
 _SECRET_KEY_RE = re.compile(
@@ -118,6 +123,7 @@ class EffectiveModelConfig:
     api_key_env: str | None = None
     pricing_snapshot: ModelPricingSnapshot | None = None
     allow_approximate_cost: bool = False
+    requested_reasoning_effort: str = "auto"
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -207,6 +213,13 @@ class EffectiveModelConfig:
             raise TypeError(
                 "allow_approximate_cost must be boolean"
             )
+        object.__setattr__(
+            self,
+            "requested_reasoning_effort",
+            normalize_requested_reasoning_effort(
+                self.requested_reasoning_effort
+            ),
+        )
 
     @property
     def family_profile_name(self) -> str:
@@ -225,6 +238,33 @@ class EffectiveModelConfig:
     @property
     def parameters(self) -> dict[str, Any]:
         return _thaw_json(self.effective_parameters)
+
+    def parameterize_call(
+        self,
+        role: str | ModelCallRole,
+    ):
+        return parameterize_model_call(
+            base_parameters=self.parameters,
+            model_id=self.model_id,
+            provider=self.provider_name,
+            family_profile=self.family_profile,
+            requested_reasoning_effort=(
+                self.requested_reasoning_effort
+            ),
+            role=role,
+        )
+
+    def parameters_for_call(
+        self,
+        role: str | ModelCallRole,
+    ) -> dict[str, Any]:
+        return self.parameterize_call(role)[0]
+
+    def call_policy_evidence(
+        self,
+        role: str | ModelCallRole,
+    ) -> dict[str, Any]:
+        return self.parameterize_call(role)[1].to_dict()
 
     def to_model_spec(self) -> ModelSpec:
         """Create the transport-facing spec after defaults are resolved."""

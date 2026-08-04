@@ -60,6 +60,8 @@ from agrefactor.models import (
     ModelRuntimeSelection,
     infer_model_family,
     resolve_model_runtime,
+    credential_presence_evidence,
+    load_invocation_dotenv,
 )
 from agrefactor.runtime import (
     BudgetManager,
@@ -2369,8 +2371,12 @@ def run_source_command(
         )
     )
     reset_model_prompt_evidence()
+    invocation_environment = load_invocation_dotenv(Path.cwd())
+    model_was_explicit = bool(
+        getattr(args, "model_explicit", False)
+    )
     model_runtime = resolve_model_runtime(
-        args.model,
+        args.model if model_was_explicit else None,
         family=args.model_family,
         base_url=args.base_url,
         api_key_env=args.api_key_env,
@@ -2408,6 +2414,37 @@ def run_source_command(
             f"exceeds system safety ceiling "
             f"{rejection['system_safety_ceiling']}; "
             f"rejection artifacts: {layout.artifact_root}",
+            artifact_root=layout.artifact_root,
+            rejection=rejection,
+        )
+    credential_evidence = credential_presence_evidence(
+        model_runtime.effective_config.api_key_env
+    )
+    if not credential_evidence["credential_present"]:
+        rejection = {
+            "schema_version": 1,
+            "kind": "selected_credential_missing",
+            "reason_code": "model_credential_missing_prelaunch",
+            "api_key_env": credential_evidence["api_key_env"],
+            "credential_present": False,
+            "credential_value_persisted": False,
+            "provider_call_observed": False,
+            "invocation_environment": invocation_environment.to_dict(),
+        }
+        _write_request_rejection_artifacts(
+            layout=layout,
+            source=source,
+            top_function=args.top,
+            mode=mode,
+            model_runtime=model_runtime,
+            plan=plan,
+            target=target,
+            args=args,
+            rejection=rejection,
+        )
+        raise SourceCommandRejected(
+            "selected API-key environment variable is missing; "
+            f"typed rejection artifacts: {layout.artifact_root}",
             artifact_root=layout.artifact_root,
             rejection=rejection,
         )
@@ -2578,7 +2615,15 @@ def run_source_command(
                     "source_bootstrap" if mode is RunMode.REFACTOR else "stage3_product"
                 ),
                 "legacy_mode": False,
-                "model_selection": "user_fixed",
+                "model_selection": (
+                    "user_fixed"
+                    if model_was_explicit
+                    else "p4_0e_default"
+                ),
+                "invocation_environment": (
+                    invocation_environment.to_dict()
+                ),
+                "credential": credential_evidence,
                 "model_defaults_source": (
                     model_runtime.defaults_source
                 ),

@@ -41,6 +41,7 @@ from agrefactor.config import (
     validate_test_generation_count,
 )
 from agrefactor.models import (
+    DEFAULT_MODEL_ID,
     CandidateModelAdapter,
     ModelRegistry,
     ModelSpec,
@@ -447,8 +448,12 @@ def build_parser() -> argparse.ArgumentParser:
             )
         source_parser.add_argument(
             "--model",
-            required=True,
-            help="Exact fixed model identifier selected by the user.",
+            default=DEFAULT_MODEL_ID,
+            action=_StoreWithExplicitFlag,
+            help=(
+                "Exact fixed model identifier. Default: "
+                f"{DEFAULT_MODEL_ID}."
+            ),
         )
         source_parser.add_argument(
             "--model-family",
@@ -464,12 +469,12 @@ def build_parser() -> argparse.ArgumentParser:
         )
         source_parser.add_argument(
             "--reasoning-effort",
-            choices=("low", "medium", "high"),
-            default="medium",
+            choices=("auto", "medium", "high"),
+            default="auto",
             action=_StoreWithExplicitFlag,
             help=(
-                "Unified requested reasoning effort. Default: medium. "
-                "Current provider/model mappings remain profile-specific."
+                "Requested reasoning effort. Default: auto, which selects a "
+                "frozen role-specific medium/high project level."
             ),
         )
         source_parser.add_argument(

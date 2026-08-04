@@ -1,15 +1,8 @@
-llm_config: &csynth_fixer_config
-  api_type: openai
-  model: gpt-5-mini
-
+llm_config: &csynth_fixer_config {}
 fixer_config: &fixer_config
-  api_type: openai
-  model: gpt-5-mini
   response_format: flow.tools.csim.FilterResult
 
 analyzer_config: &analyzer_config
-  api_type: openai
-  model: gpt-5-mini
   response_format: flow.rag.rag_integration.AnalyzerResult
 
 agents:

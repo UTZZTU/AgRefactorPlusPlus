@@ -1,7 +1,4 @@
-llm_config: &model_config
-  api_type: openai
-  model: gpt-5-mini
-
+llm_config: &model_config {}
 agents:
   planner:
     description: an agent that plans the refactoring steps based on the identified non-synthesizable constructs

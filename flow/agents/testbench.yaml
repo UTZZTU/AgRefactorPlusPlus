@@ -1,8 +1,4 @@
-llm_config: &model_config
-  api_type: openai
-  model: gpt-5
-  reasoning_effort: medium
-
+llm_config: &model_config {}
 agents:
   tb_creator:
     description: create a black-box Public HLS testbench from original source.

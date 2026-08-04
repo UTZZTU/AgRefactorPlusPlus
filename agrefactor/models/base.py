@@ -109,6 +109,7 @@ class ModelRequest:
 
     messages: tuple[ChatMessage, ...]
     parameters: Mapping[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         messages = tuple(self.messages)
@@ -124,6 +125,11 @@ class ModelRequest:
             self,
             "parameters",
             _copy_json_mapping("parameters", self.parameters),
+        )
+        object.__setattr__(
+            self,
+            "metadata",
+            _copy_json_mapping("metadata", self.metadata),
         )
 
 

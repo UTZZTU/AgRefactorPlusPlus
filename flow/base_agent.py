@@ -10,6 +10,7 @@ from autogen.agentchat.group import ContextVariables # type: ignore
 from autogen.agentchat.group.patterns import AutoPattern # type: ignore
 
 from agrefactor.runtime.prompt_evidence import record_model_prompt_call
+from agrefactor.models.call_policy import pop_internal_call_evidence
 
 def yaml_load_file(file_path: Union[str, Path]) -> Dict[str, Any]:
     with open(file_path, 'r', encoding='utf-8') as f:
@@ -758,6 +759,13 @@ class HLSAgentLoader:
                 merged_llm_config
             )
         )
+        call_evidence = None
+        if isinstance(merged_llm_config, dict):
+            merged_llm_config, call_evidence = (
+                pop_internal_call_evidence(merged_llm_config)
+            )
+        if call_evidence is not None:
+            config['_agrefactor_call_evidence'] = call_evidence
         if merged_llm_config is not None:
             config['llm_config'] = merged_llm_config
 
@@ -877,7 +885,11 @@ class HLSAgentLoader:
 
         return filtered_config, extra_config
 
-    def _attach_budgeted_run(self, agent: ConversableAgent) -> ConversableAgent:
+    def _attach_budgeted_run(
+        self,
+        agent: ConversableAgent,
+        call_evidence=None,
+    ) -> ConversableAgent:
         if getattr(agent, '_agrefactorpp_prompt_recorded_run', False):
             return agent
         original_run = getattr(agent, 'run', None)
@@ -907,6 +919,11 @@ class HLSAgentLoader:
                     "agent_name": str(getattr(agent, 'name', 'agent')),
                     "config_file": self.config_path.name,
                     "source": "ag2_agent_run",
+                    **(
+                        dict(call_evidence)
+                        if isinstance(call_evidence, Mapping)
+                        else {}
+                    ),
                 },
             )
             return original_run(*args, **kwargs)
@@ -931,7 +948,10 @@ class HLSAgentLoader:
         config.update(overrides)
         
         agent = ConversableAgent(**config)
-        agent = self._attach_budgeted_run(agent)
+        agent = self._attach_budgeted_run(
+            agent,
+            extra_config.get("_agrefactor_call_evidence"),
+        )
         register_agrefactorpp_usage_agent(agent)
         
         self.agents[agent_name] = agent

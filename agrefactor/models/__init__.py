@@ -69,6 +69,18 @@ from .registry import (
     UnknownModelFamilyProfileError,
     UnknownProviderError,
 )
+from .call_policy import (
+    DEFAULT_MODEL_ID,
+    DEFAULT_REASONING_EFFORT,
+    ModelCallPolicyEvidence,
+    ModelCallRole,
+    pop_internal_call_evidence,
+)
+from .environment import (
+    InvocationEnvironmentEvidence,
+    credential_presence_evidence,
+    load_invocation_dotenv,
+)
 from .runtime_selection import (
     CONCRETE_MODEL_RUNTIME_DEFAULTS,
     ConcreteModelRuntimeDefaults,
@@ -108,6 +120,14 @@ __all__ = [
     "CostEstimate",
     "CostEstimationQuality",
     "CONCRETE_MODEL_RUNTIME_DEFAULTS",
+    "DEFAULT_MODEL_ID",
+    "DEFAULT_REASONING_EFFORT",
+    "ModelCallPolicyEvidence",
+    "ModelCallRole",
+    "pop_internal_call_evidence",
+    "InvocationEnvironmentEvidence",
+    "credential_presence_evidence",
+    "load_invocation_dotenv",
     "ConcreteModelRuntimeDefaults",
     "DEEPSEEK_MODEL_FAMILY_PROFILE",
     "EffectiveModelConfig",

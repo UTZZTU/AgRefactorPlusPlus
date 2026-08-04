@@ -1,7 +1,4 @@
-llm_config: &model_config
-  api_type: openai
-  model: gpt-5-mini
-
+llm_config: &model_config {}
 agents:
   refactoring_worker:
     description: a coding worker that refactors the code based on the plan

@@ -33,6 +33,7 @@ from agrefactor.models import (
     ModelRequest,
     ModelResponse,
     ModelSpec,
+    ModelCallRole,
     TokenUsage,
     estimate_model_cost,
 )
@@ -47,6 +48,12 @@ from agrefactor.prompts.optimization import (
     StructuralRewritePromptRequest,
 )
 from agrefactor.runtime.budget import BudgetManager
+from agrefactor.models.call_policy import (
+    parameterize_effective_config_call,
+)
+from agrefactor.runtime.prompt_evidence import (
+    record_model_prompt_call,
+)
 
 from .execution import (
     CandidateExecutionRequest,
@@ -456,11 +463,35 @@ class _StructuralModelEndpoint:
     def _call(self, *, prompt, call_kind: str) -> ModelResponse:
         response: ModelResponse | None = None
         try:
+            call_role = (
+                ModelCallRole.OPTIMIZATION_ACTION_SELECTION
+                if call_kind == _MODEL_CALL_KIND_HYPOTHESIS
+                else ModelCallRole.OPTIMIZATION_CANDIDATE_GENERATION
+            )
+            call_parameters, call_evidence = (
+                parameterize_effective_config_call(
+                    self._effective_config,
+                    call_role,
+                )
+            )
+            record_model_prompt_call(
+                template_id=f"structural-{call_kind}",
+                template_version=1,
+                system_message=None,
+                invocation=prompt.manifest,
+                provider_call_observed=True,
+                metadata=(call_evidence or {}),
+            )
             response = self._provider.generate(
                 self._model,
                 ModelRequest(
                     messages=prompt.messages,
-                    parameters=self._effective_config.parameters,
+                    parameters=call_parameters,
+                    metadata=(
+                        {}
+                        if call_evidence is None
+                        else {"model_call_policy": call_evidence}
+                    ),
                 ),
             )
             if not isinstance(response, ModelResponse):

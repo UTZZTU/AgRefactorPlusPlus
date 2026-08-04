@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from math import isfinite
 from pathlib import Path
+import os
 import sys
 from typing import Any
 
@@ -20,8 +21,12 @@ from agrefactor.models import (
     CostEstimate,
     CostEstimationQuality,
     EffectiveModelConfig,
+    ModelCallRole,
     TokenUsage,
     estimate_model_cost,
+)
+from agrefactor.models.call_policy import (
+    add_internal_call_evidence,
 )
 from agrefactor.runtime import (
     PhaseResult,
@@ -85,8 +90,13 @@ _LEGACY_LLM_RESERVED_KEYS = frozenset(
 )
 
 
-def _build_effective_legacy_llm_config(
+def build_effective_legacy_llm_config(
     config: EffectiveModelConfig,
+    role: str | ModelCallRole = (
+        ModelCallRole.PUBLIC_TEST_GENERATION
+    ),
+    *,
+    include_credential: bool = True,
 ) -> dict[str, Any]:
     if not isinstance(config, EffectiveModelConfig):
         raise TypeError(
@@ -101,7 +111,13 @@ def _build_effective_legacy_llm_config(
             f"{config.provider_name!r}"
         )
 
-    parameters = config.parameters
+    if not isinstance(include_credential, bool):
+        raise TypeError("include_credential must be boolean")
+    parameters, call_evidence = config.parameterize_call(role)
+    parameters = add_internal_call_evidence(
+        parameters,
+        call_evidence,
+    )
     conflicts = sorted(
         key
         for key in parameters
@@ -120,7 +136,24 @@ def _build_effective_legacy_llm_config(
     }
     if config.base_url is not None:
         translated["base_url"] = config.base_url
+    if include_credential:
+        name = config.api_key_env
+        value = os.environ.get(name or "")
+        if isinstance(value, str) and value:
+            translated["api_key"] = value
     translated.update(parameters)
+    return translated
+
+
+# Read compatibility for internal callers that used the private helper.
+def _build_effective_legacy_llm_config(
+    config: EffectiveModelConfig,
+) -> dict[str, Any]:
+    translated = build_effective_legacy_llm_config(
+        config,
+        include_credential=False,
+    )
+    translated.pop("_agrefactor_call_evidence", None)
     return translated
 
 
@@ -326,7 +359,7 @@ def build_legacy_refactor_kwargs(
         )
         resolved_base_url = effective_config.base_url
         llm_config_override = (
-            _build_effective_legacy_llm_config(
+            build_effective_legacy_llm_config(
                 effective_config
             )
         )

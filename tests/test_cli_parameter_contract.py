@@ -51,11 +51,11 @@ def source_args(*extra: str):
 
 
 class CliParameterContractTests(unittest.TestCase):
-    def test_normal_reasoning_default_is_medium(self):
+    def test_normal_reasoning_default_is_auto(self):
         args = source_args()
-        self.assertEqual(args.reasoning_effort, "medium")
+        self.assertEqual(args.reasoning_effort, "auto")
         self.assertFalse(args.reasoning_effort_explicit)
-        self.assertEqual(_reasoning_effort_from_cli(args), "medium")
+        self.assertEqual(_reasoning_effort_from_cli(args), "auto")
 
     def test_implicit_generic_reasoning_default_is_provider_managed(self):
         args = build_parser().parse_args(
@@ -68,7 +68,7 @@ class CliParameterContractTests(unittest.TestCase):
                 "custom-model",
             ]
         )
-        self.assertEqual(args.reasoning_effort, "medium")
+        self.assertEqual(args.reasoning_effort, "auto")
         self.assertIsNone(_reasoning_effort_from_cli(args))
         self.assertEqual(
             GENERIC_OPENAI_COMPATIBLE_MODEL_FAMILY_PROFILE

@@ -20,6 +20,10 @@ from agrefactor.prompts import (
 from .base import ModelRequest, ModelResponse, ModelSpec
 from .cost_estimator import estimate_model_cost
 from .effective_config import EffectiveModelConfig
+from .call_policy import (
+    ModelCallRole,
+    parameterize_effective_config_call,
+)
 from .pricing import ModelPricingSnapshot
 from .registry import ModelRegistry
 
@@ -654,7 +658,12 @@ class CandidateModelAdapter:
                 request.current_candidate,
             )
         )
-        parameters = self._effective_config.parameters
+        parameters, call_evidence = (
+            parameterize_effective_config_call(
+                self._effective_config,
+                ModelCallRole.CANDIDATE_REPAIR,
+            )
+        )
 
         assert_hidden_test_sources_absent(
             task=request.task,
@@ -663,11 +672,27 @@ class CandidateModelAdapter:
         self._prompts.append(request.prompt)
         if before_provider_call is not None:
             before_provider_call()
+        from agrefactor.runtime.prompt_evidence import (
+            record_model_prompt_call,
+        )
+        record_model_prompt_call(
+            template_id="candidate-repair",
+            template_version=1,
+            system_message=None,
+            invocation=request.prompt.manifest,
+            provider_call_observed=True,
+            metadata=(call_evidence or {}),
+        )
         response = self._provider.generate(
             self._model,
             ModelRequest(
                 messages=request.prompt.messages,
                 parameters=parameters,
+                metadata=(
+                    {}
+                    if call_evidence is None
+                    else {"model_call_policy": call_evidence}
+                ),
             ),
         )
         if not isinstance(response, ModelResponse):

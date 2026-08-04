@@ -1,17 +1,19 @@
-import os, dotenv, concurrent.futures, argparse, copy, hashlib  # type: ignore
+import os, concurrent.futures, argparse, copy, hashlib  # type: ignore
 from autogen.agentchat.group import ContextVariables  # type: ignore
 from typing import Optional, Dict, Any
 import flow.tools as tools
 from flow.rag.rag_integration import KnowledgeManager
 from flow.base_agent import reset_agrefactorpp_usage_registry, print_agrefactorpp_usage_summary
 from agrefactor.runtime.prompt_evidence import reset_model_prompt_evidence
-from agrefactor.models import EffectiveModelConfig
+from agrefactor.models import EffectiveModelConfig, ModelCallRole
+from agrefactor.compat.legacy_refactor import (
+    build_effective_legacy_llm_config,
+)
 from agrefactor.runtime.budget import BudgetManager
 from agrefactor.testing import (
     build_openai_compatible_testbench_repairer,
 )
 
-dotenv.load_dotenv('.env', override=True)
 RUN_DIR = os.getenv('RUN_DIR')   # base dir for run outputs/logs, e.g. "$AGREFACTOR_ROOT/runs"
 WORK_DIR = os.getenv('WORK_DIR') # optional scratch dir for intermediate work
 MAX_RETRY_ATTEMPTS = 3
@@ -239,6 +241,35 @@ def hls_refactor_with_rag(
         reasoning_effort,
         base_url,
         llm_config_override,
+    )
+    def role_llm_config(role: ModelCallRole):
+        if effective_model_config is None:
+            return copy.deepcopy(llm_config)
+        return build_effective_legacy_llm_config(
+            effective_model_config,
+            role,
+        )
+
+    public_tb_llm_config = role_llm_config(
+        ModelCallRole.PUBLIC_TEST_GENERATION
+    )
+    hidden_tb_llm_config = role_llm_config(
+        ModelCallRole.HIDDEN_TEST_GENERATION
+    )
+    identification_llm_config = role_llm_config(
+        ModelCallRole.NON_SYNTHESIZABLE_IDENTIFICATION
+    )
+    planning_llm_config = role_llm_config(
+        ModelCallRole.REFACTOR_PLANNING
+    )
+    source_llm_config = role_llm_config(
+        ModelCallRole.REFACTOR_SOURCE_GENERATION
+    )
+    candidate_repair_llm_config = role_llm_config(
+        ModelCallRole.CANDIDATE_REPAIR
+    )
+    classification_llm_config = role_llm_config(
+        ModelCallRole.SIMPLE_CLASSIFICATION
     )
     if (
         effective_model_config is not None
@@ -539,7 +570,7 @@ def hls_refactor_with_rag(
         with concurrent.futures.ThreadPoolExecutor() as executor:
             debug_print(debug, "Identification")
             identification_future = tools.identifying.identify_non_synthesizable_items(
-                cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, reset_knowledge_db, executor, debug, llm_config, budget
+                cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, reset_knowledge_db, executor, debug, identification_llm_config, budget
             )
             cv["identified_items"], cv["items_hetero"] = identification_future.result()
     else:
@@ -549,7 +580,7 @@ def hls_refactor_with_rag(
                 tb_future = executor.submit(
                     tools.tb_optimizer.gen_tb_with_coverage,
                     cv,
-                    llm_config,
+                    public_tb_llm_config,
                     public_tb_rounds,
                     public_tb_target,
                     budget,
@@ -559,12 +590,12 @@ def hls_refactor_with_rag(
                 tb_future = executor.submit(
                     tools.testbench.gen_tb_prior,
                     cv,
-                    llm_config,
+                    public_tb_llm_config,
                     budget,
                 )
             debug_print(debug, "Identification")
             identification_future = tools.identifying.identify_non_synthesizable_items(
-                cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, reset_knowledge_db, executor, debug, llm_config, budget
+                cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, reset_knowledge_db, executor, debug, identification_llm_config, budget
             )
             try:
                 (
@@ -594,7 +625,7 @@ def hls_refactor_with_rag(
 
     debug_print(debug, "Planning")
     cv["plan"], cv["plan_hetero"] = tools.planning.generate_plan(
-        cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, debug, llm_config, budget
+        cv, knowledge_db_path, embedding_model, enable_rag, hetero_enabled, debug, planning_llm_config, budget
     )
     tools.general.save_context("planning", cv, output_dir)
 
@@ -602,7 +633,7 @@ def hls_refactor_with_rag(
     cv["curr_code"], cv["code_for_hetero"] = tools.refactoring.refactor_code(
         cv,
         hetero_enabled,
-        llm_config,
+        source_llm_config,
         budget,
     )
     tools.general.save_context("refactoring", cv, output_dir)
@@ -621,7 +652,7 @@ def hls_refactor_with_rag(
                 M=hidden_tb_trajectories,
                 K=hidden_tb_rounds,
                 target_pct=hidden_tb_target,
-                llm_config=llm_config,
+                llm_config=hidden_tb_llm_config,
                 cache_dir=golden_tb_cache_dir,
                 cache_key=golden_tb_cache_key,
                 budget=budget,
@@ -708,7 +739,7 @@ def hls_refactor_with_rag(
                 embedding_model=embedding_model,
                 reset_db=reset_knowledge_db,
                 debug=debug,
-                llm_config=llm_config
+                llm_config=classification_llm_config
             )
             trial_id = knowledge_manager.record_trial_outcome(
                 context_variables=cv,
@@ -729,7 +760,7 @@ def hls_refactor_with_rag(
         retry_count += 1
         if retry_count > max_retry_attempts:
             break
-        tools.general.try_fixing(cv, failed_task, status, error_msg, llm_config)
+        tools.general.try_fixing(cv, failed_task, status, error_msg, candidate_repair_llm_config)
         tools.general.save_context(f"csynth_csim_iteration_{retry_count}", cv, output_dir)
 
     # Hidden TB eval gate (eval-only; never triggers extra refactor work)

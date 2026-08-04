@@ -1,22 +1,13 @@
-llm_config:
-  api_type: openai
-  model: gpt-5-mini
-
+llm_config: {}
 identifier_config: &identifier_config
-  api_type: openai
-  model: gpt-5-mini
   response_format:
     type: json_object
 
 deduplicator_config: &deduplicator_config
-  api_type: openai
-  model: gpt-5-mini
   response_format:
     type: json_object
 
 filter_config: &filter_config
-  api_type: openai
-  model: gpt-5-mini
   response_format:
     type: json_object
 

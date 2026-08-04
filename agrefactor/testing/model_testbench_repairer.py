@@ -20,11 +20,18 @@ from agrefactor.models import (
     EffectiveModelConfig,
     ModelFamilyProfile,
     ModelRegistry,
+    ModelCallRole,
     ModelRequest,
     ModelResponse,
     estimate_model_cost,
 )
 from agrefactor.runtime.budget import BudgetManager
+from agrefactor.models.call_policy import (
+    parameterize_effective_config_call,
+)
+from agrefactor.runtime.prompt_evidence import (
+    record_model_prompt_call,
+)
 from agrefactor.repair.protocol import (
     RepairModelObservation,
 )
@@ -649,12 +656,35 @@ class ModelTestbenchRepairer:
             self._budget.ensure_available(llm_calls=1)
             self._budget.consume(llm_calls=1)
 
+        if self._effective_config is None:
+            call_parameters = dict(
+                self._effective_parameters
+            )
+            call_evidence = None
+        else:
+            call_parameters, call_evidence = (
+                parameterize_effective_config_call(
+                    self._effective_config,
+                    ModelCallRole.TESTBENCH_REPAIR,
+                )
+            )
+        record_model_prompt_call(
+            template_id="testbench-repair",
+            template_version=1,
+            system_message=None,
+            invocation=prompt.manifest,
+            provider_call_observed=True,
+            metadata=(call_evidence or {}),
+        )
         response = self._provider.generate(
             self._model,
             ModelRequest(
                 messages=prompt.messages,
-                parameters=dict(
-                    self._effective_parameters
+                parameters=call_parameters,
+                metadata=(
+                    {}
+                    if call_evidence is None
+                    else {"model_call_policy": call_evidence}
                 ),
             ),
         )

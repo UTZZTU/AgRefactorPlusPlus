@@ -16,6 +16,7 @@ from .base import (
     TokenUsage,
 )
 from .pricing import TokenUsageBreakdown
+from .call_policy import normalize_call_policy_evidence
 
 
 class OpenAICompatibleProviderError(RuntimeError):
@@ -107,6 +108,28 @@ class OpenAICompatibleResponseError(OpenAICompatibleProviderError):
                 )
         self.diagnostics.update(normalized)
         return self
+
+
+
+_PRIVATE_REASONING_TAG_RE = re.compile(
+    r"</?(?:think|thinking|reasoning)(?:\s[^>]*)?>",
+    re.IGNORECASE,
+)
+
+
+def _reject_private_reasoning_text(value: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError("provider final content must be a string")
+    if _PRIVATE_REASONING_TAG_RE.search(value):
+        raise OpenAICompatibleResponseError(
+            "provider final content contained private-reasoning tags",
+            reason_code="private_reasoning_exposed",
+            diagnostics={
+                "content_present": True,
+                "content_chars": len(value),
+            },
+        )
+    return value
 
 
 _RESERVED_PARAMETER_NAMES = {
@@ -536,6 +559,16 @@ class OpenAICompatibleProvider(ModelProvider):
             raise TypeError("request must be a ModelRequest")
 
         parameters = dict(request.parameters)
+        raw_call_policy = request.metadata.get(
+            "model_call_policy"
+        )
+        call_policy_evidence = (
+            None
+            if raw_call_policy is None
+            else normalize_call_policy_evidence(
+                raw_call_policy
+            )
+        )
         reserved = sorted(
             _RESERVED_PARAMETER_NAMES.intersection(parameters)
         )
@@ -622,10 +655,12 @@ class OpenAICompatibleProvider(ModelProvider):
             content_observed=True,
             finish_reason=finish_reason,
         )
-        text = _normalize_content(
-            content,
-            finish_reason=finish_reason,
-            diagnostics=response_diagnostics,
+        text = _reject_private_reasoning_text(
+            _normalize_content(
+                content,
+                finish_reason=finish_reason,
+                diagnostics=response_diagnostics,
+            )
         )
 
         usage_object = _read(response, "usage")
@@ -680,6 +715,7 @@ class OpenAICompatibleProvider(ModelProvider):
                 "system_fingerprint",
             ),
             "base_url": base_url,
+            "model_call_policy": call_policy_evidence,
             "has_reasoning_content": bool(reasoning_content),
             "reasoning_content_chars": (
                 len(reasoning_content)

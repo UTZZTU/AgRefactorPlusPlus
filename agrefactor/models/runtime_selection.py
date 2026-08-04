@@ -3,9 +3,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
+from .call_policy import (
+    DEFAULT_MODEL_ID,
+    DEFAULT_REASONING_EFFORT,
+    normalize_requested_reasoning_effort,
+)
 from .effective_config import EffectiveModelConfig
 from .family import ModelArtifactKind
 from .official_pricing import find_official_model_pricing_snapshots
@@ -73,8 +78,8 @@ class ModelRuntimeSelection:
 
 
 CONCRETE_MODEL_RUNTIME_DEFAULTS = {
-    "deepseek-v4-flash": ConcreteModelRuntimeDefaults(
-        model_id="deepseek-v4-flash",
+    DEFAULT_MODEL_ID: ConcreteModelRuntimeDefaults(
+        model_id=DEFAULT_MODEL_ID,
         family="deepseek",
         base_url="https://api.deepseek.com",
         api_key_env="DEEPSEEK_API_KEY",
@@ -124,19 +129,24 @@ def _pricing_snapshot(
 
 
 def resolve_model_runtime(
-    model_id: str,
+    model_id: str | None = None,
     *,
     family: str | None = None,
     base_url: str | None = None,
     api_key_env: str | None = None,
-    reasoning_effort: str | None = None,
+    reasoning_effort: str | None = DEFAULT_REASONING_EFFORT,
     parameters: dict[str, Any] | None = None,
 ) -> ModelRuntimeSelection:
-    """Resolve the exact user-selected model without routing or substitution."""
+    """Resolve the default or exact user-selected model without routing."""
 
-    if not isinstance(model_id, str) or not model_id.strip():
+    if model_id is not None and not isinstance(model_id, str):
+        raise TypeError("model_id must be a string or None")
+    if isinstance(model_id, str) and not model_id.strip():
         raise ValueError("model_id must not be empty")
-    cleaned_model = model_id.strip()
+    explicit = isinstance(model_id, str)
+    cleaned_model = (
+        model_id.strip() if explicit else DEFAULT_MODEL_ID
+    )
     defaults = CONCRETE_MODEL_RUNTIME_DEFAULTS.get(
         cleaned_model.casefold()
     )
@@ -184,18 +194,14 @@ def resolve_model_runtime(
         )
     )
 
+    requested_reasoning = normalize_requested_reasoning_effort(
+        reasoning_effort
+    )
     call_parameters = dict(parameters or {})
-    if reasoning_effort is not None:
-        if (
-            not isinstance(reasoning_effort, str)
-            or not reasoning_effort.strip()
-        ):
-            raise ValueError(
-                "reasoning_effort must be a non-empty string or None"
-            )
-        call_parameters["reasoning_effort"] = (
-            reasoning_effort.strip().lower()
-        )
+    # Preserve accepted explicit low/medium/high family behavior. Auto is a
+    # per-call role decision and is not sent to the family merge layer.
+    if requested_reasoning != "auto":
+        call_parameters["reasoning_effort"] = requested_reasoning
 
     effective = registry.resolve_effective_config(
         cleaned_model,
@@ -204,10 +210,18 @@ def resolve_model_runtime(
         pricing_snapshot=_pricing_snapshot(defaults, cleaned_model),
         allow_approximate_cost=True,
     )
+    effective = replace(
+        effective,
+        requested_reasoning_effort=requested_reasoning,
+    )
     source = (
-        "exact_static_model_defaults"
-        if defaults is not None
-        else "family_inference_and_transport_defaults"
+        "p4_0e_default_deepseek_v4_flash"
+        if not explicit
+        else (
+            "exact_static_model_defaults"
+            if defaults is not None
+            else "family_inference_and_transport_defaults"
+        )
     )
     return ModelRuntimeSelection(
         registry=registry,
