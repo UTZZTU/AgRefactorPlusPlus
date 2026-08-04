@@ -1,13 +1,14 @@
 # Pre-Stage-4 Product and Validation Hardening Contract
 
-> **Status:** design frozen; implementation accepted through P4-0D; full
-> Pre-Stage-4 closure remains incomplete.
+> **Status:** design frozen; implementation accepted through P4-0E, including
+> P4-0E-R1 master-contract network evidence closure; full Pre-Stage-4 closure
+> remains incomplete.
 >
 > **Accepted checkpoints:** P4-0A documentation freeze, P4-0B typed Preflight,
 > P4-0B-R bounded Optimize Candidate recovery, P4-0C Public native Vitis CSIM,
-> and P4-0D Public RTL COSIM.
+> P4-0D Public RTL COSIM, and P4-0E model runtime/network evidence.
 >
-> **Current next package:** `P4-0E`.
+> **Current next package:** `P4-0F`.
 >
 > **Repository baseline originally reviewed:** `84b6fac0a00469fc9651f5f6553b50febedb21c7`
 >
@@ -577,7 +578,7 @@ P4_0B_TYPED_PREFLIGHT_IMPLEMENTED=true
 P4_0B_TYPED_PREFLIGHT_ACCEPTANCE=accepted_local_validation
 P4_0B_FOCUSED_TESTS=64
 P4_0B_FULL_REGRESSION_TESTS=2044
-NEXT_PRE_STAGE4_PACKAGE=P4-0B-R_BOUNDED_OPTIMIZE_CANDIDATE_RECOVERY
+NEXT_PRE_STAGE4_PACKAGE_AT_ACCEPTANCE=P4-0B-R_BOUNDED_OPTIMIZE_CANDIDATE_RECOVERY
 ```
 
 P4-0B changes host Preflight only. Its repository closure also freezes the
@@ -603,7 +604,7 @@ P4_0C_PUBLIC_CSIM_OPTIMIZE_RECOVERY=false
 P4_0C_CANDIDATE_REPAIR_PREFIX=task_aware
 P4_0C_STAGE2_SMOKE_ORDER=preflight_public_csynth_hidden
 P4_0C_STAGE2_SMOKE_BUDGET=5_tool_2_compile_1_csynth_2_csim
-NEXT_PRE_STAGE4_PACKAGE=P4-0D_PUBLIC_RTL_COSIM
+NEXT_PRE_STAGE4_PACKAGE_AT_ACCEPTANCE=P4-0D_PUBLIC_RTL_COSIM
 ```
 
 P4-0C executes the Public suite through actual Vitis HLS `csim_design`,
@@ -615,3 +616,64 @@ independent operator-only host differential gate.
 See the [decision record](PRE_STAGE4_P4_0C_DECISION_RECORD.md) and
 [acceptance](../acceptance/pre-stage4/p4_0c_public_native_vitis_csim_acceptance.md).
 <!-- PRE_STAGE4_P4_0C_NATIVE_VITIS_CSIM:END -->
+
+<!-- PRE_STAGE4_P4_0D_PUBLIC_RTL_COSIM:BEGIN -->
+## P4-0D Public RTL COSIM checkpoint
+
+```text
+P4_0D_PUBLIC_RTL_COSIM_IMPLEMENTED=true
+P4_0D_PUBLIC_RTL_COSIM_ACCEPTANCE=accepted_real_vitis
+P4_0D_UNIFIED_STAGE_ORDER=preflight_public_native_csim_csynth_public_rtl_cosim_hidden
+P4_0D_COSIM_POLICY_DEFAULT=required
+P4_0D_COSIM_DEFAULT_TIMEOUT_S=900
+P4_0D_COSIM_TIMEOUT_SAFETY_CEILING=7200
+P4_0D_COSIM_REPAIR=false
+P4_0D_FOCUSED_TESTS=7
+P4_0D_FULL_REGRESSION=2096
+P4_0D_REAL_VITIS_SMOKE=accepted
+P4_0D_ACCEPTED_COMMIT=b543604cd311eab4380987b09447842542e3214b
+P4_0D_REPOSITORY_CLOSURE=accepted
+NEXT_PRE_STAGE4_PACKAGE_AT_ACCEPTANCE=P4-0E
+STAGE4_ALLOWED=false
+```
+
+P4-0D proves the real Vitis 2023.2 chain `Preflight → Public native Vitis CSIM
+→ CSYNTH → Public RTL COSIM → Hidden`, including physical invocation, timeout,
+ownership, cache identity and hard COSIM accounting. Network LLM output was not
+an acceptance dependency.
+<!-- PRE_STAGE4_P4_0D_PUBLIC_RTL_COSIM:END -->
+
+<!-- PRE_STAGE4_P4_0E_MODEL_RUNTIME:BEGIN -->
+## P4-0E model runtime and network evidence checkpoint
+
+```text
+P4_0E_MODEL_RUNTIME_IMPLEMENTED=true
+P4_0E_MODEL_RUNTIME_ACCEPTANCE=accepted_real_network
+P4_0E_DEFAULT_MODEL=deepseek-v4-flash
+P4_0E_DEFAULT_API_KEY_ENV=DEEPSEEK_API_KEY
+P4_0E_REASONING_DEFAULT=auto
+P4_0E_DOTENV_OVERRIDE=false
+P4_0E_DEEPSEEK_THINKING=true
+P4_0E_FOCUSED_TESTS=8
+P4_0E_FULL_REGRESSION=2104
+P4_0E_ACCEPTED_RUN_ID=p4_0e_model_runtime_v9_20260804T123830Z_3215756
+P4_0E_ACCEPTED_BEHAVIOR_COMMIT=eabb2b7e7f5123f3e3f90fe6b6aa0f4a16c6c4a7
+P4_0E_R1_NETWORK_EVIDENCE_CLOSURE=accepted
+P4_0E_R1_ACCEPTED_COMMIT=81804dff2c846b4f79d636cc412fca5b33eca8eb
+P4_0E_R1_FOCUSED_TESTS=4
+P4_0E_R1_FULL_REGRESSION=2108
+P4_0E_R1_SHARED_BUDGET_MANAGER=true
+P4_0E_R1_LLM_CALLS=1
+P4_0E_R1_EXACT_ONCE=true
+P4_0E_REPOSITORY_CLOSURE=accepted
+NEXT_PRE_STAGE4_PACKAGE=P4-0F
+STAGE4_ALLOWED=false
+```
+
+P4-0E and P4-0E-R1 together prove default/override model truthfulness, CWD
+`.env` precedence, typed credential gating, role-specific Thinking/reasoning,
+secret/private-reasoning suppression, one real committed-sample provider call,
+one shared hard `BudgetManager`, exact-once accounting, and exact repository and
+artifact identity. They do not implement P4-0F budgets, P4-0G `dynamic-v1`, or
+later behavior.
+<!-- PRE_STAGE4_P4_0E_MODEL_RUNTIME:END -->

@@ -6,15 +6,16 @@
 
 ```text
 branch=stage2-general-feedback
-authoritative_head_before_authority_sync=b543604cd311eab4380987b09447842542e3214b
-latest_deterministic_regression=2096/2096
-latest_real_validation=p4_0d_public_rtl_cosim
-latest_real_validation_status=accepted_real_vitis
-latest_real_validation_run_id=p4_0d_public_rtl_cosim_v16_20260804T064831Z_1709639
-latest_real_validation_artifact_root=/data/agrefactor_runs/p4_0d_public_rtl_cosim_v16_20260804T064831Z_1709639
+authoritative_head_before_authority_sync=81804dff2c846b4f79d636cc412fca5b33eca8eb
+latest_deterministic_regression=2108/2108
+latest_real_validation=p4_0e_r1_network_evidence_closure
+latest_real_validation_status=accepted_real_network
+latest_real_validation_run_id=p4_0e_r1_network_evidence_v2_20260804T141054Z_3612651
+latest_real_validation_artifact_root=/data/agrefactor_runs/p4_0e_r1_network_evidence_v2_20260804T135924Z_3568987
+latest_real_vitis_validation=p4_0d_public_rtl_cosim
+latest_real_vitis_validation_status=accepted_real_vitis
+latest_real_vitis_validation_run_id=p4_0d_public_rtl_cosim_v16_20260804T064831Z_1709639
 post_cli_real_smoke=accepted_historical_pre_hardening
-post_cli_real_smoke_run_id=post-cli-real-smoke-20260726_192331
-post_cli_real_smoke_artifact_root=/data/agrefactor_runs/post_cli_real_smoke_20260726_192331/artifacts
 PRE_STAGE3_CLOSED=true
 STAGE3_PLANNING_FROZEN=true
 STAGE3_IMPLEMENTATION_ALLOWED=true
@@ -27,14 +28,6 @@ STAGE3_S3_5_BOTTLENECK_MODEL_INTEGRATION=accepted
 STAGE3_S3_6_PRAGMA_MODEL_INTEGRATION=accepted
 STAGE3_S3_7_PRODUCT_ADAPTERS=accepted
 STAGE3_S3_8_EVALUATION=accepted_only_after_corrected_legacy_matrix
-stage3_s34_real_structural_smoke=accepted
-stage3_s34_real_structural_smoke_claim_scope=structural_model_contract_only
-stage3_s35_real_bottleneck_smoke=accepted
-stage3_s35_real_bottleneck_smoke_claim_scope=bottleneck_model_contract_only
-stage3_s36_real_pragma_smoke=accepted
-stage3_s36_real_pragma_smoke_claim_scope=pragma_model_contract_only
-stage3_s32_real_replay=accepted
-stage3_s32_real_replay_artifact_root=/data/agrefactor_runs/stage3_s32_real_replay_20260730T153256Z_2390707
 PRE_STAGE4_HARDENING_DESIGN_FROZEN=true
 PRE_STAGE4_HARDENING_IMPLEMENTATION_COMPLETE=false
 P4_0A_DOCUMENTATION_CONTRACT=accepted_document_freeze
@@ -42,13 +35,17 @@ P4_0B_TYPED_PREFLIGHT=accepted
 P4_0B_R_BOUNDED_OPTIMIZE_RECOVERY=accepted
 P4_0C_PUBLIC_NATIVE_VITIS_CSIM=accepted_real_vitis
 P4_0D_PUBLIC_RTL_COSIM=accepted_real_vitis
-P4_0D_ACCEPTED_COMMIT=b543604cd311eab4380987b09447842542e3214b
-P4_0D_REPOSITORY_CLOSURE=accepted
+P4_0E_MODEL_RUNTIME=accepted_real_network
+P4_0E_ACCEPTED_BEHAVIOR_COMMIT=eabb2b7e7f5123f3e3f90fe6b6aa0f4a16c6c4a7
+P4_0E_R1_NETWORK_EVIDENCE_CLOSURE=accepted
+P4_0E_R1_ACCEPTED_COMMIT=81804dff2c846b4f79d636cc412fca5b33eca8eb
+P4_0E_REPOSITORY_CLOSURE=accepted
+P4_0E_AUTHORITY_STATE_SYNC=accepted
 STAGE4_ALLOWED=false
-NEXT_STEP=P4-0E
+NEXT_STEP=P4-0F
 ```
 
-最终提交 SHA 以 `stage2-general-feedback` 当前 HEAD 为准；本文不复制会因自身提交而立刻过期的最终 SHA。
+最终 authority-sync 提交 SHA 以 `stage2-general-feedback` 当前 HEAD 为准；本文不复制会因自身提交而立刻过期的 SHA。
 
 ## 2. 当前已验收能力
 
@@ -57,15 +54,15 @@ NEXT_STEP=P4-0E
 ```bash
 python -m agrefactor.cli refactor \
   SOURCE \
-  --top TOP \
-  --model MODEL
+  --top TOP
 ```
 
 已完成：
 
 - source-only 输入；
-- 用户固定模型；
--静态 ModelFamilyProfile；
+- 默认 `deepseek-v4-flash` 与用户 fixed model/family/endpoint/API-key-env 覆盖；
+- 调用 CWD `.env`、typed credential gate、role-specific Thinking/reasoning；
+- 静态 ModelFamilyProfile；
 - TargetProfile 真实下传；
 - Public/Hidden 独立来源与多 suite；
 - 自动 Testbench 生成和有限 repair；
@@ -73,7 +70,7 @@ python -m agrefactor.cli refactor \
 - Preflight、Public native Vitis CSIM、Vitis CSYNTH、Public RTL COSIM、Hidden differential；
 - 共享 BudgetManager、TraceRecorder 和 Execution Identity；
 - 默认简洁输出和完整 artifacts；
-- 当前 CLI 参数合同及真实 post-CLI smoke。
+- 当前 CLI 参数合同、P4-0D 真实 Vitis 链与 P4-0E/R1 真实网络证据。
 
 ### 共享基础设施
 
@@ -90,33 +87,48 @@ python -m agrefactor.cli refactor \
 - real model call safe audit、shared LLM budget accounting 与显式 qualification adapter boundary；
 - typed agent-safe PPA projection、非权威 Bottleneck classification、evidence-linked hypothesis、typed non-authoritative Pragma action 与完整三层 dispatch。
 
-## 3. 最新真实 smoke
+## 3. 最新真实验证
+
+### 3.1 P4-0E-R1 committed network evidence closure
+
+```text
+run_id=p4_0e_r1_network_evidence_v2_20260804T141054Z_3612651
+status=accepted_real_network
+commit=81804dff2c846b4f79d636cc412fca5b33eca8eb
+focused_tests=4/4
+full_regression=2108/2108
+shared_budget_manager=true
+max_llm_calls=1
+physical_provider_calls=1
+exact_once_llm_accounting=true
+artifact_identity_sha256=db6d4996d71ba2a6bfe99beb804f7ad1826684ff2b737220933f17061e2b7c2d
+artifact_file_sha256=0211f48cb908bf3bb76ec3edd3c7465828b320fb4da211debd7e0c08e40d31c3
+secret_values_persisted=false
+dotenv_contents_persisted=false
+private_reasoning_persisted=false
+hidden_exposed_to_model=false
+artifact_root=/data/agrefactor_runs/p4_0e_r1_network_evidence_v2_20260804T135924Z_3568987
+```
+
+### 3.2 Latest complete real Vitis qualification chain
 
 ```text
 run_id=p4_0d_public_rtl_cosim_v16_20260804T064831Z_1709639
 status=accepted_real_vitis
+commit=b543604cd311eab4380987b09447842542e3214b
 preflight=passed
 public_native_vitis_csim=passed
 csynth=passed
 public_rtl_cosim=passed
 hidden=passed
-llm_calls=0
-tool_calls=15
-compile_calls=7
-csim_calls=2
-csynth_calls=1
-cosim_calls=1
 actual_vitis_version=2023.2
 network_llm_used=false
-final_scope_verified=true
-accepted_behavior_commit=b543604cd311eab4380987b09447842542e3214b
-repository_closure=accepted
 artifact_root=/data/agrefactor_runs/p4_0d_public_rtl_cosim_v16_20260804T064831Z_1709639
 ```
 
-该 smoke 使用固定、model-independent 的已提交样例，证明 P4-0D 新增的真实
-Vitis 五阶段链、预算、typed evidence、隔离和最终 scope。它不是网络模型、
-任意 kernel、多版本 Vitis 或稳定 PPA 收益声明。
+The network smoke proves transport, safe configuration, shared LLM budget and
+identity only. The P4-0D run proves the committed-sample Vitis pipeline only.
+Neither is an arbitrary-kernel, stable model-quality or stable-PPA claim.
 
 ## 4. 当前不能宣称
 
@@ -150,23 +162,8 @@ S3.1–S3.7 已验收：当前具备 candidate/checkpoint foundation、独立 St
 <!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:BEGIN -->
 ## 5.1 Stage 4 entry blocker: frozen hardening contract
 
-The intended Stage 4 entry is now gated by
+The intended Stage 4 entry remains gated by
 [`PRE_STAGE4_PRODUCT_VALIDATION_HARDENING_CONTRACT.md`](PRE_STAGE4_PRODUCT_VALIDATION_HARDENING_CONTRACT.md).
-
-Frozen targets include:
-
-```text
-default deepseek-v4-flash with user model/endpoint/API-key-env override
-local .env loading without secret persistence
-explicit DeepSeek Thinking with role-based medium/high mapping
-typed component-level Preflight ownership
-Public native Vitis CSIM → CSYNTH → Public RTL COSIM → Hidden
-refactor/optimize/full budget profiles with Full Optimize reserves
-truthful per-command CLI parameters
-bottleneck-driven dynamic-v1 optimization
-```
-
-Current status after P4-0D repository closure:
 
 ```text
 PRE_STAGE4_HARDENING_DESIGN_FROZEN=true
@@ -175,45 +172,46 @@ P4_0A_DOCUMENTATION_CONTRACT=accepted_document_freeze
 P4_0B_TYPED_PREFLIGHT=accepted
 P4_0B_R_BOUNDED_OPTIMIZE_RECOVERY=accepted
 P4_0C_PUBLIC_NATIVE_VITIS_CSIM=accepted_real_vitis
-P4_0C_REPOSITORY_CLOSURE=accepted
 P4_0D_PUBLIC_RTL_COSIM=accepted_real_vitis
-P4_0D_ACCEPTED_COMMIT=b543604cd311eab4380987b09447842542e3214b
-P4_0D_ACCEPTED_RUN_ID=p4_0d_public_rtl_cosim_v16_20260804T064831Z_1709639
-P4_0D_REPOSITORY_CLOSURE=accepted
+P4_0E_MODEL_RUNTIME=accepted_real_network
+P4_0E_ACCEPTED_BEHAVIOR_COMMIT=eabb2b7e7f5123f3e3f90fe6b6aa0f4a16c6c4a7
+P4_0E_ACCEPTED_RUN_ID=p4_0e_model_runtime_v9_20260804T123830Z_3215756
+P4_0E_R1_NETWORK_EVIDENCE_CLOSURE=accepted
+P4_0E_R1_ACCEPTED_COMMIT=81804dff2c846b4f79d636cc412fca5b33eca8eb
+P4_0E_R1_ACCEPTED_RUN_ID=p4_0e_r1_network_evidence_v2_20260804T141054Z_3612651
+P4_0E_REPOSITORY_CLOSURE=accepted
+P4_0E_AUTHORITY_STATE_SYNC=accepted
+NEXT_IMPLEMENTATION_PACKAGE=P4-0F
 STAGE4_ALLOWED=false
-NEXT_IMPLEMENTATION_PACKAGE=P4-0E
 ```
 <!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:END -->
 
 <!-- PRE_STAGE4_REAL_VALIDATION_SCHEDULE:BEGIN -->
 ## 5.2 Frozen real-tool and network-model validation cadence
 
-The authoritative cadence is frozen in
+The authoritative cadence remains frozen in
 [`PRE_STAGE4_REAL_VALIDATION_SCHEDULE_DECISION.md`](PRE_STAGE4_REAL_VALIDATION_SCHEDULE_DECISION.md)
-and section 8.1 of the
-[Pre-Stage-4 hardening contract](PRE_STAGE4_PRODUCT_VALIDATION_HARDENING_CONTRACT.md).
+and section 8.1 of the master hardening contract.
 
 ```text
 PRE_STAGE4_REAL_VALIDATION_SCHEDULE_FROZEN=true
 P4_0C_REAL_NATIVE_VITIS_CSIM_REQUIRED=true
-P4_0C_NETWORK_LLM_ACCEPTANCE_DEPENDENCY=false
+P4_0C_REAL_VALIDATION=accepted
 P4_0D_REAL_CSIM_CSYNTH_COSIM_HIDDEN_REQUIRED=true
-P4_0D_NETWORK_LLM_ACCEPTANCE_DEPENDENCY=false
 P4_0D_REAL_VALIDATION=accepted
-P4_0E_FIRST_POST_HARDENING_NETWORK_LLM_SMOKE=true
+P4_0E_FIRST_POST_HARDENING_NETWORK_LLM_SMOKE=accepted
+P4_0E_R1_SHARED_BUDGET_AND_IDENTITY_EVIDENCE=accepted
 P4_0F_MEASURED_REAL_RUNS_FOR_BUDGET_DEFAULTS=true
 P4_0G_NETWORK_LLM_OPTIMIZE_FULL_SMOKE=true
 P4_0H_FORMAL_MULTI_KERNEL_NETWORK_LLM_VITIS_REVALIDATION=true
 P4_0H_AUTHORITATIVE_PRE_STAGE4_REAL_EVIDENCE_MATRIX=true
 DETERMINISTIC_TESTS_DO_NOT_EQUAL_REAL_END_TO_END=true
 HISTORICAL_STAGE3_REAL_SMOKE_DOES_NOT_PROVE_NEW_PIPELINE=true
-NEXT_IMPLEMENTATION_PACKAGE=P4-0E
+NEXT_IMPLEMENTATION_PACKAGE=P4-0F
 ```
 
-P4-0C and P4-0D isolate and establish the real validation toolchain before
-stochastic model output becomes an acceptance dependency. P4-0E introduces the
-first new-baseline network-provider smoke; P4-0G exercises real model-backed
-Optimize/Full behavior; P4-0H is the repeated multi-kernel closure matrix.
+P4-0F must now measure real Refactor/Optimize/Full consumption on the stable
+pipeline before selecting mode-specific defaults or Full Optimize reserves.
 <!-- PRE_STAGE4_REAL_VALIDATION_SCHEDULE:END -->
 
 ## 6. 当前权威文档
@@ -222,27 +220,18 @@ Optimize/Full behavior; P4-0H is the repeated multi-kernel closure matrix.
 2. [GOAL_TRACEABILITY.md](GOAL_TRACEABILITY.md)
 3. [Pre-Stage-4 hardening contract](PRE_STAGE4_PRODUCT_VALIDATION_HARDENING_CONTRACT.md)
 4. [Pre-Stage-4 real-validation schedule](PRE_STAGE4_REAL_VALIDATION_SCHEDULE_DECISION.md)
-5. [P4-0D decision record](PRE_STAGE4_P4_0D_DECISION_RECORD.md)
-6. [P4-0D acceptance](../acceptance/pre-stage4/p4_0d_public_rtl_cosim_acceptance.md)
-7. [P4-0D authority-state synchronization](../acceptance/pre-stage4/p4_0d_authority_state_sync_acceptance.md)
-8. [STAGE3_IMPLEMENTATION_CONTRACT.md](STAGE3_IMPLEMENTATION_CONTRACT.md)
-9. [CLI_PARAMETER_REFERENCE.md](../guides/CLI_PARAMETER_REFERENCE.md)
-10. [REPRODUCTION_STATUS.md](../guides/REPRODUCTION_STATUS.md)
-11. [S3.1 Candidate State Foundation acceptance](../acceptance/stage3/stage3_s31_candidate_state_foundation_acceptance.md)
-12. [S3.2 Qualification and PPA Evidence acceptance](../acceptance/stage3/stage3_s32_qualification_ppa_acceptance.md)
-13. [S3.3 Deterministic Optimizer State Machine acceptance](../acceptance/stage3/stage3_s33_deterministic_optimizer_state_machine_acceptance.md)
-14. [S3.3 decision record](STAGE3_S33_DECISION_RECORD.md)
-15. [S3.4 Structural Model Integration acceptance](../acceptance/stage3/stage3_s34_structural_model_integration_acceptance.md)
-16. [S3.4 decision record](STAGE3_S34_DECISION_RECORD.md)
-17. [S3.5 Bottleneck Model Integration acceptance](../acceptance/stage3/stage3_s35_bottleneck_model_integration_acceptance.md)
-18. [S3.5 decision record](STAGE3_S35_DECISION_RECORD.md)
-19. [S3.6 Pragma Model Integration acceptance](../acceptance/stage3/stage3_s36_pragma_model_integration_acceptance.md)
-20. [S3.6 decision record](STAGE3_S36_DECISION_RECORD.md)
-21. [S3.7 Product Adapters acceptance](../acceptance/stage3/stage3_s37_product_adapters_acceptance.md)
-22. [S3.7 decision record](STAGE3_S37_DECISION_RECORD.md)
-23. [S3.8 evaluation acceptance](../acceptance/stage3/stage3_s38_evaluation_acceptance.md)
-24. [S3.8 decision record](STAGE3_S38_DECISION_RECORD.md)
-25. [历史 post-CLI real smoke acceptance](../acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md)
+5. [P4-0E decision record](PRE_STAGE4_P4_0E_DECISION_RECORD.md)
+6. [P4-0E acceptance](../acceptance/pre-stage4/p4_0e_model_runtime_acceptance.md)
+7. [P4-0E-R1 decision record](PRE_STAGE4_P4_0E_R1_NETWORK_EVIDENCE_CLOSURE_DECISION.md)
+8. [P4-0E-R1 acceptance](../acceptance/pre-stage4/p4_0e_r1_network_evidence_closure_acceptance.md)
+9. [P4-0E authority-state synchronization](../acceptance/pre-stage4/p4_0e_authority_state_sync_acceptance.md)
+10. [P4-0D decision record](PRE_STAGE4_P4_0D_DECISION_RECORD.md)
+11. [P4-0D acceptance](../acceptance/pre-stage4/p4_0d_public_rtl_cosim_acceptance.md)
+12. [P4-0D authority-state synchronization](../acceptance/pre-stage4/p4_0d_authority_state_sync_acceptance.md)
+13. [CLI parameter reference](../guides/CLI_PARAMETER_REFERENCE.md)
+14. [Reproduction status](../guides/REPRODUCTION_STATUS.md)
+15. [Stage 3 implementation contract](STAGE3_IMPLEMENTATION_CONTRACT.md)
+16. [Stage 3.8 evaluation acceptance](../acceptance/stage3/stage3_s38_evaluation_acceptance.md)
 
 ## 7. 工程原则
 
@@ -371,7 +360,7 @@ P4_0D_ACCEPTED_RUN_ID=p4_0d_public_rtl_cosim_v16_20260804T064831Z_1709639
 P4_0D_ACCEPTED_COMMIT=b543604cd311eab4380987b09447842542e3214b
 P4_0D_REPOSITORY_CLOSURE=accepted
 STAGE4_ALLOWED=false
-NEXT_IMPLEMENTATION_PACKAGE=P4-0E
+NEXT_IMPLEMENTATION_PACKAGE_AT_ACCEPTANCE=P4-0E
 ```
 
 The accepted target-host run proves exact focused/full regression and the real
@@ -379,3 +368,37 @@ Vitis 2023.2 chain `Preflight -> Public native Vitis CSIM -> CSYNTH -> Public
 RTL COSIM -> Hidden` with `network_llm_used=false`. It does not close later
 Pre-Stage-4 packages and does not permit Stage 4.
 <!-- PRE_STAGE4_P4_0D_PUBLIC_RTL_COSIM:END -->
+
+<!-- PRE_STAGE4_P4_0E_MODEL_RUNTIME:BEGIN -->
+## P4-0E model runtime and network evidence accepted
+
+```text
+P4_0E_MODEL_RUNTIME_IMPLEMENTED=true
+P4_0E_MODEL_RUNTIME_ACCEPTANCE=accepted_real_network
+P4_0E_DEFAULT_MODEL=deepseek-v4-flash
+P4_0E_REASONING_DEFAULT=auto
+P4_0E_DOTENV_OVERRIDE=false
+P4_0E_DEEPSEEK_THINKING=true
+P4_0E_FOCUSED_TESTS=8
+P4_0E_FULL_REGRESSION=2104
+P4_0E_ACCEPTED_RUN_ID=p4_0e_model_runtime_v9_20260804T123830Z_3215756
+P4_0E_ACCEPTED_COMMIT=eabb2b7e7f5123f3e3f90fe6b6aa0f4a16c6c4a7
+P4_0E_R1_NETWORK_EVIDENCE_CLOSURE=accepted
+P4_0E_R1_ACCEPTED_RUN_ID=p4_0e_r1_network_evidence_v2_20260804T141054Z_3612651
+P4_0E_R1_ACCEPTED_COMMIT=81804dff2c846b4f79d636cc412fca5b33eca8eb
+P4_0E_R1_FOCUSED_TESTS=4
+P4_0E_R1_FULL_REGRESSION=2108
+P4_0E_R1_SHARED_BUDGET_MANAGER=true
+P4_0E_R1_LLM_CALLS=1
+P4_0E_R1_ARTIFACT_IDENTITY_SHA256=db6d4996d71ba2a6bfe99beb804f7ad1826684ff2b737220933f17061e2b7c2d
+P4_0E_REPOSITORY_CLOSURE=accepted
+P4_0E_AUTHORITY_STATE_SYNC=accepted
+NEXT_IMPLEMENTATION_PACKAGE=P4-0F
+STAGE4_ALLOWED=false
+```
+
+P4-0E closes model defaults, local `.env`, credentials, Thinking/reasoning,
+safe evidence and legacy YAML defaults. P4-0E-R1 closes the master-contract
+shared-budget and exact commit/artifact identity requirements. P4-0F and later
+behavior remains pending.
+<!-- PRE_STAGE4_P4_0E_MODEL_RUNTIME:END -->
