@@ -41,6 +41,7 @@ _EXPECTED_PASS_STAGES = (
     ValidationState.PREFLIGHT,
     ValidationState.PUBLIC_EVALUATION,
     ValidationState.CSYNTH,
+    ValidationState.PUBLIC_COSIM,
     ValidationState.HIDDEN_EVALUATION,
 )
 
@@ -436,6 +437,9 @@ class Stage2SmokePassMatrixRunner:
                 max_csynth_calls=(
                     expected_total.csynth_calls
                 ),
+                max_cosim_calls=(
+                    expected_total.cosim_calls
+                ),
                 max_tokens=expected_total.tokens,
                 max_cost_usd=(
                     expected_total.cost_usd
@@ -601,6 +605,10 @@ def expected_stage2_smoke_pass_budget(
             case.expected_budget.csim_calls
             for case in normalized
         ),
+        cosim_calls=sum(
+            case.expected_budget.cosim_calls
+            for case in normalized
+        ),
         llm_calls=sum(
             case.expected_budget.llm_calls
             for case in normalized
@@ -683,6 +691,9 @@ def _usage_delta(
         "csim_calls": (
             after.csim_calls - before.csim_calls
         ),
+        "cosim_calls": (
+            after.cosim_calls - before.cosim_calls
+        ),
         "llm_calls": (
             after.llm_calls - before.llm_calls
         ),
@@ -712,6 +723,7 @@ def _usage_expectation(
         compile_calls=usage.compile_calls,
         csynth_calls=usage.csynth_calls,
         csim_calls=usage.csim_calls,
+        cosim_calls=usage.cosim_calls,
         llm_calls=usage.llm_calls,
         tokens=usage.tokens,
         cost_usd=usage.cost_usd,

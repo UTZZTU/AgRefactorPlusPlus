@@ -56,6 +56,7 @@ _CANONICAL_VALIDATION_ORDER = (
     ValidationState.PREFLIGHT,
     ValidationState.PUBLIC_EVALUATION,
     ValidationState.CSYNTH,
+    ValidationState.PUBLIC_COSIM,
     ValidationState.HIDDEN_EVALUATION,
 )
 _ALLOWED_REPAIR_STATES = frozenset(
@@ -86,6 +87,13 @@ _LEGAL_COMPLETED_STAGE_SEQUENCES = frozenset(
             ValidationState.PREFLIGHT,
             ValidationState.PUBLIC_EVALUATION,
             ValidationState.CSYNTH,
+            ValidationState.PUBLIC_COSIM,
+        ),
+        (
+            ValidationState.PREFLIGHT,
+            ValidationState.PUBLIC_EVALUATION,
+            ValidationState.CSYNTH,
+            ValidationState.PUBLIC_COSIM,
             ValidationState.HIDDEN_EVALUATION,
         ),
         (
@@ -942,7 +950,7 @@ def _validate_completed_stages(
     if stages not in _LEGAL_COMPLETED_STAGE_SEQUENCES:
         raise ValueError(
             "completed_stages must follow either "
-            "Preflight -> Public -> CSYNTH -> Hidden "
+            "Preflight -> Public -> CSYNTH -> Public COSIM -> Hidden "
             "or the no-Public Preflight -> CSYNTH -> Hidden plan"
         )
 
@@ -969,6 +977,11 @@ def _declared_validation_order(
     ):
         order.append(ValidationState.PUBLIC_EVALUATION)
     order.append(ValidationState.CSYNTH)
+    if any(
+        suite.split is EvaluationSplit.PUBLIC
+        for suite in task.test_suites
+    ):
+        order.append(ValidationState.PUBLIC_COSIM)
     if any(
         suite.split is EvaluationSplit.HIDDEN
         for suite in task.test_suites

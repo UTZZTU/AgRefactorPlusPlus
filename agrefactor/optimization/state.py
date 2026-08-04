@@ -45,6 +45,7 @@ _BUDGET_USAGE_FIELDS = frozenset(
         "compile_calls",
         "csim_calls",
         "csynth_calls",
+        "cosim_calls",
         "tokens",
         "cost_usd",
         "elapsed_s",
@@ -55,7 +56,8 @@ _VERIFICATION_ORDER = {
     "preflight": 0,
     "public": 1,
     "csynth": 2,
-    "hidden": 3,
+    "public_cosim": 3,
+    "hidden": 4,
 }
 
 
@@ -892,6 +894,7 @@ def _budget_mapping(
         "compile_calls",
         "csim_calls",
         "csynth_calls",
+        "cosim_calls",
         "tokens",
     }
     for key in integer_fields & set(copied):

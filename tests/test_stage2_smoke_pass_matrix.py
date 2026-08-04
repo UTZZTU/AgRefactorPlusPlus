@@ -59,6 +59,11 @@ class _PassingHandlerFactory:
                         tool_calls=1,
                         csim_calls=1,
                     )
+                elif state is ValidationState.PUBLIC_COSIM:
+                    context.budget.consume(
+                        tool_calls=2,
+                        cosim_calls=1,
+                    )
                 elif (
                     state
                     is ValidationState.HIDDEN_EVALUATION
@@ -123,6 +128,7 @@ class _PassingHandlerFactory:
                 ValidationState.PREFLIGHT,
                 ValidationState.CSYNTH,
                 ValidationState.PUBLIC_EVALUATION,
+                ValidationState.PUBLIC_COSIM,
                 ValidationState.HIDDEN_EVALUATION,
             )
         }
@@ -211,6 +217,7 @@ class Stage2SmokePassMatrixRunnerTests(unittest.TestCase):
             ValidationState.PREFLIGHT,
             ValidationState.PUBLIC_EVALUATION,
             ValidationState.CSYNTH,
+            ValidationState.PUBLIC_COSIM,
             ValidationState.HIDDEN_EVALUATION,
         )
         for case_result in result.case_results:
@@ -225,10 +232,11 @@ class Stage2SmokePassMatrixRunnerTests(unittest.TestCase):
             self.assertEqual(
                 case_result.budget_delta.to_dict(),
                 {
-                    "tool_calls": 5,
+                    "tool_calls": 7,
                     "compile_calls": 2,
                     "csynth_calls": 1,
                     "csim_calls": 2,
+                    "cosim_calls": 1,
                     "llm_calls": 0,
                     "tokens": 0,
                     "cost_usd": 0.0,
@@ -240,19 +248,21 @@ class Stage2SmokePassMatrixRunnerTests(unittest.TestCase):
         self.assertEqual(
             result.expected_total_budget.to_dict(),
             {
-                "tool_calls": 10,
+                "tool_calls": 14,
                 "compile_calls": 4,
                 "csynth_calls": 2,
                 "csim_calls": 4,
+                "cosim_calls": 2,
                 "llm_calls": 0,
                 "tokens": 0,
                 "cost_usd": 0.0,
             },
         )
-        self.assertEqual(result.total_usage.tool_calls, 10)
+        self.assertEqual(result.total_usage.tool_calls, 14)
         self.assertEqual(result.total_usage.compile_calls, 4)
         self.assertEqual(result.total_usage.csynth_calls, 2)
         self.assertEqual(result.total_usage.csim_calls, 4)
+        self.assertEqual(result.total_usage.cosim_calls, 2)
 
     def test_result_is_json_serializable(self):
         _, _, result = self._run()
@@ -376,10 +386,11 @@ class Stage2SmokePassMatrixRunnerTests(unittest.TestCase):
         self.assertEqual(
             expected.to_dict(),
             {
-                "tool_calls": 35,
+                "tool_calls": 49,
                 "compile_calls": 14,
                 "csynth_calls": 7,
                 "csim_calls": 14,
+                "cosim_calls": 7,
                 "llm_calls": 0,
                 "tokens": 0,
                 "cost_usd": 0.0,

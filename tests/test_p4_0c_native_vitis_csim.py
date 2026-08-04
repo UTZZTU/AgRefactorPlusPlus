@@ -669,15 +669,20 @@ class UnifiedOrderTests(unittest.TestCase):
             ValidationState.CSYNTH,
         )
 
-    def test_csynth_advances_to_hidden(self):
+    def test_csynth_advances_through_public_cosim_to_hidden(self):
         machine = ValidationStateMachine(
             _task(public=True, hidden=True)
         )
+        public_cosim = self._continue(
+            machine,
+            ValidationState.CSYNTH,
+        )
         self.assertIs(
-            self._continue(
-                machine,
-                ValidationState.CSYNTH,
-            ),
+            public_cosim,
+            ValidationState.PUBLIC_COSIM,
+        )
+        self.assertIs(
+            self._continue(machine, public_cosim),
             ValidationState.HIDDEN_EVALUATION,
         )
 

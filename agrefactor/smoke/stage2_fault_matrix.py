@@ -303,6 +303,7 @@ class _DeterministicFactory:
                 ValidationState.PREFLIGHT,
                 ValidationState.CSYNTH,
                 ValidationState.PUBLIC_EVALUATION,
+                ValidationState.PUBLIC_COSIM,
                 ValidationState.HIDDEN_EVALUATION,
             )
         }
@@ -353,6 +354,7 @@ class Stage2SmokeFaultMatrixRunner:
                 max_compile_calls=expected_total.compile_calls,
                 max_csynth_calls=expected_total.csynth_calls,
                 max_csim_calls=expected_total.csim_calls,
+                max_cosim_calls=expected_total.cosim_calls,
                 max_llm_calls=0,
                 max_tokens=0,
                 max_cost_usd=0.0,
@@ -492,6 +494,7 @@ def expected_stage2_smoke_fault_budget(
         compile_calls=sum(item.expected_budget.compile_calls for item in selected),
         csynth_calls=sum(item.expected_budget.csynth_calls for item in selected),
         csim_calls=sum(item.expected_budget.csim_calls for item in selected),
+        cosim_calls=sum(item.expected_budget.cosim_calls for item in selected),
         llm_calls=0,
         tokens=0,
         cost_usd=0.0,
@@ -608,6 +611,9 @@ def _check_stage(
         ValidationState.PUBLIC_EVALUATION: {
             Stage2SmokeGroundTruthStage.PUBLIC_EVALUATION,
         },
+        ValidationState.PUBLIC_COSIM: {
+            Stage2SmokeGroundTruthStage.PUBLIC_COSIM,
+        },
         ValidationState.HIDDEN_EVALUATION: {
             Stage2SmokeGroundTruthStage.HIDDEN_EVALUATION,
         },
@@ -622,6 +628,7 @@ def _delta(before: BudgetUsage, after: BudgetUsage) -> Stage2SmokeBudgetExpectat
         compile_calls=after.compile_calls - before.compile_calls,
         csynth_calls=after.csynth_calls - before.csynth_calls,
         csim_calls=after.csim_calls - before.csim_calls,
+        cosim_calls=after.cosim_calls - before.cosim_calls,
         llm_calls=after.llm_calls - before.llm_calls,
         tokens=after.tokens - before.tokens,
         cost_usd=after.cost_usd - before.cost_usd,
@@ -634,6 +641,7 @@ def _as_expectation(usage: BudgetUsage) -> Stage2SmokeBudgetExpectation:
         compile_calls=usage.compile_calls,
         csynth_calls=usage.csynth_calls,
         csim_calls=usage.csim_calls,
+        cosim_calls=usage.cosim_calls,
         llm_calls=usage.llm_calls,
         tokens=usage.tokens,
         cost_usd=usage.cost_usd,
@@ -806,7 +814,7 @@ STAGE2_SMOKE_FAULT_SCENARIOS = (
         FeedbackRouteAction.REPAIR_CANDIDATE,
         ValidationState.REJECTED,
         ValidationState.HIDDEN_EVALUATION,
-        Stage2SmokeBudgetExpectation(6, 3, 1, 2),
+        Stage2SmokeBudgetExpectation(8, 3, 1, 2, 1),
         candidate_code=_hidden_mismatch,
     ),
     _make(

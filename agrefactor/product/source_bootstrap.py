@@ -23,6 +23,7 @@ from agrefactor.config import (
     DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
     DEFAULT_CSIM_TIMEOUT_S,
     DEFAULT_CSYNTH_TIMEOUT_S,
+    DEFAULT_COSIM_TIMEOUT_S,
     DEFAULT_HIDDEN_COVERAGE_ROUNDS,
     DEFAULT_HIDDEN_GENERATION_TRAJECTORIES,
     DEFAULT_PUBLIC_COVERAGE_ROUNDS,
@@ -44,6 +45,7 @@ from agrefactor.config import (
     resolve_test_generation_profile,
     validate_csim_timeout_s,
     validate_csynth_timeout_s,
+    validate_cosim_timeout_s,
     validate_repair_attempts,
     validate_test_generation_count,
 )
@@ -408,6 +410,8 @@ class SourceBootstrapRequest:
     test_generation_trajectories: int | None = None
     csim_timeout_s: int = DEFAULT_CSIM_TIMEOUT_S
     csynth_timeout_s: int = DEFAULT_CSYNTH_TIMEOUT_S
+    cosim_timeout_s: int = DEFAULT_COSIM_TIMEOUT_S
+    cosim_policy: str = "required"
     require_complete_execution_identity: bool = False
 
     def __post_init__(self) -> None:
@@ -495,6 +499,9 @@ class SourceBootstrapRequest:
             )
         validate_csim_timeout_s(self.csim_timeout_s)
         validate_csynth_timeout_s(self.csynth_timeout_s)
+        validate_cosim_timeout_s(self.cosim_timeout_s)
+        from agrefactor.runtime.cosim_stage import validate_cosim_policy
+        object.__setattr__(self, "cosim_policy", validate_cosim_policy(self.cosim_policy))
         object.__setattr__(
             self,
             "public_generation_trajectories",
@@ -578,6 +585,8 @@ class SourceBootstrapRequest:
             ),
             "csim_timeout_s": self.csim_timeout_s,
             "csynth_timeout_s": self.csynth_timeout_s,
+            "cosim_timeout_s": self.cosim_timeout_s,
+            "cosim_policy": self.cosim_policy,
         }
 
 
@@ -1486,6 +1495,8 @@ class SourceBootstrapPhase:
                 ),
                 "csim_timeout_s": self._request.csim_timeout_s,
                 "csynth_timeout_s": self._request.csynth_timeout_s,
+                "cosim_timeout_s": self._request.cosim_timeout_s,
+                "cosim_policy": self._request.cosim_policy,
                 "public_suite_count": len(public_suites),
                 "hidden_suite_count": len(suites) - len(public_suites),
                 "public_testbench_repair_status": (
@@ -1657,6 +1668,7 @@ class SourceBootstrapPhase:
         suites: Sequence[TestSuiteSpec],
     ) -> list[dict[str, Any]]:
         observed: dict[tuple[str, str], Mapping[str, Any]] = {}
+        cosim_observed: dict[tuple[str, str], Mapping[str, Any]] = {}
         for path in sorted(
             self._layout.work_root.rglob(
                 "suite_identity_evidence.json"
@@ -1673,9 +1685,36 @@ class SourceBootstrapPhase:
             split = payload.get("split")
             if isinstance(suite_id, str) and isinstance(split, str):
                 observed[(split, suite_id)] = payload
+        for path in sorted(
+            self._layout.work_root.rglob(
+                "cosim_suite_identity_evidence.json"
+            ),
+            key=lambda item: (item.stat().st_mtime_ns, str(item)),
+        ):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(payload, Mapping):
+                continue
+            suite_id = payload.get("suite_id")
+            split = payload.get("split")
+            if isinstance(suite_id, str) and isinstance(split, str):
+                cosim_observed[(split, suite_id)] = payload
         result: list[dict[str, Any]] = []
         for suite in suites:
             manifest = suite.to_dict()
+            manifest["public_rtl_cosim_required"] = (
+                suite.split is EvaluationSplit.PUBLIC
+                and self._request.cosim_policy == "required"
+            )
+            manifest["public_rtl_cosim_status"] = (
+                "skipped"
+                if suite.split is EvaluationSplit.PUBLIC
+                and self._request.cosim_policy == "off"
+                else None
+            )
+            manifest["public_rtl_cosim_evidence_sha256"] = None
             evidence = observed.get((suite.split.value, suite.suite_id))
             if evidence is not None:
                 manifest["evaluation_status"] = evidence.get(
@@ -1686,6 +1725,19 @@ class SourceBootstrapPhase:
                     source = dict(manifest.get("source") or {})
                     source.update(dict(provenance))
                     manifest["source"] = source
+            cosim_evidence = cosim_observed.get(
+                (suite.split.value, suite.suite_id)
+            )
+            if cosim_evidence is not None:
+                manifest["public_rtl_cosim_required"] = (
+                    cosim_evidence.get("policy") == "required"
+                )
+                manifest["public_rtl_cosim_status"] = (
+                    cosim_evidence.get("evaluation_status")
+                )
+                manifest["public_rtl_cosim_evidence_sha256"] = (
+                    cosim_evidence.get("evidence_sha256")
+                )
             result.append(manifest)
         return result
 
@@ -2072,13 +2124,14 @@ def _generation_trajectories_from_cli(args) -> tuple[int, int]:
 
 def _budget_from_cli(args, selection: ModelRuntimeSelection) -> EffectiveRunBudget:
     requested = {
-        name: getattr(args, name)
+        name: getattr(args, name, None)
         for name in (
             "max_llm_calls",
             "max_tool_calls",
             "max_compile_calls",
             "max_csim_calls",
             "max_csynth_calls",
+            "max_cosim_calls",
             "max_wall_time_s",
         )
     }
@@ -2117,7 +2170,7 @@ def _budget_request_identity(args) -> dict[str, Any]:
             for name in HARD_BUDGET_FIELDS
         },
         "user_requested": {
-            name: getattr(args, name)
+            name: getattr(args, name, None)
             for name in HARD_BUDGET_FIELDS
         },
         "effective_hard_limits": None,
@@ -2133,7 +2186,7 @@ def _budget_request_identity(args) -> dict[str, Any]:
 def _safety_ceiling_rejection(args) -> dict[str, Any] | None:
     ceilings = DEFAULT_SOURCE_RUN_BUDGET_PROFILE.system_safety_ceilings
     for name in HARD_BUDGET_FIELDS:
-        requested = getattr(args, name)
+        requested = getattr(args, name, None)
         ceiling = getattr(ceilings, name)
         if requested is not None and ceiling is not None and requested > ceiling:
             return {
@@ -2410,6 +2463,12 @@ def run_source_command(
             "csynth_timeout_s",
             DEFAULT_CSYNTH_TIMEOUT_S,
         ),
+        cosim_timeout_s=getattr(
+            args,
+            "cosim_timeout_s",
+            DEFAULT_COSIM_TIMEOUT_S,
+        ),
+        cosim_policy=getattr(args, "cosim_policy", "required"),
         require_complete_execution_identity=True,
     )
 
@@ -2442,6 +2501,8 @@ def run_source_command(
                 artifact_root=layout.artifact_root,
                 csynth_timelimit=request.csynth_timeout_s,
                 csim_timelimit=request.csim_timeout_s,
+                cosim_timelimit=request.cosim_timeout_s,
+                cosim_policy=request.cosim_policy,
             )
 
         phase = SourceBootstrapPhase(
@@ -2481,6 +2542,8 @@ def run_source_command(
                 work_root=layout.work_root,
                 csim_timeout_s=request.csim_timeout_s,
                 csynth_timeout_s=request.csynth_timeout_s,
+                cosim_timeout_s=request.cosim_timeout_s,
+                cosim_policy=request.cosim_policy,
                 optimizer_profile=getattr(args, "optimizer_profile", "safe-v1"),
                 optimization_objective=getattr(args, "optimization_objective", "latency"),
                 direct_material=direct_material,
@@ -2543,6 +2606,8 @@ def run_source_command(
                     ),
                     "csim_timeout_s": request.csim_timeout_s,
                     "csynth_timeout_s": request.csynth_timeout_s,
+                    "cosim_timeout_s": request.cosim_timeout_s,
+                    "cosim_policy": request.cosim_policy,
                     "public_coverage_enabled": (
                         False if generation_settings is None
                         else generation_settings.enable_tb_coverage_loop

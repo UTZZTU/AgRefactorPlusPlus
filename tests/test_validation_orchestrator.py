@@ -181,6 +181,15 @@ class ValidationOrchestratorTests(unittest.TestCase):
                     )
                 )
             ),
+            ValidationState.PUBLIC_COSIM: (
+                lambda ctx: (
+                    calls.append("public_cosim")
+                    or safe_report(
+                        "public_cosim",
+                        "test_evaluation",
+                    )
+                )
+            ),
             ValidationState.HIDDEN_EVALUATION: (
                 lambda ctx: (
                     calls.append("hidden")
@@ -199,7 +208,7 @@ class ValidationOrchestratorTests(unittest.TestCase):
 
         self.assertEqual(
             calls,
-            ["preflight", "public", "csynth", "hidden"],
+            ["preflight", "public", "csynth", "public_cosim", "hidden"],
         )
         self.assertTrue(result.accepted)
 
@@ -313,6 +322,12 @@ class ValidationOrchestratorTests(unittest.TestCase):
                             "public",
                             "test_evaluation",
                         )
+                    )
+                ),
+                ValidationState.PUBLIC_COSIM: (
+                    lambda ctx: safe_report(
+                        "public_cosim",
+                        "test_evaluation",
                     )
                 ),
             }

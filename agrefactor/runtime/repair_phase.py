@@ -11,6 +11,7 @@ from pathlib import Path
 import tempfile
 from typing import Any
 
+from agrefactor.config import DEFAULT_COSIM_TIMEOUT_S, validate_cosim_timeout_s
 from agrefactor.models import CandidateModelAdapter
 
 from .candidate_repair_integration import (
@@ -41,6 +42,8 @@ class CandidateRepairPhaseConfig:
     artifact_root: str | os.PathLike[str]
     csynth_timelimit: int = 300
     csim_timelimit: int = 60
+    cosim_timelimit: int = DEFAULT_COSIM_TIMEOUT_S
+    cosim_policy: str = "required"
 
     def __post_init__(self) -> None:
         if not isinstance(
@@ -67,6 +70,7 @@ class CandidateRepairPhaseConfig:
         for name, value in (
             ("csynth_timelimit", self.csynth_timelimit),
             ("csim_timelimit", self.csim_timelimit),
+            ("cosim_timelimit", self.cosim_timelimit),
         ):
             if (
                 isinstance(value, bool)
@@ -79,6 +83,11 @@ class CandidateRepairPhaseConfig:
                 raise ValueError(
                     f"{name} must be positive"
                 )
+        object.__setattr__(
+            self,
+            "cosim_timelimit",
+            validate_cosim_timeout_s(self.cosim_timelimit),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -280,6 +289,8 @@ class CandidateRepairPhase:
                 csim_timelimit=(
                     config.csim_timelimit
                 ),
+                cosim_timelimit=config.cosim_timelimit,
+                cosim_policy=config.cosim_policy,
             )
         )
         self._orchestrator = (
@@ -404,6 +415,8 @@ def build_candidate_repair_phase(
     artifact_root: str | os.PathLike[str],
     csynth_timelimit: int = 300,
     csim_timelimit: int = 60,
+    cosim_timelimit: int = DEFAULT_COSIM_TIMEOUT_S,
+    cosim_policy: str = "required",
     handler_factory: (
         CandidateValidationHandlerFactory | None
     ) = None,
@@ -418,6 +431,8 @@ def build_candidate_repair_phase(
             artifact_root=artifact_root,
             csynth_timelimit=csynth_timelimit,
             csim_timelimit=csim_timelimit,
+            cosim_timelimit=cosim_timelimit,
+            cosim_policy=cosim_policy,
         ),
         handler_factory=handler_factory,
     )

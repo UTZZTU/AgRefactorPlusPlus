@@ -109,6 +109,7 @@ class BudgetLimits:
     max_tokens: int | None = None
     max_cost_usd: float | None = None
     max_wall_time_s: float | None = None
+    max_cosim_calls: int | None = None
 
     def __post_init__(self) -> None:
         self._validate_integer_limit("max_llm_calls", self.max_llm_calls)
@@ -128,6 +129,7 @@ class BudgetLimits:
         self._validate_integer_limit("max_tokens", self.max_tokens)
         self._validate_float_limit("max_cost_usd", self.max_cost_usd)
         self._validate_float_limit("max_wall_time_s", self.max_wall_time_s)
+        self._validate_integer_limit("max_cosim_calls", self.max_cosim_calls)
 
     @staticmethod
     def _validate_integer_limit(name: str, value: int | None) -> None:
@@ -155,6 +157,7 @@ class BudgetUsage:
     costs_by_currency: Mapping[str, Decimal] = field(
         default_factory=dict
     )
+    cosim_calls: int = 0
 
     def __post_init__(self) -> None:
         if (
@@ -212,6 +215,7 @@ class BudgetUsage:
             "compile_calls": self.compile_calls,
             "csim_calls": self.csim_calls,
             "csynth_calls": self.csynth_calls,
+            "cosim_calls": self.cosim_calls,
             "tokens": self.tokens,
             "cost_usd": self.cost_usd,
             "elapsed_s": self.elapsed_s,
@@ -241,6 +245,7 @@ class BudgetManager:
         self._compile_calls = 0
         self._csim_calls = 0
         self._csynth_calls = 0
+        self._cosim_calls = 0
         self._tokens = 0
         self._costs_by_currency: dict[str, Decimal] = {}
 
@@ -264,6 +269,7 @@ class BudgetManager:
                 compile_calls=self._compile_calls,
                 csim_calls=self._csim_calls,
                 csynth_calls=self._csynth_calls,
+                cosim_calls=self._cosim_calls,
                 tokens=self._tokens,
                 cost_usd=self._cost_usd_total(),
                 elapsed_s=elapsed_s,
@@ -280,6 +286,7 @@ class BudgetManager:
         compile_calls: int = 0,
         csim_calls: int = 0,
         csynth_calls: int = 0,
+        cosim_calls: int = 0,
         tokens: int = 0,
         cost_usd: float = 0.0,
     ) -> None:
@@ -290,6 +297,7 @@ class BudgetManager:
         self._validate_increment("compile_calls", compile_calls)
         self._validate_increment("csim_calls", csim_calls)
         self._validate_increment("csynth_calls", csynth_calls)
+        self._validate_increment("cosim_calls", cosim_calls)
         self._validate_increment("tokens", tokens)
         self._validate_cost_increment(cost_usd)
 
@@ -319,6 +327,11 @@ class BudgetManager:
             self._limits.max_csynth_calls,
         )
         self._check_limit(
+            "cosim_calls",
+            self._cosim_calls + cosim_calls,
+            self._limits.max_cosim_calls,
+        )
+        self._check_limit(
             "tokens",
             self._tokens + tokens,
             self._limits.max_tokens,
@@ -342,6 +355,7 @@ class BudgetManager:
         compile_calls: int = 0,
         csim_calls: int = 0,
         csynth_calls: int = 0,
+        cosim_calls: int = 0,
         tokens: int = 0,
         cost_usd: float = 0.0,
     ) -> BudgetUsage:
@@ -354,6 +368,7 @@ class BudgetManager:
                 compile_calls=compile_calls,
                 csim_calls=csim_calls,
                 csynth_calls=csynth_calls,
+                cosim_calls=cosim_calls,
                 tokens=tokens,
                 cost_usd=cost_usd,
             )
@@ -363,6 +378,7 @@ class BudgetManager:
             self._compile_calls += compile_calls
             self._csim_calls += csim_calls
             self._csynth_calls += csynth_calls
+            self._cosim_calls += cosim_calls
             cost_increment = self._cost_increment(
                 cost_usd=cost_usd,
                 estimated_cost=None,
@@ -399,6 +415,7 @@ class BudgetManager:
                 compile_calls=self._compile_calls,
                 csim_calls=self._csim_calls,
                 csynth_calls=self._csynth_calls,
+                cosim_calls=self._cosim_calls,
                 tokens=self._tokens,
                 cost_usd=self._cost_usd_total(),
                 elapsed_s=self._elapsed_s(),
@@ -514,6 +531,7 @@ class BudgetManager:
             (usage.compile_calls, self._limits.max_compile_calls),
             (usage.csim_calls, self._limits.max_csim_calls),
             (usage.csynth_calls, self._limits.max_csynth_calls),
+            (usage.cosim_calls, self._limits.max_cosim_calls),
             (usage.tokens, self._limits.max_tokens),
             (usage.cost_usd, self._limits.max_cost_usd),
             (usage.elapsed_s, self._limits.max_wall_time_s),

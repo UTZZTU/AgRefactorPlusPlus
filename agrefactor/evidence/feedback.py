@@ -20,6 +20,7 @@ class FeedbackStage(str, Enum):
     TEST = "test"
     CSIM = "csim"
     CSYNTH = "csynth"
+    COSIM = "cosim"
     TOOLCHAIN = "toolchain"
 
 

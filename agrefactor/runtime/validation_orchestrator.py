@@ -699,24 +699,21 @@ class ValidationOrchestrator:
     def _required_states(
         context: RunContext,
     ) -> tuple[ValidationState, ...]:
-        states = [
-            ValidationState.PREFLIGHT,
-            ValidationState.CSYNTH,
-        ]
-        if any(
+        states = [ValidationState.PREFLIGHT]
+        has_public = any(
             suite.split is EvaluationSplit.PUBLIC
             for suite in context.task.test_suites
-        ):
-            states.append(
-                ValidationState.PUBLIC_EVALUATION
-            )
+        )
+        if has_public:
+            states.append(ValidationState.PUBLIC_EVALUATION)
+        states.append(ValidationState.CSYNTH)
+        if has_public:
+            states.append(ValidationState.PUBLIC_COSIM)
         if any(
             suite.split is EvaluationSplit.HIDDEN
             for suite in context.task.test_suites
         ):
-            states.append(
-                ValidationState.HIDDEN_EVALUATION
-            )
+            states.append(ValidationState.HIDDEN_EVALUATION)
         return tuple(states)
 
     @staticmethod

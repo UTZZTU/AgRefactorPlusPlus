@@ -5,8 +5,10 @@ from __future__ import annotations
 
 DEFAULT_CSIM_TIMEOUT_S = 120
 DEFAULT_CSYNTH_TIMEOUT_S = 600
+DEFAULT_COSIM_TIMEOUT_S = 900
 CSIM_TIMEOUT_SAFETY_CEILING = 600
 CSYNTH_TIMEOUT_SAFETY_CEILING = 3600
+COSIM_TIMEOUT_SAFETY_CEILING = 7200
 
 
 def _validate_timeout(
@@ -39,4 +41,12 @@ def validate_csynth_timeout_s(value: int) -> int:
         value,
         field_name="csynth_timeout_s",
         ceiling=CSYNTH_TIMEOUT_SAFETY_CEILING,
+    )
+
+
+def validate_cosim_timeout_s(value: int) -> int:
+    return _validate_timeout(
+        value,
+        field_name="cosim_timeout_s",
+        ceiling=COSIM_TIMEOUT_SAFETY_CEILING,
     )

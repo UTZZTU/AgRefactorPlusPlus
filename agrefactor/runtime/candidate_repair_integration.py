@@ -13,8 +13,10 @@ from typing import Any, Protocol
 
 from agrefactor.config import (
     DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
+    DEFAULT_COSIM_TIMEOUT_S,
     EvaluationSplit,
     TaskSpec,
+    validate_cosim_timeout_s,
     validate_repair_attempts,
 )
 from agrefactor.evaluation import FeedbackRouteAction, ValidationState
@@ -376,6 +378,8 @@ class LocalCandidateValidationHandlerFactory:
         *,
         csynth_timelimit: int = 300,
         csim_timelimit: int = 60,
+        cosim_timelimit: int = DEFAULT_COSIM_TIMEOUT_S,
+        cosim_policy: str = "required",
     ) -> None:
         try:
             raw_root = os.fspath(work_root)
@@ -388,6 +392,7 @@ class LocalCandidateValidationHandlerFactory:
         for name, value in (
             ("csynth_timelimit", csynth_timelimit),
             ("csim_timelimit", csim_timelimit),
+            ("cosim_timelimit", cosim_timelimit),
         ):
             if isinstance(value, bool) or not isinstance(value, int):
                 raise TypeError(f"{name} must be an integer")
@@ -396,6 +401,9 @@ class LocalCandidateValidationHandlerFactory:
         self._work_root = Path(raw_root).expanduser()
         self._csynth_timelimit = csynth_timelimit
         self._csim_timelimit = csim_timelimit
+        self._cosim_timelimit = validate_cosim_timeout_s(cosim_timelimit)
+        from .cosim_stage import validate_cosim_policy
+        self._cosim_policy = validate_cosim_policy(cosim_policy)
 
     @property
     def work_root(self) -> Path:
@@ -416,6 +424,10 @@ class LocalCandidateValidationHandlerFactory:
         from .csim_stage import (
             CsimStageInputs,
             CsimValidationStageHandler,
+        )
+        from .cosim_stage import (
+            CosimStageInputs,
+            CosimValidationStageHandler,
         )
         from .csynth_stage import (
             CsynthStageInputs,
@@ -488,6 +500,29 @@ class LocalCandidateValidationHandlerFactory:
                     target_profile=request.task.target,
                 ),
                 split=EvaluationSplit.PUBLIC,
+            )
+
+        if any(
+            suite.split is EvaluationSplit.PUBLIC
+            for suite in request.task.test_suites
+        ):
+            handlers[ValidationState.PUBLIC_COSIM] = CosimValidationStageHandler(
+                CosimStageInputs(
+                    work_dir=run_dir / "public_cosim",
+                    original_code=request.original_code,
+                    candidate_code=request.candidate_code,
+                    suite_testbench_codes={
+                        suite.suite_id: request.suite_testbench_codes[suite.suite_id]
+                        for suite in request.task.test_suites
+                        if suite.split is EvaluationSplit.PUBLIC
+                    },
+                    candidate_top_function=(
+                        request.candidate_top_function or request.task.kernel_name
+                    ),
+                    target_profile=request.task.target,
+                    timelimit=self._cosim_timelimit,
+                    policy=self._cosim_policy,
+                )
             )
 
         if any(

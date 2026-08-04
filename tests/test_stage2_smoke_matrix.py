@@ -223,10 +223,11 @@ class Stage2SmokeCorpusTests(unittest.TestCase):
             self.assertEqual(
                 case.expected_budget.to_dict(),
                 {
-                    "tool_calls": 5,
+                    "tool_calls": 7,
                     "compile_calls": 2,
                     "csynth_calls": 1,
                     "csim_calls": 2,
+                    "cosim_calls": 1,
                     "llm_calls": 0,
                     "tokens": 0,
                     "cost_usd": 0.0,

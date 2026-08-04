@@ -24,6 +24,7 @@ class FeedbackEnumTests(unittest.TestCase):
                 "test",
                 "csim",
                 "csynth",
+                "cosim",
                 "toolchain",
             },
         )

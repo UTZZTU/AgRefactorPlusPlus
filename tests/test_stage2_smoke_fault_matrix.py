@@ -143,10 +143,11 @@ class Stage2SmokeFaultCorpusTests(unittest.TestCase):
         self.assertEqual(
             expected_stage2_smoke_fault_budget().to_dict(),
             {
-                "tool_calls": 13,
+                "tool_calls": 15,
                 "compile_calls": 8,
                 "csynth_calls": 2,
                 "csim_calls": 3,
+                "cosim_calls": 1,
                 "llm_calls": 0,
                 "tokens": 0,
                 "cost_usd": 0.0,
@@ -191,6 +192,7 @@ class Stage2SmokeFaultRunnerTests(unittest.TestCase):
         self.assertEqual(result.total_usage.compile_calls, 0)
         self.assertEqual(result.total_usage.csynth_calls, 0)
         self.assertEqual(result.total_usage.csim_calls, 0)
+        self.assertEqual(result.total_usage.cosim_calls, 0)
 
     def test_hidden_secret_is_absent_from_safe_result(self):
         _, selected, result = self._run_deterministic()

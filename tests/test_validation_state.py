@@ -122,9 +122,14 @@ class ValidationStateMachineTests(unittest.TestCase):
             public.next_state,
             FeedbackRouteAction.CONTINUE_VALIDATION,
         )
-        hidden = self.go(
+        public_cosim = self.go(
             machine,
             csynth.next_state,
+            FeedbackRouteAction.CONTINUE_VALIDATION,
+        )
+        hidden = self.go(
+            machine,
+            public_cosim.next_state,
             FeedbackRouteAction.CONTINUE_VALIDATION,
         )
         self.assertEqual(
@@ -134,6 +139,10 @@ class ValidationStateMachineTests(unittest.TestCase):
         self.assertEqual(
             csynth.next_state,
             ValidationState.CSYNTH,
+        )
+        self.assertEqual(
+            public_cosim.next_state,
+            ValidationState.PUBLIC_COSIM,
         )
         self.assertEqual(
             hidden.next_state,

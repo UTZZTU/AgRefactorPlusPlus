@@ -33,6 +33,7 @@ _HARD_USAGE_FIELDS = {
     "max_compile_calls": "compile_calls",
     "max_csim_calls": "csim_calls",
     "max_csynth_calls": "csynth_calls",
+    "max_cosim_calls": "cosim_calls",
     "max_wall_time_s": "elapsed_s",
 }
 
@@ -205,6 +206,11 @@ def build_execution_identity_bundle(
         and all(
             item.get("qualification_status") == "qualified"
             and item.get("evaluation_status") == "passed"
+            and (
+                item.get("split") != "public"
+                or item.get("public_rtl_cosim_required") is not True
+                or item.get("public_rtl_cosim_status") == "passed"
+            )
             for item in suite_value
         )
     )
@@ -576,6 +582,19 @@ def _suite_identity(value: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError(
             f"suite {suite_id} content hash does not match declared source"
         )
+    cosim_required = suite.get("public_rtl_cosim_required") is True
+    cosim_status = suite.get("public_rtl_cosim_status")
+    cosim_sha = suite.get("public_rtl_cosim_evidence_sha256")
+    if cosim_sha is not None:
+        cosim_sha = str(cosim_sha).lower()
+        if _SHA256_RE.fullmatch(cosim_sha) is None:
+            raise ValueError(
+                f"suite {suite_id} Public RTL COSIM evidence hash is invalid"
+            )
+    if cosim_required and cosim_status == "passed" and cosim_sha is None:
+        raise ValueError(
+            f"suite {suite_id} passed Public RTL COSIM without evidence hash"
+        )
     return {
         "suite_id": suite_id,
         "suite_version": suite.get("suite_version"),
@@ -600,6 +619,9 @@ def _suite_identity(value: Mapping[str, Any]) -> dict[str, Any]:
             "declared",
         ),
         "evaluation_status": suite.get("evaluation_status"),
+        "public_rtl_cosim_required": cosim_required,
+        "public_rtl_cosim_status": cosim_status,
+        "public_rtl_cosim_evidence_sha256": cosim_sha,
         "feedback_visibility": (
             "public"
             if split == "public"
@@ -635,7 +657,14 @@ def _toolchain_identity(
     if evidence_root is not None:
         root = Path(evidence_root).expanduser().resolve()
     if root is not None and root.is_dir():
-        for path in sorted(root.rglob("csynth_invocation.json")):
+        invocation_paths = sorted(
+            (
+                *root.rglob("csynth_invocation.json"),
+                *root.rglob("cosim_invocation.json"),
+            ),
+            key=lambda item: item.as_posix(),
+        )
+        for path in invocation_paths:
             try:
                 raw = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
@@ -658,9 +687,18 @@ def _toolchain_identity(
                 + "\n"
                 + str(verification.get("stderr") or "")
             )
+            declared_version_sha = verification.get("evidence_sha256")
+            if (
+                not isinstance(declared_version_sha, str)
+                or _SHA256_RE.fullmatch(declared_version_sha) is None
+            ):
+                declared_version_sha = sha256(
+                    version_output.encode("utf-8")
+                ).hexdigest()
             invocations.append(
                 {
                     "evidence_path": str(path.relative_to(root)),
+                    "phase": raw.get("phase"),
                     "profile_name": raw.get("profile_name"),
                     "requested_version": verification.get(
                         "requested",
@@ -678,9 +716,7 @@ def _toolchain_identity(
                         "probe_source",
                         raw.get("probe_source"),
                     ),
-                    "version_output_sha256": sha256(
-                        version_output.encode("utf-8")
-                    ).hexdigest(),
+                    "version_output_sha256": declared_version_sha,
                     "effective_value_provenance": raw.get(
                         "effective_value_provenance",
                         raw.get("target_profile_provenance", {}),

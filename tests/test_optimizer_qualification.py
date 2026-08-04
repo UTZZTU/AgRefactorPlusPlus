@@ -208,6 +208,9 @@ class QualificationHarness:
                 ),
                 QualificationStage.PUBLIC: handler(QualificationStage.PUBLIC),
                 QualificationStage.CSYNTH: handler(QualificationStage.CSYNTH),
+                QualificationStage.PUBLIC_COSIM: handler(
+                    QualificationStage.PUBLIC_COSIM
+                ),
                 QualificationStage.HIDDEN: handler(QualificationStage.HIDDEN),
             },
             cache=self.cache,
@@ -220,10 +223,16 @@ class QualificationOrchestratorTests(unittest.TestCase):
         harness = QualificationHarness(self)
         result, order = harness.run()
         self.assertTrue(result.accepted)
-        self.assertEqual(order, ["preflight", "public", "csynth", "hidden"])
+        self.assertEqual(
+            order,
+            ["preflight", "public", "csynth", "public_cosim", "hidden"],
+        )
         self.assertEqual(
             [item.stage.value for item in result.steps],
-            ["source", "preflight", "public", "csynth", "hidden", "ppa", "feasibility"],
+            [
+                "source", "preflight", "public", "csynth",
+                "public_cosim", "hidden", "ppa", "feasibility",
+            ],
         )
 
     def test_preflight_failure_stops_before_public_and_csynth(self):
@@ -478,7 +487,10 @@ class QualificationOrchestratorTests(unittest.TestCase):
             first = QualificationHarness(self, cache=cache)
             result, order = first.run()
             self.assertTrue(result.accepted)
-            self.assertEqual(order, ["preflight", "public", "csynth", "hidden"])
+            self.assertEqual(
+            order,
+            ["preflight", "public", "csynth", "public_cosim", "hidden"],
+        )
 
             second = QualificationHarness(self, cache=cache)
             before = second.budget.snapshot().to_dict()

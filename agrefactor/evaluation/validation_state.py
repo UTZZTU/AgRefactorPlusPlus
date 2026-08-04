@@ -22,6 +22,7 @@ class ValidationState(str, Enum):
     PREFLIGHT = "preflight"
     CSYNTH = "csynth"
     PUBLIC_EVALUATION = "public_evaluation"
+    PUBLIC_COSIM = "public_cosim"
     HIDDEN_EVALUATION = "hidden_evaluation"
     REPAIR_PENDING = "repair_pending"
     REVIEW_REQUIRED = "review_required"
@@ -35,6 +36,7 @@ class ValidationState(str, Enum):
             ValidationState.PREFLIGHT,
             ValidationState.CSYNTH,
             ValidationState.PUBLIC_EVALUATION,
+            ValidationState.PUBLIC_COSIM,
             ValidationState.HIDDEN_EVALUATION,
         }
 
@@ -450,6 +452,28 @@ class ValidationStateMachine:
                 metadata=metadata,
             )
 
+        if (
+            state is ValidationState.PUBLIC_COSIM
+            and action in self._REPAIR
+        ):
+            return ValidationTransition(
+                transition_id=tid,
+                current_state=state,
+                next_state=ValidationState.REJECTED,
+                kind=ValidationTransitionKind.REJECT,
+                route_action=action,
+                reason=(
+                    "Public RTL COSIM failure is terminal for this "
+                    "candidate; iterative repair is not allowed."
+                ),
+                source_decision_id=decision.decision_id,
+                metadata={
+                    **metadata,
+                    "public_cosim_terminal_policy": True,
+                    "repair_suppressed": True,
+                },
+            )
+
         if action in self._REPAIR:
             if (
                 decision.metadata.get("evidence_view")
@@ -498,6 +522,12 @@ class ValidationStateMachine:
         if state is ValidationState.PUBLIC_EVALUATION:
             return ValidationState.CSYNTH
         if state is ValidationState.CSYNTH:
+            if self._public:
+                return ValidationState.PUBLIC_COSIM
+            if self._hidden:
+                return ValidationState.HIDDEN_EVALUATION
+            return ValidationState.ACCEPTED
+        if state is ValidationState.PUBLIC_COSIM:
             if self._hidden:
                 return ValidationState.HIDDEN_EVALUATION
             return ValidationState.ACCEPTED

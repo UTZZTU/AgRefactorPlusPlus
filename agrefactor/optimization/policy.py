@@ -32,6 +32,7 @@ class BudgetIncrement:
     compile_calls: int = 0
     csim_calls: int = 0
     csynth_calls: int = 0
+    cosim_calls: int = 0
 
     def __post_init__(self) -> None:
         for name in (
@@ -40,19 +41,23 @@ class BudgetIncrement:
             "compile_calls",
             "csim_calls",
             "csynth_calls",
+            "cosim_calls",
         ):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ValueError(f"{name} must be a non-negative integer")
 
     def to_kwargs(self) -> dict[str, int]:
-        return {
+        result = {
             "llm_calls": self.llm_calls,
             "tool_calls": self.tool_calls,
             "compile_calls": self.compile_calls,
             "csim_calls": self.csim_calls,
             "csynth_calls": self.csynth_calls,
         }
+        if self.cosim_calls:
+            result["cosim_calls"] = self.cosim_calls
+        return result
 
     @property
     def is_zero(self) -> bool:

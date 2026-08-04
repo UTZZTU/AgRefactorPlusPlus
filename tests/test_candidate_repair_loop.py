@@ -76,6 +76,7 @@ def stage_for_state(state):
         ValidationState.PREFLIGHT: FeedbackStage.COMPILE,
         ValidationState.CSYNTH: FeedbackStage.CSYNTH,
         ValidationState.PUBLIC_EVALUATION: FeedbackStage.CSIM,
+        ValidationState.PUBLIC_COSIM: FeedbackStage.COSIM,
         ValidationState.HIDDEN_EVALUATION: FeedbackStage.CSIM,
     }[state]
 
@@ -271,10 +272,17 @@ def failed_result(
             ValidationState.PUBLIC_EVALUATION,
             ValidationState.CSYNTH,
         ),
+        ValidationState.PUBLIC_COSIM: (
+            ValidationState.PREFLIGHT,
+            ValidationState.PUBLIC_EVALUATION,
+            ValidationState.CSYNTH,
+            ValidationState.PUBLIC_COSIM,
+        ),
         ValidationState.HIDDEN_EVALUATION: (
             ValidationState.PREFLIGHT,
             ValidationState.PUBLIC_EVALUATION,
             ValidationState.CSYNTH,
+            ValidationState.PUBLIC_COSIM,
             ValidationState.HIDDEN_EVALUATION,
         ),
     }[state]
@@ -299,10 +307,20 @@ class CandidateRepairEntryContractTests(unittest.TestCase):
     def test_accepts_public_candidate_route(self):
         self.assertIs(make_request(state=ValidationState.PUBLIC_EVALUATION).failure_state, ValidationState.PUBLIC_EVALUATION)
 
-    def test_rejects_hidden_entry(self):
-        report = make_feedback(ValidationState.HIDDEN_EVALUATION, view="operator_full", visible=False)
-        with self.assertRaises(ValueError):
-            make_request(state=ValidationState.HIDDEN_EVALUATION, feedback=report, route=make_route(report))
+    def test_rejects_public_cosim_and_hidden_entry(self):
+        cases = (
+            (ValidationState.PUBLIC_COSIM, "agent_safe", True),
+            (ValidationState.HIDDEN_EVALUATION, "operator_full", False),
+        )
+        for state, view, visible in cases:
+            with self.subTest(state=state.value):
+                report = make_feedback(state, view=view, visible=visible)
+                with self.assertRaises(ValueError):
+                    make_request(
+                        state=state,
+                        feedback=report,
+                        route=make_route(report),
+                    )
 
     def test_rejects_operator_full_entry(self):
         report = make_feedback(view="operator_full")

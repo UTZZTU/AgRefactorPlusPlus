@@ -17,9 +17,11 @@ from agrefactor.compat import (
 from agrefactor.config import (
     CSIM_TIMEOUT_SAFETY_CEILING,
     CSYNTH_TIMEOUT_SAFETY_CEILING,
+    COSIM_TIMEOUT_SAFETY_CEILING,
     DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
     DEFAULT_CSIM_TIMEOUT_S,
     DEFAULT_CSYNTH_TIMEOUT_S,
+    DEFAULT_COSIM_TIMEOUT_S,
     DEFAULT_HIDDEN_COVERAGE_ROUNDS,
     DEFAULT_HIDDEN_GENERATION_TRAJECTORIES,
     DEFAULT_PUBLIC_COVERAGE_ROUNDS,
@@ -34,6 +36,7 @@ from agrefactor.config import (
     TestGenerationProfile,
     validate_csim_timeout_s,
     validate_csynth_timeout_s,
+    validate_cosim_timeout_s,
     validate_repair_attempts,
     validate_test_generation_count,
 )
@@ -107,6 +110,13 @@ def _csim_timeout(value: str) -> int:
 def _csynth_timeout(value: str) -> int:
     try:
         return validate_csynth_timeout_s(int(value))
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _cosim_timeout(value: str) -> int:
+    try:
+        return validate_cosim_timeout_s(int(value))
     except (TypeError, ValueError) as exc:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
@@ -364,6 +374,22 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     run_parser.add_argument(
+        "--cosim-timelimit",
+        type=_cosim_timeout,
+        default=DEFAULT_COSIM_TIMEOUT_S,
+        help=(
+            "Per-Public-RTL-COSIM timeout in seconds. "
+            f"Default: {DEFAULT_COSIM_TIMEOUT_S}; "
+            f"valid range: 1..{COSIM_TIMEOUT_SAFETY_CEILING}."
+        ),
+    )
+    run_parser.add_argument(
+        "--cosim-policy",
+        choices=("required", "off"),
+        default="required",
+        help="Advanced repair-aware Public RTL COSIM policy.",
+    )
+    run_parser.add_argument(
         "--debug",
         action="store_true",
         help="Enable legacy flow debug output.",
@@ -611,6 +637,7 @@ def build_parser() -> argparse.ArgumentParser:
                 int,
                 "CSYNTH calls",
             ),
+            ("--max-cosim-calls", "max_cosim_calls", int, "RTL COSIM calls"),
             (
                 "--max-wall-time-s",
                 "max_wall_time_s",
@@ -660,6 +687,24 @@ def build_parser() -> argparse.ArgumentParser:
                 "Per-CSYNTH timeout in seconds. "
                 f"Default: {DEFAULT_CSYNTH_TIMEOUT_S}; "
                 f"valid range: 1..{CSYNTH_TIMEOUT_SAFETY_CEILING}."
+            ),
+        )
+        source_parser.add_argument(
+            "--cosim-timeout-s",
+            type=_cosim_timeout,
+            default=DEFAULT_COSIM_TIMEOUT_S,
+            help=(
+                f"Per-RTL-COSIM timeout. Default: {DEFAULT_COSIM_TIMEOUT_S}; "
+                f"valid range: 1..{COSIM_TIMEOUT_SAFETY_CEILING}."
+            ),
+        )
+        source_parser.add_argument(
+            "--cosim-policy",
+            choices=("required", "off"),
+            default="required",
+            help=(
+                "Public RTL COSIM policy. required is normal; "
+                "off is development-only."
             ),
         )
         source_parser.add_argument(
@@ -1089,6 +1134,8 @@ def _run_repair_aware_refactor(
         artifact_root=args.artifact_dir,
         csynth_timelimit=args.csynth_timelimit,
         csim_timelimit=args.csim_timelimit,
+        cosim_timelimit=args.cosim_timelimit,
+        cosim_policy=args.cosim_policy,
     )
     runner = UnifiedRunner(
         {RunPhase.REFACTOR: phase},

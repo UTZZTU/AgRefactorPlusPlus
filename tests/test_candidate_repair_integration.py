@@ -159,6 +159,7 @@ def report_for(state, *, item=None, report_id=None):
             if state
             in {
                 ValidationState.PUBLIC_EVALUATION,
+                ValidationState.PUBLIC_COSIM,
                 ValidationState.HIDDEN_EVALUATION,
             }
             else state.value
@@ -241,6 +242,11 @@ class ScenarioFactory:
                 ValidationState.PUBLIC_EVALUATION
             )
         states.append(ValidationState.CSYNTH)
+        if any(
+            suite.split is EvaluationSplit.PUBLIC
+            for suite in request.task.test_suites
+        ):
+            states.append(ValidationState.PUBLIC_COSIM)
         if any(
             suite.split is EvaluationSplit.HIDDEN
             for suite in request.task.test_suites
@@ -490,6 +496,7 @@ class CandidateValidationPlanContractTests(unittest.TestCase):
                     ValidationState.PREFLIGHT,
                     ValidationState.CSYNTH,
                     ValidationState.PUBLIC_EVALUATION,
+                    ValidationState.PUBLIC_COSIM,
                     ValidationState.HIDDEN_EVALUATION,
                 },
             )
@@ -536,6 +543,12 @@ class CandidateValidationPlanContractTests(unittest.TestCase):
                     ValidationState.PUBLIC_EVALUATION
                 ].inputs.execution_backend,
                 "native_vitis",
+            )
+            self.assertEqual(
+                handlers[
+                    ValidationState.PUBLIC_COSIM
+                ].inputs.candidate_code,
+                P1,
             )
             self.assertEqual(
                 handlers[
@@ -787,11 +800,12 @@ class CandidateRepairValidationOrchestratorTests(unittest.TestCase):
             if attempt == 1
         ]
         self.assertEqual(
-            repair_states[:3],
+            repair_states[:4],
             [
                 ValidationState.PREFLIGHT,
                 ValidationState.PUBLIC_EVALUATION,
                 ValidationState.CSYNTH,
+                ValidationState.PUBLIC_COSIM,
             ],
         )
 

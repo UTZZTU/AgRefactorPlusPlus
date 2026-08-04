@@ -26,7 +26,9 @@ import tempfile
 from typing import Any
 
 from agrefactor.config import (
+    DEFAULT_COSIM_TIMEOUT_S,
     EvaluationSplit,
+    validate_cosim_timeout_s,
     RunMode,
     TaskSpec,
     TargetProfile,
@@ -534,6 +536,8 @@ class ProductQualificationAdapter:
         csim_timeout_s: int,
         csynth_timeout_s: int,
         toolchain_manifest: Mapping[str, Any],
+        cosim_timeout_s: int = DEFAULT_COSIM_TIMEOUT_S,
+        cosim_policy: str = "required",
     ) -> None:
         if not isinstance(context, RunContext):
             raise TypeError("context must be RunContext")
@@ -545,9 +549,16 @@ class ProductQualificationAdapter:
         self._artifact_root = Path(artifact_root)
         self._csim_timeout_s = int(csim_timeout_s)
         self._csynth_timeout_s = int(csynth_timeout_s)
+        self._cosim_timeout_s = validate_cosim_timeout_s(cosim_timeout_s)
+        from agrefactor.runtime.cosim_stage import validate_cosim_policy
+        self._cosim_policy = validate_cosim_policy(cosim_policy)
         if self._csim_timeout_s <= 0 or self._csynth_timeout_s <= 0:
             raise ValueError("qualification timeouts must be positive")
         self._toolchain_manifest = _json_copy(toolchain_manifest)
+        self._toolchain_manifest["public_rtl_cosim"] = {
+            "policy": self._cosim_policy,
+            "timeout_seconds": self._cosim_timeout_s,
+        }
         self._toolchain_fingerprint = build_toolchain_fingerprint(
             self._toolchain_manifest
         )
@@ -614,6 +625,8 @@ class ProductQualificationAdapter:
         from agrefactor.runtime import (
             CsimStageInputs,
             CsimValidationStageHandler,
+            CosimStageInputs,
+            CosimValidationStageHandler,
             CsynthStageInputs,
             CsynthValidationStageHandler,
             PreflightStageInputs,
@@ -669,6 +682,18 @@ class ProductQualificationAdapter:
                     work_dir=work / "csynth",
                     candidate_code=candidate_code,
                     timelimit=self._csynth_timeout_s,
+                )
+            ),
+            QualificationStage.PUBLIC_COSIM: CosimValidationStageHandler(
+                CosimStageInputs(
+                    work_dir=work / "public_cosim",
+                    original_code=self._material.reference_code,
+                    candidate_code=candidate_code,
+                    suite_testbench_codes=public_codes,
+                    candidate_top_function=self._material.top_function,
+                    target_profile=self._material.target,
+                    timelimit=self._cosim_timeout_s,
+                    policy=self._cosim_policy,
                 )
             ),
             QualificationStage.HIDDEN: CsimValidationStageHandler(
@@ -818,7 +843,7 @@ class ProductQualificationAdapter:
         return BudgetIncrement(
             tool_calls=(
                 10
-                + public_count
+                + 3 * public_count
                 + 2 * hidden_count
             ),
             compile_calls=6 + hidden_count,
@@ -826,6 +851,7 @@ class ProductQualificationAdapter:
                 public_count + hidden_count
             ),
             csynth_calls=1,
+            cosim_calls=public_count,
         )
 
     def validate_recovery(
@@ -876,6 +902,8 @@ class ProductOptimizerRequest:
     work_root: Path
     csim_timeout_s: int
     csynth_timeout_s: int
+    cosim_timeout_s: int = DEFAULT_COSIM_TIMEOUT_S
+    cosim_policy: str = "required"
     optimizer_profile: str = "safe-v1"
     optimization_objective: str = "latency"
     acceptance_one_physical_round_per_level: bool = False
@@ -891,6 +919,17 @@ class ProductOptimizerRequest:
             raise TypeError("effective_model_config must be EffectiveModelConfig")
         if not isinstance(self.budget_contract, EffectiveRunBudget):
             raise TypeError("budget_contract must be EffectiveRunBudget")
+        object.__setattr__(
+            self,
+            "cosim_timeout_s",
+            validate_cosim_timeout_s(self.cosim_timeout_s),
+        )
+        from agrefactor.runtime.cosim_stage import validate_cosim_policy
+        object.__setattr__(
+            self,
+            "cosim_policy",
+            validate_cosim_policy(self.cosim_policy),
+        )
         if self.optimizer_profile != "safe-v1":
             raise ValueError("Stage 3 v1 supports only optimizer_profile=safe-v1")
         if self.optimization_objective != "latency":
@@ -977,6 +1016,8 @@ class Stage3ProductOptimizationPhase:
                 budget_contract=self._request.budget_contract,
                 artifact_root=self._request.artifact_root,
                 work_root=self._request.work_root,
+                cosim_timeout_s=self._request.cosim_timeout_s,
+                cosim_policy=self._request.cosim_policy,
             )
         root = self._request.artifact_root / "optimize"
         work = self._request.work_root / "optimize"
@@ -993,6 +1034,8 @@ class Stage3ProductOptimizationPhase:
             csim_timeout_s=self._request.csim_timeout_s,
             csynth_timeout_s=self._request.csynth_timeout_s,
             toolchain_manifest=toolchain_manifest,
+            cosim_timeout_s=self._request.cosim_timeout_s,
+            cosim_policy=self._request.cosim_policy,
         )
         baseline_bytes = material.baseline_source_path.read_bytes()
         baseline = CandidateRecord(
@@ -1248,6 +1291,8 @@ class Stage3ProductOptimizationPhase:
             "mode": self._request.mode.value,
             "upstream_execution_id": upstream_execution_id,
             "material": material.to_dict(),
+            "cosim_policy": self._request.cosim_policy,
+            "cosim_timeout_s": self._request.cosim_timeout_s,
             "baseline_qualification": {
                 "status": baseline_result.status.value,
                 "qualification_id": baseline_result.qualification_id,
@@ -1300,6 +1345,8 @@ def write_direct_optimize_execution_identity(
     budget_contract: EffectiveRunBudget,
     artifact_root: Path,
     work_root: Path,
+    cosim_timeout_s: int,
+    cosim_policy: str,
 ) -> dict[str, Any]:
     """Persist the normal root identity required before optimize-only runs."""
 
@@ -1315,6 +1362,8 @@ def write_direct_optimize_execution_identity(
             "baseline_qualification_required_before_model": True,
             "optimizer_profile": "safe-v1",
             "optimization_objective": "latency",
+            "cosim_timeout_s": validate_cosim_timeout_s(cosim_timeout_s),
+            "cosim_policy": cosim_policy,
         },
     )
     model_manifest = effective_model_config.to_manifest()

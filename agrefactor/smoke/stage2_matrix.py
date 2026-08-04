@@ -58,6 +58,7 @@ class Stage2SmokeGroundTruthStage(str, Enum):
     LINK = "link"
     CSYNTH = "csynth"
     PUBLIC_EVALUATION = "public_evaluation"
+    PUBLIC_COSIM = "public_cosim"
     HIDDEN_EVALUATION = "hidden_evaluation"
     CONFIGURATION = "configuration"
 
@@ -138,6 +139,7 @@ class Stage2SmokeBudgetExpectation:
     compile_calls: int
     csynth_calls: int
     csim_calls: int
+    cosim_calls: int = 0
     llm_calls: int = 0
     tokens: int = 0
     cost_usd: float = 0.0
@@ -148,6 +150,7 @@ class Stage2SmokeBudgetExpectation:
             "compile_calls",
             "csynth_calls",
             "csim_calls",
+            "cosim_calls",
             "llm_calls",
             "tokens",
         ):

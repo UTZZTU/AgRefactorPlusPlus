@@ -34,10 +34,13 @@ from .test_generation import (
 from .tool_timeouts import (
     CSIM_TIMEOUT_SAFETY_CEILING,
     CSYNTH_TIMEOUT_SAFETY_CEILING,
+    COSIM_TIMEOUT_SAFETY_CEILING,
     DEFAULT_CSIM_TIMEOUT_S,
     DEFAULT_CSYNTH_TIMEOUT_S,
+    DEFAULT_COSIM_TIMEOUT_S,
     validate_csim_timeout_s,
     validate_csynth_timeout_s,
+    validate_cosim_timeout_s,
 )
 from .task import RunMode, TaskSpec
 from .test_source import (
@@ -71,8 +74,10 @@ __all__ = [
     "TEST_GENERATION_COUNT_SAFETY_CEILING",
     "DEFAULT_CSIM_TIMEOUT_S",
     "DEFAULT_CSYNTH_TIMEOUT_S",
+    "DEFAULT_COSIM_TIMEOUT_S",
     "CSIM_TIMEOUT_SAFETY_CEILING",
     "CSYNTH_TIMEOUT_SAFETY_CEILING",
+    "COSIM_TIMEOUT_SAFETY_CEILING",
     "EvaluationSplit",
     "RunMode",
     "TargetProfile",
@@ -97,6 +102,7 @@ __all__ = [
     "validate_test_generation_count",
     "validate_csim_timeout_s",
     "validate_csynth_timeout_s",
+    "validate_cosim_timeout_s",
     "resolve_test_source",
     "target_profile_config_dir",
 ]

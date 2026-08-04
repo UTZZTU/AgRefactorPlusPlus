@@ -18,6 +18,7 @@ HARD_BUDGET_FIELDS = (
     "max_compile_calls",
     "max_csim_calls",
     "max_csynth_calls",
+    "max_cosim_calls",
     "max_wall_time_s",
 )
 
@@ -203,6 +204,7 @@ class EffectiveRunBudget:
             max_compile_calls=int(values["max_compile_calls"]),
             max_csim_calls=int(values["max_csim_calls"]),
             max_csynth_calls=int(values["max_csynth_calls"]),
+            max_cosim_calls=int(values["max_cosim_calls"]),
             max_tokens=None,
             max_cost_usd=None,
             max_wall_time_s=float(values["max_wall_time_s"]),
@@ -356,6 +358,7 @@ DEFAULT_SOURCE_RUN_BUDGET_PROFILE = RunBudgetProfile(
         max_compile_calls=48,
         max_csim_calls=32,
         max_csynth_calls=16,
+        max_cosim_calls=16,
         max_tokens=None,
         max_cost_usd=None,
         max_wall_time_s=7200.0,
@@ -366,6 +369,7 @@ DEFAULT_SOURCE_RUN_BUDGET_PROFILE = RunBudgetProfile(
         max_compile_calls=192,
         max_csim_calls=128,
         max_csynth_calls=64,
+        max_cosim_calls=64,
         max_tokens=None,
         max_cost_usd=None,
         max_wall_time_s=14400.0,

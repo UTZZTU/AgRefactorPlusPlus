@@ -18,7 +18,7 @@ from agrefactor.runtime.execution_identity import canonical_json_sha256
 
 CACHE_SCHEMA_VERSION = 1
 VALIDATION_PIPELINE_VERSION = (
-    "prestage4-native-vitis-csim-v1"
+    "prestage4-public-rtl-cosim-v1"
 )
 VALIDATION_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")

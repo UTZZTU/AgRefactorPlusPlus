@@ -30,7 +30,7 @@ from .state import (
 
 QUALIFICATION_SCHEMA_VERSION = 1
 QUALIFICATION_PIPELINE_VERSION = (
-    "prestage4-native-vitis-csim-v1"
+    "prestage4-public-rtl-cosim-v1"
 )
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _SAFE_METADATA_FIELDS = frozenset(
@@ -68,6 +68,13 @@ _SAFE_METADATA_FIELDS = frozenset(
         "execution_exception_type",
         "operator_invocation_available",
         "target_resource_limits",
+        "cosim_policy",
+        "public_rtl_cosim",
+        "native_vitis_cosim",
+        "cosim_skipped",
+        "hidden_input_count",
+        "hidden_evidence_exposed",
+        "repair_allowed",
     }
 )
 
@@ -77,6 +84,7 @@ class QualificationStage(str, Enum):
     PREFLIGHT = "preflight"
     PUBLIC = "public"
     CSYNTH = "csynth"
+    PUBLIC_COSIM = "public_cosim"
     HIDDEN = "hidden"
     PPA = "ppa"
     FEASIBILITY = "feasibility"
@@ -499,6 +507,7 @@ class CandidateQualificationResult:
                     QualificationStage.SOURCE,
                     QualificationStage.PREFLIGHT,
                     QualificationStage.PUBLIC,
+                    QualificationStage.PUBLIC_COSIM,
                     QualificationStage.HIDDEN,
                 }
             },
@@ -544,6 +553,7 @@ class Stage3QualificationOrchestrator:
                 QualificationStage.PREFLIGHT,
                 QualificationStage.PUBLIC,
                 QualificationStage.CSYNTH,
+                QualificationStage.PUBLIC_COSIM,
                 QualificationStage.HIDDEN,
             }:
                 raise ValueError(f"handler is not valid for stage {stage.value}")
@@ -629,6 +639,11 @@ class Stage3QualificationOrchestrator:
             ),
             QualificationStage.CSYNTH,
             *(
+                [QualificationStage.PUBLIC_COSIM]
+                if request.cache_identity.public_suites
+                else []
+            ),
+            *(
                 [QualificationStage.HIDDEN]
                 if request.cache_identity.hidden_suites
                 else []
@@ -654,6 +669,7 @@ class Stage3QualificationOrchestrator:
                 if stage in {
                     QualificationStage.PREFLIGHT,
                     QualificationStage.PUBLIC,
+                    QualificationStage.PUBLIC_COSIM,
                     QualificationStage.HIDDEN,
                 }:
                     correctness = False
