@@ -83,6 +83,20 @@ _JSON_FENCE_RE = re.compile(r"^```[ \t]*json[ \t]*\r?\n(?P<body>.*)```$", re.DOT
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
+def _provider_error_reason_codes(error: BaseException) -> tuple[str, ...]:
+    raw = getattr(error, "reason_codes", ())
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    values = tuple(raw)
+    if not all(
+        isinstance(code, str)
+        and re.fullmatch(r"[a-z][a-z0-9_]*", code)
+        for code in values
+    ):
+        return ()
+    return values
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -507,6 +521,7 @@ class _StructuralModelEndpoint:
                 response=response,
                 response_valid=False,
                 error_code=type(exc).__name__,
+                error_reason_codes=_provider_error_reason_codes(exc),
             )
             raise
 

@@ -206,6 +206,12 @@ def build_product_summary(
     }
     if _public_cosim_evidence_present(suites):
         validation["public_cosim"] = public_cosim_status
+    optimizer = _optimizer_summary(
+        stage3_identity, artifact_root=root
+    )
+    reason_code = (
+        None if accepted else _optimizer_reason_code(optimizer)
+    )
     payload = {
         "schema_version": PRODUCT_RUN_SUMMARY_SCHEMA_VERSION,
         "status": status,
@@ -216,6 +222,7 @@ def build_product_summary(
         "repairs": repairs,
         "failed_stage": failed_stage,
         "reason": None if accepted or phase is None else phase.summary,
+        "reason_code": reason_code,
         "artifacts": {
             "root": str(root),
             "details": str(root / "full_result.json"),
@@ -232,7 +239,7 @@ def build_product_summary(
             "cost_estimation_quality", "unavailable"
         ),
         "execution_identity": _safe_execution_identity(identity),
-        "optimizer": _optimizer_summary(stage3_identity, artifact_root=root),
+        "optimizer": optimizer,
         "phases": phases,
     }
     _assert_summary_safe(payload)
@@ -695,7 +702,25 @@ def _optimizer_decision_event(
             "search_interrupted": metadata_map.get("search_interrupted"),
             "interruption_stage": metadata_map.get("interruption_stage"),
             "error_type_or_code": metadata_map.get("error_type_or_code"),
-            "preserved_candidate_id": metadata_map.get("preserved_candidate_id"),
+            "provider_reason_codes": metadata_map.get(
+                "provider_reason_codes", []
+            ),
+            "provider_diagnostics": metadata_map.get(
+                "provider_diagnostics", {}
+            ),
+            "retry_attempted": metadata_map.get("retry_attempted", False),
+            "retry_count": metadata_map.get("retry_count", 0),
+            "failed_attempt": metadata_map.get("failed_attempt"),
+            "retry_attempt": metadata_map.get("retry_attempt"),
+            "retry_max_attempts": metadata_map.get(
+                "retry_max_attempts", 2
+            ),
+            "same_request": metadata_map.get("same_request"),
+            "retry_launched": metadata_map.get("retry_launched"),
+            "retry_outcome": metadata_map.get("retry_outcome"),
+            "preserved_candidate_id": metadata_map.get(
+                "preserved_candidate_id"
+            ),
             "best_correct_candidate_id": metadata_map.get(
                 "best_correct_candidate_id"
             ),
@@ -704,6 +729,55 @@ def _optimizer_decision_event(
             ),
         }
     return selected
+
+
+def _optimizer_response_retry_event(root: Path) -> dict[str, Any] | None:
+    path = root / "optimize" / "optimizer" / "decisions.jsonl"
+    if not path.is_file() or path.is_symlink():
+        return None
+    retry_events = {
+        "hypothesis_provider_response_retry_scheduled",
+        "hypothesis_provider_response_retry_succeeded",
+        "candidate_executor_response_retry_scheduled",
+        "candidate_executor_response_retry_succeeded",
+    }
+    selected: dict[str, Any] | None = None
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(value, Mapping):
+            continue
+        event = value.get("event")
+        if event not in retry_events:
+            continue
+        metadata = value.get("metadata")
+        metadata_map = metadata if isinstance(metadata, Mapping) else {}
+        selected = {
+            "event": event,
+            "action": value.get("action"),
+            "reason": value.get("reason"),
+            "error_type_or_code": metadata_map.get("error_type_or_code"),
+            "provider_reason_codes": metadata_map.get(
+                "provider_reason_codes", []
+            ),
+            "provider_diagnostics": metadata_map.get(
+                "provider_diagnostics", {}
+            ),
+            "retry_attempted": True,
+            "retry_count": metadata_map.get("retry_count", 1),
+            "failed_attempt": metadata_map.get("failed_attempt", 1),
+            "retry_attempt": metadata_map.get("retry_attempt", 2),
+            "retry_max_attempts": metadata_map.get(
+                "retry_max_attempts", 2
+            ),
+            "same_request": metadata_map.get("same_request"),
+            "retry_launched": metadata_map.get("retry_launched"),
+            "retry_outcome": metadata_map.get("retry_outcome"),
+        }
+    return selected
+
 
 
 def _optimizer_summary(
@@ -725,6 +799,9 @@ def _optimizer_summary(
         "executed_candidate_count": state_map.get("executed_candidate_count"),
         "final_candidate_sha256": final_map.get("sha256"),
         "identity_sha256": stage3_identity.get("identity_sha256"),
+        "response_retry": (
+            None if root is None else _optimizer_response_retry_event(root)
+        ),
         "search_interruption": (
             None
             if root is None
@@ -739,6 +816,25 @@ def _optimizer_summary(
             else _optimizer_decision_event(root, "optimizer_error")
         ),
     }
+
+
+def _optimizer_reason_code(
+    optimizer: Mapping[str, Any] | None,
+) -> str | None:
+    if not isinstance(optimizer, Mapping):
+        return None
+    terminal = optimizer.get("terminal_error")
+    if not isinstance(terminal, Mapping):
+        return None
+    codes = terminal.get("provider_reason_codes")
+    if isinstance(codes, list):
+        for code in codes:
+            if isinstance(code, str) and code:
+                return code
+    reason = terminal.get("reason")
+    return reason if isinstance(reason, str) and reason else None
+
+
 
 
 

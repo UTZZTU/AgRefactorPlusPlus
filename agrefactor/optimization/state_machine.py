@@ -12,6 +12,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
+import re
 from typing import Any
 
 from agrefactor.runtime.budget import BudgetExceededError, BudgetManager
@@ -330,6 +331,7 @@ class DeterministicOptimizerStateMachine:
             "hypothesis_provider",
         ):
             return
+        provider_invocation_accounted = False
         try:
             response = self._provider.propose(request)
             if not isinstance(response, (list, tuple)):
@@ -356,24 +358,106 @@ class DeterministicOptimizerStateMachine:
             self._advance_level("hypothesis_generation_abstained")
             return
         except Exception as exc:  # noqa: BLE001 - provider boundary is explicit.
-            # The invocation was launched, so simulated/physical usage is
-            # consumed even when the provider boundary raises.
             self._consume_invocation(self._provider.budget_increment)
             self._counters = self._counters.increment(provider_calls=1)
-            if not self._preserve_best_after_search_interruption(
-                "hypothesis_provider_error",
-                type(exc).__name__,
-            ):
-                self._terminal_error(
+            evidence = self._provider_response_error_evidence(exc)
+            if self._provider_response_error_retryable(evidence):
+                if not self._preflight_invocation(
+                    self._provider.budget_increment,
+                    "hypothesis_provider_retry",
+                ):
+                    return
+                self._record_response_retry(
+                    boundary="hypothesis_provider",
+                    evidence=evidence,
+                )
+                try:
+                    response = self._provider.propose(request)
+                    if not isinstance(response, (list, tuple)):
+                        raise TypeError("provider must return a list or tuple")
+                    considered = tuple(response[: limits.hypotheses_per_round])
+                except HypothesisGenerationAbstained as retry_exc:
+                    self._consume_invocation(self._provider.budget_increment)
+                    self._counters = self._counters.increment(
+                        provider_calls=1,
+                        hypothesis_generation_abstentions=1,
+                    )
+                    self._record_decision(
+                        event="hypothesis_generation_abstained",
+                        action="advance_level_without_hypothesis",
+                        reason=retry_exc.reason_code,
+                        metadata={
+                            "error_code": retry_exc.error_code,
+                            "detail_codes": list(retry_exc.detail_codes),
+                            "best_correct_candidate_id": (
+                                self._state.best_correct_candidate_id
+                            ),
+                            "automatic_retry": True,
+                            "retry_attempt": 2,
+                            "hypothesis_created": False,
+                        },
+                    )
+                    self._advance_level("hypothesis_generation_abstained")
+                    return
+                except Exception as retry_exc:  # noqa: BLE001
+                    self._consume_invocation(self._provider.budget_increment)
+                    self._counters = self._counters.increment(provider_calls=1)
+                    retry_evidence = self._provider_response_error_evidence(
+                        retry_exc
+                    )
+                    retry_evidence.update(
+                        {
+                            "retry_attempted": True,
+                            "retry_count": 1,
+                            "retry_max_attempts": 2,
+                        }
+                    )
+                    if not self._preserve_best_after_search_interruption(
+                        "hypothesis_provider_error",
+                        type(retry_exc).__name__,
+                        error_metadata=retry_evidence,
+                    ):
+                        self._terminal_error(
+                            "hypothesis_provider_error",
+                            type(retry_exc).__name__,
+                            error_metadata=retry_evidence,
+                        )
+                    return
+                self._consume_invocation(self._provider.budget_increment)
+                self._counters = self._counters.increment(
+                    provider_calls=1,
+                    proposed_hypotheses=len(considered),
+                )
+                provider_invocation_accounted = True
+                self._record_response_retry_succeeded(
+                    boundary="hypothesis_provider",
+                    evidence=evidence,
+                )
+            else:
+                evidence.update(
+                    {
+                        "retry_attempted": False,
+                        "retry_count": 0,
+                        "retry_max_attempts": 2,
+                    }
+                )
+                if not self._preserve_best_after_search_interruption(
                     "hypothesis_provider_error",
                     type(exc).__name__,
-                )
-            return
-        self._consume_invocation(self._provider.budget_increment)
-        self._counters = self._counters.increment(
-            provider_calls=1,
-            proposed_hypotheses=len(considered),
-        )
+                    error_metadata=evidence,
+                ):
+                    self._terminal_error(
+                        "hypothesis_provider_error",
+                        type(exc).__name__,
+                        error_metadata=evidence,
+                    )
+                return
+        if not provider_invocation_accounted:
+            self._consume_invocation(self._provider.budget_increment)
+            self._counters = self._counters.increment(
+                provider_calls=1,
+                proposed_hypotheses=len(considered),
+            )
 
         valid, invalid_reasons = self._validate_hypotheses(
             considered,
@@ -447,6 +531,7 @@ class DeterministicOptimizerStateMachine:
             "candidate_executor",
         ):
             return
+        executor_invocation_accounted = False
         parent_source = self._read_candidate_source(parent)
         request = CandidateExecutionRequest(
             run_id=self._state.run_id,
@@ -489,20 +574,109 @@ class DeterministicOptimizerStateMachine:
         except Exception as exc:  # noqa: BLE001 - executor boundary is explicit.
             self._consume_invocation(self._executor.budget_increment)
             self._counters = self._counters.increment(executor_calls=1)
-            if not self._preserve_best_after_search_interruption(
-                "candidate_executor_error",
-                type(exc).__name__,
-                hypothesis_id=hypothesis.hypothesis_id,
-            ):
-                self._terminal_error(
+            evidence = self._provider_response_error_evidence(exc)
+            if self._provider_response_error_retryable(evidence):
+                if not self._preflight_invocation(
+                    self._executor.budget_increment,
+                    "candidate_executor_retry",
+                ):
+                    return
+                self._record_response_retry(
+                    boundary="candidate_executor",
+                    evidence=evidence,
+                    hypothesis_id=hypothesis.hypothesis_id,
+                )
+                try:
+                    execution = self._executor.execute(request)
+                    if not isinstance(execution, CandidateExecutionResult):
+                        raise TypeError(
+                            "executor returned an invalid result type"
+                        )
+                except CandidateGenerationAbstained as retry_exc:
+                    self._consume_invocation(self._executor.budget_increment)
+                    self._counters = self._counters.increment(
+                        executor_calls=1,
+                        candidate_generation_abstentions=1,
+                    )
+                    self._record_decision(
+                        event="candidate_generation_abstained",
+                        action="advance_level_without_candidate",
+                        reason=retry_exc.reason_code,
+                        hypothesis_id=hypothesis.hypothesis_id,
+                        metadata={
+                            "candidate_id_reserved_but_not_created": candidate_id,
+                            "error_code": retry_exc.error_code,
+                            "detail_codes": list(retry_exc.detail_codes),
+                            "best_correct_candidate_id": (
+                                self._state.best_correct_candidate_id
+                            ),
+                            "automatic_retry": True,
+                            "retry_attempt": 2,
+                            "candidate_created": False,
+                            "qualification_started": False,
+                        },
+                    )
+                    self._advance_level("candidate_generation_abstained")
+                    return
+                except Exception as retry_exc:  # noqa: BLE001
+                    self._consume_invocation(self._executor.budget_increment)
+                    self._counters = self._counters.increment(executor_calls=1)
+                    retry_evidence = self._provider_response_error_evidence(
+                        retry_exc
+                    )
+                    retry_evidence.update(
+                        {
+                            "retry_attempted": True,
+                            "retry_count": 1,
+                            "retry_max_attempts": 2,
+                        }
+                    )
+                    if not self._preserve_best_after_search_interruption(
+                        "candidate_executor_error",
+                        type(retry_exc).__name__,
+                        hypothesis_id=hypothesis.hypothesis_id,
+                        error_metadata=retry_evidence,
+                    ):
+                        self._terminal_error(
+                            "candidate_executor_error",
+                            type(retry_exc).__name__,
+                            hypothesis_id=hypothesis.hypothesis_id,
+                            error_metadata=retry_evidence,
+                        )
+                    return
+                self._consume_invocation(self._executor.budget_increment)
+                self._counters = self._counters.increment(executor_calls=1)
+                executor_invocation_accounted = True
+                self._record_response_retry_succeeded(
+                    boundary="candidate_executor",
+                    evidence=evidence,
+                    hypothesis_id=hypothesis.hypothesis_id,
+                )
+            else:
+                evidence.update(
+                    {
+                        "retry_attempted": False,
+                        "retry_count": 0,
+                        "retry_max_attempts": 2,
+                    }
+                )
+                if not self._preserve_best_after_search_interruption(
                     "candidate_executor_error",
                     type(exc).__name__,
                     hypothesis_id=hypothesis.hypothesis_id,
-                )
-            return
+                    error_metadata=evidence,
+                ):
+                    self._terminal_error(
+                        "candidate_executor_error",
+                        type(exc).__name__,
+                        hypothesis_id=hypothesis.hypothesis_id,
+                        error_metadata=evidence,
+                    )
+                return
 
-        self._consume_invocation(self._executor.budget_increment)
-        self._counters = self._counters.increment(executor_calls=1)
+        if not executor_invocation_accounted:
+            self._consume_invocation(self._executor.budget_increment)
+            self._counters = self._counters.increment(executor_calls=1)
         budget_after = self._budget_snapshot()
         if execution.qualification.candidate_id != candidate_id:
             self._terminal_error(
@@ -872,6 +1046,131 @@ class DeterministicOptimizerStateMachine:
             return
         self._budget.consume(**increment.to_kwargs())
 
+    def _provider_response_error_evidence(
+        self,
+        error: BaseException,
+    ) -> dict[str, Any]:
+        raw_codes = getattr(error, "reason_codes", ())
+        codes: tuple[str, ...] = ()
+        if isinstance(raw_codes, (list, tuple)):
+            values = tuple(raw_codes)
+            if all(
+                isinstance(code, str)
+                and re.fullmatch(r"[a-z][a-z0-9_]*", code)
+                for code in values
+            ):
+                codes = values
+        raw_diagnostics = getattr(error, "diagnostics", {})
+        diagnostics: dict[str, Any] = {}
+        allowed = {
+            "response_id",
+            "choices_count",
+            "message_present",
+            "content_present",
+            "content_chars",
+            "content_shape",
+            "reasoning_content_present",
+            "reasoning_content_chars",
+            "finish_reason",
+            "usage_present",
+            "usage_field_names",
+        }
+        if isinstance(raw_diagnostics, Mapping):
+            for key, value in raw_diagnostics.items():
+                if key not in allowed:
+                    continue
+                if value is None or isinstance(value, (bool, int, str)):
+                    diagnostics[str(key)] = value
+                elif isinstance(value, (list, tuple)) and all(
+                    isinstance(item, str) for item in value
+                ):
+                    diagnostics[str(key)] = list(value)
+        return {
+            "error_type_or_code": type(error).__name__,
+            "provider_reason_codes": list(codes),
+            "provider_diagnostics": diagnostics,
+        }
+
+    def _provider_response_error_retryable(
+        self,
+        evidence: Mapping[str, Any],
+    ) -> bool:
+        codes = evidence.get("provider_reason_codes")
+        if not isinstance(codes, list) or not codes:
+            return False
+        retryable = {
+            "provider_no_choices",
+            "provider_missing_message",
+            "provider_empty_final_content",
+            "provider_finish_length",
+            "provider_insufficient_system_resource",
+        }
+        return all(
+            isinstance(code, str) and code in retryable for code in codes
+        )
+
+    def _record_response_retry(
+        self,
+        *,
+        boundary: str,
+        evidence: Mapping[str, Any],
+        hypothesis_id: str | None = None,
+    ) -> None:
+        codes = evidence.get("provider_reason_codes")
+        reason = (
+            codes[0]
+            if isinstance(codes, list) and codes
+            else "provider_response_invalid"
+        )
+        self._record_decision(
+            event=f"{boundary}_response_retry_scheduled",
+            action="retry_same_request_once",
+            reason=reason,
+            hypothesis_id=hypothesis_id,
+            metadata={
+                **dict(evidence),
+                "automatic_retry": True,
+                "failed_attempt": 1,
+                "retry_attempt": 2,
+                "retry_count": 1,
+                "retry_max_attempts": 2,
+                "same_request": True,
+                "retry_launched": True,
+                "retry_outcome": "running",
+            },
+        )
+
+    def _record_response_retry_succeeded(
+        self,
+        *,
+        boundary: str,
+        evidence: Mapping[str, Any],
+        hypothesis_id: str | None = None,
+    ) -> None:
+        codes = evidence.get("provider_reason_codes")
+        reason = (
+            codes[0]
+            if isinstance(codes, list) and codes
+            else "provider_response_invalid"
+        )
+        self._record_decision(
+            event=f"{boundary}_response_retry_succeeded",
+            action="continue_after_retry",
+            reason=reason,
+            hypothesis_id=hypothesis_id,
+            metadata={
+                **dict(evidence),
+                "automatic_retry": True,
+                "failed_attempt": 1,
+                "retry_attempt": 2,
+                "retry_count": 1,
+                "retry_max_attempts": 2,
+                "same_request": True,
+                "retry_launched": True,
+                "retry_outcome": "succeeded",
+            },
+        )
+
     def _can_preserve_best_after_search_interruption(self) -> bool:
         best_correct_id = self._state.best_correct_candidate_id
         best_ppa_id = self._state.best_ppa_candidate_id
@@ -905,6 +1204,7 @@ class DeterministicOptimizerStateMachine:
         detail: str,
         *,
         hypothesis_id: str | None = None,
+        error_metadata: Mapping[str, Any] | None = None,
     ) -> bool:
         if not self._can_preserve_best_after_search_interruption():
             return False
@@ -913,6 +1213,7 @@ class DeterministicOptimizerStateMachine:
             return False
         preserved = self._state.best_ppa_candidate_id
         assert preserved is not None
+        metadata = {} if error_metadata is None else dict(error_metadata)
         self._state = replace(
             self._state,
             terminal_status=terminal,
@@ -929,13 +1230,17 @@ class DeterministicOptimizerStateMachine:
                 "interruption_stage": "optimize",
                 "error_type_or_code": detail,
                 "preserved_candidate_id": preserved,
-                "best_correct_candidate_id": self._state.best_correct_candidate_id,
+                "best_correct_candidate_id": (
+                    self._state.best_correct_candidate_id
+                ),
                 "best_ppa_candidate_id": self._state.best_ppa_candidate_id,
-                "automatic_retry": False,
+                "automatic_retry": bool(metadata.get("retry_attempted")),
                 "provider_or_executor_boundary": True,
+                **metadata,
             },
         )
         return True
+
 
     def _terminal_error(
         self,
@@ -943,6 +1248,7 @@ class DeterministicOptimizerStateMachine:
         detail: str,
         *,
         hypothesis_id: str | None = None,
+        error_metadata: Mapping[str, Any] | None = None,
     ) -> None:
         self._state = replace(
             self._state,
@@ -953,13 +1259,15 @@ class DeterministicOptimizerStateMachine:
             ),
         )
         self._checkpoint()
+        metadata = {} if error_metadata is None else dict(error_metadata)
         self._record_decision(
             event="optimizer_error",
             action="stop_error",
             reason=reason,
             hypothesis_id=hypothesis_id,
-            metadata={"error_type_or_code": detail},
+            metadata={"error_type_or_code": detail, **metadata},
         )
+
 
     def _checkpoint(self) -> None:
         snapshot = self._writer.write_checkpoint(self._state, self._candidates)
