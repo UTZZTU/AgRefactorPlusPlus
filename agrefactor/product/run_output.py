@@ -166,6 +166,7 @@ def build_product_summary(
     suites = identity.get("suites", [])
     public_status = _suite_status(suites, "public")
     hidden_status = _suite_status(suites, "hidden")
+    public_cosim_status = _public_cosim_status(suites)
     if accepted and phase is not None and phase.phase is RunPhase.OPTIMIZE:
         public_status = "passed"
         hidden_status = "passed"
@@ -189,22 +190,25 @@ def build_product_summary(
         }
         for item in result.phases
     ]
+    validation = {
+        "csynth": _csynth_status(
+            accepted=accepted,
+            failed_stage=failed_stage,
+            public_status=public_status,
+            hidden_status=hidden_status,
+        ),
+        "public": public_status,
+        "hidden": hidden_status,
+    }
+    if _public_cosim_evidence_present(suites):
+        validation["public_cosim"] = public_cosim_status
     payload = {
         "schema_version": PRODUCT_RUN_SUMMARY_SCHEMA_VERSION,
         "status": status,
         "mode": result.mode.value,
         "kernel": _identity_top(identity),
         "candidate": str(candidate_path) if candidate_path.is_file() else None,
-        "validation": {
-            "csynth": _csynth_status(
-                accepted=accepted,
-                failed_stage=failed_stage,
-                public_status=public_status,
-                hidden_status=hidden_status,
-            ),
-            "public": public_status,
-            "hidden": hidden_status,
-        },
+        "validation": validation,
         "repairs": repairs,
         "failed_stage": failed_stage,
         "reason": None if accepted or phase is None else phase.summary,
@@ -386,8 +390,15 @@ def _render_human(
             [
                 f"CSYNTH: {validation.get('csynth', 'unknown')}",
                 f"Public tests: {validation.get('public', 'not_run')}",
-                f"Hidden tests: {validation.get('hidden', 'not_run')}",
             ]
+        )
+        if "public_cosim" in validation:
+            lines.append(
+                "Public RTL COSIM: "
+                + str(validation.get("public_cosim", "not_run"))
+            )
+        lines.append(
+            f"Hidden tests: {validation.get('hidden', 'not_run')}"
         )
     repairs = summary.get("repairs", {})
     if isinstance(repairs, Mapping):
@@ -526,11 +537,69 @@ def _summary_pricing(
 def _suite_status(suites: object, split: str) -> str:
     if not isinstance(suites, list):
         return "not_run"
-    selected = [item for item in suites if isinstance(item, Mapping) and item.get("split") == split]
+    selected = [
+        item
+        for item in suites
+        if isinstance(item, Mapping) and item.get("split") == split
+    ]
     if not selected:
         return "not_run"
-    statuses = [str(item.get("evaluation_status", "unknown")) for item in selected]
-    return "passed" if all(value == "passed" for value in statuses) else "failed"
+    statuses = [
+        item.get("evaluation_status")
+        for item in selected
+        if isinstance(item.get("evaluation_status"), str)
+        and str(item.get("evaluation_status")).strip()
+    ]
+    if not statuses:
+        return "not_run"
+    return (
+        "passed"
+        if len(statuses) == len(selected)
+        and all(value == "passed" for value in statuses)
+        else "failed"
+    )
+
+
+def _public_cosim_evidence_present(suites: object) -> bool:
+    if not isinstance(suites, list):
+        return False
+    return any(
+        isinstance(item, Mapping)
+        and item.get("split") == "public"
+        and (
+            "public_rtl_cosim_required" in item
+            or "public_rtl_cosim_status" in item
+        )
+        for item in suites
+    )
+
+
+def _public_cosim_status(suites: object) -> str:
+    if not isinstance(suites, list):
+        return "not_run"
+    selected = [
+        item
+        for item in suites
+        if isinstance(item, Mapping)
+        and item.get("split") == "public"
+        and item.get("public_rtl_cosim_required") is True
+    ]
+    if not selected:
+        return "not_run"
+    statuses = [
+        item.get("public_rtl_cosim_status")
+        for item in selected
+        if isinstance(item.get("public_rtl_cosim_status"), str)
+        and str(item.get("public_rtl_cosim_status")).strip()
+    ]
+    if not statuses:
+        return "not_run"
+    return (
+        "passed"
+        if len(statuses) == len(selected)
+        and all(value == "passed" for value in statuses)
+        else "failed"
+    )
 
 
 def _csynth_status(
@@ -553,6 +622,13 @@ def _failed_stage(
     exhaustion = _mapping_path(identity, "budget", "hard_budget_exhaustion")
     if isinstance(exhaustion, Mapping) and exhaustion.get("stage"):
         return str(exhaustion["stage"])
+    suites = identity.get("suites", [])
+    if _public_cosim_status(suites) == "failed":
+        return "public_cosim"
+    if _suite_status(suites, "public") == "failed":
+        return "public"
+    if _suite_status(suites, "hidden") == "failed":
+        return "hidden"
     state = phase_metadata.get("last_validation_state")
     if isinstance(state, str) and state:
         return state

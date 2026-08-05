@@ -7,6 +7,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 from typing import Any
 
@@ -159,6 +160,116 @@ def _cosim_argv_value(path: Path) -> str:
         )
     return value
 
+_WRAPPED_MAIN_NAME = "agrefactor_public_testbench_main"
+_MAIN_DEFINITION_RE = re.compile(
+    r"(?m)^(?P<indent>[ \t]*)(?P<return_type>int|auto)[ \t]+"
+    r"main[ \t]*\((?P<params>[^)]*)\)"
+    r"(?P<suffix>[ \t]*(?:->[ \t]*int[ \t]*)?\{)"
+)
+
+
+def _main_call_contract(parameters: str) -> tuple[str, str, str]:
+    cleaned = re.sub(r"\s+", " ", parameters.strip())
+    if cleaned in {"", "void"}:
+        return (
+            "no_args",
+            f"int {_WRAPPED_MAIN_NAME}();",
+            f"{_WRAPPED_MAIN_NAME}()",
+        )
+    parts = [part.strip() for part in cleaned.split(",")]
+    if (
+        len(parts) == 2
+        and re.search(r"\bint\b", parts[0])
+        and re.search(r"\bchar\b", parts[1])
+        and ("*" in parts[1] or "[" in parts[1])
+    ):
+        return (
+            "argc_argv",
+            f"int {_WRAPPED_MAIN_NAME}(int, char **);",
+            f"{_WRAPPED_MAIN_NAME}(argc, argv)",
+        )
+    raise ValueError(
+        "Public Testbench main signature is unsupported by the deterministic "
+        "COSIM typed-outcome adapter; expected main(), main(void), or "
+        "main(int, char **)."
+    )
+
+
+def _build_typed_outcome_adapter(
+    testbench_code: str,
+) -> tuple[str, str, dict[str, Any]]:
+    if not isinstance(testbench_code, str) or not testbench_code.strip():
+        raise ValueError("testbench source must not be empty")
+    if _WRAPPED_MAIN_NAME in testbench_code:
+        raise ValueError(
+            "Public Testbench collides with the reserved wrapper symbol"
+        )
+    matches = list(_MAIN_DEFINITION_RE.finditer(testbench_code))
+    if len(matches) != 1:
+        raise ValueError(
+            "Public Testbench must contain exactly one supported main "
+            f"definition for COSIM adaptation; found {len(matches)}"
+        )
+    match = matches[0]
+    main_kind, declaration, call = _main_call_contract(
+        match.group("params")
+    )
+    replacement = (
+        f"{match.group('indent')}{match.group('return_type')} "
+        f"{_WRAPPED_MAIN_NAME}({match.group('params')})"
+        f"{match.group('suffix')}"
+    )
+    instrumented = (
+        testbench_code[: match.start()]
+        + replacement
+        + testbench_code[match.end() :]
+    )
+    wrapper = (
+        "#include <fstream>\n\n"
+        + declaration
+        + "\n\n"
+        + "int main(int argc, char **argv) {\n"
+        + "    if (\n"
+        + "        argc != 2\n"
+        + "        || argv == nullptr\n"
+        + "        || argv[1] == nullptr\n"
+        + "        || argv[1][0] == '\\0'\n"
+        + "    ) {\n"
+        + "        return 90;\n"
+        + "    }\n"
+        + f"    const int testbench_status = {call};\n"
+        + "    if (testbench_status != 0) {\n"
+        + "        return testbench_status;\n"
+        + "    }\n"
+        + "    std::ofstream outcome(\n"
+        + "        argv[1],\n"
+        + "        std::ios::out | std::ios::trunc\n"
+        + "    );\n"
+        + "    if (!outcome.is_open()) {\n"
+        + "        return 91;\n"
+        + "    }\n"
+        + "    outcome\n"
+        + "        << \"{\\\"schema_version\\\":1,\\\"status\\\":\\\"passed\\\",\"\n"
+        + "        << \"\\\"failure_kind\\\":\\\"\\\",\\\"failure_owner\\\":\\\"none\\\",\"\n"
+        + "        << \"\\\"reason_code\\\":\\\"cosim_passed\\\"}\\n\";\n"
+        + "    outcome.flush();\n"
+        + "    if (!outcome.good()) {\n"
+        + "        return 92;\n"
+        + "    }\n"
+        + "    return 0;\n"
+        + "}\n"
+    )
+    return instrumented, wrapper, {
+        "schema_version": 1,
+        "adapter": "deterministic_wrapper_v1",
+        "wrapped_symbol": _WRAPPED_MAIN_NAME,
+        "main_contract": main_kind,
+        "pass_evidence_source": "wrapped_testbench_returncode_zero",
+        "failure_owner_inferred": False,
+        "nonzero_testbench_status_writes_typed_pass": False,
+        "hidden_input_count": 0,
+    }
+
 def _normalize_version(value: str | None) -> str | None:
     if value is None:
         return None
@@ -175,19 +286,35 @@ def _write_sources(
     candidate_code: str,
     testbench_code: str,
 ) -> dict[str, Path]:
+    instrumented, wrapper, adapter = _build_typed_outcome_adapter(
+        testbench_code
+    )
     files = {
         "candidate": root / "candidate.cpp",
         "reference": root / "reference.cpp",
+        "testbench_original": root / "public_testbench_original.cpp",
         "testbench": root / "public_testbench.cpp",
+        "wrapper": root / "agrefactor_cosim_wrapper.cpp",
     }
     for role, code in (
         ("candidate", candidate_code),
         ("reference", original_code),
-        ("testbench", testbench_code),
+        ("testbench_original", testbench_code),
+        ("testbench", instrumented),
+        ("wrapper", wrapper),
     ):
         if not isinstance(code, str) or not code.strip():
             raise ValueError(f"{role} source must not be empty")
         _atomic_text(files[role], code.rstrip() + "\n")
+    adapter_path = root / "typed_outcome_adapter.json"
+    adapter["original_testbench_sha256"] = _file_sha256(
+        files["testbench_original"]
+    )
+    adapter["instrumented_testbench_sha256"] = _file_sha256(
+        files["testbench"]
+    )
+    adapter["wrapper_sha256"] = _file_sha256(files["wrapper"])
+    _atomic_json(adapter_path, adapter)
     return files
 
 
@@ -221,9 +348,23 @@ def make_vitis_cosim_tcl(
         raise ValueError("COSIM requires toolchain='vitis_hls'")
     if profile.device is None or profile.clock_period_ns is None:
         raise ValueError("COSIM requires a concrete device and clock")
-    expected_roles = {"candidate", "reference", "testbench"}
-    if set(files) != expected_roles:
-        raise ValueError("files must contain candidate/reference/testbench")
+    required_roles = {"candidate", "reference", "testbench"}
+    adapter_roles = {"testbench_original", "wrapper"}
+    observed_roles = set(files)
+    if not required_roles.issubset(observed_roles):
+        raise ValueError(
+            "files must contain candidate/reference/testbench"
+        )
+    unexpected_roles = observed_roles - required_roles - adapter_roles
+    if unexpected_roles:
+        raise ValueError(
+            "files contain unexpected COSIM roles: "
+            + ", ".join(sorted(unexpected_roles))
+        )
+    if ("wrapper" in files) != ("testbench_original" in files):
+        raise ValueError(
+            "deterministic COSIM wrapper roles must be supplied together"
+        )
 
     status_path = root / "cosim_command_status.json"
     typed_outcome_path = root / "agrefactor_cosim_outcome.json"
@@ -254,6 +395,17 @@ def make_vitis_cosim_tcl(
         add_line(files["candidate"], testbench=False, flags=compile_flags),
         add_line(files["reference"], testbench=True, flags=testbench_flags),
         add_line(files["testbench"], testbench=True, flags=testbench_flags),
+        *(
+            [
+                add_line(
+                    files["wrapper"],
+                    testbench=True,
+                    flags=testbench_flags,
+                )
+            ]
+            if "wrapper" in files
+            else []
+        ),
         "open_solution -reset -flow_target vitis solution",
         f"set_part {_tcl_quote(profile.device, 'target device')}",
         f"create_clock -period {profile.clock_period_ns} -name default",
@@ -470,6 +622,16 @@ def run_vitis_cosim(
         "execution_backend": "native_vitis",
         "native_vitis_cosim": True,
         "outcome_transport": "testbench_argv",
+        "typed_outcome_adapter": {
+            "kind": "deterministic_wrapper_v1",
+            "evidence_path": str(
+                root / "typed_outcome_adapter.json"
+            ),
+            "evidence_sha256": _file_sha256(
+                root / "typed_outcome_adapter.json"
+            ),
+            "failure_owner_inferred": False,
+        },
         "rtl_language": "verilog",
         "simulator": "xsim",
         "work_dir": str(root),
