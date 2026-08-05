@@ -209,9 +209,13 @@ def build_product_summary(
     optimizer = _optimizer_summary(
         stage3_identity, artifact_root=root
     )
-    reason_code = (
-        None if accepted else _optimizer_reason_code(optimizer)
+    failure_fields = _product_failure_fields(
+        identity,
+        failed_stage=failed_stage,
+        optimizer=optimizer,
+        accepted=accepted,
     )
+    reason_code = failure_fields["reason_code"]
     payload = {
         "schema_version": PRODUCT_RUN_SUMMARY_SCHEMA_VERSION,
         "status": status,
@@ -223,6 +227,9 @@ def build_product_summary(
         "failed_stage": failed_stage,
         "reason": None if accepted or phase is None else phase.summary,
         "reason_code": reason_code,
+        "failure_owner": failure_fields["failure_owner"],
+        "route_action": failure_fields["route_action"],
+        "review_required": failure_fields["review_required"],
         "artifacts": {
             "root": str(root),
             "details": str(root / "full_result.json"),
@@ -815,6 +822,165 @@ def _optimizer_summary(
             if root is None
             else _optimizer_decision_event(root, "optimizer_error")
         ),
+    }
+
+
+_SUCCESS_FAILURE_CODES = frozenset({
+    "accepted", "passed", "public_passed", "csynth_passed", "cosim_passed",
+    "public_cosim_passed", "hidden_passed", "validation_passed", "none", "ok",
+})
+_VALIDATION_FAILURE_STAGES = frozenset(
+    {"public", "public_csim", "csynth", "public_cosim", "hidden"}
+)
+
+
+def _safe_failure_code(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    value = value.strip().lower()
+    if not value or len(value) > 96 or not value[0].isalpha():
+        return None
+    allowed = set("abcdefghijklmnopqrstuvwxyz0123456789_-.:")
+    return value if all(character in allowed for character in value) else None
+
+
+def _typed_failure_records(
+    value: Any,
+    *,
+    scope: str | None = None,
+) -> Iterator[dict[str, Any]]:
+    if isinstance(value, Mapping):
+        explicit_stage = _safe_failure_code(value.get("failed_stage")) or _safe_failure_code(
+            value.get("stage")
+        )
+        local_scope = scope
+        suite = _safe_failure_code(value.get("suite_id")) or _safe_failure_code(
+            value.get("suite")
+        )
+        if suite in _VALIDATION_FAILURE_STAGES:
+            local_scope = suite
+        record = {
+            "scope": local_scope,
+            "stage": explicit_stage,
+            "blocking": value.get("blocking") is True,
+            "failure_kind": _safe_failure_code(value.get("failure_kind")),
+            "failure_owner": _safe_failure_code(value.get("failure_owner")),
+            "route_action": _safe_failure_code(value.get("route_action"))
+            or _safe_failure_code(value.get("action")),
+            "reason_code": _safe_failure_code(value.get("reason_code")),
+        }
+        if (
+            record["blocking"]
+            or any(
+                record[key] is not None
+                for key in (
+                    "stage", "failure_kind", "failure_owner", "route_action", "reason_code",
+                )
+            )
+        ):
+            yield record
+        for key, item in value.items():
+            key_code = _safe_failure_code(key)
+            child_scope = local_scope
+            if key_code in _VALIDATION_FAILURE_STAGES:
+                child_scope = key_code
+            yield from _typed_failure_records(item, scope=child_scope)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _typed_failure_records(item, scope=scope)
+
+
+def _one_non_success_failure_code(values: Iterator[str | None]) -> str | None:
+    selected = {
+        value
+        for value in values
+        if value is not None and value not in _SUCCESS_FAILURE_CODES
+    }
+    return next(iter(selected)) if len(selected) == 1 else None
+
+
+def _validation_failure_fields(
+    identity: Mapping[str, Any],
+    *,
+    failed_stage: str | None,
+) -> dict[str, Any] | None:
+    stage = _safe_failure_code(failed_stage)
+    if stage not in _VALIDATION_FAILURE_STAGES:
+        return None
+    records = list(_typed_failure_records(identity))
+    scoped = [
+        record
+        for record in records
+        if record.get("scope") == stage or record.get("stage") == stage
+    ]
+    blocking = [record for record in scoped if record.get("blocking")]
+    candidates = blocking or scoped
+    if not candidates:
+        candidates = [record for record in records if record.get("blocking")]
+    failure_kinds = {
+        record.get("failure_kind")
+        for record in candidates
+        if record.get("failure_kind") is not None
+        and record.get("failure_kind") not in _SUCCESS_FAILURE_CODES
+    }
+    if len(failure_kinds) == 1:
+        reason_code = next(iter(failure_kinds))
+    elif len(failure_kinds) > 1:
+        reason_code = None
+    else:
+        reason_code = _one_non_success_failure_code(
+            iter(record.get("reason_code") for record in candidates)
+        )
+    failure_owner = _one_non_success_failure_code(
+        iter(record.get("failure_owner") for record in candidates)
+    )
+    route_actions = {
+        record.get("route_action")
+        for record in candidates + records
+        if record.get("route_action") is not None
+    }
+    route_action = (
+        "review_unknown"
+        if "review_unknown" in route_actions
+        else _one_non_success_failure_code(iter(route_actions))
+    )
+    fallback_stage = "public" if stage == "public_csim" else stage
+    if reason_code is None:
+        reason_code = f"{fallback_stage}_validation_unknown"
+    return {
+        "reason_code": reason_code,
+        "failure_owner": failure_owner,
+        "route_action": route_action,
+        "review_required": (
+            route_action == "review_unknown"
+            or reason_code.endswith("_validation_unknown")
+            or failure_owner in {None, "testbench"}
+        ),
+    }
+
+
+def _product_failure_fields(
+    identity: Mapping[str, Any],
+    *,
+    failed_stage: str | None,
+    optimizer: Mapping[str, Any] | None,
+    accepted: bool,
+) -> dict[str, Any]:
+    if accepted:
+        return {
+            "reason_code": None,
+            "failure_owner": None,
+            "route_action": None,
+            "review_required": False,
+        }
+    validation = _validation_failure_fields(identity, failed_stage=failed_stage)
+    if validation is not None:
+        return validation
+    return {
+        "reason_code": _optimizer_reason_code(optimizer),
+        "failure_owner": None,
+        "route_action": None,
+        "review_required": False,
     }
 
 
