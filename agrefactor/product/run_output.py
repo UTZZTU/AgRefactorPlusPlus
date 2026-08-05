@@ -170,7 +170,11 @@ def build_product_summary(
     if accepted and phase is not None and phase.phase is RunPhase.OPTIMIZE:
         public_status = "passed"
         hidden_status = "passed"
-    failed_stage = None if accepted else _failed_stage(identity, phase_metadata)
+    failed_stage = (
+        None
+        if accepted
+        else _failed_stage(identity, phase_metadata, phase=phase)
+    )
     candidate_path = root / "optimize" / "final_candidate.cpp"
     if not candidate_path.is_file():
         candidate_path = root / "refactor" / "final_candidate.cpp"
@@ -228,7 +232,7 @@ def build_product_summary(
             "cost_estimation_quality", "unavailable"
         ),
         "execution_identity": _safe_execution_identity(identity),
-        "optimizer": _optimizer_summary(stage3_identity),
+        "optimizer": _optimizer_summary(stage3_identity, artifact_root=root),
         "phases": phases,
     }
     _assert_summary_safe(payload)
@@ -618,6 +622,8 @@ def _csynth_status(
 def _failed_stage(
     identity: Mapping[str, Any],
     phase_metadata: Mapping[str, Any],
+    *,
+    phase: object | None = None,
 ) -> str | None:
     exhaustion = _mapping_path(identity, "budget", "hard_budget_exhaustion")
     if isinstance(exhaustion, Mapping) and exhaustion.get("stage"):
@@ -632,7 +638,14 @@ def _failed_stage(
     state = phase_metadata.get("last_validation_state")
     if isinstance(state, str) and state:
         return state
-    return "refactor"
+    explicit = phase_metadata.get("failed_stage")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip()
+    phase_value = getattr(getattr(phase, "phase", None), "value", None)
+    if phase_value in {"refactor", "optimize"}:
+        return str(phase_value)
+    return "unknown"
+
 
 
 def _repair_limit(root: Path) -> int | None:
@@ -658,13 +671,53 @@ def _safe_execution_identity(identity: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _optimizer_summary(stage3_identity: Mapping[str, Any]) -> dict[str, Any] | None:
+def _optimizer_decision_event(
+    root: Path,
+    event: str,
+) -> dict[str, Any] | None:
+    path = root / "optimize" / "optimizer" / "decisions.jsonl"
+    if not path.is_file() or path.is_symlink():
+        return None
+    selected: dict[str, Any] | None = None
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(value, Mapping) or value.get("event") != event:
+            continue
+        metadata = value.get("metadata")
+        metadata_map = metadata if isinstance(metadata, Mapping) else {}
+        selected = {
+            "event": event,
+            "action": value.get("action"),
+            "reason": value.get("reason"),
+            "search_interrupted": metadata_map.get("search_interrupted"),
+            "interruption_stage": metadata_map.get("interruption_stage"),
+            "error_type_or_code": metadata_map.get("error_type_or_code"),
+            "preserved_candidate_id": metadata_map.get("preserved_candidate_id"),
+            "best_correct_candidate_id": metadata_map.get(
+                "best_correct_candidate_id"
+            ),
+            "best_ppa_candidate_id": metadata_map.get(
+                "best_ppa_candidate_id"
+            ),
+        }
+    return selected
+
+
+def _optimizer_summary(
+    stage3_identity: Mapping[str, Any],
+    *,
+    artifact_root: Path | None = None,
+) -> dict[str, Any] | None:
     if not isinstance(stage3_identity, Mapping) or not stage3_identity:
         return None
     final_candidate = stage3_identity.get("final_candidate")
     final_map = final_candidate if isinstance(final_candidate, Mapping) else {}
     state = stage3_identity.get("state")
     state_map = state if isinstance(state, Mapping) else {}
+    root = None if artifact_root is None else Path(artifact_root)
     return {
         "terminal_status": stage3_identity.get("terminal_status"),
         "best_correct_candidate_id": state_map.get("best_correct_candidate_id"),
@@ -672,7 +725,21 @@ def _optimizer_summary(stage3_identity: Mapping[str, Any]) -> dict[str, Any] | N
         "executed_candidate_count": state_map.get("executed_candidate_count"),
         "final_candidate_sha256": final_map.get("sha256"),
         "identity_sha256": stage3_identity.get("identity_sha256"),
+        "search_interruption": (
+            None
+            if root is None
+            else _optimizer_decision_event(
+                root,
+                "search_interrupted_with_best",
+            )
+        ),
+        "terminal_error": (
+            None
+            if root is None
+            else _optimizer_decision_event(root, "optimizer_error")
+        ),
     }
+
 
 
 def _read_safe_model_calls(artifact_root: Path) -> list[dict[str, Any]]:

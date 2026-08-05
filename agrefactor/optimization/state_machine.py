@@ -360,10 +360,14 @@ class DeterministicOptimizerStateMachine:
             # consumed even when the provider boundary raises.
             self._consume_invocation(self._provider.budget_increment)
             self._counters = self._counters.increment(provider_calls=1)
-            self._terminal_error(
+            if not self._preserve_best_after_search_interruption(
                 "hypothesis_provider_error",
                 type(exc).__name__,
-            )
+            ):
+                self._terminal_error(
+                    "hypothesis_provider_error",
+                    type(exc).__name__,
+                )
             return
         self._consume_invocation(self._provider.budget_increment)
         self._counters = self._counters.increment(
@@ -485,11 +489,16 @@ class DeterministicOptimizerStateMachine:
         except Exception as exc:  # noqa: BLE001 - executor boundary is explicit.
             self._consume_invocation(self._executor.budget_increment)
             self._counters = self._counters.increment(executor_calls=1)
-            self._terminal_error(
+            if not self._preserve_best_after_search_interruption(
                 "candidate_executor_error",
                 type(exc).__name__,
                 hypothesis_id=hypothesis.hypothesis_id,
-            )
+            ):
+                self._terminal_error(
+                    "candidate_executor_error",
+                    type(exc).__name__,
+                    hypothesis_id=hypothesis.hypothesis_id,
+                )
             return
 
         self._consume_invocation(self._executor.budget_increment)
@@ -862,6 +871,71 @@ class DeterministicOptimizerStateMachine:
         if increment.is_zero:
             return
         self._budget.consume(**increment.to_kwargs())
+
+    def _can_preserve_best_after_search_interruption(self) -> bool:
+        best_correct_id = self._state.best_correct_candidate_id
+        best_ppa_id = self._state.best_ppa_candidate_id
+        baseline_id = self._state.baseline_candidate_id
+        if (
+            best_correct_id is None
+            or best_ppa_id is None
+            or best_ppa_id == baseline_id
+            or best_correct_id != best_ppa_id
+            or self._state.current_candidate_id != best_correct_id
+        ):
+            return False
+        candidate = self._candidates.get(best_ppa_id)
+        if (
+            candidate is None
+            or candidate.status is not CandidateStatus.ACCEPTED
+            or not candidate.ppa
+        ):
+            return False
+        if any(not item.status.terminal for item in self._candidates.values()):
+            return False
+        try:
+            evidence = PpaEvidence.from_dict(candidate.ppa)
+        except Exception:
+            return False
+        return evidence.objective_feasible is True
+
+    def _preserve_best_after_search_interruption(
+        self,
+        reason: str,
+        detail: str,
+        *,
+        hypothesis_id: str | None = None,
+    ) -> bool:
+        if not self._can_preserve_best_after_search_interruption():
+            return False
+        terminal = self._completion_status()
+        if terminal is not OptimizerTerminalStatus.ACCEPTED_IMPROVED:
+            return False
+        preserved = self._state.best_ppa_candidate_id
+        assert preserved is not None
+        self._state = replace(
+            self._state,
+            terminal_status=terminal,
+            current_candidate_id=preserved,
+        )
+        self._checkpoint()
+        self._record_decision(
+            event="search_interrupted_with_best",
+            action="accept_best_so_far",
+            reason=reason,
+            hypothesis_id=hypothesis_id,
+            metadata={
+                "search_interrupted": True,
+                "interruption_stage": "optimize",
+                "error_type_or_code": detail,
+                "preserved_candidate_id": preserved,
+                "best_correct_candidate_id": self._state.best_correct_candidate_id,
+                "best_ppa_candidate_id": self._state.best_ppa_candidate_id,
+                "automatic_retry": False,
+                "provider_or_executor_boundary": True,
+            },
+        )
+        return True
 
     def _terminal_error(
         self,
