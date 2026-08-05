@@ -760,12 +760,28 @@ class HLSAgentLoader:
             )
         )
         call_evidence = None
+        transport_evidence = None
         if isinstance(merged_llm_config, dict):
             merged_llm_config, call_evidence = (
                 pop_internal_call_evidence(merged_llm_config)
             )
+            transport_evidence = merged_llm_config.pop(
+                '_agrefactor_legacy_transport_evidence',
+                None,
+            )
+            if (
+                transport_evidence is not None
+                and not isinstance(transport_evidence, Mapping)
+            ):
+                raise TypeError(
+                    'legacy AG2 transport evidence must be a mapping'
+                )
         if call_evidence is not None:
             config['_agrefactor_call_evidence'] = call_evidence
+        if transport_evidence is not None:
+            config['_agrefactor_legacy_transport_evidence'] = (
+                copy.deepcopy(dict(transport_evidence))
+            )
         if merged_llm_config is not None:
             config['llm_config'] = merged_llm_config
 
@@ -889,6 +905,7 @@ class HLSAgentLoader:
         self,
         agent: ConversableAgent,
         call_evidence=None,
+        transport_evidence=None,
     ) -> ConversableAgent:
         if getattr(agent, '_agrefactorpp_prompt_recorded_run', False):
             return agent
@@ -924,6 +941,15 @@ class HLSAgentLoader:
                         if isinstance(call_evidence, Mapping)
                         else {}
                     ),
+                    **(
+                        {
+                            "legacy_ag2_transport": dict(
+                                transport_evidence
+                            )
+                        }
+                        if isinstance(transport_evidence, Mapping)
+                        else {}
+                    ),
                 },
             )
             return original_run(*args, **kwargs)
@@ -951,6 +977,9 @@ class HLSAgentLoader:
         agent = self._attach_budgeted_run(
             agent,
             extra_config.get("_agrefactor_call_evidence"),
+            extra_config.get(
+                "_agrefactor_legacy_transport_evidence"
+            ),
         )
         register_agrefactorpp_usage_agent(agent)
         

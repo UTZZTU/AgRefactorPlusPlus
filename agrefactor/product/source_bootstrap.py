@@ -84,9 +84,9 @@ from agrefactor.runtime import (
     write_execution_identity_bundle,
 )
 from agrefactor.runtime.budget_profile import (
-    DEFAULT_SOURCE_RUN_BUDGET_PROFILE,
     HARD_BUDGET_FIELDS,
     EffectiveRunBudget,
+    run_budget_profile_for_mode,
 )
 
 from .run_output import (
@@ -2124,6 +2124,15 @@ def _generation_trajectories_from_cli(args) -> tuple[int, int]:
     )
 
 
+def _budget_profile_for_args(args):
+    """Select a mode profile while preserving legacy helper callers."""
+
+    command = getattr(args, "command", None)
+    if command is None:
+        command = RunMode.REFACTOR.value
+    return run_budget_profile_for_mode(command)
+
+
 def _budget_from_cli(args, selection: ModelRuntimeSelection) -> EffectiveRunBudget:
     requested = {
         name: getattr(args, name, None)
@@ -2146,7 +2155,7 @@ def _budget_from_cli(args, selection: ModelRuntimeSelection) -> EffectiveRunBudg
             "--cost-budget requires a verified pricing snapshot "
             "with a declared currency"
         )
-    return DEFAULT_SOURCE_RUN_BUDGET_PROFILE.resolve(
+    return _budget_profile_for_args(args).resolve(
         user_requested=requested,
         token_budget=args.token_budget,
         cost_budget=args.cost_budget,
@@ -2159,10 +2168,19 @@ def _budget_from_cli(args, selection: ModelRuntimeSelection) -> EffectiveRunBudg
 
 
 def _budget_request_identity(args) -> dict[str, Any]:
-    defaults = DEFAULT_SOURCE_RUN_BUDGET_PROFILE.system_defaults
-    ceilings = DEFAULT_SOURCE_RUN_BUDGET_PROFILE.system_safety_ceilings
+    profile = _budget_profile_for_args(args)
+    defaults = profile.system_defaults
+    ceilings = profile.system_safety_ceilings
     return {
-        "schema_version": 1,
+        "schema_version": 2,
+        "profile_name": profile.name,
+        "phase_reserves": {
+            phase: {
+                name: getattr(reserve, name)
+                for name in HARD_BUDGET_FIELDS
+            }
+            for phase, reserve in profile.phase_reserves.items()
+        },
         "system_defaults": {
             name: getattr(defaults, name)
             for name in HARD_BUDGET_FIELDS
@@ -2186,7 +2204,9 @@ def _budget_request_identity(args) -> dict[str, Any]:
 
 
 def _safety_ceiling_rejection(args) -> dict[str, Any] | None:
-    ceilings = DEFAULT_SOURCE_RUN_BUDGET_PROFILE.system_safety_ceilings
+    ceilings = _budget_profile_for_args(
+        args
+    ).system_safety_ceilings
     for name in HARD_BUDGET_FIELDS:
         requested = getattr(args, name, None)
         ceiling = getattr(ceilings, name)
@@ -2351,6 +2371,46 @@ def _product_identity_task(formal_task: TaskSpec, requested_mode: RunMode) -> Ta
         test_suites=formal_task.test_suites,
     )
 
+def _validate_mode_specific_cli(args) -> None:
+    mode = RunMode(args.command)
+    if mode in {RunMode.REFACTOR, RunMode.FULL}:
+        if getattr(args, "reference_source", None) is not None:
+            raise ValueError(
+                "--reference-source is consumed only by direct optimize"
+            )
+        if getattr(args, "reference_top", None) is not None:
+            raise ValueError(
+                "--reference-top is consumed only by direct optimize"
+            )
+    if mode is RunMode.OPTIMIZE:
+        if getattr(args, "reference_source", None) is None:
+            raise ValueError(
+                "direct optimize requires --reference-source"
+            )
+        if not getattr(args, "public_tests_provided", ()):
+            raise ValueError("direct optimize requires --public-test")
+        if not getattr(args, "hidden_tests_provided", ()):
+            raise ValueError("direct optimize requires --hidden-test")
+        unsupported = []
+        for attribute, option in (
+            ("test_generation_profile_explicit", "--test-generation-profile"),
+            ("public_coverage_rounds_explicit", "--public-coverage-rounds"),
+            ("hidden_coverage_rounds_explicit", "--hidden-coverage-rounds"),
+            ("public_generation_trajectories_explicit", "--public-generation-trajectories"),
+            ("hidden_generation_trajectories_explicit", "--hidden-generation-trajectories"),
+            ("test_generation_trajectories_explicit", "--test-generation-trajectories"),
+            ("max_testbench_repairs_explicit", "--max-testbench-repairs"),
+            ("max_candidate_repairs_explicit", "--max-candidate-repairs"),
+        ):
+            if getattr(args, attribute, False):
+                unsupported.append(option)
+        if unsupported:
+            raise ValueError(
+                "direct optimize does not consume generation-only controls: "
+                + ", ".join(unsupported)
+            )
+
+
 def run_source_command(
     args,
     *,
@@ -2360,6 +2420,7 @@ def run_source_command(
     """Execute one normal source command using internally managed paths."""
 
     mode = RunMode(args.command)
+    _validate_mode_specific_cli(args)
 
     source = Path(args.source).expanduser().resolve()
     run_id = (
@@ -2598,6 +2659,15 @@ def run_source_command(
     runner = UnifiedRunner(
         handlers,
         budget_limits=budget.to_budget_limits(),
+        phase_reserves={
+            phase: __import__(
+                "agrefactor.runtime",
+                fromlist=["BudgetLimits"],
+            ).BudgetLimits(
+                **reserve
+            )
+            for phase, reserve in budget.phase_reserves.items()
+        },
     )
     with capture_product_streams(
         layout.work_root,

@@ -371,6 +371,7 @@ class UnifiedRunner:
         handlers: Mapping[RunPhase | str, PhaseHandler],
         *,
         budget_limits: BudgetLimits | None = None,
+        phase_reserves: Mapping[RunPhase | str, BudgetLimits] | None = None,
     ) -> None:
         normalized: dict[RunPhase, PhaseHandler] = {}
 
@@ -388,8 +389,20 @@ class UnifiedRunner:
                 )
             normalized[phase] = handler
 
+        normalized_reserves: dict[RunPhase, BudgetLimits] = {}
+        for raw_phase, reserve in (phase_reserves or {}).items():
+            phase = (
+                raw_phase
+                if isinstance(raw_phase, RunPhase)
+                else RunPhase(raw_phase)
+            )
+            if not isinstance(reserve, BudgetLimits):
+                raise TypeError("phase reserve must be BudgetLimits")
+            normalized_reserves[phase] = reserve
+
         self._handlers = normalized
         self._budget_limits = budget_limits or BudgetLimits()
+        self._phase_reserves = normalized_reserves
 
     def run(
         self,
@@ -451,7 +464,63 @@ class UnifiedRunner:
         phase_results: list[PhaseResult] = []
         run_status = RunStatus.SUCCEEDED
 
+        reserve_active = False
         for phase in self._phases_for_mode(task.mode):
+            reserve = self._phase_reserves.get(phase)
+            if reserve is not None:
+                if reserve_active:
+                    budget.set_active_reserve(None)
+                    trace.record(
+                        "budget.phase_reserve.released",
+                        phase=phase.value,
+                        status="recorded",
+                        metadata={
+                            "reserve": budget.active_reserve_dict(),
+                        },
+                    )
+                    reserve_active = False
+                try:
+                    budget.set_active_reserve(reserve)
+                except BudgetExceededError as exc:
+                    result = PhaseResult(
+                        phase=phase,
+                        status=PhaseStatus.ERROR,
+                        summary=str(exc),
+                        metadata={
+                            "resource": exc.resource,
+                            "phase_reserve_activation": True,
+                        },
+                    )
+                    phase_results.append(result)
+                    run_status = RunStatus.ERROR
+                    trace.record(
+                        "budget.phase_reserve.rejected",
+                        phase=phase.value,
+                        status="error",
+                        message=str(exc),
+                        metadata={"resource": exc.resource},
+                    )
+                    break
+                reserve_active = True
+                trace.record(
+                    "budget.phase_reserve.activated",
+                    phase=phase.value,
+                    status="running",
+                    metadata={
+                        "reserve": budget.active_reserve_dict(),
+                    },
+                )
+            elif reserve_active:
+                budget.set_active_reserve(None)
+                trace.record(
+                    "budget.phase_reserve.released",
+                    phase=phase.value,
+                    status="recorded",
+                    metadata={
+                        "reserve": budget.active_reserve_dict(),
+                    },
+                )
+                reserve_active = False
             trace.record(
                 "phase.started",
                 phase=phase.value,
@@ -476,6 +545,14 @@ class UnifiedRunner:
                     else RunStatus.ERROR
                 )
                 break
+
+        if reserve_active:
+            budget.set_active_reserve(None)
+            trace.record(
+                "budget.phase_reserve.released",
+                status="recorded",
+                metadata={"reserve": budget.active_reserve_dict()},
+            )
 
         hard_budget_exhaustion: dict[str, Any] | None = None
         if phase_results:

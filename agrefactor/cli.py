@@ -47,7 +47,7 @@ from agrefactor.models import (
     ModelSpec,
     OpenAICompatibleProvider,
 )
-from agrefactor.runtime.budget_profile import DEFAULT_SOURCE_RUN_BUDGET_PROFILE
+from agrefactor.runtime.budget_profile import run_budget_profile_for_mode
 from agrefactor.runtime import (
     BudgetLimits,
     CandidateRepairOrchestrationRequest,
@@ -407,9 +407,14 @@ def build_parser() -> argparse.ArgumentParser:
         )
         source_parser.set_defaults(
             reasoning_effort_explicit=False,
+            test_generation_profile_explicit=False,
+            public_coverage_rounds_explicit=False,
+            hidden_coverage_rounds_explicit=False,
             public_generation_trajectories_explicit=False,
             hidden_generation_trajectories_explicit=False,
             test_generation_trajectories_explicit=False,
+            max_testbench_repairs_explicit=False,
+            max_candidate_repairs_explicit=False,
         )
         source_parser.add_argument(
             "source",
@@ -514,6 +519,7 @@ def build_parser() -> argparse.ArgumentParser:
                 item.value for item in TestGenerationProfile
             ),
             default=TestGenerationProfile.LIGHTWEIGHT.value,
+            action=_StoreWithExplicitFlag,
             help=(
                 "Testbench-generation strategy. Default: lightweight. "
                 "Use coverage-enhanced explicitly for iterative coverage."
@@ -523,6 +529,7 @@ def build_parser() -> argparse.ArgumentParser:
             "--public-coverage-rounds",
             type=_test_generation_count,
             default=DEFAULT_PUBLIC_COVERAGE_ROUNDS,
+            action=_StoreWithExplicitFlag,
             help=(
                 "Public coverage rounds used only by coverage-enhanced. "
                 f"Default: {DEFAULT_PUBLIC_COVERAGE_ROUNDS}; "
@@ -533,6 +540,7 @@ def build_parser() -> argparse.ArgumentParser:
             "--hidden-coverage-rounds",
             type=_test_generation_count,
             default=DEFAULT_HIDDEN_COVERAGE_ROUNDS,
+            action=_StoreWithExplicitFlag,
             help=(
                 "Hidden coverage rounds used only by coverage-enhanced. "
                 f"Default: {DEFAULT_HIDDEN_COVERAGE_ROUNDS}; "
@@ -606,6 +614,7 @@ def build_parser() -> argparse.ArgumentParser:
             "--max-testbench-repairs",
             type=_repair_attempt_count,
             default=DEFAULT_TESTBENCH_REPAIR_ATTEMPTS,
+            action=_StoreWithExplicitFlag,
             help=(
                 "Bounded Public Testbench repair attempts. "
                 f"Default: {DEFAULT_TESTBENCH_REPAIR_ATTEMPTS}; "
@@ -616,16 +625,16 @@ def build_parser() -> argparse.ArgumentParser:
             "--max-candidate-repairs",
             type=_repair_attempt_count,
             default=DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
+            action=_StoreWithExplicitFlag,
             help=(
                 "Bounded formal Candidate repair attempts. "
                 f"Default: {DEFAULT_CANDIDATE_REPAIR_ATTEMPTS}; "
                 f"valid range: 1..{REPAIR_ATTEMPT_SAFETY_CEILING}."
             ),
         )
-        budget_defaults = DEFAULT_SOURCE_RUN_BUDGET_PROFILE.system_defaults
-        budget_ceilings = (
-            DEFAULT_SOURCE_RUN_BUDGET_PROFILE.system_safety_ceilings
-        )
+        budget_profile = run_budget_profile_for_mode(source_command)
+        budget_defaults = budget_profile.system_defaults
+        budget_ceilings = budget_profile.system_safety_ceilings
         for option, field_name, value_type, label in (
             ("--max-llm-calls", "max_llm_calls", int, "LLM calls"),
             ("--max-tool-calls", "max_tool_calls", int, "tool calls"),
@@ -655,7 +664,8 @@ def build_parser() -> argparse.ArgumentParser:
                 type=value_type,
                 help=(
                     f"Hard run limit for {label}. "
-                    f"System default: {getattr(budget_defaults, field_name)}; "
+                    f"Selected profile: {budget_profile.name}; "
+                    f"system default: {getattr(budget_defaults, field_name)}; "
                     f"safety ceiling: "
                     f"{getattr(budget_ceilings, field_name)}."
                 ),

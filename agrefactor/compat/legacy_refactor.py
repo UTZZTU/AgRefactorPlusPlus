@@ -89,6 +89,75 @@ _LEGACY_LLM_RESERVED_KEYS = frozenset(
     }
 )
 
+_LEGACY_TRANSPORT_EVIDENCE_KEY = "_agrefactor_legacy_transport_evidence"
+_AUTOGEN_REASONING_EFFORTS = frozenset(
+    {"none", "low", "minimal", "medium", "high", "xhigh"}
+)
+
+
+def _translate_legacy_ag2_transport(
+    parameters: Mapping[str, Any],
+    call_evidence,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Keep provider ``max`` truthful while satisfying AG2's typed schema.
+
+    AG2 rejects ``reasoning_effort=max`` at its top-level OpenAI schema.  The
+    OpenAI SDK supports provider extensions through ``extra_body``.  Therefore
+    only the AG2 representation changes: the physical provider payload still
+    carries ``reasoning_effort=max`` and DeepSeek Thinking remains enabled.
+    """
+
+    translated = dict(parameters)
+    provider_effort = translated.get("reasoning_effort")
+    schema_effort = provider_effort
+    provider_location = "top_level" if provider_effort is not None else "omitted"
+
+    if provider_effort == "max":
+        existing_extra = translated.get("extra_body", {})
+        if existing_extra is None:
+            existing_extra = {}
+        if not isinstance(existing_extra, Mapping):
+            raise TypeError("extra_body must be a mapping")
+        extra = dict(existing_extra)
+        existing = extra.get("reasoning_effort")
+        if existing not in (None, "max"):
+            raise ValueError(
+                "Legacy AG2 transport has conflicting provider reasoning_effort"
+            )
+        extra["reasoning_effort"] = "max"
+        translated["extra_body"] = extra
+        translated.pop("reasoning_effort", None)
+        schema_effort = None
+        provider_location = "extra_body"
+    elif provider_effort is not None:
+        if provider_effort not in _AUTOGEN_REASONING_EFFORTS:
+            raise ValueError(
+                "Legacy AG2 transport cannot represent reasoning_effort "
+                f"{provider_effort!r}"
+            )
+
+    evidence_dict = (
+        call_evidence.to_dict()
+        if callable(getattr(call_evidence, "to_dict", None))
+        else dict(call_evidence)
+    )
+    transport = {
+        "schema_version": 1,
+        "transport": "legacy_ag2_openai_compatible",
+        "provider_reasoning_effort": evidence_dict.get(
+            "effective_provider_reasoning_effort"
+        ),
+        "ag2_schema_reasoning_effort": schema_effort,
+        "provider_reasoning_location": provider_location,
+        "thinking_effective": evidence_dict.get("thinking_effective") is True,
+        "provider_payload_preserved": (
+            provider_effort != "max"
+            or extra.get("reasoning_effort") == "max"
+        ),
+        "private_reasoning_persisted": False,
+    }
+    return translated, transport
+
 
 def build_effective_legacy_llm_config(
     config: EffectiveModelConfig,
@@ -114,10 +183,15 @@ def build_effective_legacy_llm_config(
     if not isinstance(include_credential, bool):
         raise TypeError("include_credential must be boolean")
     parameters, call_evidence = config.parameterize_call(role)
+    parameters, transport_evidence = _translate_legacy_ag2_transport(
+        parameters,
+        call_evidence,
+    )
     parameters = add_internal_call_evidence(
         parameters,
         call_evidence,
     )
+    parameters[_LEGACY_TRANSPORT_EVIDENCE_KEY] = transport_evidence
     conflicts = sorted(
         key
         for key in parameters
@@ -154,6 +228,7 @@ def _build_effective_legacy_llm_config(
         include_credential=False,
     )
     translated.pop("_agrefactor_call_evidence", None)
+    translated.pop(_LEGACY_TRANSPORT_EVIDENCE_KEY, None)
     return translated
 
 

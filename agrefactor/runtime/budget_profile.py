@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from math import isfinite
 from typing import Any
@@ -79,6 +79,10 @@ class EffectiveRunBudget:
     token_budget: int | None = None
     cost_budget: Decimal | None = None
     cost_budget_currency: str | None = None
+    profile_name: str = "source-run-default"
+    phase_reserves: Mapping[str, Mapping[str, int | float]] = field(
+        default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         expected = set(HARD_BUDGET_FIELDS)
@@ -171,8 +175,35 @@ class EffectiveRunBudget:
         object.__setattr__(self, "user_requested", requested)
         object.__setattr__(self, "effective_hard_limits", effective)
         object.__setattr__(self, "budget_source_per_field", sources)
+        profile_name = self.profile_name.strip()
+        if not profile_name:
+            raise ValueError("profile_name must not be empty")
+        normalized_reserves: dict[str, dict[str, int | float]] = {}
+        for phase, reserve in self.phase_reserves.items():
+            if phase not in {"refactor", "optimize"}:
+                raise ValueError(f"unsupported reserve phase: {phase}")
+            if not isinstance(reserve, Mapping):
+                raise TypeError("phase reserve must be a mapping")
+            if set(reserve) != expected:
+                raise ValueError(
+                    "phase reserve must contain exactly: "
+                    + ", ".join(HARD_BUDGET_FIELDS)
+                )
+            copied: dict[str, int | float] = {}
+            for field_name in HARD_BUDGET_FIELDS:
+                value = reserve[field_name]
+                self._validate_hard_value(field_name, value)
+                if value > effective[field_name]:
+                    raise ValueError(
+                        f"phase reserve exceeds effective limit: {phase}.{field_name}"
+                    )
+                copied[field_name] = value
+            normalized_reserves[phase] = copied
+
         object.__setattr__(self, "cost_budget", cost_budget)
         object.__setattr__(self, "cost_budget_currency", currency)
+        object.__setattr__(self, "profile_name", profile_name)
+        object.__setattr__(self, "phase_reserves", normalized_reserves)
 
     @staticmethod
     def _validate_hard_value(name: str, value: object) -> None:
@@ -212,7 +243,12 @@ class EffectiveRunBudget:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema_version": 1,
+            "schema_version": 2,
+            "profile_name": self.profile_name,
+            "phase_reserves": {
+                phase: dict(reserve)
+                for phase, reserve in self.phase_reserves.items()
+            },
             "system_defaults": dict(self.system_defaults),
             "system_safety_ceilings": dict(
                 self.system_safety_ceilings
@@ -241,6 +277,7 @@ class RunBudgetProfile:
     name: str
     system_defaults: BudgetLimits
     system_safety_ceilings: BudgetLimits
+    phase_reserves: Mapping[str, BudgetLimits] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name.strip():
@@ -283,7 +320,22 @@ class RunBudgetProfile:
                 raise ValueError(
                     f"default exceeds safety ceiling: {field_name}"
                 )
+        normalized_reserves: dict[str, BudgetLimits] = {}
+        for phase, reserve in self.phase_reserves.items():
+            if phase not in {"refactor", "optimize"}:
+                raise ValueError(f"unsupported reserve phase: {phase}")
+            if not isinstance(reserve, BudgetLimits):
+                raise TypeError("phase reserve must be BudgetLimits")
+            values = _limits_to_dict(reserve)
+            missing = [name for name, value in values.items() if value is None]
+            if missing:
+                raise ValueError(
+                    "phase reserve must define all hard fields: "
+                    + ", ".join(missing)
+                )
+            normalized_reserves[phase] = reserve
         object.__setattr__(self, "name", self.name.strip())
+        object.__setattr__(self, "phase_reserves", normalized_reserves)
 
     def resolve(
         self,
@@ -347,31 +399,81 @@ class RunBudgetProfile:
             token_budget=token_budget,
             cost_budget=_clean_decimal("cost_budget", cost_budget),
             cost_budget_currency=cost_budget_currency,
+            profile_name=self.name,
+            phase_reserves={
+                phase: {
+                    key: value
+                    for key, value in _limits_to_dict(reserve).items()
+                    if value is not None
+                }
+                for phase, reserve in self.phase_reserves.items()
+            },
         )
 
 
+# P4_0F_FROZEN_PROFILES:BEGIN
+SOURCE_RUN_SAFETY_CEILINGS = BudgetLimits(
+    max_llm_calls=256, max_tool_calls=512, max_compile_calls=192,
+    max_csim_calls=128, max_csynth_calls=64, max_cosim_calls=64,
+    max_tokens=None, max_cost_usd=None, max_wall_time_s=14400.0,
+)
+
+REFACTOR_RUN_BUDGET_PROFILE = RunBudgetProfile(
+    name="refactor-default",
+    system_defaults=BudgetLimits(
+        max_llm_calls=96, max_tool_calls=192, max_compile_calls=96,
+        max_csim_calls=64, max_csynth_calls=32, max_cosim_calls=32,
+        max_tokens=None, max_cost_usd=None, max_wall_time_s=10800.0,
+    ),
+    system_safety_ceilings=SOURCE_RUN_SAFETY_CEILINGS,
+)
+
+OPTIMIZE_RUN_BUDGET_PROFILE = RunBudgetProfile(
+    name="optimize-default",
+    system_defaults=BudgetLimits(
+        max_llm_calls=24, max_tool_calls=160, max_compile_calls=72,
+        max_csim_calls=24, max_csynth_calls=12, max_cosim_calls=12,
+        max_tokens=None, max_cost_usd=None, max_wall_time_s=1800.0,
+    ),
+    system_safety_ceilings=SOURCE_RUN_SAFETY_CEILINGS,
+)
+
+FULL_RUN_BUDGET_PROFILE = RunBudgetProfile(
+    name="full-default",
+    system_defaults=BudgetLimits(
+        max_llm_calls=120, max_tool_calls=352, max_compile_calls=168,
+        max_csim_calls=88, max_csynth_calls=44, max_cosim_calls=44,
+        max_tokens=None, max_cost_usd=None, max_wall_time_s=12600.0,
+    ),
+    system_safety_ceilings=SOURCE_RUN_SAFETY_CEILINGS,
+    phase_reserves={
+        "refactor": OPTIMIZE_RUN_BUDGET_PROFILE.system_defaults,
+    },
+)
+# P4_0F_FROZEN_PROFILES:END
+
+_MODE_PROFILES = {
+    "refactor": REFACTOR_RUN_BUDGET_PROFILE,
+    "optimize": OPTIMIZE_RUN_BUDGET_PROFILE,
+    "full": FULL_RUN_BUDGET_PROFILE,
+}
+
+def run_budget_profile_for_mode(mode: object) -> RunBudgetProfile:
+    value = getattr(mode, "value", mode)
+    key = str(value).strip().casefold()
+    try:
+        return _MODE_PROFILES[key]
+    except KeyError as exc:
+        raise ValueError(f"unsupported source run budget mode: {value!r}") from exc
+
+# Historical compatibility profile remains stable for callers that have not
+# selected a normal product mode. Normal refactor/optimize/full never use it.
 DEFAULT_SOURCE_RUN_BUDGET_PROFILE = RunBudgetProfile(
     name="source-run-default",
     system_defaults=BudgetLimits(
-        max_llm_calls=64,
-        max_tool_calls=128,
-        max_compile_calls=48,
-        max_csim_calls=32,
-        max_csynth_calls=16,
-        max_cosim_calls=16,
-        max_tokens=None,
-        max_cost_usd=None,
-        max_wall_time_s=7200.0,
+        max_llm_calls=64, max_tool_calls=128, max_compile_calls=48,
+        max_csim_calls=32, max_csynth_calls=16, max_cosim_calls=16,
+        max_tokens=None, max_cost_usd=None, max_wall_time_s=7200.0,
     ),
-    system_safety_ceilings=BudgetLimits(
-        max_llm_calls=256,
-        max_tool_calls=512,
-        max_compile_calls=192,
-        max_csim_calls=128,
-        max_csynth_calls=64,
-        max_cosim_calls=64,
-        max_tokens=None,
-        max_cost_usd=None,
-        max_wall_time_s=14400.0,
-    ),
+    system_safety_ceilings=SOURCE_RUN_SAFETY_CEILINGS,
 )

@@ -248,10 +248,72 @@ class BudgetManager:
         self._cosim_calls = 0
         self._tokens = 0
         self._costs_by_currency: dict[str, Decimal] = {}
+        self._active_reserve = BudgetLimits()
 
     @property
     def limits(self) -> BudgetLimits:
         return self._limits
+
+    @property
+    def active_reserve(self) -> BudgetLimits:
+        return self._active_reserve
+
+    def set_active_reserve(
+        self,
+        reserve: BudgetLimits | None,
+    ) -> None:
+        # Reserve hard capacity for a later phase without consuming it.
+
+        selected = reserve or BudgetLimits()
+        if not isinstance(selected, BudgetLimits):
+            raise TypeError("reserve must be BudgetLimits or None")
+        with self._lock:
+            previous = self._active_reserve
+            self._active_reserve = selected
+            try:
+                self.ensure_available()
+            except Exception:
+                self._active_reserve = previous
+                raise
+
+    def active_reserve_dict(self) -> dict[str, int | float | None]:
+        reserve = self._active_reserve
+        return {
+            "max_llm_calls": reserve.max_llm_calls,
+            "max_tool_calls": reserve.max_tool_calls,
+            "max_compile_calls": reserve.max_compile_calls,
+            "max_csim_calls": reserve.max_csim_calls,
+            "max_csynth_calls": reserve.max_csynth_calls,
+            "max_cosim_calls": reserve.max_cosim_calls,
+            "max_wall_time_s": reserve.max_wall_time_s,
+        }
+
+    def _effective_limit(
+        self,
+        resource: str,
+        configured: int | float | None,
+    ) -> int | float | None:
+        if configured is None:
+            return None
+        reserve_field = {
+            "llm_calls": "max_llm_calls",
+            "tool_calls": "max_tool_calls",
+            "compile_calls": "max_compile_calls",
+            "csim_calls": "max_csim_calls",
+            "csynth_calls": "max_csynth_calls",
+            "cosim_calls": "max_cosim_calls",
+            "wall_time_s": "max_wall_time_s",
+        }.get(resource)
+        if reserve_field is None:
+            return configured
+        reserved = getattr(self._active_reserve, reserve_field)
+        if reserved is None:
+            return configured
+        if reserved > configured:
+            raise ValueError(
+                f"active reserve exceeds configured limit: {reserve_field}"
+            )
+        return configured - reserved
 
     def snapshot(self) -> BudgetUsage:
         "Return current usage and check the wall-clock limit."
@@ -261,7 +323,9 @@ class BudgetManager:
             self._check_limit(
                 "wall_time_s",
                 elapsed_s,
-                self._limits.max_wall_time_s,
+                self._effective_limit(
+                    "wall_time_s", self._limits.max_wall_time_s
+                ),
             )
             return BudgetUsage(
                 llm_calls=self._llm_calls,
@@ -304,32 +368,44 @@ class BudgetManager:
         self._check_limit(
             "llm_calls",
             self._llm_calls + llm_calls,
-            self._limits.max_llm_calls,
+            self._effective_limit(
+                "llm_calls", self._limits.max_llm_calls
+            ),
         )
         self._check_limit(
             "tool_calls",
             self._tool_calls + tool_calls,
-            self._limits.max_tool_calls,
+            self._effective_limit(
+                "tool_calls", self._limits.max_tool_calls
+            ),
         )
         self._check_limit(
             "compile_calls",
             self._compile_calls + compile_calls,
-            self._limits.max_compile_calls,
+            self._effective_limit(
+                "compile_calls", self._limits.max_compile_calls
+            ),
         )
         self._check_limit(
             "csim_calls",
             self._csim_calls + csim_calls,
-            self._limits.max_csim_calls,
+            self._effective_limit(
+                "csim_calls", self._limits.max_csim_calls
+            ),
         )
         self._check_limit(
             "csynth_calls",
             self._csynth_calls + csynth_calls,
-            self._limits.max_csynth_calls,
+            self._effective_limit(
+                "csynth_calls", self._limits.max_csynth_calls
+            ),
         )
         self._check_limit(
             "cosim_calls",
             self._cosim_calls + cosim_calls,
-            self._limits.max_cosim_calls,
+            self._effective_limit(
+                "cosim_calls", self._limits.max_cosim_calls
+            ),
         )
         self._check_limit(
             "tokens",
@@ -344,7 +420,9 @@ class BudgetManager:
         self._check_limit(
             "wall_time_s",
             self._elapsed_s(),
-            self._limits.max_wall_time_s,
+            self._effective_limit(
+                "wall_time_s", self._limits.max_wall_time_s
+            ),
         )
 
     def consume(
