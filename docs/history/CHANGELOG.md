@@ -1,5 +1,14 @@
 # 变更记录
 
+## 2026-08-07 - P4-0F-R5 authority and diagnostic-lane synchronization
+
+- records R5-D acceptance at `0ca5dd99fabec1c2c003446975e28128a0926c52` with 2268/2268 shadow and real regression;
+- records R5-E v1 as a package-runner CLI defect and R5-E v2 as a real diagnostic run with 3/5 no-model canaries passed;
+- freezes P4-0F-R5-E-R1 as the only next implementation package for Native CSIM ownership and phase-scoped COSIM typed outcomes;
+- makes Legacy differential batch A an explicit post-R5, pre-P4-0F-Final bounded lane;
+- makes Real-code discovery batch A post-R5/pre-P4-0F-Final and batch B post-P4-0G/pre-P4-0H;
+- keeps P4-0F, Pre-Stage-4, and Stage 4 incomplete.
+
 ## 2026-08-01 — Stage 3.7 Product Adapters
 
 - v8 distinguishes recoverable model output-contract abstention from terminal infrastructure failure across Structural, Bottleneck and Pragma analysis/rewrite;

@@ -2,6 +2,18 @@
 
 这里是仓库文档的统一入口。文档按“当前权威、未来实施、用户指南、验收证据、审计和历史”分类，避免把已经关闭的阶段计划误当成当前执行指针。
 
+<!-- P4_0F_R5_AUTHORITY_V2:BEGIN -->
+## 当前 P4-0F-R5 权威入口（2026-08-07）
+
+1. [P4-0F-R5 权威执行计划 v2](roadmap/PRE_STAGE4_P4_0F_R5_AUTHORITATIVE_EXECUTION_PLAN_V2.md)
+2. [当前机器可读状态](roadmap/pre_stage4_current_state.json)
+3. [R5-E-R1 决策记录](roadmap/PRE_STAGE4_P4_0F_R5_E_R1_DECISION_RECORD.md)
+4. [Legacy 差分与真实代码 discovery 执行合同](roadmap/PRE_STAGE4_LEGACY_DIFFERENTIAL_AND_REAL_CODE_DISCOVERY_EXECUTION_CONTRACT.md)
+5. [R5-E v1/v2 真实 canary 裁决](audits/P4_0F_R5_E_V1_V2_REAL_CANARY_ADJUDICATION.md)
+
+当前行为 checkpoint 为 `0ca5dd99fabec1c2c003446975e28128a0926c52`。R5-D 已接受；R5-E 尚未接受；唯一下一实现包是 P4-0F-R5-E-R1。Legacy 差分 batch A 与 Real-code discovery batch A 在 R5 accepted 后、P4-0F-Final 前执行；扩展 discovery batch B 在 P4-0G 后、P4-0H 前执行。
+<!-- P4_0F_R5_AUTHORITY_V2:END -->
+
 ## 当前权威阅读顺序
 
 1. [当前项目状态](roadmap/PROJECT_STATE.md)

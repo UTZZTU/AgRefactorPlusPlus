@@ -2,6 +2,22 @@
 
 本文只保留当前目标追踪，不复制每个历史 package 的逐提交状态。历史证据由 acceptance、audit 和 history 文件承担。
 
+<!-- P4_0F_R5_DIAGNOSTIC_LANES:BEGIN -->
+## P4-0F-R5 与诊断 lane 追踪
+
+| 项目 | 当前状态 | 启动/关闭门 | 权威下一证据 |
+|---|---|---|---|
+| R5-D unified recovery | accepted at `0ca5dd99...` | 2268/2268 + archive verified | retained behavior checkpoint |
+| R5-E real operability | not accepted | E-R1 correction + five-case rerun + provider diagnostic + archive audit | new R5-E checkpoint and archive |
+| Legacy differential batch A | planned | after R5 accepted, before P4-0F-Final budget freeze | fixed five-case fair comparison |
+| Real-code discovery batch A | planned | after R5 accepted, before P4-0F-Final | Refactor eligibility and consumption corpus |
+| P4-0F-Final | blocked | R5 accepted and diagnostic batch A adjudicated | measured mode defaults + CLI consume-or-reject |
+| Real-code discovery batch B | planned | after P4-0G, before P4-0H | Optimize/Full discovery and kernel selection |
+| P4-0H authority matrix | not started | after P4-0G and discovery B | repeated multi-kernel network/Vitis evidence |
+
+这些 diagnostic lane 复用统一 typed evidence、identity、budget、campaign 和 independent auditor，不得建立平行 success authority。
+<!-- P4_0F_R5_DIAGNOSTIC_LANES:END -->
+
 ## 当前总体状态
 
 ```text

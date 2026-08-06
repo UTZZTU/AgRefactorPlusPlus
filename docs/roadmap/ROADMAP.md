@@ -2,6 +2,29 @@
 
 > **权威范围文档。** 后续开发、新对话、阶段验收与论文表述均以本文档为准。任何核心目标不得在没有明确决策记录、代码证据与文档更新的情况下被删除、弱化或偷换概念。
 
+<!-- P4_0F_R5_CURRENT_ROUTE:BEGIN -->
+## 当前 Pre-Stage-4 执行路线（2026-08-07 冻结）
+
+```text
+R5-D accepted at 0ca5dd99fabec1c2c003446975e28128a0926c52
+→ R5-E-R1 Native CSIM/COSIM owner and typed-outcome correction
+→ complete five-case R5-E rerun and independent archive audit
+→ R5 accepted
+→ Legacy differential batch A
+→ Real-code discovery batch A
+→ P4-0F-Final budget and CLI closure
+→ P4-0G dynamic-v1
+→ Real-code discovery batch B
+→ P4-0H repeated multi-kernel authority matrix
+→ P4-0I documentation closure
+→ Stage 4
+```
+
+Legacy differential 和 discovery 是 bounded diagnostic lane。P0/P1 产品回归会重开 R5.x，但这两条 lane 不替代 P4-0F-Final 或 P4-0H，也不能独立证明稳定模型质量或 PPA 优势。
+
+Authority: [P4-0F-R5 plan v2](PRE_STAGE4_P4_0F_R5_AUTHORITATIVE_EXECUTION_PLAN_V2.md).
+<!-- P4_0F_R5_CURRENT_ROUTE:END -->
+
 ## 1. 项目使命
 
 AgRefactor++ 是一个**目标环境条件化、模型可插拔、证据驱动、预算约束**的 HLS 自动修复、优化与迁移智能体。
