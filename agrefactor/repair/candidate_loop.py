@@ -33,6 +33,18 @@ from agrefactor.prompts import (
     build_candidate_compile_repair_prompt,
     build_candidate_csynth_repair_prompt,
     build_candidate_public_csim_repair_prompt,
+    build_candidate_public_cosim_repair_prompt,
+)
+from agrefactor.recovery import (
+    RecoveryAction,
+    RecoveryAuthority,
+    RecoveryBudgetBlockedError,
+    RecoveryDeniedError,
+    RecoveryLedger,
+    RecoveryRequest,
+    RecoveryRole,
+    RecoveryStage,
+    default_restart_reserve,
 )
 from agrefactor.runtime import BudgetExceededError, BudgetManager, BudgetUsage
 
@@ -60,7 +72,12 @@ _CANONICAL_VALIDATION_ORDER = (
     ValidationState.HIDDEN_EVALUATION,
 )
 _ALLOWED_REPAIR_STATES = frozenset(
-    {ValidationState.PREFLIGHT, ValidationState.CSYNTH, ValidationState.PUBLIC_EVALUATION}
+    {
+        ValidationState.PREFLIGHT,
+        ValidationState.CSYNTH,
+        ValidationState.PUBLIC_EVALUATION,
+        ValidationState.PUBLIC_COSIM,
+    }
 )
 _STAGE_BY_REPAIR_STATE = {
     ValidationState.PREFLIGHT: frozenset(
@@ -70,6 +87,7 @@ _STAGE_BY_REPAIR_STATE = {
     ValidationState.PUBLIC_EVALUATION: frozenset(
         {FeedbackStage.TEST, FeedbackStage.CSIM}
     ),
+    ValidationState.PUBLIC_COSIM: frozenset({FeedbackStage.COSIM}),
 }
 _LEGAL_COMPLETED_STAGE_SEQUENCES = frozenset(
     {
@@ -138,6 +156,7 @@ class CandidateRepairLoopRequest:
     public_testbench_code: str | None = None
     family_instruction: str | None = None
     approved_memory_snippets: tuple[str, ...] = ()
+    recovery_ledger: RecoveryLedger | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.task, TaskSpec):
@@ -157,6 +176,10 @@ class CandidateRepairLoopRequest:
             self.max_attempts,
             field_name="max_attempts",
         )
+        if self.recovery_ledger is not None and not isinstance(
+            self.recovery_ledger, RecoveryLedger
+        ):
+            raise TypeError("recovery_ledger must be RecoveryLedger or None")
         _validate_repair_context(
             self.feedback,
             self.route_decision,
@@ -584,6 +607,52 @@ class BoundedCandidateRepairLoop:
                 )
 
             budget_before = self._safe_snapshot()
+            if request.recovery_ledger is not None:
+                try:
+                    recovery_stage = RecoveryStage(failure_state.value)
+                    request.recovery_ledger.reserve(
+                        RecoveryRequest(
+                            action=RecoveryAction.REPAIR,
+                            role=RecoveryRole.CANDIDATE,
+                            stage=recovery_stage,
+                            evidence_view="agent_safe",
+                            owner_authority=(
+                                RecoveryAuthority.LLM_ADVISORY
+                                if route.metadata.get("owner_authority")
+                                == "llm_advisory"
+                                else RecoveryAuthority.DETERMINISTIC_PROVEN
+                            ),
+                            lineage_id=request.task.task_id,
+                            physical_tool_launched=True,
+                            evidence_complete=True,
+                            advisory_mode=str(
+                                route.metadata.get("advisory_mode", "off")
+                            ),
+                            timeout_class=route.metadata.get("timeout_class"),
+                        ),
+                        budget=self._budget,
+                        restart_reserve=default_restart_reserve(
+                            recovery_stage
+                        ),
+                    )
+                except RecoveryBudgetBlockedError:
+                    return self._result(
+                        CandidateRepairStopReason.BUDGET_EXHAUSTED,
+                        initial_candidate,
+                        current_candidate,
+                        last_validated_candidate,
+                        last_proposal,
+                        attempts,
+                    )
+                except RecoveryDeniedError:
+                    return self._result(
+                        CandidateRepairStopReason.TERMINAL_FEEDBACK,
+                        initial_candidate,
+                        current_candidate,
+                        last_validated_candidate,
+                        last_proposal,
+                        attempts,
+                    )
             prompt_manifest: Mapping[str, Any] = {}
             try:
                 self._budget.ensure_available(llm_calls=1)
@@ -746,6 +815,11 @@ class BoundedCandidateRepairLoop:
                 budget=self._budget,
             )
 
+            if request.recovery_ledger is not None:
+                request.recovery_ledger.record_validation_restart(
+                    lineage_id=request.task.task_id,
+                    stage=RecoveryStage(failure_state.value),
+                )
             try:
                 validation_result = self._validator.validate(validation_request)
                 if not isinstance(validation_result, CandidateValidationResult):
@@ -941,6 +1015,8 @@ def _build_prompt(
         return build_candidate_csynth_repair_prompt(inputs)
     if failure_state is ValidationState.PUBLIC_EVALUATION:
         return build_candidate_public_csim_repair_prompt(inputs)
+    if failure_state is ValidationState.PUBLIC_COSIM:
+        return build_candidate_public_cosim_repair_prompt(inputs)
     raise ValueError(f"Unsupported candidate repair state: {failure_state.value}")
 
 
@@ -1020,7 +1096,7 @@ def _validate_repair_context(
     state = _validation_state(failure_state)
     if state not in _ALLOWED_REPAIR_STATES:
         raise ValueError(
-            "candidate repair is allowed only for preflight, csynth, or Public evaluation"
+            "candidate repair is allowed only for preflight, csynth, Public CSIM, or Public COSIM"
         )
     if route.action is not FeedbackRouteAction.REPAIR_CANDIDATE:
         raise ValueError("candidate repair requires route=repair_candidate")
@@ -1050,9 +1126,12 @@ def _validate_repair_context(
             raise ValueError("selected feedback must be candidate-owned")
         if item.stage not in allowed_stages:
             raise ValueError("selected feedback stage does not match failure state")
-    if state is ValidationState.PUBLIC_EVALUATION:
+    if state in {
+        ValidationState.PUBLIC_EVALUATION,
+        ValidationState.PUBLIC_COSIM,
+    }:
         if public_testbench_code is None:
-            raise ValueError("Public CSIM repair requires a Public testbench")
+            raise ValueError("Public repair requires a Public testbench")
         if feedback.metadata.get("evaluation_split") != EvaluationSplit.PUBLIC.value:
             raise ValueError("Public repair requires split=public")
         if feedback.metadata.get("feedback_visible_to_agent") is not True:

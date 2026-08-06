@@ -85,6 +85,17 @@ _CSYNTH_FORBIDDEN_ACTIONS = _COMMON_FORBIDDEN_ACTIONS + (
     ),
 )
 
+_PUBLIC_COSIM_FORBIDDEN_ACTIONS = _COMMON_FORBIDDEN_ACTIONS + (
+    (
+        "Do not hard-code RTL protocol timing, transaction counts, "
+        "expected outputs, or Public Testbench behavior into the candidate."
+    ),
+    (
+        "Do not remove, bypass, or weaken handshake, stream, memory, or "
+        "interface behavior merely to silence the observed RTL COSIM failure."
+    ),
+)
+
 _PUBLIC_CSIM_FORBIDDEN_ACTIONS = _COMMON_FORBIDDEN_ACTIONS + (
     (
         "Do not hard-code Public inputs, expected outputs, case counts, "
@@ -193,6 +204,17 @@ _CSYNTH_SPEC = _CandidateRepairPromptSpec(
     require_public_testbench=False,
 )
 
+_PUBLIC_COSIM_SPEC = _CandidateRepairPromptSpec(
+    purpose=PromptPurpose.CANDIDATE_PUBLIC_COSIM_REPAIR,
+    objective=(
+        "Repair only the candidate implementation to address deterministic "
+        "candidate-owned Public RTL COSIM evidence. The proposal remains "
+        "untrusted until the entire validation chain is restarted."
+    ),
+    forbidden_actions=_PUBLIC_COSIM_FORBIDDEN_ACTIONS,
+    require_public_testbench=True,
+)
+
 _PUBLIC_CSIM_SPEC = _CandidateRepairPromptSpec(
     purpose=PromptPurpose.CANDIDATE_PUBLIC_CSIM_REPAIR,
     objective=(
@@ -243,6 +265,20 @@ def build_candidate_public_csim_repair_prompt(
     return _build_candidate_repair_prompt(
         inputs,
         _PUBLIC_CSIM_SPEC,
+        builder=builder,
+    )
+
+
+def build_candidate_public_cosim_repair_prompt(
+    inputs: CandidateRepairPromptInputs,
+    *,
+    builder: SharedLayeredPromptBuilder | None = None,
+) -> LayeredPrompt:
+    """Build a candidate Public RTL COSIM repair prompt."""
+
+    return _build_candidate_repair_prompt(
+        inputs,
+        _PUBLIC_COSIM_SPEC,
         builder=builder,
     )
 

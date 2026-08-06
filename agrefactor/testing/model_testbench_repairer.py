@@ -309,22 +309,25 @@ def build_testbench_repair_prompt(
             "builder must be a SharedLayeredPromptBuilder or None"
         )
 
-    operator_report = (
-        TestbenchPreflightFeedbackAdapter().to_operator_report(
+    if request.runtime_feedback is not None:
+        agent_report = request.runtime_feedback
+    else:
+        operator_report = (
+            TestbenchPreflightFeedbackAdapter().to_operator_report(
             request.preflight,
             report_id=(
                 f"testbench-repair-{request.attempt}.operator"
             ),
+            )
         )
-    )
-    agent_report = (
-        TestbenchPreflightFeedbackViewAdapter().to_agent_report(
-            operator_report,
-            report_id=(
-                f"testbench-repair-{request.attempt}.agent"
-            ),
+        agent_report = (
+            TestbenchPreflightFeedbackViewAdapter().to_agent_report(
+                operator_report,
+                report_id=(
+                    f"testbench-repair-{request.attempt}.agent"
+                ),
+            )
         )
-    )
     contract = TestbenchRepairContract.from_request(request)
 
     layered_request = LayeredPromptRequest(

@@ -1359,6 +1359,8 @@ class SourceBootstrapPhase:
                 self._request.top_function
             ),
             candidate_top_function=candidate_top,
+            recovery_profile="conservative-v1",
+            llm_advisory_mode="off",
         )
         _atomic_json(
             bootstrap_root / "formal_validation_request.json",
@@ -1378,6 +1380,8 @@ class SourceBootstrapPhase:
                 "max_candidate_repairs": (
                     self._request.max_candidate_repairs
                 ),
+                "recovery_profile": "conservative-v1",
+                "llm_advisory_mode": "off",
                 "public_testbench_preparation": (
                     None
                     if public_preparation is None

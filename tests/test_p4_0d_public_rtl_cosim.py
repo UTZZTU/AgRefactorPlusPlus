@@ -378,7 +378,7 @@ class P4DPublicRtlCosimTests(unittest.TestCase):
                     executor=lambda **_: {},
                 )(context)
 
-    def test_candidate_cosim_failure_is_terminal_without_repair(self) -> None:
+    def test_candidate_cosim_failure_enters_bounded_repair(self) -> None:
         task = self._task()
         with tempfile.TemporaryDirectory() as raw:
             report = CosimValidationStageHandler(
@@ -406,16 +406,16 @@ class P4DPublicRtlCosimTests(unittest.TestCase):
                 },
             )(
                 RunContext(
-                    run_id="p4d-terminal",
+                    run_id="p4d-recovery",
                     task=task,
                     budget=BudgetManager(),
-                    trace=TraceRecorder("p4d-terminal", task_id=task.task_id),
+                    trace=TraceRecorder("p4d-recovery", task_id=task.task_id),
                 )
             )
         coordinated = ValidationFeedbackCoordinator(task).coordinate(
             report,
             ValidationState.PUBLIC_COSIM,
-            coordination_id="p4d-terminal.cosim",
+            coordination_id="p4d-recovery.cosim",
         )
         self.assertEqual(
             coordinated.route_action,
@@ -423,11 +423,19 @@ class P4DPublicRtlCosimTests(unittest.TestCase):
         )
         self.assertEqual(
             coordinated.transition.next_state,
-            ValidationState.REJECTED,
+            ValidationState.REPAIR_PENDING,
         )
-        self.assertFalse(coordinated.transition.repair_allowed)
-        self.assertFalse(coordinated.transition.agent_feedback_allowed)
-        self.assertEqual(coordinated.selected_feedback_items, ())
+        self.assertTrue(coordinated.transition.repair_allowed)
+        self.assertTrue(coordinated.transition.agent_feedback_allowed)
+        self.assertEqual(
+            coordinated.transition.resume_state,
+            ValidationState.PUBLIC_COSIM,
+        )
+        self.assertEqual(len(coordinated.selected_feedback_items), 1)
+        self.assertEqual(
+            coordinated.selected_feedback_items[0].owner,
+            FeedbackOwner.CANDIDATE,
+        )
 
     def test_untrusted_owner_pair_and_timeout_are_unknown_safe(self) -> None:
         task = self._task()

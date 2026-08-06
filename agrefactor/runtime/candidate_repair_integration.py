@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 import json
 import os
@@ -19,8 +19,28 @@ from agrefactor.config import (
     validate_cosim_timeout_s,
     validate_repair_attempts,
 )
-from agrefactor.evaluation import FeedbackRouteAction, ValidationState
+from agrefactor.evaluation import (
+    FeedbackRouteAction,
+    TestbenchPreflight,
+    ValidationState,
+)
+from agrefactor.evidence import FeedbackOwner
 from agrefactor.models import CandidateModelAdapter
+from agrefactor.recovery import (
+    RecoveryAction,
+    RecoveryAuthority,
+    RecoveryLedger,
+    RecoveryPolicy,
+    RecoveryRequest,
+    RecoveryRole,
+    RecoveryStage,
+    conservative_v1_policy,
+    default_restart_reserve,
+)
+from agrefactor.testing import (
+    TestbenchRepairLoop,
+    build_openai_compatible_testbench_repairer,
+)
 from agrefactor.repair import (
     BoundedCandidateRepairLoop,
     CandidateRepairLoopRequest,
@@ -159,6 +179,8 @@ class CandidateRepairOrchestrationRequest:
     reference_top_function: str | None = None
     candidate_top_function: str | None = None
     approved_memory_snippets: tuple[str, ...] = ()
+    recovery_profile: str = "conservative-v1"
+    llm_advisory_mode: str = "off"
 
     def __post_init__(self) -> None:
         _required_text(self.initial_candidate, "initial_candidate")
@@ -196,6 +218,12 @@ class CandidateRepairOrchestrationRequest:
             )
         for item in self.approved_memory_snippets:
             _required_text(item, "approved_memory_snippets")
+        if self.recovery_profile != "conservative-v1":
+            raise ValueError("recovery_profile must be conservative-v1")
+        if self.llm_advisory_mode not in {"off", "candidate-only"}:
+            raise ValueError(
+                "llm_advisory_mode must be off or candidate-only"
+            )
         object.__setattr__(
             self,
             "suite_testbench_codes",
@@ -714,6 +742,7 @@ class CandidateRepairValidationOrchestrator:
             )
         self._model_adapter = model_adapter
         self._handler_factory = handler_factory
+        self._recovery_policy = conservative_v1_policy()
 
     def run(
         self,
@@ -741,6 +770,9 @@ class CandidateRepairValidationOrchestrator:
             self._model_adapter.family_instruction,
             request.family_instruction,
         )
+
+        recovery_ledger = RecoveryLedger(self._recovery_policy)
+        recovery_metadata: dict[str, Any] = {}
 
         context.trace.record(
             "candidate_repair.orchestration.started",
@@ -824,42 +856,86 @@ class CandidateRepairValidationOrchestrator:
             initial_outcome.result.steps[-1]
         )
 
+        active_request = request
+        active_outcome = initial_outcome
         if (
-            initial_outcome.result.final_state
+            active_outcome.result.final_state
+            is ValidationState.REPAIR_PENDING
+            and terminal_decision.action
+            is FeedbackRouteAction.REPAIR_TESTBENCH
+            and initial_terminal_step.state
+            in {
+                ValidationState.PUBLIC_EVALUATION,
+                ValidationState.PUBLIC_COSIM,
+            }
+        ):
+            (
+                active_request,
+                active_outcome,
+                recovery_metadata,
+            ) = self._recover_public_testbench(
+                context=context,
+                request=active_request,
+                outcome=active_outcome,
+                validation_id=validation_id,
+                ledger=recovery_ledger,
+            )
+            if active_outcome.result.accepted:
+                return self._finish(
+                    context,
+                    validation_id=validation_id,
+                    status=CandidateRepairOrchestrationStatus.ACCEPTED,
+                    request=active_request,
+                    initial_validation=initial_outcome.result,
+                    repair_result=None,
+                    candidate_validations=(),
+                    final_candidate=request.initial_candidate,
+                    last_validation_state=ValidationState.ACCEPTED,
+                    family_instruction=family_instruction,
+                    family_instruction_source=family_instruction_source,
+                    recovery_ledger=recovery_ledger,
+                    extra_metadata=recovery_metadata,
+                )
+            terminal_report = active_outcome.terminal_report
+            terminal_decision = active_outcome.terminal_decision
+            if terminal_report is None or terminal_decision is None:
+                raise RuntimeError(
+                    "revalidated terminal result must retain feedback"
+                )
+            initial_terminal_step = active_outcome.result.steps[-1]
+
+        if (
+            active_outcome.result.final_state
             is not ValidationState.REPAIR_PENDING
             or terminal_decision.action
             is not FeedbackRouteAction.REPAIR_CANDIDATE
         ):
             status = (
-                CandidateRepairOrchestrationStatus.
-                REPAIR_NOT_APPLICABLE
-                if initial_outcome.result.final_state
+                CandidateRepairOrchestrationStatus.REPAIR_NOT_APPLICABLE
+                if active_outcome.result.final_state
                 is ValidationState.REPAIR_PENDING
-                else CandidateRepairOrchestrationStatus.
-                VALIDATION_TERMINAL
+                else CandidateRepairOrchestrationStatus.VALIDATION_TERMINAL
             )
             return self._finish(
                 context,
                 validation_id=validation_id,
                 status=status,
-                request=request,
+                request=active_request,
                 initial_validation=initial_outcome.result,
                 repair_result=None,
                 candidate_validations=(),
                 final_candidate=request.initial_candidate,
-                last_validation_state=(
-                    initial_outcome.result.final_state
-                ),
+                last_validation_state=active_outcome.result.final_state,
                 family_instruction=family_instruction,
-                family_instruction_source=(
-                    family_instruction_source
-                ),
+                family_instruction_source=family_instruction_source,
+                recovery_ledger=recovery_ledger,
+                extra_metadata=recovery_metadata,
             )
 
         validator = _OrchestratedCandidateValidator(
             parent_context=context,
             handler_factory=self._handler_factory,
-            orchestration_request=request,
+            orchestration_request=active_request,
             validation_id=validation_id,
         )
         loop = BoundedCandidateRepairLoop(
@@ -877,12 +953,13 @@ class CandidateRepairValidationOrchestrator:
                 failure_state=initial_terminal_step.state,
                 max_attempts=request.max_attempts,
                 public_testbench_code=(
-                    request.prompt_public_testbench_code
+                    active_request.prompt_public_testbench_code
                 ),
                 family_instruction=family_instruction,
                 approved_memory_snippets=(
-                    request.approved_memory_snippets
+                    active_request.approved_memory_snippets
                 ),
+                recovery_ledger=recovery_ledger,
             )
         )
         validation_results = tuple(
@@ -919,7 +996,162 @@ class CandidateRepairValidationOrchestrator:
             family_instruction_source=(
                 family_instruction_source
             ),
+            recovery_ledger=recovery_ledger,
+            extra_metadata=recovery_metadata,
         )
+
+    def _recover_public_testbench(
+        self,
+        *,
+        context: RunContext,
+        request: CandidateRepairOrchestrationRequest,
+        outcome: ValidationExecutionOutcome,
+        validation_id: str,
+        ledger: RecoveryLedger,
+    ) -> tuple[
+        CandidateRepairOrchestrationRequest,
+        ValidationExecutionOutcome,
+        dict[str, Any],
+    ]:
+        report = outcome.terminal_report
+        decision = outcome.terminal_decision
+        if report is None or decision is None:
+            raise RuntimeError("testbench recovery requires terminal feedback")
+        failure_state = outcome.result.steps[-1].state
+        if failure_state not in {
+            ValidationState.PUBLIC_EVALUATION,
+            ValidationState.PUBLIC_COSIM,
+        }:
+            raise ValueError("runtime Testbench recovery is Public-only")
+        selected = {item.feedback_id: item for item in report.items}
+        suite_ids = {
+            str(selected[item_id].metadata.get("suite_id"))
+            for item_id in decision.selected_feedback_ids
+            if item_id in selected
+            and selected[item_id].owner is FeedbackOwner.TESTBENCH
+            and selected[item_id].metadata.get("suite_id")
+        }
+        if len(suite_ids) != 1:
+            raise ValueError(
+                "runtime Testbench recovery requires one deterministic suite"
+            )
+        suite_id = next(iter(suite_ids))
+        public_ids = {
+            suite.suite_id
+            for suite in context.task.test_suites
+            if suite.split is EvaluationSplit.PUBLIC
+        }
+        if suite_id not in public_ids:
+            raise ValueError("selected Testbench suite is not Public")
+
+        stage = RecoveryStage(failure_state.value)
+        ledger.reserve(
+            RecoveryRequest(
+                action=RecoveryAction.REPAIR,
+                role=RecoveryRole.TESTBENCH,
+                stage=stage,
+                evidence_view="agent_safe",
+                owner_authority=RecoveryAuthority.DETERMINISTIC_PROVEN,
+                lineage_id=context.task.task_id,
+                physical_tool_launched=True,
+                evidence_complete=True,
+                advisory_mode=request.llm_advisory_mode,
+                timeout_class=decision.metadata.get("timeout_class"),
+            ),
+            budget=context.budget,
+            restart_reserve=default_restart_reserve(stage),
+        )
+        repairer = build_openai_compatible_testbench_repairer(
+            effective_config=self._model_adapter.effective_config,
+            budget=context.budget,
+        )
+        loop = TestbenchRepairLoop(
+            preflight=TestbenchPreflight(),
+            repairer=repairer,
+            max_repair_attempts=1,
+        )
+        work_root = getattr(
+            self._handler_factory,
+            "work_root",
+            Path(os.getenv("AGREFACTOR_WORK_ROOT", "/data/agrefactor_work")),
+        )
+        repair = loop.run(
+            work_dir=(
+                Path(work_root)
+                / _safe_component(validation_id)
+                / "runtime_testbench_repair"
+                / _safe_component(suite_id)
+            ),
+            testbench_code=request.suite_testbench_codes[suite_id],
+            original_code=request.original_code,
+            candidate_code=request.initial_candidate,
+            budget=context.budget,
+            task=context.task,
+            original_top_function=request.reference_top_function,
+            candidate_top_function=(
+                request.candidate_top_function or context.task.kernel_name
+            ),
+            runtime_feedback=report,
+            failure_state=failure_state,
+        )
+        metadata = {
+            "runtime_testbench_recovery": repair.to_dict(),
+            "runtime_testbench_suite_id": suite_id,
+            "runtime_testbench_failure_state": failure_state.value,
+        }
+        if not repair.succeeded:
+            return request, outcome, metadata
+
+        codes = dict(request.suite_testbench_codes)
+        old_code = codes[suite_id]
+        codes[suite_id] = repair.testbench_code
+        updated = replace(
+            request,
+            suite_testbench_codes=codes,
+            preflight_testbench_code=(
+                repair.testbench_code
+                if request.preflight_testbench_code == old_code
+                else request.preflight_testbench_code
+            ),
+            prompt_public_testbench_code=(
+                repair.testbench_code
+                if request.prompt_public_testbench_code == old_code
+                else request.prompt_public_testbench_code
+            ),
+        )
+        ledger.record_validation_restart(
+            lineage_id=context.task.task_id,
+            stage=stage,
+        )
+        plan = CandidateValidationPlanRequest(
+            task=context.task,
+            candidate_code=request.initial_candidate,
+            original_code=updated.original_code,
+            preflight_testbench_code=updated.preflight_testbench_code,
+            suite_testbench_codes=updated.suite_testbench_codes,
+            attempt=1,
+            validation_id=f"{validation_id}.testbench.1",
+            reference_top_function=updated.reference_top_function,
+            candidate_top_function=(
+                updated.candidate_top_function or context.task.kernel_name
+            ),
+        )
+        child = RunContext(
+            run_id=f"{context.run_id}.testbench-repair.1",
+            task=context.task,
+            budget=context.budget,
+            trace=context.trace,
+        )
+        revalidated = ValidationOrchestrator(
+            _build_handlers(self._handler_factory, plan)
+        ).run_detailed(
+            child,
+            validation_id=f"{validation_id}.testbench.1",
+        )
+        metadata["runtime_testbench_revalidation"] = (
+            revalidated.result.to_dict()
+        )
+        return updated, revalidated, metadata
 
     def _finish(
         self,
@@ -938,6 +1170,8 @@ class CandidateRepairValidationOrchestrator:
         last_validation_state: ValidationState,
         family_instruction: str | None,
         family_instruction_source: str,
+        recovery_ledger: RecoveryLedger | None = None,
+        extra_metadata: Mapping[str, Any] | None = None,
     ) -> CandidateRepairOrchestrationResult:
         result = CandidateRepairOrchestrationResult(
             validation_id=validation_id,
@@ -980,6 +1214,14 @@ class CandidateRepairValidationOrchestrator:
                 "family_instruction_source": (
                     family_instruction_source
                 ),
+                "recovery_profile": request.recovery_profile,
+                "llm_advisory_mode": request.llm_advisory_mode,
+                "recovery_ledger": (
+                    None
+                    if recovery_ledger is None
+                    else recovery_ledger.to_dict()
+                ),
+                **dict(extra_metadata or {}),
             },
         )
         context.trace.record(

@@ -95,6 +95,9 @@ class PromptPurpose(str, Enum):
     CANDIDATE_PUBLIC_CSIM_REPAIR = (
         "candidate_public_csim_repair"
     )
+    CANDIDATE_PUBLIC_COSIM_REPAIR = (
+        "candidate_public_cosim_repair"
+    )
 
     @property
     def expected_owner(self) -> FeedbackOwner:
@@ -111,6 +114,8 @@ class PromptPurpose(str, Enum):
                     FeedbackStage.COMPILE,
                     FeedbackStage.LINK,
                     FeedbackStage.TEST,
+                    FeedbackStage.CSIM,
+                    FeedbackStage.COSIM,
                 }
             )
         if self is PromptPurpose.CANDIDATE_COMPILE_REPAIR:
@@ -127,12 +132,14 @@ class PromptPurpose(str, Enum):
                     FeedbackStage.CSYNTH,
                 }
             )
-        return frozenset(
-            {
-                FeedbackStage.TEST,
-                FeedbackStage.CSIM,
-            }
-        )
+        if self is PromptPurpose.CANDIDATE_PUBLIC_CSIM_REPAIR:
+            return frozenset(
+                {
+                    FeedbackStage.TEST,
+                    FeedbackStage.CSIM,
+                }
+            )
+        return frozenset({FeedbackStage.COSIM})
 
 
 @dataclass(frozen=True, slots=True)

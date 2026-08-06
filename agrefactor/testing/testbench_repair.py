@@ -14,8 +14,13 @@ from agrefactor.config import (
     TaskSpec,
     validate_repair_attempts,
 )
-from agrefactor.evaluation import TestbenchPreflight
+from agrefactor.evaluation import (
+    TestbenchPreflight,
+    ValidationState,
+)
 from agrefactor.evidence import (
+    FeedbackOwner,
+    FeedbackReport,
     TestbenchFailureOwner,
     TestbenchPreflightResult,
 )
@@ -67,6 +72,8 @@ class TestbenchRepairRequest:
     task: TaskSpec = field(
         default_factory=_default_testbench_repair_task
     )
+    runtime_feedback: FeedbackReport | None = None
+    failure_state: ValidationState | None = None
 
     def __post_init__(self) -> None:
         validate_repair_attempts(
@@ -81,6 +88,29 @@ class TestbenchRepairRequest:
             raise TypeError(
                 "TestbenchRepairRequest.task must be a TaskSpec"
             )
+        if self.runtime_feedback is not None:
+            if not isinstance(self.runtime_feedback, FeedbackReport):
+                raise TypeError("runtime_feedback must be FeedbackReport or None")
+            if self.runtime_feedback.metadata.get("evidence_view") != "agent_safe":
+                raise ValueError("runtime testbench repair requires agent_safe feedback")
+            blocking = tuple(
+                item for item in self.runtime_feedback.items if item.blocking
+            )
+            if not blocking or any(
+                item.owner is not FeedbackOwner.TESTBENCH for item in blocking
+            ):
+                raise ValueError(
+                    "runtime testbench repair requires deterministic Testbench-owned feedback"
+                )
+            if self.failure_state not in {
+                ValidationState.PUBLIC_EVALUATION,
+                ValidationState.PUBLIC_COSIM,
+            }:
+                raise ValueError(
+                    "runtime testbench repair requires Public CSIM/COSIM state"
+                )
+        elif self.failure_state is not None:
+            raise ValueError("failure_state requires runtime_feedback")
         summaries = tuple(self.prior_attempt_summaries)
         if not all(
             isinstance(item, str) and item.strip()
@@ -288,6 +318,8 @@ class TestbenchRepairLoop:
         task: TaskSpec | None = None,
         original_top_function: str | None = None,
         candidate_top_function: str | None = None,
+        runtime_feedback: FeedbackReport | None = None,
+        failure_state: ValidationState | None = None,
     ) -> TestbenchRepairResult:
         root = Path(work_dir)
         root.mkdir(parents=True, exist_ok=True)
@@ -338,7 +370,7 @@ class TestbenchRepairLoop:
             )
         )
 
-        if initial.succeeded:
+        if initial.succeeded and runtime_feedback is None:
             return self._finish(
                 root=root,
                 run_id=run_id,
@@ -349,7 +381,11 @@ class TestbenchRepairLoop:
                 reason="initial testbench passed preflight",
             )
 
-        stop_reason = self._non_repairable_reason(initial)
+        stop_reason = (
+            None
+            if runtime_feedback is not None and initial.succeeded
+            else self._non_repairable_reason(initial)
+        )
         if stop_reason:
             return self._finish(
                 root=root,
@@ -391,6 +427,8 @@ class TestbenchRepairLoop:
                     prior_attempt_summaries
                 ),
                 task=task,
+                runtime_feedback=runtime_feedback,
+                failure_state=failure_state,
             )
 
             repair_attempts_used += 1

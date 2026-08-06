@@ -21,6 +21,7 @@ from agrefactor.evidence import (
     FeedbackStage,
 )
 from agrefactor.runtime.budget import BudgetExceededError
+from agrefactor.recovery import classify_public_timeout
 
 from .runner import RunContext
 
@@ -44,7 +45,7 @@ _EXPECTED_OWNER = {
     "public_testbench_failure": "testbench",
     "toolchain_failure": "toolchain",
     "configuration_failure": "configuration",
-    "timeout": "unknown",
+    "timeout": None,
     "ownership_unknown": "unknown",
     "budget_exhausted": "configuration",
 }
@@ -219,7 +220,9 @@ class CosimValidationStageHandler:
             "declared_suite_count": len(declared_ids),
             "hidden_input_count": 0,
             "hidden_evidence_exposed": False,
-            "repair_allowed": False,
+            "repair_allowed": "policy_controlled",
+            "evaluation_split": EvaluationSplit.PUBLIC.value,
+            "feedback_visible_to_agent": True,
             "execution_policy": "public_cosim_fail_fast",
             "suite_work_dir_layout": "public_cosim/suite_NNN",
         }
@@ -339,7 +342,15 @@ class CosimValidationStageHandler:
                         }
                         else FeedbackSeverity.ERROR
                     ),
-                    owner=_OWNER[kind],
+                    owner=(
+                        {
+                            "candidate": FeedbackOwner.CANDIDATE,
+                            "testbench": FeedbackOwner.TESTBENCH,
+                            "toolchain": FeedbackOwner.TOOLCHAIN,
+                            "configuration": FeedbackOwner.CONFIGURATION,
+                            "unknown": FeedbackOwner.UNKNOWN,
+                        }.get(str(outcome.get("failure_owner")), _OWNER[kind])
+                    ),
                     summary=outcome["reason_code"],
                     source=self.source,
                     evidence_ref=outcome.get("evidence_sha256"),
@@ -368,7 +379,15 @@ class CosimValidationStageHandler:
                 "next_action": (
                     "continue_validation"
                     if not items
-                    else "reject_candidate_no_repair"
+                    else (
+                        "repair_candidate"
+                        if summaries[-1].get("failure_owner") == "candidate"
+                        else (
+                            "repair_testbench"
+                            if summaries[-1].get("failure_owner") == "testbench"
+                            else "review_unknown"
+                        )
+                    )
                 ),
             },
         )
@@ -401,7 +420,9 @@ class CosimValidationStageHandler:
             "evidence_sha256": outcome.get("evidence_sha256"),
             "hidden_input_count": 0,
             "hidden_evidence_exposed": False,
-            "repair_allowed": False,
+            "repair_allowed": outcome.get("repair_eligible") is True,
+            "timeout_class": outcome.get("timeout_class"),
+            "owner_authority": outcome.get("owner_authority"),
         }
         _atomic_json(
             work_dir / "cosim_suite_identity_evidence.json",
@@ -460,7 +481,12 @@ def _normalize_outcome(value: Mapping[str, Any]) -> dict[str, Any]:
 
     kind = value.get("failure_kind")
     owner = value.get("failure_owner")
-    if (
+    timeout = None
+    if kind == "timeout" or value.get("timed_out") is True:
+        timeout = classify_public_timeout(value, stage="public_cosim")
+        kind = "timeout"
+        owner = timeout.owner.value
+    elif (
         kind not in _ALLOWED_FAILURES
         or owner != _EXPECTED_OWNER.get(kind)
     ):
@@ -488,6 +514,21 @@ def _normalize_outcome(value: Mapping[str, Any]) -> dict[str, Any]:
         "tool_launched": value.get("tool_launched") is True,
         "cosim_launched": value.get("cosim_launched") is True,
         "evidence_sha256": evidence_sha,
+        "timeout_class": (
+            None if timeout is None else timeout.timeout_class.value
+        ),
+        "owner_authority": (
+            None if timeout is None else timeout.owner_authority
+        ),
+        "repair_eligible": (
+            False if timeout is None else timeout.repair_eligible
+        ),
+        "advisory_eligible": (
+            False if timeout is None else timeout.advisory_eligible
+        ),
+        "evidence_complete": (
+            False if timeout is None else timeout.evidence_complete
+        ),
     }
 
 
@@ -510,6 +551,11 @@ def _safe_summary(
         ),
         "tool_launched": outcome.get("tool_launched") is True,
         "cosim_launched": outcome.get("cosim_launched") is True,
+        "timeout_class": outcome.get("timeout_class"),
+        "owner_authority": outcome.get("owner_authority"),
+        "repair_eligible": outcome.get("repair_eligible") is True,
+        "advisory_eligible": outcome.get("advisory_eligible") is True,
+        "evidence_complete": outcome.get("evidence_complete") is True,
         "evidence_sha256": (
             evidence_sha
             if isinstance(evidence_sha, str)

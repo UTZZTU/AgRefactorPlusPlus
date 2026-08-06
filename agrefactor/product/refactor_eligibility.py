@@ -1070,7 +1070,7 @@ def _safe_code(value: str) -> str:
         or not cleaned[0].isalpha()
         or any(
             character
-            not in "abcdefghijklmnopqrstuvwxyz0123456789_-.:" 
+            not in "abcdefghijklmnopqrstuvwxyz0123456789_-.:"
             for character in cleaned
         )
     ):

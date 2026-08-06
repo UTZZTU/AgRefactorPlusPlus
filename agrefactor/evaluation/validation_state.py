@@ -9,6 +9,15 @@ import json
 from typing import Any
 
 from agrefactor.config import EvaluationSplit, TaskSpec
+from agrefactor.recovery import (
+    RecoveryAction,
+    RecoveryAuthority,
+    RecoveryPolicy,
+    RecoveryRequest,
+    RecoveryRole,
+    RecoveryStage,
+    conservative_v1_policy,
+)
 
 from .feedback_routing import (
     FeedbackRouteAction,
@@ -316,10 +325,20 @@ class ValidationStateMachine:
         FeedbackRouteAction.REVIEW_MIXED,
     }
 
-    def __init__(self, task: TaskSpec) -> None:
+    def __init__(
+        self,
+        task: TaskSpec,
+        *,
+        recovery_policy: RecoveryPolicy | None = None,
+    ) -> None:
         if not isinstance(task, TaskSpec):
             raise TypeError("task must be a TaskSpec")
+        if recovery_policy is None:
+            recovery_policy = conservative_v1_policy()
+        if not isinstance(recovery_policy, RecoveryPolicy):
+            raise TypeError("recovery_policy must be RecoveryPolicy")
         self._task = task
+        self._recovery_policy = recovery_policy
         self._public = tuple(
             suite.suite_id
             for suite in task.test_suites
@@ -452,28 +471,6 @@ class ValidationStateMachine:
                 metadata=metadata,
             )
 
-        if (
-            state is ValidationState.PUBLIC_COSIM
-            and action in self._REPAIR
-        ):
-            return ValidationTransition(
-                transition_id=tid,
-                current_state=state,
-                next_state=ValidationState.REJECTED,
-                kind=ValidationTransitionKind.REJECT,
-                route_action=action,
-                reason=(
-                    "Public RTL COSIM failure is terminal for this "
-                    "candidate; iterative repair is not allowed."
-                ),
-                source_decision_id=decision.decision_id,
-                metadata={
-                    **metadata,
-                    "public_cosim_terminal_policy": True,
-                    "repair_suppressed": True,
-                },
-            )
-
         if action in self._REPAIR:
             if (
                 decision.metadata.get("evidence_view")
@@ -481,6 +478,57 @@ class ValidationStateMachine:
             ):
                 raise ValueError(
                     "Repair requires an agent_safe decision"
+                )
+            role = {
+                FeedbackRouteAction.REPAIR_CANDIDATE: RecoveryRole.CANDIDATE,
+                FeedbackRouteAction.REPAIR_TESTBENCH: RecoveryRole.TESTBENCH,
+                FeedbackRouteAction.REPAIR_ORIGINAL: RecoveryRole.ORIGINAL,
+            }[action]
+            stage = RecoveryStage(state.value)
+            owner_authority = (
+                RecoveryAuthority.LLM_ADVISORY
+                if decision.metadata.get("owner_authority") == "llm_advisory"
+                else RecoveryAuthority.DETERMINISTIC_PROVEN
+            )
+            policy_decision = self._recovery_policy.decide(
+                RecoveryRequest(
+                    action=RecoveryAction.REPAIR,
+                    role=role,
+                    stage=stage,
+                    evidence_view=str(
+                        decision.metadata.get("evidence_view") or "unknown"
+                    ),
+                    owner_authority=owner_authority,
+                    lineage_id=self._task.task_id,
+                    physical_tool_launched=bool(
+                        decision.metadata.get("physical_tool_launched", True)
+                    ),
+                    evidence_complete=bool(
+                        decision.metadata.get("evidence_complete", True)
+                    ),
+                    advisory_mode=str(
+                        decision.metadata.get("advisory_mode", "off")
+                    ),
+                    timeout_class=decision.metadata.get("timeout_class"),
+                )
+            )
+            if not policy_decision.allowed:
+                return ValidationTransition(
+                    transition_id=tid,
+                    current_state=state,
+                    next_state=ValidationState.REVIEW_REQUIRED,
+                    kind=ValidationTransitionKind.REQUIRE_REVIEW,
+                    route_action=action,
+                    reason=(
+                        "Recovery policy did not authorize automated repair: "
+                        + policy_decision.reason_code
+                    ),
+                    source_decision_id=decision.decision_id,
+                    metadata={
+                        **metadata,
+                        "recovery_policy": self._recovery_policy.profile_name,
+                        "recovery_policy_decision": policy_decision.to_dict(),
+                    },
                 )
             if not decision.selected_feedback_ids:
                 raise ValueError(
@@ -504,7 +552,11 @@ class ValidationStateMachine:
                 selected_feedback_ids=(
                     decision.selected_feedback_ids
                 ),
-                metadata=metadata,
+                metadata={
+                    **metadata,
+                    "recovery_policy": self._recovery_policy.profile_name,
+                    "recovery_policy_decision": policy_decision.to_dict(),
+                },
             )
 
         raise ValueError(

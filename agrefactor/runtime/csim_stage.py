@@ -32,6 +32,7 @@ from agrefactor.evaluation.testbench_preflight import (
     infer_failure_owner,
     parse_compiler_diagnostics,
 )
+from agrefactor.recovery import classify_public_timeout
 from agrefactor.evidence import (
     FeedbackCategory,
     FeedbackItem,
@@ -665,9 +666,25 @@ class CsimValidationStageHandler:
         }
 
         if result.evidence.timed_out:
+            timeout = classify_public_timeout(
+                {
+                    **dict(result.evidence.details),
+                    "timed_out": True,
+                    "tool_launched": True,
+                    "returncode_present": result.evidence.return_code is not None,
+                },
+                stage="public_csim",
+            )
             category = FeedbackCategory.TIMEOUT
-            owner = FeedbackOwner.EVALUATOR
+            owner = {
+                "candidate": FeedbackOwner.CANDIDATE,
+                "testbench": FeedbackOwner.TESTBENCH,
+                "toolchain": FeedbackOwner.TOOLCHAIN,
+                "infrastructure": FeedbackOwner.EVALUATOR,
+                "unknown": FeedbackOwner.UNKNOWN,
+            }[timeout.owner.value]
             stage = FeedbackStage.CSIM
+            metadata_update.update(timeout.to_dict())
         elif result.legacy_status == "csim_failed":
             category = FeedbackCategory.FUNCTIONAL_MISMATCH
             owner = FeedbackOwner.CANDIDATE
@@ -1068,6 +1085,13 @@ class CsimValidationStageHandler:
         }
         if FeedbackCategory.BUDGET_EXHAUSTED in categories:
             return "budget_exhausted"
+        if FeedbackCategory.TIMEOUT in categories:
+            repairable = any(
+                item.metadata.get("repair_eligible") is True
+                for item in report.items
+            )
+            if repairable:
+                return None
         if categories & _TERMINAL_PUBLIC_CATEGORIES:
             return "terminal_infrastructure_failure"
         return None

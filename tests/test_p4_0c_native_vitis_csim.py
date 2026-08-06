@@ -552,7 +552,7 @@ class CsimStageBackendContractTests(unittest.TestCase):
             FeedbackOwner.TOOLCHAIN,
         )
 
-    def test_native_timeout_is_not_candidate_mismatch(self):
+    def test_native_timeout_is_unknown_safe_not_candidate_mismatch(self):
         task = _task(public=True, hidden=False)
         with tempfile.TemporaryDirectory(
             prefix="p4_0c_timeout_"
@@ -614,7 +614,21 @@ class CsimStageBackendContractTests(unittest.TestCase):
         )
         self.assertEqual(
             report.items[0].owner,
-            FeedbackOwner.EVALUATOR,
+            FeedbackOwner.UNKNOWN,
+        )
+        self.assertEqual(
+            report.items[0].metadata.get("timeout_class"),
+            "ownership_unknown",
+        )
+        self.assertEqual(
+            report.items[0].metadata.get("owner_authority"),
+            "unknown",
+        )
+        self.assertFalse(
+            report.items[0].metadata.get("repair_eligible")
+        )
+        self.assertTrue(
+            report.items[0].metadata.get("advisory_eligible")
         )
         self.assertNotEqual(
             report.items[0].category,

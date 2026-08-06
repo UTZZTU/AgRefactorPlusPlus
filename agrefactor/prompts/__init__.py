@@ -5,6 +5,7 @@ from .candidate_repair import (
     build_candidate_compile_repair_prompt,
     build_candidate_csynth_repair_prompt,
     build_candidate_public_csim_repair_prompt,
+    build_candidate_public_cosim_repair_prompt,
 )
 from .test_source_isolation import (
     HiddenTestSourceIsolationError,
@@ -34,4 +35,5 @@ __all__ = [
     "build_candidate_compile_repair_prompt",
     "build_candidate_csynth_repair_prompt",
     "build_candidate_public_csim_repair_prompt",
+    "build_candidate_public_cosim_repair_prompt",
 ]
