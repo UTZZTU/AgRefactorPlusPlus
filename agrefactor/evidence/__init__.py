@@ -1,3 +1,9 @@
+from .auditor import (
+    AuditSeverity,
+    EvidenceAuditFinding,
+    EvidenceAuditReport,
+    audit_product_evidence,
+)
 from .feedback import (
     FeedbackCategory,
     FeedbackItem,
@@ -25,6 +31,10 @@ from .testbench import (
 )
 
 __all__ = [
+    "AuditSeverity",
+    "EvidenceAuditFinding",
+    "EvidenceAuditReport",
+    "audit_product_evidence",
     "FeedbackCategory",
     "FeedbackItem",
     "FeedbackOwner",

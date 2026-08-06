@@ -82,6 +82,11 @@ _AGGREGATE_SOURCE_SYNTHESIS_RE = re.compile(
     r"\bEncountered problem during source synthesis\b",
     flags=re.IGNORECASE,
 )
+_GLOBAL_VARIABLE_DEFINITION_RE = re.compile(
+    r"\bGlobal variable\s+['\"](?P<symbol>[A-Za-z_][A-Za-z0-9_]*)['\"]"
+    r"\s+must have definition\b",
+    flags=re.IGNORECASE,
+)
 
 
 class CsynthDiagnosticParser:
@@ -99,7 +104,7 @@ class CsynthDiagnosticParser:
     """
 
     source = "csynth_diagnostic"
-    parser_version = 1
+    parser_version = 2
 
     def parse_text(
         self,
@@ -356,6 +361,20 @@ class CsynthDiagnosticParser:
                 "high",
             )
 
+        if (
+            message_id == "HLS 214-133"
+            and _GLOBAL_VARIABLE_DEFINITION_RE.search(message)
+        ):
+            return (
+                FeedbackCategory.UNSUPPORTED_CONSTRUCT,
+                (
+                    "HLS source global variable lacks a "
+                    "synthesizable definition"
+                ),
+                "global_variable_requires_definition",
+                "high",
+            )
+
         if _S_AXILITE_BUNDLE_RE.search(message):
             return (
                 FeedbackCategory.INVALID_CONFIGURATION,
@@ -427,9 +446,18 @@ class CsynthDiagnosticParser:
                 "expected_token",
                 "s_axilite_bundle_mismatch",
                 "pipeline_carried_dependence",
+                "global_variable_requires_definition",
             }
             else FeedbackOwner.UNKNOWN
         )
+
+        affected_symbol = None
+        if rule == "global_variable_requires_definition":
+            match = _GLOBAL_VARIABLE_DEFINITION_RE.search(
+                str(record["message"])
+            )
+            if match is not None:
+                affected_symbol = match.group("symbol")
 
         return FeedbackItem(
             feedback_id=(
@@ -458,6 +486,7 @@ class CsynthDiagnosticParser:
                 "classification_confidence": record[
                     "classification_confidence"
                 ],
+                "affected_symbol": affected_symbol,
                 "occurrence_count": record[
                     "occurrence_count"
                 ],

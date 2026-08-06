@@ -286,6 +286,8 @@ class TestbenchRepairLoop:
         candidate_code: str,
         budget: BudgetManager | None = None,
         task: TaskSpec | None = None,
+        original_top_function: str | None = None,
+        candidate_top_function: str | None = None,
     ) -> TestbenchRepairResult:
         root = Path(work_dir)
         root.mkdir(parents=True, exist_ok=True)
@@ -293,6 +295,12 @@ class TestbenchRepairLoop:
         current = self._require_source("testbench_code", testbench_code)
         original = self._require_source("original_code", original_code)
         candidate = self._require_source("candidate_code", candidate_code)
+        original_top = self._optional_top(
+            "original_top_function", original_top_function
+        )
+        candidate_top = self._optional_top(
+            "candidate_top_function", candidate_top_function
+        )
 
         if task is None:
             task = _default_testbench_repair_task()
@@ -311,6 +319,8 @@ class TestbenchRepairLoop:
             original_code=original,
             candidate_code=candidate,
             budget=budget,
+            original_top_function=original_top,
+            candidate_top_function=candidate_top,
         )
         initial_after = self._budget_snapshot(budget)
         attempts.append(
@@ -498,6 +508,8 @@ class TestbenchRepairLoop:
                 original_code=original,
                 candidate_code=candidate,
                 budget=budget,
+                original_top_function=original_top,
+                candidate_top_function=candidate_top,
             )
             observation = self._new_model_observation(
                 audit_count_before
@@ -579,6 +591,8 @@ class TestbenchRepairLoop:
         original_code: str,
         candidate_code: str,
         budget: BudgetManager | None,
+        original_top_function: str | None,
+        candidate_top_function: str | None,
     ) -> TestbenchPreflightResult:
         kwargs = {
             "work_dir": root / f"attempt_{index:02d}",
@@ -586,6 +600,10 @@ class TestbenchRepairLoop:
             "original_code": original_code,
             "candidate_code": candidate_code,
         }
+        if original_top_function is not None:
+            kwargs["original_top_function"] = original_top_function
+        if candidate_top_function is not None:
+            kwargs["candidate_top_function"] = candidate_top_function
         if budget is not None:
             kwargs["budget"] = budget
         return self._preflight.compile_and_link(**kwargs)
@@ -623,6 +641,17 @@ class TestbenchRepairLoop:
             f"owner={preflight.failure_owner.value}, "
             f"next_action={preflight.next_action}"
         )
+
+    @staticmethod
+    def _optional_top(name: str, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise TypeError(f"{name} must be a string or None")
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError(f"{name} must not be empty")
+        return cleaned
 
     @staticmethod
     def _require_source(name: str, value: str) -> str:

@@ -626,10 +626,10 @@ def _csynth_status(
     public_status: str,
     hidden_status: str,
 ) -> str:
-    if accepted or public_status != "not_run" or hidden_status != "not_run":
-        return "passed"
     if failed_stage == "csynth":
         return "failed"
+    if accepted or public_status != "not_run" or hidden_status != "not_run":
+        return "passed"
     return "not_run"
 
 
@@ -830,8 +830,20 @@ _SUCCESS_FAILURE_CODES = frozenset({
     "public_cosim_passed", "hidden_passed", "validation_passed", "none", "ok",
 })
 _VALIDATION_FAILURE_STAGES = frozenset(
-    {"public", "public_csim", "csynth", "public_cosim", "hidden"}
+    {
+        "public", "public_csim", "csim", "csynth",
+        "public_cosim", "cosim", "hidden",
+    }
 )
+_STAGE_EQUIVALENTS = {
+    "public": frozenset({"public", "public_csim", "csim"}),
+    "public_csim": frozenset({"public", "public_csim", "csim"}),
+    "csim": frozenset({"public", "public_csim", "csim"}),
+    "public_cosim": frozenset({"public_cosim", "cosim"}),
+    "cosim": frozenset({"public_cosim", "cosim"}),
+    "csynth": frozenset({"csynth"}),
+    "hidden": frozenset({"hidden"}),
+}
 
 
 def _safe_failure_code(value: Any) -> str | None:
@@ -857,15 +869,21 @@ def _typed_failure_records(
         suite = _safe_failure_code(value.get("suite_id")) or _safe_failure_code(
             value.get("suite")
         )
+        split = _safe_failure_code(value.get("split"))
         if suite in _VALIDATION_FAILURE_STAGES:
             local_scope = suite
+        elif split in {"public", "hidden"}:
+            local_scope = split
         record = {
             "scope": local_scope,
             "stage": explicit_stage,
             "blocking": value.get("blocking") is True,
-            "failure_kind": _safe_failure_code(value.get("failure_kind")),
-            "failure_owner": _safe_failure_code(value.get("failure_owner")),
+            "failure_kind": _safe_failure_code(value.get("failure_kind"))
+            or _safe_failure_code(value.get("category")),
+            "failure_owner": _safe_failure_code(value.get("failure_owner"))
+            or _safe_failure_code(value.get("owner")),
             "route_action": _safe_failure_code(value.get("route_action"))
+            or _safe_failure_code(value.get("next_action"))
             or _safe_failure_code(value.get("action")),
             "reason_code": _safe_failure_code(value.get("reason_code")),
         }
@@ -899,6 +917,59 @@ def _one_non_success_failure_code(values: Iterator[str | None]) -> str | None:
     return next(iter(selected)) if len(selected) == 1 else None
 
 
+def _terminal_failure_candidates(
+    records: list[dict[str, Any]],
+    *,
+    stage: str,
+) -> list[dict[str, Any]]:
+    equivalent = _STAGE_EQUIVALENTS.get(stage, frozenset({stage}))
+    levels = (
+        [
+            record for record in records
+            if record.get("stage") in equivalent
+            and record.get("blocking")
+        ],
+        [
+            record for record in records
+            if record.get("stage") in equivalent
+        ],
+        [
+            record for record in records
+            if record.get("scope") in equivalent
+            and record.get("blocking")
+        ],
+        [
+            record for record in records
+            if record.get("scope") in equivalent
+        ],
+        [
+            record for record in records
+            if record.get("blocking")
+            and (
+                record.get("stage") in _VALIDATION_FAILURE_STAGES
+                or record.get("scope") in _VALIDATION_FAILURE_STAGES
+            )
+        ],
+    )
+    for selected in levels:
+        if selected:
+            return selected
+    return []
+
+
+def _non_success_values(
+    records: list[dict[str, Any]],
+    key: str,
+) -> set[str]:
+    return {
+        value
+        for record in records
+        if (value := record.get(key)) is not None
+        and value not in _SUCCESS_FAILURE_CODES
+        and value != "none"
+    }
+
+
 def _validation_failure_fields(
     identity: Mapping[str, Any],
     *,
@@ -908,45 +979,59 @@ def _validation_failure_fields(
     if stage not in _VALIDATION_FAILURE_STAGES:
         return None
     records = list(_typed_failure_records(identity))
-    scoped = [
-        record
-        for record in records
-        if record.get("scope") == stage or record.get("stage") == stage
-    ]
-    blocking = [record for record in scoped if record.get("blocking")]
-    candidates = blocking or scoped
+    candidates = _terminal_failure_candidates(records, stage=stage)
+    fallback_stage = "public" if stage in {"public_csim", "csim"} else stage
     if not candidates:
-        candidates = [record for record in records if record.get("blocking")]
-    failure_kinds = {
-        record.get("failure_kind")
-        for record in candidates
-        if record.get("failure_kind") is not None
-        and record.get("failure_kind") not in _SUCCESS_FAILURE_CODES
-    }
-    if len(failure_kinds) == 1:
-        reason_code = next(iter(failure_kinds))
-    elif len(failure_kinds) > 1:
-        reason_code = None
-    else:
-        reason_code = _one_non_success_failure_code(
-            iter(record.get("reason_code") for record in candidates)
-        )
-    failure_owner = _one_non_success_failure_code(
-        iter(record.get("failure_owner") for record in candidates)
+        return {
+            "reason_code": f"{fallback_stage}_validation_unknown",
+            "failure_owner": None,
+            "route_action": None,
+            "review_required": True,
+        }
+
+    failure_kinds = _non_success_values(candidates, "failure_kind")
+    reason_codes = _non_success_values(candidates, "reason_code")
+    owners = _non_success_values(candidates, "failure_owner")
+    actions = _non_success_values(candidates, "route_action")
+    owner_or_action_conflict = (
+        len(owners) > 1 or len(actions) > 1
     )
-    route_actions = {
-        record.get("route_action")
-        for record in candidates + records
-        if record.get("route_action") is not None
-    }
+    reason_conflict = (
+        len(failure_kinds) > 1
+        or (not failure_kinds and len(reason_codes) > 1)
+    )
+    if owner_or_action_conflict:
+        return {
+            "reason_code": "unknown_conflicting_evidence",
+            "failure_owner": "unknown",
+            "route_action": "review_unknown",
+            "review_required": True,
+        }
+    if reason_conflict:
+        return {
+            "reason_code": f"{fallback_stage}_validation_unknown",
+            "failure_owner": (
+                next(iter(owners)) if len(owners) == 1 else None
+            ),
+            "route_action": (
+                next(iter(actions)) if len(actions) == 1 else None
+            ),
+            "review_required": True,
+        }
+
+    reason_code = (
+        next(iter(failure_kinds))
+        if len(failure_kinds) == 1
+        else next(iter(reason_codes))
+        if len(reason_codes) == 1
+        else f"{fallback_stage}_validation_unknown"
+    )
+    failure_owner = (
+        next(iter(owners)) if len(owners) == 1 else None
+    )
     route_action = (
-        "review_unknown"
-        if "review_unknown" in route_actions
-        else _one_non_success_failure_code(iter(route_actions))
+        next(iter(actions)) if len(actions) == 1 else None
     )
-    fallback_stage = "public" if stage == "public_csim" else stage
-    if reason_code is None:
-        reason_code = f"{fallback_stage}_validation_unknown"
     return {
         "reason_code": reason_code,
         "failure_owner": failure_owner,
@@ -954,7 +1039,7 @@ def _validation_failure_fields(
         "review_required": (
             route_action == "review_unknown"
             or reason_code.endswith("_validation_unknown")
-            or failure_owner in {None, "testbench"}
+            or failure_owner in {None, "testbench", "unknown"}
         ),
     }
 

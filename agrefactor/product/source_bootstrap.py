@@ -754,6 +754,8 @@ def _prepare_public_testbench(
     budget: BudgetManager,
     work_dir: Path,
     max_repair_attempts: int = 2,
+    original_top_function: str | None = None,
+    candidate_top_function: str | None = None,
 ) -> PublicTestbenchPreparationResult:
     'Preflight and, when necessary, repair one Public Testbench.'
 
@@ -773,6 +775,8 @@ def _prepare_public_testbench(
         candidate_code=candidate_code,
         budget=budget,
         task=task,
+        original_top_function=original_top_function,
+        candidate_top_function=candidate_top_function,
     )
 
     prompt_evidence: list[dict[str, Any]] = []
@@ -1224,6 +1228,8 @@ class SourceBootstrapPhase:
                 testbench_code=preflight_code,
                 original_code=original_code,
                 candidate_code=candidate_code,
+                original_top_function=self._request.top_function,
+                candidate_top_function=candidate_top,
                 effective_model_config=(
                     self._request.effective_model_config
                 ),
