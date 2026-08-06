@@ -94,6 +94,10 @@ from .run_output import (
     finalize_product_artifacts,
     write_rejection_support_artifacts,
 )
+from .refactor_eligibility import (
+    RefactorEligibilityReport,
+    assess_refactor_eligibility,
+)
 
 
 _SAFE_COMPONENT_RE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -2229,6 +2233,25 @@ def _safety_ceiling_rejection(args) -> dict[str, Any] | None:
     return None
 
 
+def _evaluate_refactor_source_eligibility(
+    *,
+    source: Path,
+    top_function: str,
+    mode: RunMode,
+    plan: TestSourcePlan,
+) -> RefactorEligibilityReport | None:
+    """Evaluate the auto-Public boundary before any provider call."""
+
+    if mode not in {RunMode.REFACTOR, RunMode.FULL}:
+        return None
+    return assess_refactor_eligibility(
+        source_code=_read_code(source, "source file"),
+        top_function=top_function,
+        public_test_mode=plan.public.mode.value,
+        original_csynth_evidence=None,
+    )
+
+
 def _write_request_rejection_artifacts(
     *,
     layout: SourceRunLayout,
@@ -2463,6 +2486,37 @@ def run_source_command(
         run_id,
         artifact_root_override=getattr(args, "output_dir", None),
     )
+    eligibility = _evaluate_refactor_source_eligibility(
+        source=source,
+        top_function=args.top,
+        mode=mode,
+        plan=plan,
+    )
+    if eligibility is not None:
+        _atomic_json(
+            layout.artifact_root / "refactor_eligibility.json",
+            eligibility.to_dict(),
+        )
+        if not eligibility.execution_allowed:
+            rejection = eligibility.to_rejection()
+            _write_request_rejection_artifacts(
+                layout=layout,
+                source=source,
+                top_function=args.top,
+                mode=mode,
+                model_runtime=model_runtime,
+                plan=plan,
+                target=target,
+                args=args,
+                rejection=rejection,
+            )
+            raise SourceCommandRejected(
+                "Refactor source is incompatible with the selected "
+                "Public-test boundary; typed rejection artifacts: "
+                f"{layout.artifact_root}",
+                artifact_root=layout.artifact_root,
+                rejection=rejection,
+            )
     rejection = _safety_ceiling_rejection(args)
     if rejection is not None:
         _write_request_rejection_artifacts(

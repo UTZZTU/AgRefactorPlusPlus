@@ -1,6 +1,15 @@
 
 """Normal-user product entrypoints built above internal task contracts."""
 
+from .refactor_eligibility import (
+    EligibilityStatus,
+    OriginalCsynthEvidence,
+    RefactorEligibilityReport,
+    SourceBoundaryEvidence,
+    analyze_source_boundary,
+    assess_refactor_eligibility,
+    load_original_csynth_evidence,
+)
 from .run_output import (
     PRODUCT_RUN_SUMMARY_SCHEMA_VERSION,
     CapturedProductStreams,
@@ -36,12 +45,19 @@ __all__ = [
     "ProductOptimizerRequest",
     "Stage3ProductOptimizationPhase",
     "CapturedProductStreams",
+    "EligibilityStatus",
+    "OriginalCsynthEvidence",
     "ProductOutputMode",
+    "RefactorEligibilityReport",
+    "SourceBoundaryEvidence",
     "SourceBootstrapPhase",
     "SourceBootstrapRequest",
     "SourceBootstrapRunResult",
     "SourceCommandRejected",
     "SourceRunLayout",
+    "analyze_source_boundary",
+    "assess_refactor_eligibility",
+    "load_original_csynth_evidence",
     "build_direct_optimization_material",
     "build_product_summary",
     "build_rejection_summary",
