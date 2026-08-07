@@ -723,6 +723,18 @@ def build_parser() -> argparse.ArgumentParser:
             ),
         )
         source_parser.add_argument(
+            "--public-test-contract",
+            dest="public_test_contracts_provided",
+            action="append",
+            default=[],
+            type=Path,
+            help=(
+                "Repeatable typed contract JSON paired by order with "
+                "--public-test. Runtime contract v2 may declare explicit "
+                "COSIM m_axi interface depths."
+            ),
+        )
+        source_parser.add_argument(
             "--output-dir",
             type=Path,
             help=(

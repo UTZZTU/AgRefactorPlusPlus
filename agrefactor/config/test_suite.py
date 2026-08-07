@@ -39,20 +39,28 @@ _ALLOWED_TEST_SUITE_FIELDS = frozenset(
 _RUNTIME_CONTRACT_KIND = "public_differential_self_check_v1"
 
 
-def _normalize_runtime_contract(value: Mapping[str, Any] | None) -> dict[str, Any] | None:
+def _normalize_runtime_contract(
+    value: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
     if value is None:
         return None
     if not isinstance(value, Mapping):
         raise TypeError("runtime_contract must be a mapping or null")
-    required = {
-        "schema_version",
-        "kind",
-        "candidate_mismatch_returncodes",
-    }
-    if set(value) != required:
+    version = value.get("schema_version")
+    base = {"schema_version", "kind", "candidate_mismatch_returncodes"}
+    expected = (
+        base
+        if version == 1
+        else (
+            base | {"cosim_interface_depths"}
+            if version == 2
+            else None
+        )
+    )
+    if expected is None:
+        raise ValueError("runtime_contract.schema_version must be 1 or 2")
+    if set(value) != expected:
         raise ValueError("runtime_contract has unexpected fields")
-    if value.get("schema_version") != 1:
-        raise ValueError("runtime_contract.schema_version must be 1")
     if value.get("kind") != _RUNTIME_CONTRACT_KIND:
         raise ValueError(
             "runtime_contract.kind must be public_differential_self_check_v1"
@@ -68,18 +76,54 @@ def _normalize_runtime_contract(value: Mapping[str, Any] | None) -> dict[str, An
         )
     codes: list[int] = []
     for raw in raw_codes:
-        if isinstance(raw, bool) or not isinstance(raw, int) or raw <= 0 or raw > 255:
+        if (
+            isinstance(raw, bool)
+            or not isinstance(raw, int)
+            or raw <= 0
+            or raw > 255
+        ):
             raise ValueError(
                 "candidate mismatch return codes must be integers in [1, 255]"
             )
         if raw in codes:
             raise ValueError("candidate mismatch return codes must be unique")
         codes.append(raw)
-    return {
-        "schema_version": 1,
+    normalized: dict[str, Any] = {
+        "schema_version": version,
         "kind": _RUNTIME_CONTRACT_KIND,
         "candidate_mismatch_returncodes": tuple(codes),
     }
+    if version == 2:
+        raw_depths = value.get("cosim_interface_depths")
+        if not isinstance(raw_depths, Mapping):
+            raise TypeError(
+                "runtime_contract.cosim_interface_depths must be a mapping"
+            )
+        if not raw_depths:
+            raise ValueError(
+                "runtime_contract.cosim_interface_depths must not be empty"
+            )
+        depths: dict[str, int] = {}
+        for raw_port, raw_depth in raw_depths.items():
+            if not isinstance(raw_port, str):
+                raise TypeError("COSIM depth port names must be strings")
+            port = raw_port.strip()
+            if (
+                not port
+                or port != raw_port
+                or not (port[0].isalpha() or port[0] == "_")
+                or not all(ch.isalnum() or ch == "_" for ch in port)
+            ):
+                raise ValueError(
+                    "COSIM depth port names must be exact C identifier names"
+                )
+            if isinstance(raw_depth, bool) or not isinstance(raw_depth, int):
+                raise TypeError("COSIM interface depth must be an integer")
+            if raw_depth <= 0:
+                raise ValueError("COSIM interface depth must be positive")
+            depths[port] = raw_depth
+        normalized["cosim_interface_depths"] = dict(sorted(depths.items()))
+    return normalized
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,13 +250,18 @@ class TestSuiteSpec:
         if self.source is not None:
             payload["source"] = self.source.to_dict()
         if self.runtime_contract is not None:
-            payload["runtime_contract"] = {
-                "schema_version": 1,
+            contract = {
+                "schema_version": self.runtime_contract["schema_version"],
                 "kind": self.runtime_contract["kind"],
                 "candidate_mismatch_returncodes": list(
                     self.runtime_contract["candidate_mismatch_returncodes"]
                 ),
             }
+            if self.runtime_contract["schema_version"] == 2:
+                contract["cosim_interface_depths"] = dict(
+                    self.runtime_contract["cosim_interface_depths"]
+                )
+            payload["runtime_contract"] = contract
         return payload
 
     @classmethod

@@ -306,6 +306,42 @@ def build_test_source_plan(
     )
 
 
+def _load_public_test_contracts(
+    contract_paths: Sequence[str | os.PathLike[str]],
+    public_paths: Sequence[str | os.PathLike[str]],
+) -> tuple[Mapping[str, Any], ...]:
+    contracts = tuple(Path(item).expanduser().resolve() for item in contract_paths)
+    publics = tuple(Path(item).expanduser().resolve() for item in public_paths)
+    if not contracts:
+        return ()
+    if len(contracts) != len(publics):
+        raise ValueError(
+            "--public-test-contract count must exactly match --public-test count"
+        )
+    result: list[Mapping[str, Any]] = []
+    for index, path in enumerate(contracts, start=1):
+        if not path.is_file():
+            raise FileNotFoundError(f"Public test contract not found: {path}")
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Public test contract is not valid JSON: {path}"
+            ) from exc
+        if not isinstance(raw, Mapping):
+            raise TypeError(
+                f"Public test contract root must be an object: {path}"
+            )
+        suite = TestSuiteSpec(
+            suite_id=f"public-contract-{index:03d}",
+            split=EvaluationSplit.PUBLIC,
+            runtime_contract=raw,
+        )
+        assert suite.runtime_contract is not None
+        result.append(suite.runtime_contract)
+    return tuple(result)
+
+
 @dataclass(frozen=True, slots=True)
 class SourceRunLayout:
     run_id: str
@@ -397,6 +433,7 @@ class SourceBootstrapRequest:
     budget_contract: EffectiveRunBudget
     max_candidate_repairs: int
     run_id: str
+    public_test_contracts: tuple[Mapping[str, Any], ...] = ()
     max_testbench_repairs: int = (
         DEFAULT_TESTBENCH_REPAIR_ATTEMPTS
     )
@@ -456,6 +493,36 @@ class SourceBootstrapRequest:
             raise TypeError(
                 "budget_contract must be EffectiveRunBudget"
             )
+        if not isinstance(self.public_test_contracts, tuple):
+            raise TypeError("public_test_contracts must be a tuple")
+        normalized_contracts: list[Mapping[str, Any]] = []
+        for index, raw_contract in enumerate(self.public_test_contracts, start=1):
+            if not isinstance(raw_contract, Mapping):
+                raise TypeError(
+                    "public_test_contracts entries must be mappings"
+                )
+            suite = TestSuiteSpec(
+                suite_id=f"public-contract-{index:03d}",
+                split=EvaluationSplit.PUBLIC,
+                runtime_contract=raw_contract,
+            )
+            assert suite.runtime_contract is not None
+            normalized_contracts.append(suite.runtime_contract)
+        if normalized_contracts:
+            public_selection = self.test_source_plan.public
+            if public_selection.mode is not TestSourceSelectionMode.PROVIDED:
+                raise ValueError(
+                    "public_test_contracts require provided Public tests"
+                )
+            if len(normalized_contracts) != len(public_selection.provided_paths):
+                raise ValueError(
+                    "public_test_contracts count must match provided Public tests"
+                )
+        object.__setattr__(
+            self,
+            "public_test_contracts",
+            tuple(normalized_contracts),
+        )
         validate_repair_attempts(
             self.max_testbench_repairs,
             field_name="max_testbench_repairs",
@@ -572,6 +639,17 @@ class SourceBootstrapRequest:
             "test_source_plan": (
                 self.test_source_plan.to_operator_dict()
             ),
+            "public_test_contracts": [
+                TestSuiteSpec(
+                    suite_id=f"public-contract-{index:03d}",
+                    split=EvaluationSplit.PUBLIC,
+                    runtime_contract=contract,
+                ).to_dict()["runtime_contract"]
+                for index, contract in enumerate(
+                    self.public_test_contracts,
+                    start=1,
+                )
+            ],
             "budget_contract": self.budget_contract.to_dict(),
             "max_testbench_repairs": self.max_testbench_repairs,
             "max_candidate_repairs": self.max_candidate_repairs,
@@ -930,6 +1008,7 @@ def _apply_repaired_public_suite(
         case_count=public_suite.case_count,
         testbench_path=str(target_path),
         source=derived_source,
+        runtime_contract=public_suite.runtime_contract,
     )
 
     updated_suites = tuple(
@@ -2045,12 +2124,20 @@ class SourceBootstrapPhase:
                         ),
                         round_index=0,
                     )
+                runtime_contract = None
+                if (
+                    split is EvaluationSplit.PUBLIC
+                    and selection.mode is TestSourceSelectionMode.PROVIDED
+                    and self._request.public_test_contracts
+                ):
+                    runtime_contract = self._request.public_test_contracts[index - 1]
                 suite = TestSuiteSpec(
                     suite_id=suite_id,
                     suite_version="1",
                     split=split,
                     testbench_path=str(target_path),
                     source=source,
+                    runtime_contract=runtime_contract,
                 )
                 suites.append(suite)
                 codes[suite_id] = code
@@ -2430,6 +2517,10 @@ def _validate_mode_specific_cli(args) -> None:
                 "--reference-top is consumed only by direct optimize"
             )
     if mode is RunMode.OPTIMIZE:
+        if getattr(args, "public_test_contracts_provided", ()):
+            raise ValueError(
+                "direct optimize does not yet consume --public-test-contract"
+            )
         if getattr(args, "reference_source", None) is None:
             raise ValueError(
                 "direct optimize requires --reference-source"
@@ -2495,6 +2586,10 @@ def run_source_command(
         public_paths=args.public_tests_provided,
         hidden_mode=args.hidden_tests,
         hidden_paths=args.hidden_tests_provided,
+    )
+    public_test_contracts = _load_public_test_contracts(
+        getattr(args, "public_test_contracts_provided", ()),
+        args.public_tests_provided,
     )
     target = _target_from_cli(args)
     public_trajectories, hidden_trajectories = (
@@ -2601,6 +2696,7 @@ def run_source_command(
             DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
         ),
         run_id=run_id,
+        public_test_contracts=public_test_contracts,
         max_testbench_repairs=getattr(
             args,
             "max_testbench_repairs",

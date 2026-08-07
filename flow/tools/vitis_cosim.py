@@ -35,23 +35,86 @@ _PUBLIC_DIFFERENTIAL_RUNTIME_CONTRACT_KIND = (
 )
 
 
+def _normalize_cosim_interface_depths(
+    value: Mapping[str, Any] | None,
+) -> dict[str, int]:
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise TypeError("COSIM interface depths must be a mapping")
+    out: dict[str, int] = {}
+    for raw_port, raw_depth in value.items():
+        if not isinstance(raw_port, str):
+            raise TypeError("COSIM depth port names must be strings")
+        port = raw_port.strip()
+        if (
+            not port
+            or port != raw_port
+            or not (port[0].isalpha() or port[0] == "_")
+            or not all(ch.isalnum() or ch == "_" for ch in port)
+        ):
+            raise ValueError(
+                "COSIM depth port names must be exact C identifier names"
+            )
+        if isinstance(raw_depth, bool) or not isinstance(raw_depth, int):
+            raise TypeError("COSIM interface depth must be an integer")
+        if raw_depth <= 0:
+            raise ValueError("COSIM interface depth must be positive")
+        out[port] = raw_depth
+    return dict(sorted(out.items()))
+
+
+def _runtime_contract_shape_valid(
+    contract: Mapping[str, Any] | None,
+) -> bool:
+    if not isinstance(contract, Mapping):
+        return False
+    version = contract.get("schema_version")
+    base = {"schema_version", "kind", "candidate_mismatch_returncodes"}
+    expected = (
+        base
+        if version == 1
+        else (base | {"cosim_interface_depths"} if version == 2 else None)
+    )
+    if expected is None or set(contract) != expected:
+        return False
+    if contract.get("kind") != _PUBLIC_DIFFERENTIAL_RUNTIME_CONTRACT_KIND:
+        return False
+    if not isinstance(contract.get("candidate_mismatch_returncodes"), (list, tuple)):
+        return False
+    if version == 2:
+        try:
+            depths = _normalize_cosim_interface_depths(
+                contract.get("cosim_interface_depths")
+            )
+        except (TypeError, ValueError):
+            return False
+        if not depths:
+            return False
+    return True
+
+
 def _candidate_returncode_authorized(
     contract: Mapping[str, Any] | None,
     returncode: int,
 ) -> bool:
-    if not isinstance(contract, Mapping):
-        return False
-    if set(contract) != {
-        "schema_version",
-        "kind",
-        "candidate_mismatch_returncodes",
-    }:
-        return False
-    return (
-        contract.get("schema_version") == 1
-        and contract.get("kind") == _PUBLIC_DIFFERENTIAL_RUNTIME_CONTRACT_KIND
-        and isinstance(contract.get("candidate_mismatch_returncodes"), (list, tuple))
-        and returncode in contract.get("candidate_mismatch_returncodes")
+    return bool(
+        _runtime_contract_shape_valid(contract)
+        and returncode in contract.get("candidate_mismatch_returncodes", ())
+    )
+
+
+def _cosim_interface_depths(
+    contract: Mapping[str, Any] | None,
+) -> dict[str, int]:
+    if contract is None:
+        return {}
+    if not _runtime_contract_shape_valid(contract):
+        raise ValueError("invalid Public runtime contract for COSIM")
+    if contract.get("schema_version") == 1:
+        return {}
+    return _normalize_cosim_interface_depths(
+        contract.get("cosim_interface_depths")
     )
 
 
@@ -298,6 +361,7 @@ def make_vitis_cosim_tcl(
     files: Mapping[str, Path],
     profile: TargetProfile,
     typed_execution_id: str | None = None,
+    interface_depths: Mapping[str, int] | None = None,
 ) -> str:
     """Build a Vitis Tcl chain with structured per-command outcome phases."""
 
@@ -323,6 +387,7 @@ def make_vitis_cosim_tcl(
     execution_id = typed_execution_id or ("0" * 32)
     if re.fullmatch(r"[0-9a-f]{32}", execution_id) is None:
         raise ValueError("typed_execution_id must be 32 lowercase hex characters")
+    normalized_depths = _normalize_cosim_interface_depths(interface_depths)
 
     status_path = root / "cosim_command_status.json"
     typed_outcome_path = root / "agrefactor_cosim_outcome.json"
@@ -358,6 +423,12 @@ def make_vitis_cosim_tcl(
         "open_solution -reset -flow_target vitis solution",
         f"set_part {_tcl_quote(profile.device, 'target device')}",
         f"create_clock -period {profile.clock_period_ns} -name default",
+        *[
+            "set_directive_interface -mode m_axi -depth "
+            f"{depth} {_tcl_quote(top, 'top')} "
+            f"{_tcl_quote(port, 'COSIM depth port')}"
+            for port, depth in normalized_depths.items()
+        ],
         (
             "if {[catch {csim_design -clean -argv $ag_csim_argv} ag_msg]} { "
             "ag_write_status $ag_status failed csim_prerequisite "
@@ -507,6 +578,7 @@ def run_vitis_cosim(
         raise TypeError("budget must be BudgetManager or None")
     suite_id = _required_text(suite_id, "suite_id")
     top = _required_text(candidate_top_function, "candidate_top_function")
+    interface_depths = _cosim_interface_depths(runtime_contract)
 
     root = Path(work_dir).expanduser().resolve()
     if root.exists() and (root.is_symlink() or not root.is_dir()):
@@ -559,6 +631,7 @@ def run_vitis_cosim(
             "cosim": cosim_identity,
         },
         "runtime_contract": runtime_contract,
+        "cosim_interface_depths": interface_depths,
         "typed_outcome_adapter": {
             "kind": "raw_runtime_atomic_wrapper_v2",
             "evidence_path": str(
@@ -763,6 +836,7 @@ def run_vitis_cosim(
             files=files,
             profile=profile,
             typed_execution_id=csim_identity["execution_id"],
+            interface_depths=interface_depths,
         ),
     )
     invocation["tcl_sha256"] = _file_sha256(tcl_path)

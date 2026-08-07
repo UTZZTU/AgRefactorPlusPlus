@@ -46,20 +46,23 @@ def _candidate_returncode_authorized(
 ) -> bool:
     if not isinstance(contract, Mapping):
         return False
-    if set(contract) != {
-        "schema_version",
-        "kind",
-        "candidate_mismatch_returncodes",
-    }:
-        return False
-    if contract.get("schema_version") != 1:
+    version = contract.get("schema_version")
+    base = {"schema_version", "kind", "candidate_mismatch_returncodes"}
+    expected = (
+        base
+        if version == 1
+        else (base | {"cosim_interface_depths"} if version == 2 else None)
+    )
+    if expected is None or set(contract) != expected:
         return False
     if contract.get("kind") != _PUBLIC_DIFFERENTIAL_RUNTIME_CONTRACT_KIND:
         return False
-    codes = contract.get("candidate_mismatch_returncodes")
-    if not isinstance(codes, (list, tuple)):
+    if version == 2 and not isinstance(
+        contract.get("cosim_interface_depths"), Mapping
+    ):
         return False
-    return returncode in codes
+    codes = contract.get("candidate_mismatch_returncodes")
+    return isinstance(codes, (list, tuple)) and returncode in codes
 
 
 def _preflight_authorizes_candidate_runtime(
