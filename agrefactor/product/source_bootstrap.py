@@ -2256,6 +2256,20 @@ def _evaluate_refactor_source_eligibility(
     )
 
 
+def _write_refactor_eligibility(
+    layout: SourceRunLayout,
+    eligibility: RefactorEligibilityReport | None,
+) -> None:
+    """Persist typed eligibility without preclaiming an execution artifact root."""
+
+    if eligibility is None:
+        return
+    _atomic_json(
+        layout.artifact_root / "refactor_eligibility.json",
+        eligibility.to_dict(),
+    )
+
+
 def _write_request_rejection_artifacts(
     *,
     layout: SourceRunLayout,
@@ -2496,33 +2510,30 @@ def run_source_command(
         mode=mode,
         plan=plan,
     )
-    if eligibility is not None:
-        _atomic_json(
-            layout.artifact_root / "refactor_eligibility.json",
-            eligibility.to_dict(),
+    if eligibility is not None and not eligibility.execution_allowed:
+        _write_refactor_eligibility(layout, eligibility)
+        rejection = eligibility.to_rejection()
+        _write_request_rejection_artifacts(
+            layout=layout,
+            source=source,
+            top_function=args.top,
+            mode=mode,
+            model_runtime=model_runtime,
+            plan=plan,
+            target=target,
+            args=args,
+            rejection=rejection,
         )
-        if not eligibility.execution_allowed:
-            rejection = eligibility.to_rejection()
-            _write_request_rejection_artifacts(
-                layout=layout,
-                source=source,
-                top_function=args.top,
-                mode=mode,
-                model_runtime=model_runtime,
-                plan=plan,
-                target=target,
-                args=args,
-                rejection=rejection,
-            )
-            raise SourceCommandRejected(
-                "Refactor source is incompatible with the selected "
-                "Public-test boundary; typed rejection artifacts: "
-                f"{layout.artifact_root}",
-                artifact_root=layout.artifact_root,
-                rejection=rejection,
-            )
+        raise SourceCommandRejected(
+            "Refactor source is incompatible with the selected "
+            "Public-test boundary; typed rejection artifacts: "
+            f"{layout.artifact_root}",
+            artifact_root=layout.artifact_root,
+            rejection=rejection,
+        )
     rejection = _safety_ceiling_rejection(args)
     if rejection is not None:
+        _write_refactor_eligibility(layout, eligibility)
         _write_request_rejection_artifacts(
             layout=layout,
             source=source,
@@ -2556,6 +2567,7 @@ def run_source_command(
             "provider_call_observed": False,
             "invocation_environment": invocation_environment.to_dict(),
         }
+        _write_refactor_eligibility(layout, eligibility)
         _write_request_rejection_artifacts(
             layout=layout,
             source=source,
@@ -2817,6 +2829,7 @@ def run_source_command(
                 "stage3_product_adapter": mode in {RunMode.OPTIMIZE, RunMode.FULL},
             },
         )
+    _write_refactor_eligibility(layout, eligibility)
     finalize_product_artifacts(
         result,
         artifact_root=layout.artifact_root,

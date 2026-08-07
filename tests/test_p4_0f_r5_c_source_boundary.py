@@ -8,6 +8,8 @@ import unittest
 from unittest.mock import patch
 
 from agrefactor.cli import build_parser
+from agrefactor.runtime import RunResult, RunStatus
+import agrefactor.product.source_bootstrap as source_bootstrap_module
 from agrefactor.config import RunMode
 from agrefactor.product import (
     OriginalCsynthEvidence,
@@ -87,6 +89,162 @@ class R5CSourceBoundaryTests(unittest.TestCase):
         self.assertIn(
             "operator_provided_public_tests",
             report.reason_codes,
+        )
+
+    def test_eligible_execution_defers_eligibility_until_runner_claims_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "stateful.cpp"
+            public = root / "public.cpp"
+            output = root / "artifacts"
+            source.write_text(PRIVATE_GLOBAL, encoding="utf-8")
+            public.write_text("int main(){return 0;}\n", encoding="utf-8")
+            args = build_parser().parse_args(
+                [
+                    "refactor",
+                    str(source),
+                    "--top",
+                    "top",
+                    "--model",
+                    "deepseek-v4-flash",
+                    "--public-test",
+                    str(public),
+                    "--hidden-tests",
+                    "none",
+                    "--output-dir",
+                    str(output),
+                    "--run-id",
+                    "r5-e-r3-empty-root",
+                ]
+            )
+            observed = {}
+
+            test_case = self
+
+            class EmptyRootRunner:
+                def __init__(self, *runner_args, **runner_kwargs):
+                    del runner_args, runner_kwargs
+
+                def run(self, task, *, artifact_root, **runner_kwargs):
+                    del task, runner_kwargs
+                    artifact = Path(artifact_root)
+                    test_case.assertFalse(
+                        artifact.exists() and any(artifact.iterdir())
+                    )
+                    observed["runner_saw_empty_root"] = True
+                    artifact.mkdir(parents=True, exist_ok=True)
+                    (artifact / "runner_claimed.txt").write_text(
+                        "claimed\n",
+                        encoding="utf-8",
+                    )
+                    return RunResult(
+                        run_id="r5-e-r3-empty-root",
+                        task_id="r5-e-r3-empty-root.source",
+                        mode=RunMode.REFACTOR,
+                        status=RunStatus.SUCCEEDED,
+                        phases=(),
+                        budget_usage=None,
+                    )
+
+            def fake_finalize(
+                result,
+                *,
+                artifact_root,
+                work_root,
+                captured,
+            ):
+                del result, work_root, captured
+                eligibility_path = (
+                    Path(artifact_root) / "refactor_eligibility.json"
+                )
+                test_case.assertTrue(eligibility_path.is_file())
+                payload = json.loads(
+                    eligibility_path.read_text(encoding="utf-8")
+                )
+                test_case.assertTrue(payload["execution_allowed"])
+                observed["finalize_saw_eligibility"] = True
+
+            with patch.dict(
+                os.environ,
+                {
+                    "DEEPSEEK_API_KEY": "test-key",
+                    "AGREFACTOR_WORK_ROOT": str(root / "work"),
+                },
+                clear=False,
+            ), patch.object(
+                source_bootstrap_module,
+                "UnifiedRunner",
+                EmptyRootRunner,
+            ), patch.object(
+                source_bootstrap_module,
+                "finalize_product_artifacts",
+                new=fake_finalize,
+            ):
+                result = run_source_command(args)
+
+            self.assertIsNotNone(result)
+            self.assertTrue(observed["runner_saw_empty_root"])
+            self.assertTrue(observed["finalize_saw_eligibility"])
+
+    def test_eligible_missing_credential_still_persists_eligibility_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "stateful.cpp"
+            public = root / "public.cpp"
+            output = root / "artifacts"
+            source.write_text(PRIVATE_GLOBAL, encoding="utf-8")
+            public.write_text("int main(){return 0;}\n", encoding="utf-8")
+            args = build_parser().parse_args(
+                [
+                    "refactor",
+                    str(source),
+                    "--top",
+                    "top",
+                    "--model",
+                    "deepseek-v4-flash",
+                    "--public-test",
+                    str(public),
+                    "--hidden-tests",
+                    "none",
+                    "--output-dir",
+                    str(output),
+                    "--run-id",
+                    "r5-e-r3-credential-rejection",
+                ]
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "DEEPSEEK_API_KEY": "",
+                    "AGREFACTOR_WORK_ROOT": str(root / "work"),
+                },
+                clear=False,
+            ):
+                with self.assertRaises(SourceCommandRejected) as captured:
+                    run_source_command(args)
+
+            eligibility = json.loads(
+                (output / "refactor_eligibility.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            manifest = json.loads(
+                (output / "run_artifact_manifest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertTrue(eligibility["execution_allowed"])
+        self.assertEqual(
+            captured.exception.rejection["kind"],
+            "selected_credential_missing",
+        )
+        self.assertIn(
+            "refactor_eligibility.json",
+            {
+                item["relative_path"]
+                for item in manifest["files"]
+            },
         )
 
     def test_direct_optimize_does_not_use_refactor_boundary(self):
