@@ -71,7 +71,7 @@ class P0PublicTestbenchRepairRoutingTests(unittest.TestCase):
                         32768,
                     )
 
-    def test_runtime_manifest_uses_32768(self):
+    def test_exact_v4_flash_runtime_manifest_uses_150000(self):
         selected = resolve_model_runtime(
             "deepseek-v4-flash"
         )
@@ -79,8 +79,10 @@ class P0PublicTestbenchRepairRoutingTests(unittest.TestCase):
             selected.effective_config.parameters[
                 "max_tokens"
             ],
-            32768,
+            150000,
         )
+        # PR-R3 raises only the exact-model candidate policy. The shared
+        # DeepSeek family policy remains frozen at 32768.
         limits = (
             selected.effective_config.family_profile
             .output_policy.per_artifact_limits

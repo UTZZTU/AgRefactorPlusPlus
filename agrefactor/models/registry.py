@@ -6,6 +6,9 @@ from collections.abc import Mapping
 from typing import Any
 
 from .base import ModelProvider, ModelSpec
+from .concrete_output_policy import (
+    resolve_concrete_model_output_policy,
+)
 from .effective_config import EffectiveModelConfig
 from .family import (
     ModelArtifactKind,
@@ -235,6 +238,9 @@ class ModelRegistry:
                 spec.default_parameters,
                 parameters,
                 artifact_kind=artifact_kind,
+                output_policy_override=(
+                    resolve_concrete_model_output_policy(spec.model)
+                ),
             )
         )
         return EffectiveModelConfig(

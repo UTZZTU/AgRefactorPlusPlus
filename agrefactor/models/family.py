@@ -770,6 +770,7 @@ class ModelFamilyProfile:
         call_overrides: Mapping[str, Any] | None = None,
         *,
         artifact_kind: str | ModelArtifactKind | None = None,
+        output_policy_override: ModelOutputPolicy | None = None,
     ) -> dict[str, Any]:
         merged = dict(self.safe_default_parameters)
         if artifact_kind is not None:
@@ -800,7 +801,15 @@ class ModelFamilyProfile:
         effective = self._apply_aliases(merged)
         self._reject_parameters(effective)
         effective = self.reasoning_policy.apply(effective)
-        effective = self.output_policy.apply(effective, artifact_kind)
+        if (
+            output_policy_override is not None
+            and not isinstance(output_policy_override, ModelOutputPolicy)
+        ):
+            raise TypeError(
+                "output_policy_override must be ModelOutputPolicy or None"
+            )
+        output_policy = output_policy_override or self.output_policy
+        effective = output_policy.apply(effective, artifact_kind)
         # supported_parameters is declarative and intentionally non-exhaustive.
         # Compatible endpoints frequently require provider/model-specific
         # extension objects. Explicit hard rejection remains the responsibility

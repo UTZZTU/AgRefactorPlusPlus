@@ -675,6 +675,124 @@ class SourceBootstrapRequest:
 
 
 
+_GENERATION_EXTRACTION_REASON_CODES = frozenset(
+    {
+        "response_truncated",
+        "code_block_missing",
+        "candidate_extraction_failed",
+        "empty_candidate",
+        "provider_failure",
+    }
+)
+_TRUNCATION_FINISH_REASONS = frozenset(
+    {"length", "max_tokens", "max_output_tokens", "token_limit"}
+)
+_SAFE_GENERATION_RESPONSE_FIELDS = frozenset(
+    {
+        "finish_reason",
+        "completion_tokens",
+        "content_present",
+        "content_byte_count",
+        "content_sha256",
+        "extraction_status",
+        "terminal_kind",
+    }
+)
+
+
+def _safe_generation_response_evidence(
+    raw_result: object,
+) -> dict[str, Any]:
+    if not isinstance(raw_result, tuple) or len(raw_result) < 2:
+        return {}
+    context_variables = raw_result[1]
+    raw = _mapping_get(
+        context_variables,
+        "generation_response_evidence",
+    )
+    if not isinstance(raw, Mapping):
+        return {}
+    result: dict[str, Any] = {}
+    for key in _SAFE_GENERATION_RESPONSE_FIELDS:
+        value = raw.get(key)
+        if key in {"completion_tokens", "content_byte_count"}:
+            if (
+                isinstance(value, int)
+                and not isinstance(value, bool)
+                and value >= 0
+            ):
+                result[key] = value
+            continue
+        if key == "content_present":
+            if isinstance(value, bool):
+                result[key] = value
+            continue
+        if key == "content_sha256":
+            if (
+                isinstance(value, str)
+                and re.fullmatch(r"[0-9a-f]{64}", value)
+            ):
+                result[key] = value
+            continue
+        if isinstance(value, str) and value.strip():
+            result[key] = value.strip()[:120]
+    return result
+
+
+def _build_generation_extraction_outcome(
+    *,
+    raw_result: object,
+    error_message: str,
+    model_id: str,
+    effective_max_output_tokens: int | None,
+    provider_call_count: int,
+) -> dict[str, Any]:
+    safe = _safe_generation_response_evidence(raw_result)
+    finish_reason = str(safe.get("finish_reason", "")).casefold()
+    extraction_status = str(
+        safe.get("extraction_status", "")
+    ).casefold()
+    terminal_kind = str(safe.get("terminal_kind", "")).casefold()
+    completion_tokens = safe.get("completion_tokens")
+    saturation = bool(
+        isinstance(completion_tokens, int)
+        and isinstance(effective_max_output_tokens, int)
+        and completion_tokens == effective_max_output_tokens
+    )
+    truncation_proven = finish_reason in _TRUNCATION_FINISH_REASONS
+    if terminal_kind == "provider_failure":
+        reason_code = "provider_failure"
+    elif truncation_proven:
+        reason_code = "response_truncated"
+    elif safe.get("content_present") is False:
+        reason_code = "empty_candidate"
+    elif extraction_status == "code_block_missing":
+        reason_code = "code_block_missing"
+    else:
+        reason_code = "candidate_extraction_failed"
+    assert reason_code in _GENERATION_EXTRACTION_REASON_CODES
+    return {
+        "schema_version": 1,
+        "status": "failed",
+        "reason_code": reason_code,
+        "model_id": model_id,
+        "effective_max_output_tokens": effective_max_output_tokens,
+        "provider_call_count": provider_call_count,
+        "finish_reason": safe.get("finish_reason"),
+        "completion_tokens": completion_tokens,
+        "content_present": safe.get("content_present"),
+        "content_byte_count": safe.get("content_byte_count"),
+        "content_sha256": safe.get("content_sha256"),
+        "extraction_status": safe.get("extraction_status"),
+        "terminal_kind": safe.get("terminal_kind"),
+        "output_limit_saturation_observed": saturation,
+        "truncation_proven": truncation_proven,
+        "plaintext_retained": False,
+        "error_class": "generation_extraction",
+        "error_message": str(error_message)[:300],
+    }
+
+
 _GENERATION_FAILURE_SCALAR_KEYS = (
     "schema_version",
     "failure_kind",
@@ -1228,7 +1346,15 @@ class SourceBootstrapPhase:
             "last_raw_result",
             None,
         )
-        generated = self._extract_generation_result(raw_result)
+        try:
+            generated = self._extract_generation_result(raw_result)
+        except ValueError as exc:
+            return self._generation_extraction_failure_result(
+                context=context,
+                bootstrap_root=bootstrap_root,
+                raw_result=raw_result,
+                error=exc,
+            )
         model_data_boundary = generated["model_data_boundary"]
         hidden_testbench_exposed_to_model = (
             _hidden_exposure_from_boundary(model_data_boundary)
@@ -1948,6 +2074,67 @@ class SourceBootstrapPhase:
         if public.mode is not TestSourceSelectionMode.PROVIDED:
             return None
         return public.provided_paths[0]
+
+    def _generation_extraction_failure_result(
+        self,
+        *,
+        context: RunContext,
+        bootstrap_root: Path,
+        raw_result: object,
+        error: ValueError,
+    ) -> PhaseResult:
+        prompt_evidence = self._collect_prompt_evidence()
+        parameters = self._request.effective_model_config.effective_parameters
+        raw_limit = parameters.get("max_tokens")
+        effective_limit = (
+            raw_limit
+            if isinstance(raw_limit, int)
+            and not isinstance(raw_limit, bool)
+            and raw_limit > 0
+            else None
+        )
+        outcome = _build_generation_extraction_outcome(
+            raw_result=raw_result,
+            error_message=str(error),
+            model_id=self._request.effective_model_config.model_id,
+            effective_max_output_tokens=effective_limit,
+            provider_call_count=int(
+                prompt_evidence.get("actual_call_count", 0)
+            ),
+        )
+        outcome_path = (
+            bootstrap_root / "generation_extraction_outcome.json"
+        )
+        _atomic_json(outcome_path, outcome)
+        identity_summary = self._write_execution_identity(
+            context=context,
+            normalized_task=context.task,
+            suites=(),
+            execution_status="failed",
+            initial_candidate_path=None,
+            final_candidate_path=None,
+            require_accepted_ready=False,
+            hard_budget_exhaustion=None,
+        )
+        return PhaseResult(
+            phase=RunPhase.REFACTOR,
+            status=PhaseStatus.FAILED,
+            summary=(
+                "Initial generation response could not be converted "
+                "into a candidate: " + outcome["reason_code"]
+            ),
+            metadata={
+                "source_bootstrap": True,
+                "generation_only": True,
+                "formal_validation_started": False,
+                "failed_stage": "initial_generation_extraction",
+                "generation_extraction_outcome": outcome,
+                "generation_extraction_outcome_path": (
+                    "bootstrap/generation_extraction_outcome.json"
+                ),
+                "execution_identity": identity_summary,
+            },
+        )
 
     @staticmethod
     def _extract_generation_result(raw_result: object) -> dict[str, Any]:
