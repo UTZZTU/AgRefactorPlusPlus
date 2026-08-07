@@ -453,23 +453,93 @@ def _compile_failure_result(
     )
 
 
-def _parse_nm_symbols(output: str) -> tuple[str, ...]:
-    symbols: list[str] = []
+_STRONG_EXTERNAL_NM_KINDS = frozenset(
+    {"A", "B", "C", "D", "G", "R", "S", "T"}
+)
+
+
+def _normalize_nm_symbol(symbol: str) -> str:
+    value = re.sub(r"\s+", " ", symbol).strip()
+    for old, new in (
+        (" *", "*"),
+        ("* ", "*"),
+        (" &", "&"),
+        ("& ", "&"),
+        (", ", ","),
+    ):
+        value = value.replace(old, new)
+    return value
+
+
+def _parse_nm_symbol_records(
+    output: str,
+) -> tuple[dict[str, str], ...]:
+    records: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
     for raw in output.splitlines():
         match = _NM_LINE_RE.match(raw)
         if not match:
             continue
-        symbol = re.sub(r"\s+", " ", match.group("symbol")).strip()
-        for old, new in (
-            (" *", "*"),
-            ("* ", "*"),
-            (" &", "&"),
-            ("& ", "&"),
-            (", ", ","),
-        ):
-            symbol = symbol.replace(old, new)
-        symbols.append(symbol)
-    return tuple(dict.fromkeys(symbols))
+        kind = match.group("kind")
+        symbol = _normalize_nm_symbol(match.group("symbol"))
+        key = (kind, symbol)
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append({"kind": kind, "symbol": symbol})
+    return tuple(records)
+
+
+def _parse_nm_symbols(output: str) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            item["symbol"]
+            for item in _parse_nm_symbol_records(output)
+        )
+    )
+
+
+def _strong_external_symbol_map(
+    records: tuple[dict[str, str], ...],
+    *,
+    excluded_tops: frozenset[str],
+) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for record in records:
+        kind = record["kind"]
+        symbol = record["symbol"]
+        if kind not in _STRONG_EXTERNAL_NM_KINDS:
+            continue
+        if _symbol_base(symbol) in excluded_tops:
+            continue
+        result[symbol] = kind
+    return result
+
+
+def _candidate_external_symbol_collisions(
+    reference_records: tuple[dict[str, str], ...],
+    candidate_records: tuple[dict[str, str], ...],
+    *,
+    reference_top: str,
+    candidate_top: str,
+) -> tuple[dict[str, str], ...]:
+    excluded = frozenset({reference_top, candidate_top})
+    reference = _strong_external_symbol_map(
+        reference_records,
+        excluded_tops=excluded,
+    )
+    candidate = _strong_external_symbol_map(
+        candidate_records,
+        excluded_tops=excluded,
+    )
+    return tuple(
+        {
+            "symbol": symbol,
+            "reference_nm_kind": reference[symbol],
+            "candidate_nm_kind": candidate[symbol],
+        }
+        for symbol in sorted(set(reference) & set(candidate))
+    )
 
 
 def _symbol_base(symbol: str) -> str:
@@ -664,6 +734,7 @@ def run_staged_preflight(
         "reason_code": None,
         "reason_codes": [],
         "failed_component": None,
+        "ownership_evidence": None,
         "budget": {"status": "pending"},
         "execution": {
             "status": "pending",
@@ -810,6 +881,10 @@ def run_staged_preflight(
                 budget=budget,
             )
 
+    symbol_record_outputs: dict[
+        str,
+        tuple[dict[str, str], ...],
+    ] = {}
     if reference_top is not None or candidate_top is not None:
         nm = os.getenv("AGREFACTOR_NM", "nm")
         symbol_specs: list[
@@ -884,7 +959,11 @@ def run_staged_preflight(
                     invocation_path=invocation_path,
                     budget=budget,
                 )
-            symbol_outputs[key] = _parse_nm_symbols(step.stdout)
+            records = _parse_nm_symbol_records(step.stdout)
+            symbol_record_outputs[key] = records
+            symbol_outputs[key] = tuple(
+                dict.fromkeys(item["symbol"] for item in records)
+            )
             if top is not None:
                 defined = {
                     symbol
@@ -1075,6 +1154,70 @@ def run_staged_preflight(
                 ),
                 failed_component=component,
                 substeps=tuple(substeps),
+            )
+            return _return_failure(
+                result=result,
+                invocation=invocation,
+                invocation_path=invocation_path,
+                budget=budget,
+            )
+
+    if reference_top is not None and candidate_top is not None:
+        collisions = _candidate_external_symbol_collisions(
+            symbol_record_outputs.get("reference", ()),
+            symbol_record_outputs.get("candidate", ()),
+            reference_top=reference_top,
+            candidate_top=candidate_top,
+        )
+        if collisions:
+            evidence_path = directory / "candidate_external_symbol_collision.json"
+            evidence = {
+                "schema_version": 1,
+                "authority": "nm_defined_strong_external_exact_intersection_v1",
+                "owner": "candidate",
+                "owner_authority": "deterministic_proven",
+                "reference_top_function": reference_top,
+                "candidate_top_function": candidate_top,
+                "collisions": list(collisions),
+            }
+            _write_json(evidence_path, evidence)
+            invocation["ownership_evidence"] = {
+                "kind": "candidate_external_symbol_collision",
+                "authority": evidence["authority"],
+                "owner": "candidate",
+                "owner_authority": "deterministic_proven",
+                "artifact": str(evidence_path),
+                "collision_count": len(collisions),
+            }
+            _write_json(invocation_path, invocation)
+            symbols = ", ".join(item["symbol"] for item in collisions)
+            result = _semantic_failure_result(
+                directory=directory,
+                substeps=substeps,
+                reason_codes=(
+                    TestbenchPreflightReasonCode.
+                    CANDIDATE_EXTERNAL_SYMBOL_COLLISION,
+                ),
+                owner=TestbenchFailureOwner.CANDIDATE,
+                component=TestbenchPreflightComponent.CANDIDATE,
+                substage=(
+                    TestbenchPreflightSubstage.
+                    CANDIDATE_EXTERNAL_SYMBOL_COLLISION_CHECK
+                ),
+                message=(
+                    "Candidate defines non-top strong external symbols "
+                    "that collide with frozen reference definitions: "
+                    + symbols
+                    + ". Candidate-local helpers and globals must use "
+                    "internal linkage or unique candidate-local names."
+                ),
+                kind=TestbenchFailureKind.LINKAGE_MISMATCH,
+            )
+            result = replace(
+                result,
+                artifacts=tuple(
+                    dict.fromkeys((*result.artifacts, str(evidence_path)))
+                ),
             )
             return _return_failure(
                 result=result,

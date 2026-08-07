@@ -10,6 +10,9 @@ agents:
         - the plan you can refer to
         - the instructions you must follow
         - the new kernel name you must use to replace the original kernel
+      During differential validation, the candidate and frozen reference implementation may be linked into the same executable.
+      Keep candidate-local helper functions, globals, and other non-top definitions isolated: use internal linkage (`static` or an anonymous namespace) or unique candidate-local names.
+      Only the required candidate top and genuinely external dependency interfaces should remain externally visible; do not rename or alter external dependency interfaces merely to satisfy this isolation rule.
       If you need to introduce new MACROS, define them in the front of the code after including files.
       If the code uses any other functions not implemented in this piece of code, you should assume they are implemented at another place and they are synthesizable. Do **NOT** change the function interface of these kinds of functions.
       Do NOT add HLS optimization pragmas (#pragma HLS PIPELINE, UNROLL, ARRAY_PARTITION, etc.) unless they are strictly required for synthesizability. Your goal is functional correctness and synthesizability, not performance optimization.
@@ -33,6 +36,9 @@ agents:
         - Heap-based dynamic allocation (malloc/new/free) and pointer-based recursive data structures: flattens into fixed-size arrays with a lightweight allocator; adds guard/fallback.
         - General unsupported pointers (including pointers inside structs / arrays of pointers): rewrites to index-based array accesses.
       You should refactor out any other non-synthesizable constructs not handled by the tool, as described in the plan and instructions.
+      During differential validation, the candidate and frozen reference implementation may be linked into the same executable.
+      Keep candidate-local helper functions, globals, and other non-top definitions isolated: use internal linkage (`static` or an anonymous namespace) or unique candidate-local names.
+      Only the required candidate top and genuinely external dependency interfaces should remain externally visible; do not rename or alter external dependency interfaces merely to satisfy this isolation rule.
       If you need to introduce new MACROS, define them in the front of the code after including files.
       If the code uses any other functions not implemented in this piece of code, you should assume they are implemented at another place and they are synthesizable. Do **NOT** change the function interface of these kinds of functions.
       Reply with the refactored code in the following format (no comments/explanation).

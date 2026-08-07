@@ -32,6 +32,9 @@ class TestbenchPreflightReasonCode(str, Enum):
     LINK_FAILED = "link_failed"
     TOOLCHAIN_FAILED = "toolchain_failed"
     CONFIGURATION_FAILED = "configuration_failed"
+    CANDIDATE_EXTERNAL_SYMBOL_COLLISION = (
+        "candidate_external_symbol_collision"
+    )
     OWNERSHIP_UNKNOWN = "ownership_unknown"
 
 
@@ -44,6 +47,9 @@ class TestbenchPreflightSubstage(str, Enum):
     CANDIDATE_SYMBOL_CHECK = "candidate_symbol_check"
     REFERENCE_INTERFACE_CHECK = "reference_interface_check"
     CANDIDATE_INTERFACE_CHECK = "candidate_interface_check"
+    CANDIDATE_EXTERNAL_SYMBOL_COLLISION_CHECK = (
+        "candidate_external_symbol_collision_check"
+    )
     LINK = "link"
 
 
