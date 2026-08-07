@@ -37,6 +37,7 @@ _CANDIDATE_PURPOSES = frozenset(
         PromptPurpose.CANDIDATE_COMPILE_REPAIR.value,
         PromptPurpose.CANDIDATE_CSYNTH_REPAIR.value,
         PromptPurpose.CANDIDATE_PUBLIC_CSIM_REPAIR.value,
+        PromptPurpose.CANDIDATE_PUBLIC_COSIM_REPAIR.value,
     }
 )
 _FENCE_RE = re.compile(

@@ -30,6 +30,7 @@ from agrefactor.prompts import (
     CandidateRepairPromptInputs,
     LayeredPrompt,
     build_candidate_compile_repair_prompt,
+    build_candidate_public_cosim_repair_prompt,
 )
 
 
@@ -358,6 +359,41 @@ class CandidateModelRequestTests(unittest.TestCase):
         self.assertEqual(request.current_candidate, candidate_before)
         self.assertEqual(TASK.to_dict(), task_before)
         self.assertEqual(prompt.to_dict(), prompt_before)
+
+    def test_request_accepts_public_cosim_candidate_repair_prompt(self):
+        feedback = FeedbackReport(
+            report_id="candidate-model-adapter-cosim-feedback",
+            source="deterministic-test",
+            items=(
+                FeedbackItem(
+                    feedback_id="candidate-model-adapter-cosim-feedback.item",
+                    stage=FeedbackStage.COSIM,
+                    category=FeedbackCategory.FUNCTIONAL_MISMATCH,
+                    severity=FeedbackSeverity.ERROR,
+                    owner=FeedbackOwner.CANDIDATE,
+                    summary="candidate rtl cosim repair required",
+                ),
+            ),
+            metadata={
+                "evidence_view": "agent_safe",
+                "evaluation_split": "public",
+                "feedback_visible_to_agent": True,
+            },
+        )
+        prompt = build_candidate_public_cosim_repair_prompt(
+            CandidateRepairPromptInputs(
+                task=TASK,
+                feedback=feedback,
+                candidate_code=CURRENT,
+                original_code=ORIGINAL,
+                public_testbench_code="int main() { return 0; }\n",
+                attempt=1,
+                max_attempts=1,
+            )
+        )
+        request = CandidateModelRequest(prompt=prompt, task=TASK, current_candidate=CURRENT)
+        self.assertIs(request.prompt, prompt)
+        self.assertEqual(request.prompt.manifest["purpose"], "candidate_public_cosim_repair")
 
     def test_request_rejects_non_candidate_prompt(self):
         prompt = LayeredPrompt(
