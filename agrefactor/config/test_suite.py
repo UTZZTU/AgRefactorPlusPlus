@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -32,8 +32,54 @@ _ALLOWED_TEST_SUITE_FIELDS = frozenset(
         "testbench_path",
         "feedback_visible_to_agent",
         "source",
+        "runtime_contract",
     }
 )
+
+_RUNTIME_CONTRACT_KIND = "public_differential_self_check_v1"
+
+
+def _normalize_runtime_contract(value: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise TypeError("runtime_contract must be a mapping or null")
+    required = {
+        "schema_version",
+        "kind",
+        "candidate_mismatch_returncodes",
+    }
+    if set(value) != required:
+        raise ValueError("runtime_contract has unexpected fields")
+    if value.get("schema_version") != 1:
+        raise ValueError("runtime_contract.schema_version must be 1")
+    if value.get("kind") != _RUNTIME_CONTRACT_KIND:
+        raise ValueError(
+            "runtime_contract.kind must be public_differential_self_check_v1"
+        )
+    raw_codes = value.get("candidate_mismatch_returncodes")
+    if (
+        not isinstance(raw_codes, Sequence)
+        or isinstance(raw_codes, (str, bytes))
+        or not raw_codes
+    ):
+        raise ValueError(
+            "runtime_contract.candidate_mismatch_returncodes must be a non-empty sequence"
+        )
+    codes: list[int] = []
+    for raw in raw_codes:
+        if isinstance(raw, bool) or not isinstance(raw, int) or raw <= 0 or raw > 255:
+            raise ValueError(
+                "candidate mismatch return codes must be integers in [1, 255]"
+            )
+        if raw in codes:
+            raise ValueError("candidate mismatch return codes must be unique")
+        codes.append(raw)
+    return {
+        "schema_version": 1,
+        "kind": _RUNTIME_CONTRACT_KIND,
+        "candidate_mismatch_returncodes": tuple(codes),
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +92,7 @@ class TestSuiteSpec:
     case_count: int | None = None
     testbench_path: str | None = None
     source: TestSourceSpec | None = None
+    runtime_contract: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         suite_id = self._clean_required(
@@ -104,6 +151,9 @@ class TestSuiteSpec:
             raise ValueError(
                 "TestSuiteSpec.source requires testbench_path"
             )
+        runtime_contract = _normalize_runtime_contract(self.runtime_contract)
+        if runtime_contract is not None and split is not EvaluationSplit.PUBLIC:
+            raise ValueError("runtime_contract is Public-only")
 
         object.__setattr__(self, "suite_id", suite_id)
         object.__setattr__(self, "split", split)
@@ -111,6 +161,7 @@ class TestSuiteSpec:
         object.__setattr__(self, "case_count", case_count)
         object.__setattr__(self, "testbench_path", testbench_path)
         object.__setattr__(self, "source", source)
+        object.__setattr__(self, "runtime_contract", runtime_contract)
 
     @property
     def feedback_visible_to_agent(self) -> bool:
@@ -154,6 +205,14 @@ class TestSuiteSpec:
         }
         if self.source is not None:
             payload["source"] = self.source.to_dict()
+        if self.runtime_contract is not None:
+            payload["runtime_contract"] = {
+                "schema_version": 1,
+                "kind": self.runtime_contract["kind"],
+                "candidate_mismatch_returncodes": list(
+                    self.runtime_contract["candidate_mismatch_returncodes"]
+                ),
+            }
         return payload
 
     @classmethod
@@ -181,6 +240,7 @@ class TestSuiteSpec:
             case_count=data.get("case_count"),
             testbench_path=data.get("testbench_path"),
             source=data.get("source"),
+            runtime_contract=data.get("runtime_contract"),
         )
 
         if "feedback_visible_to_agent" in data:

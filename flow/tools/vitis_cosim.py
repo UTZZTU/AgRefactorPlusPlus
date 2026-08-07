@@ -12,6 +12,11 @@ import tempfile
 from typing import Any
 
 import flow.tools as tools
+from flow.tools.typed_testbench_outcome import (
+    build_typed_testbench_adapter,
+    make_typed_outcome_identity,
+    read_typed_testbench_outcome,
+)
 from agrefactor.config import TargetProfile, resolve_target_profile
 from agrefactor.runtime.budget import (
     BudgetExceededError,
@@ -25,12 +30,29 @@ VERSION_PROBE_BUDGET_INCREMENT = {"tool_calls": 1}
 COSIM_BUDGET_INCREMENT = {"tool_calls": 1, "cosim_calls": 1}
 COSIM_SCHEMA_VERSION = 1
 _VERSION_PROBE_TIMEOUT_S = 60
-_TYPED_FAILURE_PAIRS = frozenset(
-    {
-        ("candidate_rtl_functional_failure", "candidate"),
-        ("public_testbench_failure", "testbench"),
-    }
+_PUBLIC_DIFFERENTIAL_RUNTIME_CONTRACT_KIND = (
+    "public_differential_self_check_v1"
 )
+
+
+def _candidate_returncode_authorized(
+    contract: Mapping[str, Any] | None,
+    returncode: int,
+) -> bool:
+    if not isinstance(contract, Mapping):
+        return False
+    if set(contract) != {
+        "schema_version",
+        "kind",
+        "candidate_mismatch_returncodes",
+    }:
+        return False
+    return (
+        contract.get("schema_version") == 1
+        and contract.get("kind") == _PUBLIC_DIFFERENTIAL_RUNTIME_CONTRACT_KIND
+        and isinstance(contract.get("candidate_mismatch_returncodes"), (list, tuple))
+        and returncode in contract.get("candidate_mismatch_returncodes")
+    )
 
 
 def _atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -197,78 +219,15 @@ def _main_call_contract(parameters: str) -> tuple[str, str, str]:
 
 def _build_typed_outcome_adapter(
     testbench_code: str,
+    *,
+    base_identity: Mapping[str, str],
 ) -> tuple[str, str, dict[str, Any]]:
-    if not isinstance(testbench_code, str) or not testbench_code.strip():
-        raise ValueError("testbench source must not be empty")
-    if _WRAPPED_MAIN_NAME in testbench_code:
-        raise ValueError(
-            "Public Testbench collides with the reserved wrapper symbol"
-        )
-    matches = list(_MAIN_DEFINITION_RE.finditer(testbench_code))
-    if len(matches) != 1:
-        raise ValueError(
-            "Public Testbench must contain exactly one supported main "
-            f"definition for COSIM adaptation; found {len(matches)}"
-        )
-    match = matches[0]
-    main_kind, declaration, call = _main_call_contract(
-        match.group("params")
+    return build_typed_testbench_adapter(
+        testbench_code,
+        wrapped_main_name=_WRAPPED_MAIN_NAME,
+        base_identity=base_identity,
+        allowed_phases=("csim_prerequisite", "cosim"),
     )
-    replacement = (
-        f"{match.group('indent')}{match.group('return_type')} "
-        f"{_WRAPPED_MAIN_NAME}({match.group('params')})"
-        f"{match.group('suffix')}"
-    )
-    instrumented = (
-        testbench_code[: match.start()]
-        + replacement
-        + testbench_code[match.end() :]
-    )
-    wrapper = (
-        "#include <fstream>\n\n"
-        + declaration
-        + "\n\n"
-        + "int main(int argc, char **argv) {\n"
-        + "    if (\n"
-        + "        argc != 2\n"
-        + "        || argv == nullptr\n"
-        + "        || argv[1] == nullptr\n"
-        + "        || argv[1][0] == '\\0'\n"
-        + "    ) {\n"
-        + "        return 90;\n"
-        + "    }\n"
-        + f"    const int testbench_status = {call};\n"
-        + "    if (testbench_status != 0) {\n"
-        + "        return testbench_status;\n"
-        + "    }\n"
-        + "    std::ofstream outcome(\n"
-        + "        argv[1],\n"
-        + "        std::ios::out | std::ios::trunc\n"
-        + "    );\n"
-        + "    if (!outcome.is_open()) {\n"
-        + "        return 91;\n"
-        + "    }\n"
-        + "    outcome\n"
-        + "        << \"{\\\"schema_version\\\":1,\\\"status\\\":\\\"passed\\\",\"\n"
-        + "        << \"\\\"failure_kind\\\":\\\"\\\",\\\"failure_owner\\\":\\\"none\\\",\"\n"
-        + "        << \"\\\"reason_code\\\":\\\"cosim_passed\\\"}\\n\";\n"
-        + "    outcome.flush();\n"
-        + "    if (!outcome.good()) {\n"
-        + "        return 92;\n"
-        + "    }\n"
-        + "    return 0;\n"
-        + "}\n"
-    )
-    return instrumented, wrapper, {
-        "schema_version": 1,
-        "adapter": "deterministic_wrapper_v1",
-        "wrapped_symbol": _WRAPPED_MAIN_NAME,
-        "main_contract": main_kind,
-        "pass_evidence_source": "wrapped_testbench_returncode_zero",
-        "failure_owner_inferred": False,
-        "nonzero_testbench_status_writes_typed_pass": False,
-        "hidden_input_count": 0,
-    }
 
 def _normalize_version(value: str | None) -> str | None:
     if value is None:
@@ -285,9 +244,11 @@ def _write_sources(
     original_code: str,
     candidate_code: str,
     testbench_code: str,
+    base_identity: Mapping[str, str],
 ) -> dict[str, Path]:
     instrumented, wrapper, adapter = _build_typed_outcome_adapter(
-        testbench_code
+        testbench_code,
+        base_identity=base_identity,
     )
     files = {
         "candidate": root / "candidate.cpp",
@@ -336,8 +297,9 @@ def make_vitis_cosim_tcl(
     top: str,
     files: Mapping[str, Path],
     profile: TargetProfile,
+    typed_execution_id: str | None = None,
 ) -> str:
-    """Build a Vitis Tcl chain whose final command is ``cosim_design``."""
+    """Build a Vitis Tcl chain with structured per-command outcome phases."""
 
     if not isinstance(root, Path):
         raise TypeError("root must be Path")
@@ -352,19 +314,15 @@ def make_vitis_cosim_tcl(
     adapter_roles = {"testbench_original", "wrapper"}
     observed_roles = set(files)
     if not required_roles.issubset(observed_roles):
-        raise ValueError(
-            "files must contain candidate/reference/testbench"
-        )
+        raise ValueError("files must contain candidate/reference/testbench")
     unexpected_roles = observed_roles - required_roles - adapter_roles
     if unexpected_roles:
-        raise ValueError(
-            "files contain unexpected COSIM roles: "
-            + ", ".join(sorted(unexpected_roles))
-        )
+        raise ValueError("files contain unexpected COSIM roles: " + ", ".join(sorted(unexpected_roles)))
     if ("wrapper" in files) != ("testbench_original" in files):
-        raise ValueError(
-            "deterministic COSIM wrapper roles must be supplied together"
-        )
+        raise ValueError("deterministic COSIM wrapper roles must be supplied together")
+    execution_id = typed_execution_id or ("0" * 32)
+    if re.fullmatch(r"[0-9a-f]{32}", execution_id) is None:
+        raise ValueError("typed_execution_id must be 32 lowercase hex characters")
 
     status_path = root / "cosim_command_status.json"
     typed_outcome_path = root / "agrefactor_cosim_outcome.json"
@@ -389,28 +347,19 @@ def make_vitis_cosim_tcl(
         "}",
         f"set ag_status {_tcl_quote(str(status_path), 'status path')}",
         f"set ag_typed {_tcl_quote(str(typed_outcome_path), 'typed outcome path')}",
-        f"set ag_argv [list {_tcl_quote(outcome_argv, 'typed outcome argv')} ]",
+        f"set ag_csim_argv [list {_tcl_quote(outcome_argv, 'typed outcome argv')} {_tcl_quote(execution_id, 'execution id')} {_tcl_quote('csim_prerequisite', 'phase')}]",
+        f"set ag_cosim_argv [list {_tcl_quote(outcome_argv, 'typed outcome argv')} {_tcl_quote(execution_id, 'execution id')} {_tcl_quote('cosim', 'phase')}]",
         "open_project -reset agrefactor_public_cosim",
         f"set_top {_tcl_quote(top, 'top')}",
         add_line(files["candidate"], testbench=False, flags=compile_flags),
         add_line(files["reference"], testbench=True, flags=testbench_flags),
         add_line(files["testbench"], testbench=True, flags=testbench_flags),
-        *(
-            [
-                add_line(
-                    files["wrapper"],
-                    testbench=True,
-                    flags=testbench_flags,
-                )
-            ]
-            if "wrapper" in files
-            else []
-        ),
+        *([add_line(files["wrapper"], testbench=True, flags=testbench_flags)] if "wrapper" in files else []),
         "open_solution -reset -flow_target vitis solution",
         f"set_part {_tcl_quote(profile.device, 'target device')}",
         f"create_clock -period {profile.clock_period_ns} -name default",
         (
-            "if {[catch {csim_design -clean -argv $ag_argv} ag_msg]} { "
+            "if {[catch {csim_design -clean -argv $ag_csim_argv} ag_msg]} { "
             "ag_write_status $ag_status failed csim_prerequisite "
             "cosim_csim_prerequisite_failed; close_project; exit 21 }"
         ),
@@ -421,7 +370,7 @@ def make_vitis_cosim_tcl(
             "cosim_csynth_prerequisite_failed; close_project; exit 22 }"
         ),
         (
-            "if {[catch {cosim_design -tool xsim -rtl verilog -argv $ag_argv} ag_msg]} { "
+            "if {[catch {cosim_design -tool xsim -rtl verilog -argv $ag_cosim_argv} ag_msg]} { "
             "ag_write_status $ag_status failed cosim "
             "cosim_command_failed; close_project; exit 23 }"
         ),
@@ -434,7 +383,6 @@ def make_vitis_cosim_tcl(
         raise AssertionError("COSIM Tcl must invoke cosim_design")
     return rendered
 
-
 def _read_json_object(path: Path) -> dict[str, Any] | None:
     if path.is_symlink() or not path.is_file():
         return None
@@ -445,46 +393,15 @@ def _read_json_object(path: Path) -> dict[str, Any] | None:
     return dict(value) if isinstance(value, Mapping) else None
 
 
-def _typed_outcome(path: Path) -> dict[str, Any] | None:
-    value = _read_json_object(path)
-    required = {
-        "schema_version",
-        "status",
-        "failure_kind",
-        "failure_owner",
-        "reason_code",
-    }
-    if value is None or set(value) != required:
-        return None
-    if value.get("schema_version") != 1:
-        return None
-    status = value.get("status")
-    if status == "passed":
-        if (
-            value.get("failure_kind") not in {None, ""}
-            or value.get("failure_owner") != "none"
-            or value.get("reason_code") != "cosim_passed"
-        ):
-            return None
-        return {
-            "status": "passed",
-            "failure_kind": None,
-            "failure_owner": "none",
-            "reason_code": "cosim_passed",
-        }
-    pair = (value.get("failure_kind"), value.get("failure_owner"))
-    reason = value.get("reason_code")
-    if status != "failed" or pair not in _TYPED_FAILURE_PAIRS:
-        return None
-    if not isinstance(reason, str) or not reason.strip():
-        return None
-    return {
-        "status": "failed",
-        "failure_kind": pair[0],
-        "failure_owner": pair[1],
-        "reason_code": reason.strip(),
-    }
-
+def _typed_outcome(
+    path: Path,
+    *,
+    expected_identity: Mapping[str, str],
+) -> dict[str, Any] | None:
+    return read_typed_testbench_outcome(
+        path,
+        expected_identity=expected_identity,
+    )
 
 def _command_status(path: Path) -> dict[str, Any] | None:
     value = _read_json_object(path)
@@ -578,6 +495,7 @@ def run_vitis_cosim(
     timelimit: int,
     budget: BudgetManager | None = None,
     suite_id: str = "public",
+    runtime_contract: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run one Public suite through a real Vitis RTL COSIM chain."""
 
@@ -608,11 +526,25 @@ def run_vitis_cosim(
 
     profile = resolve_target_profile(target_profile)
     resolution = resolve_csynth_command(profile)
+    csim_identity = make_typed_outcome_identity(
+        phase="csim_prerequisite",
+        suite_id=suite_id,
+        candidate_code=candidate_code,
+        testbench_code=testbench_code,
+    )
+    cosim_identity = make_typed_outcome_identity(
+        phase="cosim",
+        suite_id=suite_id,
+        candidate_code=candidate_code,
+        testbench_code=testbench_code,
+        execution_id=csim_identity["execution_id"],
+    )
     files = _write_sources(
         root,
         original_code=original_code,
         candidate_code=candidate_code,
         testbench_code=testbench_code,
+        base_identity=csim_identity,
     )
 
     invocation: dict[str, Any] = {
@@ -622,8 +554,13 @@ def run_vitis_cosim(
         "execution_backend": "native_vitis",
         "native_vitis_cosim": True,
         "outcome_transport": "testbench_argv",
+        "typed_outcome_identities": {
+            "csim_prerequisite": csim_identity,
+            "cosim": cosim_identity,
+        },
+        "runtime_contract": runtime_contract,
         "typed_outcome_adapter": {
-            "kind": "deterministic_wrapper_v1",
+            "kind": "raw_runtime_atomic_wrapper_v2",
             "evidence_path": str(
                 root / "typed_outcome_adapter.json"
             ),
@@ -825,6 +762,7 @@ def run_vitis_cosim(
             top=top,
             files=files,
             profile=profile,
+            typed_execution_id=csim_identity["execution_id"],
         ),
     )
     invocation["tcl_sha256"] = _file_sha256(tcl_path)
@@ -910,7 +848,10 @@ def run_vitis_cosim(
         "cosim_launched": True,
     }
     command_status = _command_status(status_path)
-    typed = _typed_outcome(typed_path)
+    typed = _typed_outcome(
+        typed_path,
+        expected_identity=cosim_identity,
+    )
     invocation["command_status"] = (
         command_status
         if command_status is not None
@@ -957,19 +898,41 @@ def run_vitis_cosim(
             cosim_launched=True,
         )
 
-    if typed is not None and typed.get("status") == "failed":
-        return _finalize_result(
+    typed_returncode = (
+        typed.get("testbench_returncode")
+        if isinstance(typed, Mapping)
+        else None
+    )
+    deterministic_candidate = (
+        typed is not None
+        and typed.get("status") == "failed"
+        and isinstance(typed_returncode, int)
+        and not isinstance(typed_returncode, bool)
+        and command_status is not None
+        and command_status.get("status") == "failed"
+        and command_status.get("phase") == "cosim"
+        and _candidate_returncode_authorized(runtime_contract, typed_returncode)
+    )
+    if deterministic_candidate:
+        result = _finalize_result(
             invocation_path,
             invocation,
             status="failed",
-            failure_kind=typed["failure_kind"],
-            failure_owner=typed["failure_owner"],
-            reason_code=typed["reason_code"],
+            failure_kind="candidate_rtl_functional_failure",
+            failure_owner="candidate",
+            reason_code="public_rtl_mismatch",
             timed_out=False,
             returncode=returncode,
             version_probe_launched=True,
             cosim_launched=True,
         )
+        result["owner_authority"] = "deterministic_proven"
+        result["testbench_returncode"] = typed_returncode
+        invocation["result_summary"]["owner_authority"] = "deterministic_proven"
+        invocation["result_summary"]["testbench_returncode"] = typed_returncode
+        _atomic_json(invocation_path, invocation)
+        result["evidence_sha256"] = _file_sha256(invocation_path)
+        return result
 
     return _finalize_result(
         invocation_path,

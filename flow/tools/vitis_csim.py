@@ -22,6 +22,11 @@ from flow.tools.csynth import (
     resolve_csynth_command,
 )
 import flow.tools as tools
+from flow.tools.typed_testbench_outcome import (
+    build_typed_testbench_adapter,
+    make_typed_outcome_identity,
+    read_typed_testbench_outcome,
+)
 
 
 NATIVE_VITIS_CSIM_TIMEOUT = 60
@@ -30,11 +35,49 @@ NATIVE_VITIS_CSIM_BUDGET_INCREMENT = {
     "csim_calls": 1,
 }
 NATIVE_VITIS_CSIM_SCHEMA_VERSION = 1
-_COMPILER_ERROR_RE = re.compile(
-    r"(?:\berror:|compilation\s+failed|failed\s+to\s+compile|"
-    r"fatal\s+error:|undefined\s+reference)",
-    re.IGNORECASE,
+_PUBLIC_DIFFERENTIAL_RUNTIME_CONTRACT_KIND = (
+    "public_differential_self_check_v1"
 )
+
+
+def _candidate_returncode_authorized(
+    contract: Mapping[str, Any] | None,
+    returncode: int,
+) -> bool:
+    if not isinstance(contract, Mapping):
+        return False
+    if set(contract) != {
+        "schema_version",
+        "kind",
+        "candidate_mismatch_returncodes",
+    }:
+        return False
+    if contract.get("schema_version") != 1:
+        return False
+    if contract.get("kind") != _PUBLIC_DIFFERENTIAL_RUNTIME_CONTRACT_KIND:
+        return False
+    codes = contract.get("candidate_mismatch_returncodes")
+    if not isinstance(codes, (list, tuple)):
+        return False
+    return returncode in codes
+
+
+def _preflight_authorizes_candidate_runtime(
+    authority: Mapping[str, Any] | None,
+    identity: Mapping[str, str],
+) -> bool:
+    if not isinstance(authority, Mapping):
+        return False
+    return (
+        authority.get("status") == "passed"
+        and authority.get("authority") == "staged_preflight_typed"
+        and authority.get("suite_id_sha256") == identity.get("suite_id_sha256")
+        and authority.get("candidate_sha256") == identity.get("candidate_sha256")
+        and authority.get("testbench_sha256") == identity.get("testbench_sha256")
+        and isinstance(authority.get("reference_sha256"), str)
+        and isinstance(authority.get("evidence_sha256"), str)
+        and len(authority.get("evidence_sha256")) == 64
+    )
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -91,17 +134,24 @@ def make_native_vitis_csim_tcl(
     reference_source: str,
     testbench_source: str,
     target_profile: TargetProfile | Mapping[str, Any] | str | None,
+    wrapper_source: str | None = None,
+    typed_outcome_path: str | None = None,
+    typed_execution_id: str | None = None,
+    typed_phase: str = "public_native_vitis_csim",
 ) -> str:
     """Build one truthful native Vitis CSIM Tcl program."""
 
     profile = resolve_target_profile(target_profile)
     if profile.toolchain != "vitis_hls":
-        raise ValueError(
-            "native Vitis CSIM requires toolchain='vitis_hls'"
-        )
+        raise ValueError("native Vitis CSIM requires toolchain='vitis_hls'")
     if profile.device is None:
+        raise ValueError("native Vitis CSIM requires a target device")
+    typed_values = (wrapper_source, typed_outcome_path, typed_execution_id)
+    if any(value is not None for value in typed_values) and not all(
+        value is not None for value in typed_values
+    ):
         raise ValueError(
-            "native Vitis CSIM requires a target device"
+            "native CSIM typed wrapper, outcome path and execution id must be supplied together"
         )
 
     compile_flags = " ".join(profile.compile_flags)
@@ -109,49 +159,47 @@ def make_native_vitis_csim_tcl(
         "open_project -reset native_csim",
         f"set_top {_tcl_quote(top_kernel, 'top_kernel')}",
     ]
-
-    design = (
-        f"add_files {_tcl_quote(design_source, 'design source')}"
-    )
+    design = f"add_files {_tcl_quote(design_source, 'design source')}"
     if compile_flags:
-        design += (
-            " -cflags "
-            + _tcl_quote(compile_flags, "compile flags")
-        )
+        design += " -cflags " + _tcl_quote(compile_flags, "compile flags")
     lines.append(design)
-
-    for source, label in (
+    tb_sources = [
         (reference_source, "reference source"),
         (testbench_source, "testbench source"),
-    ):
+    ]
+    if wrapper_source is not None:
+        tb_sources.append((wrapper_source, "typed wrapper source"))
+    for source, label in tb_sources:
         line = f"add_files -tb {_tcl_quote(source, label)}"
         if compile_flags:
-            line += (
-                " -cflags "
-                + _tcl_quote(compile_flags, "compile flags")
-            )
+            line += " -cflags " + _tcl_quote(compile_flags, "compile flags")
         lines.append(line)
 
+    csim = "csim_design -clean"
+    if typed_outcome_path is not None:
+        csim += (
+            " -argv [list "
+            + _tcl_quote(typed_outcome_path, "typed outcome path")
+            + " "
+            + _tcl_quote(str(typed_execution_id), "typed execution id")
+            + " "
+            + _tcl_quote(typed_phase, "typed phase")
+            + "]"
+        )
     lines.extend(
         [
             "open_solution -reset -flow_target vitis solution",
             f"set_part {_tcl_quote(profile.device, 'target device')}",
-            (
-                "create_clock -period "
-                f"{profile.clock_period_ns} -name default"
-            ),
-            "csim_design -clean",
+            f"create_clock -period {profile.clock_period_ns} -name default",
+            csim,
             "close_project",
             "exit",
         ]
     )
     rendered = "\n".join(lines) + "\n"
     if "csynth_design" in rendered:
-        raise AssertionError(
-            "native CSIM Tcl must not synthesize"
-        )
+        raise AssertionError("native CSIM Tcl must not synthesize")
     return rendered
-
 
 def make_native_vitis_csim_script(
     *,
@@ -161,26 +209,45 @@ def make_native_vitis_csim_script(
     testbench_code: str,
     top_kernel: str,
     target_profile: TargetProfile | Mapping[str, Any] | str | None,
+    suite_id: str = "public",
 ) -> dict[str, Any]:
     root = Path(work_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
-
+    identity = make_typed_outcome_identity(
+        phase="public_native_vitis_csim",
+        suite_id=suite_id,
+        candidate_code=candidate_code,
+        testbench_code=testbench_code,
+    )
+    instrumented, wrapper, adapter = build_typed_testbench_adapter(
+        testbench_code,
+        wrapped_main_name="agrefactor_native_csim_testbench_main",
+        base_identity=identity,
+        allowed_phases=("public_native_vitis_csim",),
+    )
     files = {
         "candidate.cpp": candidate_code,
         "reference.cpp": original_code,
-        "testbench.cpp": testbench_code,
+        "testbench.cpp": instrumented,
+        "agrefactor_csim_wrapper.cpp": wrapper,
     }
     for name, content in files.items():
         if not isinstance(content, str) or not content.strip():
             raise ValueError(f"{name} content must not be empty")
         (root / name).write_text(content, encoding="utf-8")
-
+    typed_outcome_path = root / "agrefactor_csim_outcome.json"
+    adapter_path = root / "typed_outcome_adapter.json"
+    _write_json(adapter_path, adapter)
     profile = resolve_target_profile(target_profile)
     tcl = make_native_vitis_csim_tcl(
         top_kernel=top_kernel,
         design_source="candidate.cpp",
         reference_source="reference.cpp",
         testbench_source="testbench.cpp",
+        wrapper_source="agrefactor_csim_wrapper.cpp",
+        typed_outcome_path=str(typed_outcome_path),
+        typed_execution_id=identity["execution_id"],
+        typed_phase=identity["phase"],
         target_profile=profile,
     )
     (root / "vitis.tcl").write_text(tcl, encoding="utf-8")
@@ -188,22 +255,16 @@ def make_native_vitis_csim_script(
         "root": root,
         "profile": profile,
         "tcl": tcl,
+        "typed_outcome_path": typed_outcome_path,
+        "typed_outcome_identity": identity,
+        "typed_outcome_adapter_path": adapter_path,
         "source_files": [
-            {
-                "path": "candidate.cpp",
-                "role": "design",
-            },
-            {
-                "path": "reference.cpp",
-                "role": "testbench_reference",
-            },
-            {
-                "path": "testbench.cpp",
-                "role": "testbench_driver",
-            },
+            {"path": "candidate.cpp", "role": "design"},
+            {"path": "reference.cpp", "role": "testbench_reference"},
+            {"path": "testbench.cpp", "role": "testbench_driver"},
+            {"path": "agrefactor_csim_wrapper.cpp", "role": "testbench_wrapper"},
         ],
     }
-
 
 def _diagnostic(root: Path, result: Mapping[str, Any]) -> str:
     parts = [
@@ -259,6 +320,19 @@ def run_vitis_csim(
         raise ValueError("candidate_top_function must not be empty")
     profile = resolve_target_profile(cv["target_profile"])
 
+    try:
+        raw_suite_id = cv["csim_suite_id"]
+    except (KeyError, TypeError):
+        raw_suite_id = "public"
+    suite_id = str(raw_suite_id).strip() or "public"
+    try:
+        runtime_contract = cv["csim_runtime_contract"]
+    except (KeyError, TypeError):
+        runtime_contract = None
+    try:
+        preflight_authority = cv["csim_preflight_authority"]
+    except (KeyError, TypeError):
+        preflight_authority = None
     material = make_native_vitis_csim_script(
         work_dir=work_dir,
         original_code=cv["orig_code"],
@@ -266,6 +340,7 @@ def run_vitis_csim(
         testbench_code=cv["testbench"],
         top_kernel=top_kernel,
         target_profile=profile,
+        suite_id=suite_id,
     )
     root: Path = material["root"]
     command_resolution = resolve_csynth_command(profile)
@@ -278,6 +353,12 @@ def run_vitis_csim(
         "work_dir": str(root),
         "top_kernel": top_kernel,
         "source_files": material["source_files"],
+        "typed_outcome_identity": material["typed_outcome_identity"],
+        "typed_outcome_adapter_path": str(material["typed_outcome_adapter_path"]),
+        "typed_outcome": {"status": "pending"},
+        "runtime_contract": runtime_contract,
+        "preflight_authority": preflight_authority,
+        "runtime_classification": {"status": "pending"},
         "tcl_path": str(root / "vitis.tcl"),
         "tcl_sha256": __import__("hashlib").sha256(
             material["tcl"].encode("utf-8")
@@ -423,6 +504,12 @@ def run_vitis_csim(
             "usage_after": _usage(usage_after),
         }
 
+    typed_outcome_path: Path = material["typed_outcome_path"]
+    if typed_outcome_path.exists():
+        if typed_outcome_path.is_symlink() or not typed_outcome_path.is_file():
+            raise ValueError(f"unsafe stale native CSIM outcome path: {typed_outcome_path}")
+        typed_outcome_path.unlink()
+
     _write_json(invocation_path, invocation)
     command = command_resolution["command"]
     try:
@@ -454,17 +541,72 @@ def run_vitis_csim(
     invocation["simulation_execution"] = dict(execution)
     _write_json(invocation_path, invocation)
 
+    typed = read_typed_testbench_outcome(
+        typed_outcome_path,
+        expected_identity=material["typed_outcome_identity"],
+    )
+    invocation["typed_outcome"] = (
+        typed if typed is not None else {"status": "missing_or_invalid"}
+    )
     diagnostic = _diagnostic(root, result)
     if execution["timeout"]:
-        return (
-            "csim_failed",
-            "Native Vitis CSIM timed out.\n" + diagnostic,
-        )
+        invocation["runtime_classification"] = {
+            "status": "failed",
+            "failure_kind": "timeout",
+            "failure_owner": "unknown",
+            "owner_authority": "unknown",
+            "reason_code": "native_csim_timeout",
+        }
+        _write_json(invocation_path, invocation)
+        return "csim_failed", "Native Vitis CSIM timed out.\n" + diagnostic
     if execution["returncode"] != 0:
-        status = (
-            "tb_compile_failed"
-            if _COMPILER_ERROR_RE.search(diagnostic)
-            else "csim_failed"
+        typed_returncode = (
+            typed.get("testbench_returncode")
+            if isinstance(typed, Mapping)
+            else None
         )
-        return status, diagnostic
+        deterministic_candidate = (
+            isinstance(typed_returncode, int)
+            and not isinstance(typed_returncode, bool)
+            and typed is not None
+            and typed.get("status") == "failed"
+            and _candidate_returncode_authorized(runtime_contract, typed_returncode)
+            and _preflight_authorizes_candidate_runtime(
+                preflight_authority,
+                material["typed_outcome_identity"],
+            )
+        )
+        if deterministic_candidate:
+            invocation["runtime_classification"] = {
+                "status": "failed",
+                "failure_kind": "candidate_csim_functional_failure",
+                "failure_owner": "candidate",
+                "owner_authority": "deterministic_proven",
+                "reason_code": "public_csim_mismatch",
+                "testbench_returncode": typed_returncode,
+                "runtime_contract_kind": runtime_contract.get("kind"),
+                "preflight_evidence_sha256": preflight_authority.get(
+                    "evidence_sha256"
+                ),
+            }
+            _write_json(invocation_path, invocation)
+            return "csim_failed", diagnostic
+        invocation["runtime_classification"] = {
+            "status": "failed",
+            "failure_kind": "ownership_unknown",
+            "failure_owner": "unknown",
+            "owner_authority": "unknown",
+            "reason_code": "native_csim_nonzero_without_deterministic_owner",
+            "testbench_returncode": typed_returncode,
+        }
+        _write_json(invocation_path, invocation)
+        return "csim_execution_failed", diagnostic
+    invocation["runtime_classification"] = {
+        "status": "passed",
+        "failure_kind": None,
+        "failure_owner": "none",
+        "owner_authority": "deterministic_proven",
+        "reason_code": "csim_passed",
+    }
+    _write_json(invocation_path, invocation)
     return "succeeded", ""

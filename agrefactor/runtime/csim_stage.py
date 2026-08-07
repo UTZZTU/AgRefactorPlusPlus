@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -79,6 +80,134 @@ _TERMINAL_PUBLIC_CATEGORIES = frozenset(
         FeedbackCategory.INVALID_CONFIGURATION,
     }
 )
+_REQUIRED_PREFLIGHT_SUBSTAGES = frozenset(
+    {
+        "testbench_compile",
+        "reference_compile",
+        "candidate_compile",
+        "reference_interface_check",
+        "candidate_interface_check",
+        "link",
+    }
+)
+
+
+def _text_sha256(value: str) -> str:
+    return sha256(value.encode("utf-8")).hexdigest()
+
+
+def _native_csim_preflight_authority(
+    inputs: "CsimStageInputs",
+    *,
+    suite_id: str,
+    testbench_code: str,
+) -> dict[str, Any]:
+    preflight_root = Path(inputs.work_dir).parent / "preflight"
+    invocation_path = preflight_root / "testbench_preflight_invocation.json"
+    unavailable = {
+        "status": "unavailable",
+        "authority": "staged_preflight_typed",
+    }
+    if invocation_path.is_symlink() or not invocation_path.is_file():
+        return unavailable
+    try:
+        payload = json.loads(invocation_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return unavailable
+    if not isinstance(payload, Mapping):
+        return unavailable
+    if (
+        payload.get("reason_code") != "passed"
+        or payload.get("failed_component") is not None
+    ):
+        return unavailable
+    execution = payload.get("execution")
+    if (
+        not isinstance(execution, Mapping)
+        or execution.get("returncode") != 0
+        or execution.get("timeout") is True
+    ):
+        return unavailable
+    substeps = payload.get("substeps")
+    if not isinstance(substeps, list) or not substeps:
+        return unavailable
+    observed: set[str] = set()
+    for step in substeps:
+        if not isinstance(step, Mapping):
+            return unavailable
+        substage = step.get("substage")
+        if isinstance(substage, str):
+            observed.add(substage)
+        if step.get("status") != "passed" or step.get("returncode") != 0:
+            return unavailable
+    if not _REQUIRED_PREFLIGHT_SUBSTAGES.issubset(observed):
+        return unavailable
+    expected = {
+        "testbench.cpp": _text_sha256(testbench_code),
+        "orig_code.cpp": _text_sha256(inputs.original_code),
+        "refactor_code.cpp": _text_sha256(inputs.candidate_code),
+    }
+    for name, digest in expected.items():
+        source = preflight_root / name
+        if source.is_symlink() or not source.is_file():
+            return unavailable
+        if sha256(source.read_bytes()).hexdigest() != digest:
+            return unavailable
+    return {
+        "status": "passed",
+        "authority": "staged_preflight_typed",
+        "evidence_sha256": sha256(invocation_path.read_bytes()).hexdigest(),
+        "suite_id_sha256": _text_sha256(suite_id),
+        "candidate_sha256": expected["refactor_code.cpp"],
+        "testbench_sha256": expected["testbench.cpp"],
+        "reference_sha256": expected["orig_code.cpp"],
+        "required_substages": sorted(_REQUIRED_PREFLIGHT_SUBSTAGES),
+    }
+
+
+def _native_candidate_runtime_classification(
+    result: CsimSuiteEvaluationResult,
+) -> dict[str, Any] | None:
+    for artifact in result.evidence.artifacts:
+        path = Path(artifact)
+        if path.name != "csim_invocation.json" or path.is_symlink() or not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, Mapping):
+            return None
+        value = payload.get("runtime_classification")
+        if not isinstance(value, Mapping):
+            return None
+        contract = result.evidence.suite.runtime_contract
+        returncode = value.get("testbench_returncode")
+        codes = (
+            contract.get("candidate_mismatch_returncodes")
+            if isinstance(contract, Mapping)
+            else None
+        )
+        contract_authorizes = (
+            isinstance(contract, Mapping)
+            and contract.get("schema_version") == 1
+            and contract.get("kind") == "public_differential_self_check_v1"
+            and isinstance(codes, (list, tuple))
+            and isinstance(returncode, int)
+            and not isinstance(returncode, bool)
+            and returncode in codes
+        )
+        if (
+            value.get("failure_kind") == "candidate_csim_functional_failure"
+            and value.get("failure_owner") == "candidate"
+            and value.get("owner_authority") == "deterministic_proven"
+            and contract_authorizes
+            and isinstance(value.get("preflight_evidence_sha256"), str)
+            and len(value.get("preflight_evidence_sha256")) == 64
+        ):
+            return dict(value)
+        return None
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -416,6 +545,23 @@ class CsimValidationStageHandler:
                     "csim_execution_backend": (
                         self._inputs.execution_backend
                     ),
+                    "csim_suite_id": suite.suite_id,
+                    "csim_runtime_contract": (
+                        None
+                        if suite.runtime_contract is None
+                        else dict(suite.runtime_contract)
+                    ),
+                    "csim_preflight_authority": (
+                        _native_csim_preflight_authority(
+                            self._inputs,
+                            suite_id=suite.suite_id,
+                            testbench_code=self._inputs.suite_testbench_codes[
+                                suite.suite_id
+                            ],
+                        )
+                        if self._inputs.execution_backend == "native_vitis"
+                        else None
+                    ),
                 }
             )
             component_id = (
@@ -686,9 +832,19 @@ class CsimValidationStageHandler:
             stage = FeedbackStage.CSIM
             metadata_update.update(timeout.to_dict())
         elif result.legacy_status == "csim_failed":
-            category = FeedbackCategory.FUNCTIONAL_MISMATCH
-            owner = FeedbackOwner.CANDIDATE
-            stage = FeedbackStage.CSIM
+            if self._inputs.execution_backend == "native_vitis":
+                classification = _native_candidate_runtime_classification(result)
+                if classification is not None:
+                    category = FeedbackCategory.FUNCTIONAL_MISMATCH
+                    owner = FeedbackOwner.CANDIDATE
+                    stage = FeedbackStage.CSIM
+                    metadata_update.update(classification)
+                else:
+                    metadata_update["owner_authority"] = "unknown"
+            else:
+                category = FeedbackCategory.FUNCTIONAL_MISMATCH
+                owner = FeedbackOwner.CANDIDATE
+                stage = FeedbackStage.CSIM
         elif result.legacy_status == "tb_compile_failed":
             default_kind = classify_compile_failure(
                 result.diagnostic

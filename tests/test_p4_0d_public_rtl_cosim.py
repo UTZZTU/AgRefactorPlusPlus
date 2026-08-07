@@ -66,6 +66,11 @@ class P4DPublicRtlCosimTests(unittest.TestCase):
                     suite_id="public-1",
                     split=EvaluationSplit.PUBLIC,
                     testbench_path="public_tb.cpp",
+                    runtime_contract={
+                        "schema_version": 1,
+                        "kind": "public_differential_self_check_v1",
+                        "candidate_mismatch_returncodes": [1],
+                    },
                 ),
                 TestSuiteSpec(
                     suite_id="hidden-1",
@@ -115,14 +120,16 @@ class P4DPublicRtlCosimTests(unittest.TestCase):
                         + "\n",
                         encoding="utf-8",
                     )
+                    identity = json.loads(
+                        (root / "cosim_invocation.json").read_text(encoding="utf-8")
+                    )["typed_outcome_identities"]["cosim"]
                     (root / "agrefactor_cosim_outcome.json").write_text(
                         json.dumps(
                             {
-                                "schema_version": 1,
+                                "schema_version": 2,
+                                **identity,
                                 "status": "passed",
-                                "failure_kind": "",
-                                "failure_owner": "none",
-                                "reason_code": "cosim_passed",
+                                "testbench_returncode": 0,
                             }
                         )
                         + "\n",
@@ -283,10 +290,11 @@ class P4DPublicRtlCosimTests(unittest.TestCase):
         outcome_path = root / "agrefactor_cosim_outcome.json"
         self.assertEqual(_cosim_argv_value(outcome_path), str(outcome_path))
         self.assertNotIn("AGREFACTOR_COSIM_OUTCOME_PATH", tcl)
-        self.assertIn("set ag_argv [list ", tcl)
-        self.assertIn("csim_design -clean -argv $ag_argv", tcl)
+        self.assertIn("set ag_csim_argv [list ", tcl)
+        self.assertIn("set ag_cosim_argv [list ", tcl)
+        self.assertIn("csim_design -clean -argv $ag_csim_argv", tcl)
         self.assertIn(
-            "cosim_design -tool xsim -rtl verilog -argv $ag_argv",
+            "cosim_design -tool xsim -rtl verilog -argv $ag_cosim_argv",
             tcl,
         )
         self.assertNotIn("-DAGREFACTOR_COSIM_OUTCOME_PATH", reference_line)
@@ -397,6 +405,8 @@ class P4DPublicRtlCosimTests(unittest.TestCase):
                     "status": "failed",
                     "failure_kind": "candidate_rtl_functional_failure",
                     "failure_owner": "candidate",
+                    "owner_authority": "deterministic_proven",
+                    "testbench_returncode": 1,
                     "reason_code": "public_rtl_mismatch",
                     "timed_out": False,
                     "returncode": 23,

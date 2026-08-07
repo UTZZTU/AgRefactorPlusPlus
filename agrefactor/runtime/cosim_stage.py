@@ -285,8 +285,12 @@ class CosimValidationStageHandler:
                     timelimit=self._inputs.timelimit,
                     budget=context.budget,
                     suite_id=suite_id,
+                    runtime_contract=suite.runtime_contract,
                 )
-                outcome = _normalize_outcome(raw)
+                outcome = _normalize_outcome(
+                    raw,
+                    runtime_contract=suite.runtime_contract,
+                )
             except BudgetExceededError as exc:
                 outcome = {
                     "status": "blocked",
@@ -430,7 +434,11 @@ class CosimValidationStageHandler:
         )
 
 
-def _normalize_outcome(value: Mapping[str, Any]) -> dict[str, Any]:
+def _normalize_outcome(
+    value: Mapping[str, Any],
+    *,
+    runtime_contract: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise TypeError("COSIM executor result must be a mapping")
 
@@ -489,6 +497,22 @@ def _normalize_outcome(value: Mapping[str, Any]) -> dict[str, Any]:
     elif (
         kind not in _ALLOWED_FAILURES
         or owner != _EXPECTED_OWNER.get(kind)
+        or (
+            kind == "candidate_rtl_functional_failure"
+            and (
+                value.get("owner_authority") != "deterministic_proven"
+                or not isinstance(runtime_contract, Mapping)
+                or runtime_contract.get("schema_version") != 1
+                or runtime_contract.get("kind")
+                != "public_differential_self_check_v1"
+                or not isinstance(
+                    runtime_contract.get("candidate_mismatch_returncodes"),
+                    (list, tuple),
+                )
+                or value.get("testbench_returncode")
+                not in runtime_contract.get("candidate_mismatch_returncodes", ())
+            )
+        )
     ):
         kind = "ownership_unknown"
         owner = "unknown"
@@ -517,11 +541,25 @@ def _normalize_outcome(value: Mapping[str, Any]) -> dict[str, Any]:
         "timeout_class": (
             None if timeout is None else timeout.timeout_class.value
         ),
+        "testbench_returncode": (
+            value.get("testbench_returncode")
+            if isinstance(value.get("testbench_returncode"), int)
+            and not isinstance(value.get("testbench_returncode"), bool)
+            else None
+        ),
         "owner_authority": (
-            None if timeout is None else timeout.owner_authority
+            value.get("owner_authority")
+            if timeout is None
+            else timeout.owner_authority
         ),
         "repair_eligible": (
-            False if timeout is None else timeout.repair_eligible
+            (
+                kind == "candidate_rtl_functional_failure"
+                and owner == "candidate"
+                and value.get("owner_authority") == "deterministic_proven"
+            )
+            if timeout is None
+            else timeout.repair_eligible
         ),
         "advisory_eligible": (
             False if timeout is None else timeout.advisory_eligible

@@ -180,12 +180,15 @@ class NativeVitisCsimToolTests(unittest.TestCase):
                     "design",
                     "testbench_reference",
                     "testbench_driver",
+                    "testbench_wrapper",
                 },
             )
             for name in (
                 "candidate.cpp",
                 "reference.cpp",
                 "testbench.cpp",
+                "agrefactor_csim_wrapper.cpp",
+                "typed_outcome_adapter.json",
                 "vitis.tcl",
             ):
                 self.assertTrue(
@@ -301,7 +304,7 @@ class NativeVitisCsimToolTests(unittest.TestCase):
                     )
         self.assertEqual(launched, [])
 
-    def test_compile_diagnostic_maps_to_tb_compile_failed(self):
+    def test_aggregate_compile_text_without_runtime_authority_is_unknown(self):
         with tempfile.TemporaryDirectory() as directory:
             with (
                 patch(
@@ -333,11 +336,11 @@ class NativeVitisCsimToolTests(unittest.TestCase):
                 )
         self.assertEqual(
             status,
-            "tb_compile_failed",
+            "csim_execution_failed",
         )
         self.assertIn("testbench.cpp", diagnostic)
 
-    def test_functional_failure_maps_to_csim_failed(self):
+    def test_uncontracted_nonzero_is_unknown_safe(self):
         with tempfile.TemporaryDirectory() as directory:
             with (
                 patch(
@@ -364,7 +367,7 @@ class NativeVitisCsimToolTests(unittest.TestCase):
                     directory,
                     _variables(),
                 )
-        self.assertEqual(status, "csim_failed")
+        self.assertEqual(status, "csim_execution_failed")
         self.assertIn("mismatch", diagnostic)
 
     def test_timeout_maps_to_csim_failed(self):

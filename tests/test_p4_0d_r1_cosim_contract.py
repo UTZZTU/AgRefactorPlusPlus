@@ -18,6 +18,7 @@ from flow.tools.vitis_cosim import (
     make_vitis_cosim_tcl,
     run_vitis_cosim,
 )
+from flow.tools.typed_testbench_outcome import make_typed_outcome_identity
 
 
 class P40DR1CosimContractTests(unittest.TestCase):
@@ -35,13 +36,24 @@ class P40DR1CosimContractTests(unittest.TestCase):
             "effective_value_provenance": {},
         }
 
+    @staticmethod
+    def _identity(testbench: str) -> dict[str, str]:
+        return make_typed_outcome_identity(
+            phase="csim_prerequisite",
+            suite_id="public",
+            candidate_code="void kernel_hls(){}",
+            testbench_code=testbench,
+            execution_id="1" * 32,
+        )
+
     def test_plain_main_gets_deterministic_pass_adapter(self) -> None:
         testbench = (
             "int helper(){return 0;}\n"
             "int main(){ return helper(); }\n"
         )
         instrumented, wrapper, evidence = _build_typed_outcome_adapter(
-            testbench
+            testbench,
+            base_identity=self._identity(testbench),
         )
         self.assertIn(
             "int agrefactor_public_testbench_main()",
@@ -53,16 +65,20 @@ class P40DR1CosimContractTests(unittest.TestCase):
             "agrefactor_public_testbench_main();",
             wrapper,
         )
+        self.assertIn(
+            "const int evidence_status = agrefactor_write_outcome",
+            wrapper,
+        )
         self.assertLess(
-            wrapper.index("testbench_status != 0"),
-            wrapper.index("std::ofstream outcome"),
+            wrapper.index("const int evidence_status"),
+            wrapper.index("return testbench_status"),
         )
-        self.assertIn("cosim_passed", wrapper)
+        self.assertIn('\\"schema_version\\":2', wrapper)
+        self.assertNotIn("failure_owner", wrapper)
+        self.assertEqual(evidence["schema_version"], 2)
         self.assertEqual(evidence["main_contract"], "no_args")
-        self.assertFalse(evidence["failure_owner_inferred"])
-        self.assertFalse(
-            evidence["nonzero_testbench_status_writes_typed_pass"]
-        )
+        self.assertTrue(evidence["records_only_raw_returncode"])
+        self.assertTrue(evidence["atomic_replace"])
 
     def test_argc_argv_main_is_supported_without_hidden_input(self) -> None:
         testbench = (
@@ -70,7 +86,8 @@ class P40DR1CosimContractTests(unittest.TestCase):
             "return argc > 0 && argv ? 0 : 1; }\n"
         )
         instrumented, wrapper, evidence = _build_typed_outcome_adapter(
-            testbench
+            testbench,
+            base_identity=self._identity(testbench),
         )
         self.assertIn(
             "agrefactor_public_testbench_main(int argc, char **argv)",
@@ -104,7 +121,10 @@ class P40DR1CosimContractTests(unittest.TestCase):
         ):
             with self.subTest(testbench=testbench):
                 with self.assertRaises(ValueError):
-                    _build_typed_outcome_adapter(testbench)
+                    _build_typed_outcome_adapter(
+                        testbench,
+                        base_identity=self._identity(testbench),
+                    )
 
     def test_tcl_compiles_instrumented_testbench_and_wrapper(self) -> None:
         profile = default_target_profile()
@@ -183,14 +203,18 @@ class P40DR1CosimContractTests(unittest.TestCase):
                         + "\n",
                         encoding="utf-8",
                     )
+                    identity = json.loads(
+                        (root / "cosim_invocation.json").read_text(
+                            encoding="utf-8"
+                        )
+                    )["typed_outcome_identities"]["cosim"]
                     (root / "agrefactor_cosim_outcome.json").write_text(
                         json.dumps(
                             {
-                                "schema_version": 1,
+                                "schema_version": 2,
+                                **identity,
                                 "status": "passed",
-                                "failure_kind": "",
-                                "failure_owner": "none",
-                                "reason_code": "cosim_passed",
+                                "testbench_returncode": 0,
                             }
                         )
                         + "\n",
@@ -226,16 +250,18 @@ class P40DR1CosimContractTests(unittest.TestCase):
             )
             self.assertEqual(
                 invocation["typed_outcome_adapter"]["kind"],
-                "deterministic_wrapper_v1",
+                "raw_runtime_atomic_wrapper_v2",
             )
             adapter = json.loads(
                 (root / "typed_outcome_adapter.json").read_text(
                     encoding="utf-8"
                 )
             )
+            self.assertTrue(adapter["records_only_raw_returncode"])
+            self.assertTrue(adapter["atomic_replace"])
             self.assertEqual(
-                adapter["pass_evidence_source"],
-                "wrapped_testbench_returncode_zero",
+                adapter["argv_contract"],
+                ["outcome_path", "execution_id", "phase"],
             )
 
     def test_zero_return_without_typed_outcome_still_fails_closed(self) -> None:
