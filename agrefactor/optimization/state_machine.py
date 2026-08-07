@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 from typing import Any
 
+from agrefactor.evaluation import FeedbackRouteAction
 from agrefactor.runtime.budget import BudgetExceededError, BudgetManager
 from agrefactor.runtime.trace import TraceRecorder
 
@@ -34,7 +35,11 @@ from .provider import (
     HypothesisRequest,
     normalize_hypothesis,
 )
-from .qualification import QualificationStatus
+from .qualification import (
+    CandidateQualificationResult,
+    QualificationStatus,
+    QualificationStepOutcome,
+)
 from .state import (
     CandidateRecord,
     CandidateStatus,
@@ -51,6 +56,27 @@ STATE_MACHINE_SCHEMA_VERSION = 2
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _qualification_reports_budget_exhaustion(
+    qualification: CandidateQualificationResult,
+) -> bool:
+    """Recognize only the exact typed qualification budget-stop contract."""
+
+    if (
+        not isinstance(qualification, CandidateQualificationResult)
+        or qualification.status is not QualificationStatus.BLOCKED
+        or not qualification.steps
+    ):
+        return False
+    terminal = qualification.steps[-1]
+    return bool(
+        terminal.outcome is QualificationStepOutcome.BLOCKED
+        and terminal.route_action
+        is FeedbackRouteAction.STOP_BUDGET_EXHAUSTED
+        and terminal.source_blocking
+        and "budget_exhausted" in terminal.reason_codes
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -709,7 +735,7 @@ class DeterministicOptimizerStateMachine:
 
         state_updates, optimizer_decision = self._decide_candidate(
             terminal_candidate,
-            qualification.status,
+            qualification,
             level=level,
             round_number=round_number,
         )
@@ -758,11 +784,16 @@ class DeterministicOptimizerStateMachine:
     def _decide_candidate(
         self,
         candidate: CandidateRecord,
-        qualification_status: QualificationStatus,
+        qualification: CandidateQualificationResult,
         *,
         level: OptimizationLevel,
         round_number: int,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
+        if not isinstance(qualification, CandidateQualificationResult):
+            raise TypeError(
+                "qualification must be CandidateQualificationResult"
+            )
+        qualification_status = qualification.status
         base_decision = {
             "optimizer_policy": self._policy.name,
             "optimizer_level": level.value,
@@ -783,15 +814,34 @@ class DeterministicOptimizerStateMachine:
             )
         if qualification_status is QualificationStatus.BLOCKED:
             self._counters = self._counters.increment(blocked_candidates=1)
+            budget_exhausted_with_best = bool(
+                self._state.best_correct_candidate_id is not None
+                and _qualification_reports_budget_exhaustion(qualification)
+            )
+            terminal_status = (
+                OptimizerTerminalStatus.BUDGET_EXHAUSTED_WITH_BEST_CORRECT
+                if budget_exhausted_with_best
+                else OptimizerTerminalStatus.BLOCKED
+            )
+            optimizer_action = (
+                "stop_budget_exhausted_with_best_correct"
+                if budget_exhausted_with_best
+                else "stop_blocked"
+            )
+            optimizer_reason = (
+                "qualification_budget_exhausted_with_best_correct"
+                if budget_exhausted_with_best
+                else "qualification_blocked"
+            )
             return (
                 {
                     "current_candidate_id": self._required_best_correct(),
-                    "terminal_status": OptimizerTerminalStatus.BLOCKED,
+                    "terminal_status": terminal_status,
                 },
                 {
                     **base_decision,
-                    "optimizer_action": "stop_blocked",
-                    "optimizer_reason": "qualification_blocked",
+                    "optimizer_action": optimizer_action,
+                    "optimizer_reason": optimizer_reason,
                 },
             )
         if qualification_status is QualificationStatus.REVIEW_REQUIRED:

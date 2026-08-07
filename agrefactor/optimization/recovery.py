@@ -948,7 +948,7 @@ class BoundedRecoveryOptimizerStateMachine(DeterministicOptimizerStateMachine):
         terminal_candidate = qualification.apply_to_candidate(generated)
         source_updates, source_decision = self._decide_candidate(
             terminal_candidate,
-            qualification.status,
+            qualification,
             level=level,
             round_number=round_number,
         )
@@ -1037,7 +1037,7 @@ class BoundedRecoveryOptimizerStateMachine(DeterministicOptimizerStateMachine):
             repaired_terminal = recovery.qualification.apply_to_candidate(repaired)
             repaired_updates, repaired_decision = self._decide_candidate(
                 repaired_terminal,
-                recovery.qualification.status,
+                recovery.qualification,
                 level=level,
                 round_number=round_number,
             )
