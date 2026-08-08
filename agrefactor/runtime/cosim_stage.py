@@ -427,6 +427,14 @@ class CosimValidationStageHandler:
             "repair_allowed": outcome.get("repair_eligible") is True,
             "timeout_class": outcome.get("timeout_class"),
             "owner_authority": outcome.get("owner_authority"),
+            "post_completion_process_linger": (
+                outcome.get("post_completion_process_linger") is True
+            ),
+            "command_completion_proven": (
+                outcome.get("command_completion_proven") is True
+            ),
+            "process_exit_observed": outcome.get("process_exit_observed"),
+            "completion_authority": outcome.get("completion_authority"),
         }
         _atomic_json(
             work_dir / "cosim_suite_identity_evidence.json",
@@ -455,21 +463,51 @@ def _normalize_outcome(
             and value.get("returncode") == 0
             and evidence_sha is not None
         )
-        if physically_proven:
+        post_completion_proven = (
+            value.get("reason_code")
+            == "cosim_passed_post_completion_process_linger"
+            and value.get("tool_launched") is True
+            and value.get("cosim_launched") is True
+            and value.get("timed_out") is True
+            and value.get("post_completion_process_linger") is True
+            and value.get("command_completion_proven") is True
+            and value.get("process_exit_observed") is False
+            and value.get("completion_authority")
+            == "fresh_tcl_status_and_identity_bound_typed_outcome_v1"
+            and evidence_sha is not None
+        )
+        if physically_proven or post_completion_proven:
             return {
                 "status": "passed",
                 "failure_kind": None,
                 "failure_owner": "none",
-                "reason_code": "cosim_passed",
-                "timed_out": False,
+                "reason_code": (
+                    "cosim_passed_post_completion_process_linger"
+                    if post_completion_proven
+                    else "cosim_passed"
+                ),
+                "timed_out": post_completion_proven,
                 "returncode": (
                     value.get("returncode")
                     if isinstance(value.get("returncode"), int)
+                    and not isinstance(value.get("returncode"), bool)
                     else None
                 ),
                 "tool_launched": True,
                 "cosim_launched": True,
                 "evidence_sha256": evidence_sha,
+                "post_completion_process_linger": post_completion_proven,
+                "command_completion_proven": (
+                    True if post_completion_proven else False
+                ),
+                "process_exit_observed": (
+                    False if post_completion_proven else True
+                ),
+                "completion_authority": (
+                    value.get("completion_authority")
+                    if post_completion_proven
+                    else None
+                ),
             }
         return {
             "status": "failed",
@@ -480,11 +518,16 @@ def _normalize_outcome(
             "returncode": (
                 value.get("returncode")
                 if isinstance(value.get("returncode"), int)
+                and not isinstance(value.get("returncode"), bool)
                 else None
             ),
             "tool_launched": value.get("tool_launched") is True,
             "cosim_launched": value.get("cosim_launched") is True,
             "evidence_sha256": evidence_sha,
+            "post_completion_process_linger": False,
+            "command_completion_proven": False,
+            "process_exit_observed": False,
+            "completion_authority": None,
         }
 
     kind = value.get("failure_kind")
@@ -594,6 +637,14 @@ def _safe_summary(
         "repair_eligible": outcome.get("repair_eligible") is True,
         "advisory_eligible": outcome.get("advisory_eligible") is True,
         "evidence_complete": outcome.get("evidence_complete") is True,
+        "post_completion_process_linger": (
+            outcome.get("post_completion_process_linger") is True
+        ),
+        "command_completion_proven": (
+            outcome.get("command_completion_proven") is True
+        ),
+        "process_exit_observed": outcome.get("process_exit_observed"),
+        "completion_authority": outcome.get("completion_authority"),
         "evidence_sha256": (
             evidence_sha
             if isinstance(evidence_sha, str)

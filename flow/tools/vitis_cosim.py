@@ -935,6 +935,49 @@ def run_vitis_cosim(
         typed if typed is not None else {"status": "missing_or_invalid"}
     )
 
+    post_completion_pass = (
+        timed_out
+        and command_status is not None
+        and command_status.get("status") == "passed"
+        and command_status.get("phase") == "cosim"
+        and command_status.get("reason_code") == "cosim_passed"
+        and typed is not None
+        and typed.get("status") == "passed"
+        and typed.get("identity_verified") is True
+        and typed.get("testbench_returncode") == 0
+    )
+    if post_completion_pass:
+        result = _finalize_result(
+            invocation_path,
+            invocation,
+            status="passed",
+            failure_kind=None,
+            failure_owner="none",
+            reason_code="cosim_passed_post_completion_process_linger",
+            timed_out=True,
+            returncode=returncode,
+            version_probe_launched=True,
+            cosim_launched=True,
+        )
+        completion = {
+            "completion_authority": (
+                "fresh_tcl_status_and_identity_bound_typed_outcome_v1"
+            ),
+            "command_completion_proven": True,
+            "post_completion_process_linger": True,
+            "process_exit_observed": False,
+        }
+        result.update(completion)
+        invocation["result_summary"].update(completion)
+        _atomic_json(invocation_path, invocation)
+        evidence_sha = _file_sha256(invocation_path)
+        if evidence_sha is None:
+            raise RuntimeError(
+                "COSIM post-completion evidence was not persisted"
+            )
+        result["evidence_sha256"] = evidence_sha
+        return result
+
     if timed_out:
         return _finalize_result(
             invocation_path,
