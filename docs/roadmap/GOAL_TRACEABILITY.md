@@ -1,5 +1,22 @@
 # AgRefactor++ Goal Traceability
 
+<!-- R0_V2_2_CAPABILITY_AUTHORITY:BEGIN -->
+## V2.2 当前能力分层与追踪入口
+
+完整的逐能力代码追踪、repair lane、证据边界和 R0–R6 验收门以
+[`RESEARCH_ROADMAP_V2_2.md`](RESEARCH_ROADMAP_V2_2.md) 为准。当前分类为：
+
+| 分层 | 能力 | 当前处置 |
+|---|---|---|
+| 论文核心 | 证据门控开放世界诊断、验证式持续记忆、安全修复 | R1–R5 逐门实现；AI 不修改 FSM、不宣布成功 |
+| 实证基础 | TargetProfile、Vitis HLS 2023.2、typed evidence、Public/Hidden、独立审计 | 保留并强化；不主张跨版本泛化 |
+| 工程支撑 | Model API Registry、分层 Prompt、BudgetManager、Trace/Identity | 保留；不单列论文创新 |
+| 次要能力 | 已实现的 `safe-v1` 三级优化器 | 冻结为 secondary/baseline；`dynamic-v1` 非当前前置 |
+| 未来工作 | 版本迁移、多工具链/多版本、自动模型路由、模型权重持续学习 | 不进入当前论文主线 |
+
+本文下方旧阶段和八项目标表保留为历史追踪，不得覆盖上述分类。
+<!-- R0_V2_2_CAPABILITY_AUTHORITY:END -->
+
 本文只保留当前目标追踪，不复制每个历史 package 的逐提交状态。历史证据由 acceptance、audit 和 history 文件承担。
 
 <!-- P4_0F_R5_DIAGNOSTIC_LANES:BEGIN -->

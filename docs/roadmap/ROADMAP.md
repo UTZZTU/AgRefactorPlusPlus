@@ -1,5 +1,18 @@
 # AgRefactor++ Development Roadmap
 
+<!-- R0_V2_2_CURRENT_AUTHORITY:BEGIN -->
+## 当前研究路线权威（2026-08-25）
+
+项目负责人已确认 [`RESEARCH_ROADMAP_V2_2.md`](RESEARCH_ROADMAP_V2_2.md)，其 R0–R6
+路线、能力分层、论文主线和非目标是当前开发依据；决策边界见
+[`R0_V2_2_ROUTE_DECISION.md`](R0_V2_2_ROUTE_DECISION.md)。当前行为基线为
+`5ef7fa9a6011534362a2094e159eee75c672619c`，服务器确定性回归为 `2335/2335`。
+
+本文下方原有的“八项不可删除”、P4-0F、dynamic-v1 与 Stage 4 顺序只作为历史规划证据，
+不得覆盖 V2.2。`dynamic-v1` 不再是当前前置要求；版本迁移和跨工具链泛化属于未来工作。
+本次同步只完成 R0 文档工作，R1 尚未开始。
+<!-- R0_V2_2_CURRENT_AUTHORITY:END -->
+
 > **权威范围文档。** 后续开发、新对话、阶段验收与论文表述均以本文档为准。任何核心目标不得在没有明确决策记录、代码证据与文档更新的情况下被删除、弱化或偷换概念。
 
 <!-- P4_0F_R5_CURRENT_ROUTE:BEGIN -->

@@ -1,5 +1,25 @@
 # AgRefactor++ Current Project State
 
+<!-- R0_V2_2_CURRENT_STATE:BEGIN -->
+## R0 当前权威快照（2026-08-25）
+
+```text
+branch=stage2-general-feedback
+behavior_head=5ef7fa9a6011534362a2094e159eee75c672619c
+latest_deterministic_regression=2335/2335
+research_route=docs/roadmap/RESEARCH_ROADMAP_V2_2.md
+R0_DOCUMENT_SYNC_IMPLEMENTED=true
+R0_ACCEPTED=true
+R1_STARTED=false
+R0_INDEPENDENT_AUDIT_ARCHIVE_SHA256=7608be4b21ff2ceade20040caee255024a56666b2711b4a186b4c42360c13674
+NEXT_STEP=R1-design-and-execution-package-planning
+```
+
+R0 执行归档已通过独立复核；本验收状态由外部审计结论驱动，并非执行包自验收。
+本状态随 R0 文档收口提交生效。R1 尚未开始，后续必须先依据 V2.2 重新冻结 R1 实施边界。
+本文下方旧的 `0ca5dd9/2268` 与 P4-0F 下一步快照保留为历史，不再是当前执行指针。
+<!-- R0_V2_2_CURRENT_STATE:END -->
+
 > **当前状态唯一入口。** 历史 package 状态只保留在对应 acceptance、audit 和 history 文件中，不再复制到本文。
 
 ## 1. 当前快照

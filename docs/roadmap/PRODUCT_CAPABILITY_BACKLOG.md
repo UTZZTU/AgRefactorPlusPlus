@@ -1,5 +1,19 @@
 # Product Capability Backlog
 
+<!-- R0_V2_2_BACKLOG_AUTHORITY:BEGIN -->
+## V2.2 backlog 权威调整（2026-08-25）
+
+- `dynamic-v1` 不再是 Pre-Stage-4 或当前论文的强制前置；现有 `safe-v1` 作为次要能力和基线保留。
+- 版本迁移、跨版本/跨工具链泛化、自动模型路由与模型权重持续学习移入未来工作。
+- 当前实现顺序固定为 R0 文档对齐后再进入 R1；本次包没有实现 R1。
+- 新 AI advisory 自动修复 v1 只可面向 Candidate；现有 deterministic Testbench repair 继续保留。
+- Hidden 永不暴露给诊断、repair 或 memory，也不允许被修复。
+
+本文下方旧的 frozen-contract/backlog 内容保留为历史证据；与 V2.2 冲突时以
+[`RESEARCH_ROADMAP_V2_2.md`](RESEARCH_ROADMAP_V2_2.md) 和
+[`R0_V2_2_ROUTE_DECISION.md`](R0_V2_2_ROUTE_DECISION.md) 为准。
+<!-- R0_V2_2_BACKLOG_AUTHORITY:END -->
+
 本文只记录不属于当前 Stage 3 首包、但不能遗忘的能力。当前执行指针见 [PROJECT_STATE.md](PROJECT_STATE.md)。
 
 <!-- PRE_STAGE4_PRODUCT_VALIDATION_HARDENING:BEGIN -->
