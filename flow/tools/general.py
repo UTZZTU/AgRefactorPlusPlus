@@ -1,4 +1,4 @@
-import os, sys, json, dotenv, multiprocessing, re, subprocess, signal, time, requests # type: ignore
+import os, sys, json, dotenv, multiprocessing, re, subprocess, signal, tempfile, time, requests # type: ignore
 from decimal import Decimal
 from datetime import datetime
 from typing import Optional, Dict, Any
@@ -19,56 +19,81 @@ def run_cmd(
     cmd: str,
     timelimit: int
 ) -> dict:
+    """Run a shell command without allowing captured output to block exit.
+
+    Regular files are used for capture instead of ``subprocess.PIPE`` so a
+    verbose tool cannot fill an unread pipe while the parent waits.  Timeout
+    cleanup remains process-group based and every wait is bounded.
+    """
+    process = None
     try:
-        process = subprocess.Popen(
-            cmd, cwd=work_dir, shell=True,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            encoding="utf-8", errors="replace",
-            preexec_fn=os.setsid
-        )
-        
-        try:
-            # Wait for completion with timeout
-            process.wait(timeout=timelimit)
-            # Get the output after completion
-            stdout, stderr = process.communicate()
+        with tempfile.TemporaryFile(dir=work_dir) as stdout_file, tempfile.TemporaryFile(
+            dir=work_dir
+        ) as stderr_file:
+            process = subprocess.Popen(
+                cmd,
+                cwd=work_dir,
+                shell=True,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                start_new_session=True,
+            )
+
+            timed_out = False
+            try:
+                process.wait(timeout=timelimit)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                print(
+                    f"Command timeout after {timelimit}s. "
+                    "Killing the process group..."
+                )
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except (ProcessLookupError, OSError):
+                    try:
+                        process.terminate()
+                    except ProcessLookupError:
+                        pass
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except (ProcessLookupError, OSError):
+                        try:
+                            process.kill()
+                        except ProcessLookupError:
+                            pass
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        # Do not turn timeout cleanup into an unbounded wait.
+                        pass
+
+            stdout_file.flush()
+            stderr_file.flush()
+            stdout_file.seek(0)
+            stderr_file.seek(0)
+            stdout = stdout_file.read().decode("utf-8", errors="replace")
+            stderr = stderr_file.read().decode("utf-8", errors="replace")
+
             return {
-                "returncode": process.returncode,
+                "returncode": None if timed_out else process.returncode,
                 "stdout": stdout,
                 "stderr": stderr,
-                "timeout": False
+                "timeout": timed_out,
             }
-        except subprocess.TimeoutExpired:
-            print(f"Command timeout after {timelimit}s. Killing the process group...")
-            # First try graceful termination
+
+    except Exception as e:
+        if process is not None and process.poll() is None:
             try:
-                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-                try:
-                    process.wait(5)  # Give it 5 seconds to terminate gracefully
-                except subprocess.TimeoutExpired:
-                    # Force kill if still running
-                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                os.killpg(process.pid, signal.SIGKILL)
             except (ProcessLookupError, OSError):
-                # Process group doesn't exist or already terminated
                 try:
                     process.kill()
                 except ProcessLookupError:
                     pass
-            
-            # Get whatever output we can
-            try:
-                stdout, stderr = process.communicate(timeout=1)
-            except subprocess.TimeoutExpired:
-                stdout = stderr = ""
-            
-            return {
-                "returncode": None,
-                "stdout": stdout,
-                "stderr": stderr,
-                "timeout": True
-            }
-            
-    except Exception as e:
         return {
             "returncode": -1,
             "stdout": "",

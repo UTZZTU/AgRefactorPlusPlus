@@ -69,6 +69,67 @@ _CATEGORY = {
 }
 
 
+def _candidate_failure_contract_authorized(
+    runtime_contract: Mapping[str, Any] | None,
+    returncode: Any,
+) -> bool:
+    """Validate the complete v1/v2 contract before trusting ownership."""
+
+    if not isinstance(runtime_contract, Mapping):
+        return False
+    if isinstance(returncode, bool) or not isinstance(returncode, int):
+        return False
+
+    version = runtime_contract.get("schema_version")
+    base = {"schema_version", "kind", "candidate_mismatch_returncodes"}
+    expected = (
+        base
+        if version == 1
+        else (base | {"cosim_interface_depths"} if version == 2 else None)
+    )
+    if expected is None or set(runtime_contract) != expected:
+        return False
+    if runtime_contract.get("kind") != "public_differential_self_check_v1":
+        return False
+
+    raw_codes = runtime_contract.get("candidate_mismatch_returncodes")
+    if not isinstance(raw_codes, (list, tuple)) or not raw_codes:
+        return False
+    codes: list[int] = []
+    for raw_code in raw_codes:
+        if (
+            isinstance(raw_code, bool)
+            or not isinstance(raw_code, int)
+            or raw_code <= 0
+            or raw_code > 255
+            or raw_code in codes
+        ):
+            return False
+        codes.append(raw_code)
+
+    if version == 2:
+        depths = runtime_contract.get("cosim_interface_depths")
+        if not isinstance(depths, Mapping) or not depths:
+            return False
+        for raw_port, raw_depth in depths.items():
+            if not isinstance(raw_port, str):
+                return False
+            if (
+                not raw_port
+                or not (raw_port[0].isalpha() or raw_port[0] == "_")
+                or not all(ch.isalnum() or ch == "_" for ch in raw_port)
+            ):
+                return False
+            if (
+                isinstance(raw_depth, bool)
+                or not isinstance(raw_depth, int)
+                or raw_depth <= 0
+            ):
+                return False
+
+    return returncode in codes
+
+
 def validate_cosim_policy(value: str) -> str:
     if not isinstance(value, str):
         raise TypeError("cosim_policy must be a string")
@@ -544,16 +605,10 @@ def _normalize_outcome(
             kind == "candidate_rtl_functional_failure"
             and (
                 value.get("owner_authority") != "deterministic_proven"
-                or not isinstance(runtime_contract, Mapping)
-                or runtime_contract.get("schema_version") != 1
-                or runtime_contract.get("kind")
-                != "public_differential_self_check_v1"
-                or not isinstance(
-                    runtime_contract.get("candidate_mismatch_returncodes"),
-                    (list, tuple),
+                or not _candidate_failure_contract_authorized(
+                    runtime_contract,
+                    value.get("testbench_returncode"),
                 )
-                or value.get("testbench_returncode")
-                not in runtime_contract.get("candidate_mismatch_returncodes", ())
             )
         )
     ):
