@@ -103,11 +103,13 @@ class TestbenchRepairRequest:
                     "runtime testbench repair requires deterministic Testbench-owned feedback"
                 )
             if self.failure_state not in {
+                ValidationState.PREFLIGHT,
                 ValidationState.PUBLIC_EVALUATION,
                 ValidationState.PUBLIC_COSIM,
             }:
                 raise ValueError(
-                    "runtime testbench repair requires Public CSIM/COSIM state"
+                    "runtime testbench repair requires formal Preflight, "
+                    "Public CSIM, or Public COSIM state"
                 )
         elif self.failure_state is not None:
             raise ValueError("failure_state requires runtime_feedback")

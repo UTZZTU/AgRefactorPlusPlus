@@ -50,6 +50,10 @@ from agrefactor.config import (
     validate_test_generation_count,
 )
 from agrefactor.evaluation import TestbenchPreflight
+from agrefactor.evidence import (
+    audit_testbench_semantic_revision,
+    build_testbench_semantic_revision,
+)
 from agrefactor.testing import (
     TestbenchRepairLoop,
     build_openai_compatible_testbench_repairer,
@@ -916,6 +920,8 @@ class PublicTestbenchPreparationResult:
     repair_artifact_manifest_path: str
     cost_observations: tuple[Mapping[str, Any], ...] = ()
     prompt_evidence: tuple[Mapping[str, Any], ...] = ()
+    semantic_revision: Mapping[str, Any] | None = None
+    semantic_audit: Mapping[str, Any] | None = None
 
     @property
     def succeeded(self) -> bool:
@@ -940,6 +946,16 @@ class PublicTestbenchPreparationResult:
             ),
             "cost_observation_count": len(self.cost_observations),
             "prompt_evidence_count": len(self.prompt_evidence),
+            "semantic_revision": (
+                None
+                if self.semantic_revision is None
+                else dict(self.semantic_revision)
+            ),
+            "semantic_audit": (
+                None
+                if self.semantic_audit is None
+                else dict(self.semantic_audit)
+            ),
             "hidden_testbench_exposed_to_model": False,
         }
 
@@ -956,6 +972,8 @@ def _prepare_public_testbench(
     max_repair_attempts: int = 2,
     original_top_function: str | None = None,
     candidate_top_function: str | None = None,
+    suite_id: str = "public-readiness",
+    source_kind: str = "generated",
 ) -> PublicTestbenchPreparationResult:
     'Preflight and, when necessary, repair one Public Testbench.'
 
@@ -1055,10 +1073,35 @@ def _prepare_public_testbench(
         if estimate is not None:
             cost_observations.append(estimate.to_dict())
 
+    semantic_revision = None
+    semantic_audit = None
+    result_status = result.status.value
+    result_code = result.testbench_code
+    result_reason = result.reason
+    if result.repair_attempts_used > 0 and result.status.value == "passed":
+        semantic_revision = build_testbench_semantic_revision(
+            testbench_code,
+            result.testbench_code,
+            suite_id=suite_id,
+            split=EvaluationSplit.PUBLIC.value,
+            source_kind=source_kind,
+            original_top_function=original_top_function,
+            candidate_top_function=candidate_top_function,
+        )
+        audit = audit_testbench_semantic_revision(semantic_revision)
+        semantic_audit = audit.to_dict()
+        if audit.has_errors:
+            result_status = "failed"
+            result_code = testbench_code
+            result_reason = (
+                "repaired Public Testbench was blocked by the independent "
+                "semantic non-weakening audit"
+            )
+
     return PublicTestbenchPreparationResult(
-        status=result.status.value,
-        testbench_code=result.testbench_code,
-        reason=result.reason,
+        status=result_status,
+        testbench_code=result_code,
+        reason=result_reason,
         repair_attempts_used=result.repair_attempts_used,
         prompt_sha256=prompt_sha256,
         trajectory_id=trajectory_id,
@@ -1068,6 +1111,8 @@ def _prepare_public_testbench(
         ),
         cost_observations=tuple(cost_observations),
         prompt_evidence=tuple(prompt_evidence),
+        semantic_revision=semantic_revision,
+        semantic_audit=semantic_audit,
     )
 
 
@@ -1447,6 +1492,12 @@ class SourceBootstrapPhase:
                     bootstrap_root / "public_testbench_repair"
                 ),
                 max_repair_attempts=self._request.max_testbench_repairs,
+                suite_id=preflight_suite.suite_id,
+                source_kind=(
+                    preflight_suite.source.source_kind.value
+                    if preflight_suite.source is not None
+                    else "generated"
+                ),
             )
             self._public_testbench_cost_observations = (
                 public_preparation.cost_observations

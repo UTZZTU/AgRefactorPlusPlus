@@ -127,18 +127,13 @@
       "STAGE4_ALLOWED": false
     }
   },
-  "next_implementation_package": "R1-DESIGN-AND-EXECUTION-PACKAGE-PLANNING",
+  "next_implementation_package": "R2-DESIGN-ONLY-AFTER-NEW-BOUNDED-PLAN",
   "next_implementation_scope": [
-    "reinspect_R1_related_real_code_against_V2_2",
-    "freeze_formal_preflight_testbench_route_decision",
-    "freeze_testbench_semantic_integrity_contract",
-    "freeze_effective_repair_quota_and_DiagnosticEvent_projection",
-    "design_real_failure_corpus_and_replay_evidence",
-    "do_not_start_R1_implementation_without_a_new_bounded_package"
+    "design_open_world_diagnostic_advisory_without_FSM_authority",
+    "freeze_R2_evaluation_and_abstention_contract",
+    "do_not_enable_memory_or_R3_in_R2",
+    "do_not_start_R2_without_a_new_bounded_package"
   ],
-  "repository": "UTZZTU/AgRefactorPlusPlus",
-  "research_route": "docs/roadmap/RESEARCH_ROADMAP_V2_2.md",
-  "route_decision": "docs/roadmap/R0_V2_2_ROUTE_DECISION.md",
   "r0_acceptance": {
     "accepted": true,
     "audit_date": "2026-08-25",
@@ -157,13 +152,39 @@
       "R1_not_started"
     ]
   },
+  "r1_implementation": {
+    "accepted": true,
+    "behavior_parent_head": "5ef7fa9a6011534362a2094e159eee75c672619c",
+    "decision_record": "docs/roadmap/R1_IMPLEMENTATION_DECISION.md",
+    "external_audit_required": false,
+    "external_decision_sha256": "15c7b0e4f167596906a379722bb3a6ca065b18e96dd435d0ea60f18d5eafe55f",
+    "full_regression": "2342/2342",
+    "implementation_base_head": "4d4cfdb92c8d181cf607cdf79368a9585ec4ca0e",
+    "package_self_acceptance": false,
+    "result_archive": "agrefactor_r1_consolidated_implementation_validation_v1_20260825T060024Z_1639926.tar.gz",
+    "result_archive_sha256": "d93088ec50ae7f44105cc5acf87673fcc33e3c53c4d10ca35ef9f174c852fc29",
+    "review_authority": "independent_external_review",
+    "reviewed_at": "2026-08-25T14:08:59+08:00",
+    "scope": [
+      "formal_preflight_testbench_executor",
+      "testbench_semantic_manifest_and_revision",
+      "effective_repair_quota_explanation",
+      "diagnostic_event_projection",
+      "failure_corpus_v1"
+    ]
+  },
+  "repository": "UTZZTU/AgRefactorPlusPlus",
+  "research_route": "docs/roadmap/RESEARCH_ROADMAP_V2_2.md",
+  "route_decision": "docs/roadmap/R0_V2_2_ROUTE_DECISION.md",
   "schema_version": 3,
   "states": {
     "P4_0F_COMPLETE": false,
     "PRE_STAGE4_COMPLETE": false,
     "R0_ACCEPTED": true,
     "R0_DOCUMENT_SYNC_IMPLEMENTED": true,
-    "R1_STARTED": false,
+    "R1_ACCEPTED": true,
+    "R1_IMPLEMENTED_PENDING_EXTERNAL_AUDIT": false,
+    "R1_STARTED": true,
     "STAGE4_ALLOWED": false
   }
 }

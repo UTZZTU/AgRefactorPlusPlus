@@ -10,13 +10,16 @@ latest_deterministic_regression=2335/2335
 research_route=docs/roadmap/RESEARCH_ROADMAP_V2_2.md
 R0_DOCUMENT_SYNC_IMPLEMENTED=true
 R0_ACCEPTED=true
-R1_STARTED=false
+R1_STARTED=true
+R1_IMPLEMENTED_PENDING_EXTERNAL_AUDIT=false
+R1_ACCEPTED=true
 R0_INDEPENDENT_AUDIT_ARCHIVE_SHA256=7608be4b21ff2ceade20040caee255024a56666b2711b4a186b4c42360c13674
-NEXT_STEP=R1-design-and-execution-package-planning
+NEXT_STEP=R2-design-only-after-new-bounded-plan
 ```
 
-R0 执行归档已通过独立复核；本验收状态由外部审计结论驱动，并非执行包自验收。
-本状态随 R0 文档收口提交生效。R1 尚未开始，后续必须先依据 V2.2 重新冻结 R1 实施边界。
+R0 执行归档已通过独立复核；R1 已按 V2.2 的 R1-A—R1-E 边界进入有界实施。
+R1 执行包不得自验收；在独立审计结论、全量回归和真实 Vitis 证据引用被回填前，
+外部验收已回填为 `R1_ACCEPTED=true`；R2 仍须先冻结新的有界计划。
 本文下方旧的 `0ca5dd9/2268` 与 P4-0F 下一步快照保留为历史，不再是当前执行指针。
 <!-- R0_V2_2_CURRENT_STATE:END -->
 
@@ -447,3 +450,26 @@ PRE_STAGE4_HARDENING_IMPLEMENTATION_COMPLETE=false
 STAGE4_ALLOWED=false
 ```
 <!-- PRE_STAGE4_P4_0D_R1_COSIM_CORRECTION:END -->
+
+
+<!-- R1_EXTERNAL_ACCEPTANCE:BEGIN -->
+## R1 external acceptance receipt
+
+```text
+R1_ACCEPTED=true
+review_authority=independent_external_review
+reviewed_at=2026-08-25T14:08:59+08:00
+result_archive=agrefactor_r1_consolidated_implementation_validation_v1_20260825T060024Z_1639926.tar.gz
+result_archive_sha256=d93088ec50ae7f44105cc5acf87673fcc33e3c53c4d10ca35ef9f174c852fc29
+full_regression=2342/2342
+model_provider_calls=0
+new_real_vitis_phase_runs=0
+hidden_source_reads=0
+package_self_acceptance=false
+R2_STARTED=false
+```
+
+R1 acceptance was applied from the external decision whose SHA-256 is
+`15c7b0e4f167596906a379722bb3a6ca065b18e96dd435d0ea60f18d5eafe55f`.  This repository script did not review or accept its
+own result.  R2 still requires a separately designed bounded plan.
+<!-- R1_EXTERNAL_ACCEPTANCE:END -->

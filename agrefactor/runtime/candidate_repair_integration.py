@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from enum import Enum
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -25,6 +26,12 @@ from agrefactor.evaluation import (
     ValidationState,
 )
 from agrefactor.evidence import FeedbackOwner
+from agrefactor.evidence import (
+    DiagnosticEventProjector,
+    audit_testbench_semantic_revision,
+    build_testbench_semantic_revision,
+    testbench_revision_authorization,
+)
 from agrefactor.models import CandidateModelAdapter
 from agrefactor.recovery import (
     RecoveryAction,
@@ -36,6 +43,7 @@ from agrefactor.recovery import (
     RecoveryStage,
     conservative_v1_policy,
     default_restart_reserve,
+    build_effective_repair_quota_summary,
 )
 from agrefactor.testing import (
     TestbenchRepairLoop,
@@ -595,12 +603,17 @@ class _OrchestratedCandidateValidator:
         self._outcomes: list[
             ValidationExecutionOutcome
         ] = []
+        self._diagnostic_events: list[dict[str, Any]] = []
 
     @property
     def outcomes(
         self,
     ) -> tuple[ValidationExecutionOutcome, ...]:
         return tuple(self._outcomes)
+
+    @property
+    def diagnostic_events(self) -> tuple[dict[str, Any], ...]:
+        return tuple(self._diagnostic_events)
 
     def validate(
         self,
@@ -691,6 +704,14 @@ class _OrchestratedCandidateValidator:
                 "terminal feedback internally"
             )
         terminal_step = outcome.result.steps[-1]
+        diagnostic = _project_diagnostic_event(
+            context=child_context,
+            request=self._request,
+            outcome=outcome,
+            candidate_code=request.candidate_code,
+        )
+        if diagnostic is not None:
+            self._diagnostic_events.append(diagnostic)
         view = report.metadata.get("evidence_view")
         summary = (
             terminal_step.transition.reason
@@ -772,7 +793,7 @@ class CandidateRepairValidationOrchestrator:
         )
 
         recovery_ledger = RecoveryLedger(self._recovery_policy)
-        recovery_metadata: dict[str, Any] = {}
+        recovery_metadata: dict[str, Any] = {"diagnostic_events": []}
 
         context.trace.record(
             "candidate_repair.orchestration.started",
@@ -843,6 +864,7 @@ class CandidateRepairValidationOrchestrator:
                 family_instruction_source=(
                     family_instruction_source
                 ),
+                recovery_ledger=recovery_ledger,
             )
 
         terminal_report = initial_outcome.terminal_report
@@ -855,6 +877,14 @@ class CandidateRepairValidationOrchestrator:
         initial_terminal_step = (
             initial_outcome.result.steps[-1]
         )
+        initial_diagnostic = _project_diagnostic_event(
+            context=initial_context,
+            request=request,
+            outcome=initial_outcome,
+            candidate_code=request.initial_candidate,
+        )
+        if initial_diagnostic is not None:
+            recovery_metadata["diagnostic_events"].append(initial_diagnostic)
 
         active_request = request
         active_outcome = initial_outcome
@@ -865,6 +895,7 @@ class CandidateRepairValidationOrchestrator:
             is FeedbackRouteAction.REPAIR_TESTBENCH
             and initial_terminal_step.state
             in {
+                ValidationState.PREFLIGHT,
                 ValidationState.PUBLIC_EVALUATION,
                 ValidationState.PUBLIC_COSIM,
             }
@@ -872,7 +903,7 @@ class CandidateRepairValidationOrchestrator:
             (
                 active_request,
                 active_outcome,
-                recovery_metadata,
+                testbench_metadata,
             ) = self._recover_public_testbench(
                 context=context,
                 request=active_request,
@@ -880,6 +911,15 @@ class CandidateRepairValidationOrchestrator:
                 validation_id=validation_id,
                 ledger=recovery_ledger,
             )
+            recovery_metadata.update(testbench_metadata)
+            recovery_metadata["diagnostic_events"] = [
+                *(
+                    [initial_diagnostic]
+                    if initial_diagnostic is not None
+                    else []
+                ),
+                *testbench_metadata.get("diagnostic_events", []),
+            ]
             if active_outcome.result.accepted:
                 return self._finish(
                     context,
@@ -965,6 +1005,10 @@ class CandidateRepairValidationOrchestrator:
         validation_results = tuple(
             item.result for item in validator.outcomes
         )
+        recovery_metadata["diagnostic_events"] = [
+            *recovery_metadata.get("diagnostic_events", []),
+            *validator.diagnostic_events,
+        ]
 
         status = _status_for_repair_result(
             repair_result,
@@ -1019,18 +1063,28 @@ class CandidateRepairValidationOrchestrator:
             raise RuntimeError("testbench recovery requires terminal feedback")
         failure_state = outcome.result.steps[-1].state
         if failure_state not in {
+            ValidationState.PREFLIGHT,
             ValidationState.PUBLIC_EVALUATION,
             ValidationState.PUBLIC_COSIM,
         }:
-            raise ValueError("runtime Testbench recovery is Public-only")
+            raise ValueError("runtime Testbench recovery is formal Public-only")
         selected = {item.feedback_id: item for item in report.items}
-        suite_ids = {
-            str(selected[item_id].metadata.get("suite_id"))
-            for item_id in decision.selected_feedback_ids
-            if item_id in selected
-            and selected[item_id].owner is FeedbackOwner.TESTBENCH
-            and selected[item_id].metadata.get("suite_id")
-        }
+        if failure_state is ValidationState.PREFLIGHT:
+            suite_ids = {
+                suite.suite_id
+                for suite in context.task.test_suites
+                if suite.split is EvaluationSplit.PUBLIC
+                and request.suite_testbench_codes.get(suite.suite_id)
+                == request.preflight_testbench_code
+            }
+        else:
+            suite_ids = {
+                str(selected[item_id].metadata.get("suite_id"))
+                for item_id in decision.selected_feedback_ids
+                if item_id in selected
+                and selected[item_id].owner is FeedbackOwner.TESTBENCH
+                and selected[item_id].metadata.get("suite_id")
+            }
         if len(suite_ids) != 1:
             raise ValueError(
                 "runtime Testbench recovery requires one deterministic suite"
@@ -1043,6 +1097,32 @@ class CandidateRepairValidationOrchestrator:
         }
         if suite_id not in public_ids:
             raise ValueError("selected Testbench suite is not Public")
+        suite = next(
+            item for item in context.task.test_suites
+            if item.suite_id == suite_id
+        )
+        source_kind = (
+            suite.source.source_kind.value
+            if suite.source is not None
+            else "unspecified"
+        )
+        authorization = testbench_revision_authorization(
+            split=suite.split.value,
+            source_kind=source_kind,
+        )
+        if authorization != "auto_public_bounded":
+            return request, outcome, {
+                "runtime_testbench_suite_id": suite_id,
+                "runtime_testbench_failure_state": failure_state.value,
+                "runtime_testbench_source_kind": source_kind,
+                "runtime_testbench_authorization": authorization,
+                "runtime_testbench_recovery_status": "review_required",
+                "runtime_testbench_recovery_reason": (
+                    "only provenance-backed AUTO Public Testbench revisions "
+                    "may be repaired automatically"
+                ),
+                "diagnostic_events": [],
+            }
 
         stage = RecoveryStage(failure_state.value)
         ledger.reserve(
@@ -1098,8 +1178,31 @@ class CandidateRepairValidationOrchestrator:
             "runtime_testbench_recovery": repair.to_dict(),
             "runtime_testbench_suite_id": suite_id,
             "runtime_testbench_failure_state": failure_state.value,
+            "runtime_testbench_source_kind": source_kind,
+            "runtime_testbench_authorization": authorization,
+            "diagnostic_events": [],
         }
         if not repair.succeeded:
+            return request, outcome, metadata
+
+        semantic_revision = build_testbench_semantic_revision(
+            request.suite_testbench_codes[suite_id],
+            repair.testbench_code,
+            suite_id=suite_id,
+            split=suite.split.value,
+            source_kind=source_kind,
+            original_top_function=request.reference_top_function,
+            candidate_top_function=(
+                request.candidate_top_function or context.task.kernel_name
+            ),
+        )
+        semantic_audit = audit_testbench_semantic_revision(semantic_revision)
+        metadata["testbench_semantic_revision"] = semantic_revision
+        metadata["testbench_semantic_audit"] = semantic_audit.to_dict()
+        if semantic_audit.has_errors:
+            metadata["runtime_testbench_recovery_status"] = (
+                "blocked_semantic_weakening"
+            )
             return request, outcome, metadata
 
         codes = dict(request.suite_testbench_codes)
@@ -1122,6 +1225,8 @@ class CandidateRepairValidationOrchestrator:
         ledger.record_validation_restart(
             lineage_id=context.task.task_id,
             stage=stage,
+            budget=context.budget,
+            restart_reserve=default_restart_reserve(stage),
         )
         plan = CandidateValidationPlanRequest(
             task=context.task,
@@ -1151,6 +1256,14 @@ class CandidateRepairValidationOrchestrator:
         metadata["runtime_testbench_revalidation"] = (
             revalidated.result.to_dict()
         )
+        revalidation_diagnostic = _project_diagnostic_event(
+            context=child,
+            request=updated,
+            outcome=revalidated,
+            candidate_code=request.initial_candidate,
+        )
+        if revalidation_diagnostic is not None:
+            metadata["diagnostic_events"].append(revalidation_diagnostic)
         return updated, revalidated, metadata
 
     def _finish(
@@ -1173,6 +1286,16 @@ class CandidateRepairValidationOrchestrator:
         recovery_ledger: RecoveryLedger | None = None,
         extra_metadata: Mapping[str, Any] | None = None,
     ) -> CandidateRepairOrchestrationResult:
+        effective_quota = (
+            None
+            if recovery_ledger is None
+            else build_effective_repair_quota_summary(
+                ledger=recovery_ledger,
+                budget=context.budget,
+                candidate_requested_max=request.max_attempts,
+                runtime_testbench_local_max=1,
+            ).to_dict()
+        )
         result = CandidateRepairOrchestrationResult(
             validation_id=validation_id,
             status=status,
@@ -1221,6 +1344,7 @@ class CandidateRepairValidationOrchestrator:
                     if recovery_ledger is None
                     else recovery_ledger.to_dict()
                 ),
+                "effective_repair_quota": effective_quota,
                 **dict(extra_metadata or {}),
             },
         )
@@ -1252,6 +1376,72 @@ class CandidateRepairValidationOrchestrator:
             },
         )
         return result
+
+
+def _project_diagnostic_event(
+    *,
+    context: RunContext,
+    request: CandidateRepairOrchestrationRequest,
+    outcome: ValidationExecutionOutcome,
+    candidate_code: str,
+) -> dict[str, Any] | None:
+    """Project one terminal Public event without widening authority."""
+
+    if outcome.result.accepted:
+        return None
+    report = outcome.terminal_report
+    decision = outcome.terminal_decision
+    if report is None or decision is None:
+        return None
+    terminal_step = outcome.result.steps[-1]
+    if terminal_step.state is ValidationState.HIDDEN_EVALUATION:
+        return None
+    public_suites = []
+    for suite in context.task.test_suites:
+        if suite.split is not EvaluationSplit.PUBLIC:
+            continue
+        code = request.suite_testbench_codes.get(suite.suite_id)
+        public_suites.append(
+            {
+                "suite_id": suite.suite_id,
+                "split": suite.split.value,
+                "suite_version": suite.suite_version,
+                "source_kind": (
+                    suite.source.source_kind.value
+                    if suite.source is not None
+                    else "unspecified"
+                ),
+                "runtime_contract_schema_version": (
+                    suite.runtime_contract.get("schema_version")
+                    if suite.runtime_contract is not None
+                    else None
+                ),
+                "content_sha256": (
+                    suite.source.expected_content_sha256
+                    if (
+                        suite.source is not None
+                        and suite.source.expected_content_sha256 is not None
+                    )
+                    else (
+                        sha256(code.encode("utf-8")).hexdigest()
+                        if code is not None
+                        else None
+                    )
+                ),
+            }
+        )
+    event = DiagnosticEventProjector().from_feedback(
+        report,
+        run_id=context.run_id,
+        validation_id=outcome.result.validation_id,
+        validation_state=terminal_step.state.value,
+        route_action=decision.action.value,
+        selected_feedback_ids=decision.selected_feedback_ids,
+        target=context.task.target.to_dict(),
+        candidate_code=candidate_code,
+        public_suite_identities=tuple(public_suites),
+    )
+    return event.to_dict()
 
 
 def _status_for_repair_result(

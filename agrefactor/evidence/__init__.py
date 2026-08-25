@@ -3,6 +3,20 @@ from .auditor import (
     EvidenceAuditFinding,
     EvidenceAuditReport,
     audit_product_evidence,
+    audit_testbench_semantic_revision,
+)
+from .testbench_semantics import (
+    TestbenchSemanticManifest,
+    build_testbench_semantic_manifest,
+    build_testbench_semantic_revision,
+    testbench_revision_authorization,
+)
+from .diagnostic_event import DiagnosticEvent, DiagnosticEventProjector
+from .corpus import (
+    CorpusEvidenceLevel,
+    CorpusOutcome,
+    DiagnosticCorpusRecord,
+    write_diagnostic_corpus,
 )
 from .feedback import (
     FeedbackCategory,
@@ -35,6 +49,7 @@ __all__ = [
     "EvidenceAuditFinding",
     "EvidenceAuditReport",
     "audit_product_evidence",
+    "audit_testbench_semantic_revision",
     "FeedbackCategory",
     "FeedbackItem",
     "FeedbackOwner",
@@ -54,4 +69,14 @@ __all__ = [
     "TestbenchPreflightSubstep",
     "TestbenchPreflightSubstepStatus",
     "TestbenchStage",
+    "TestbenchSemanticManifest",
+    "build_testbench_semantic_manifest",
+    "build_testbench_semantic_revision",
+    "testbench_revision_authorization",
+    "DiagnosticEvent",
+    "DiagnosticEventProjector",
+    "CorpusEvidenceLevel",
+    "CorpusOutcome",
+    "DiagnosticCorpusRecord",
+    "write_diagnostic_corpus",
 ]

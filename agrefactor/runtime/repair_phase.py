@@ -97,6 +97,9 @@ class CandidateRepairPhaseArtifactWriteResult:
     final_candidate_path: str
     repair_artifact_manifest_path: str | None
     artifact_manifest_path: str
+    effective_repair_quota_path: str | None = None
+    diagnostic_events_path: str | None = None
+    testbench_semantic_revision_path: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -112,6 +115,13 @@ class CandidateRepairPhaseArtifactWriteResult:
             ),
             "artifact_manifest_path": (
                 self.artifact_manifest_path
+            ),
+            "effective_repair_quota_path": (
+                self.effective_repair_quota_path
+            ),
+            "diagnostic_events_path": self.diagnostic_events_path,
+            "testbench_semantic_revision_path": (
+                self.testbench_semantic_revision_path
             ),
         }
 
@@ -190,6 +200,52 @@ class CandidateRepairPhaseArtifactWriter:
                 repair_write.artifact_manifest_path
             )
 
+        quota_path: str | None = None
+        quota = result.metadata.get("effective_repair_quota")
+        if isinstance(quota, Mapping):
+            target = self._root / "effective_repair_quota.json"
+            _atomic_json_write(target, quota)
+            quota_path = str(target)
+
+        diagnostic_path: str | None = None
+        diagnostic_events = result.metadata.get("diagnostic_events")
+        if isinstance(diagnostic_events, (list, tuple)):
+            target = self._root / "diagnostic_events.json"
+            _atomic_json_write(
+                target,
+                {
+                    "schema_version": 1,
+                    "evidence_view": "agent_safe",
+                    "events": list(diagnostic_events),
+                    "event_count": len(diagnostic_events),
+                    "success_authority": False,
+                },
+            )
+            diagnostic_path = str(target)
+
+        semantic_path: str | None = None
+        semantic_revision = result.metadata.get(
+            "testbench_semantic_revision"
+        )
+        if isinstance(semantic_revision, Mapping):
+            target = self._root / "testbench_semantic_revision.json"
+            semantic_audit = result.metadata.get(
+                "testbench_semantic_audit"
+            )
+            _atomic_json_write(
+                target,
+                {
+                    "schema_version": 1,
+                    "revision": dict(semantic_revision),
+                    "independent_audit": (
+                        dict(semantic_audit)
+                        if isinstance(semantic_audit, Mapping)
+                        else None
+                    ),
+                },
+            )
+            semantic_path = str(target)
+
         manifest_path = (
             self._root / "artifact_manifest.json"
         )
@@ -232,6 +288,9 @@ class CandidateRepairPhaseArtifactWriter:
             artifact_manifest_path=str(
                 manifest_path
             ),
+            effective_repair_quota_path=quota_path,
+            diagnostic_events_path=diagnostic_path,
+            testbench_semantic_revision_path=semantic_path,
         )
 
 

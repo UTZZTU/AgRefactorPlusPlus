@@ -13,6 +13,8 @@ from enum import Enum
 import json
 from typing import Any
 
+from .testbench_semantics import literal_counter
+
 
 class AuditSeverity(str, Enum):
     INFO = "info"
@@ -279,6 +281,184 @@ def audit_product_evidence(
         terminal_stage=failed_stage,
         terminal_evidence=terminal,
     )
+
+
+def audit_testbench_semantic_revision(
+    revision: Mapping[str, Any],
+) -> EvidenceAuditReport:
+    """Independently reject unauthorized or weakened Testbench revisions."""
+
+    value = _mapping(revision, "revision")
+    before = _mapping(value.get("before"), "revision.before")
+    after = _mapping(value.get("after"), "revision.after")
+    findings: list[EvidenceAuditFinding] = []
+    authorization = _code(value.get("authorization"))
+    if authorization != "auto_public_bounded":
+        findings.append(
+            EvidenceAuditFinding(
+                code="testbench_revision_not_authorized",
+                severity=AuditSeverity.ERROR,
+                message="Only bounded AUTO Public Testbench revisions are authorized.",
+                expected="auto_public_bounded",
+                observed=authorization,
+                evidence_refs=("testbench_semantic_revision",),
+            )
+        )
+    for field_name in ("suite_id", "split", "source_kind"):
+        if before.get(field_name) != after.get(field_name):
+            findings.append(
+                EvidenceAuditFinding(
+                    code=f"testbench_{field_name}_changed",
+                    severity=AuditSeverity.CRITICAL,
+                    message=f"Testbench revision changed immutable {field_name}.",
+                    expected=before.get(field_name),
+                    observed=after.get(field_name),
+                    evidence_refs=("testbench_semantic_revision",),
+                )
+            )
+    _audit_count_floor(findings, before, after, "main_count", "testbench_main_removed")
+    _audit_count_floor(
+        findings,
+        before,
+        after,
+        "comparison_count",
+        "testbench_comparison_oracle_weakened",
+    )
+    _audit_count_floor(
+        findings,
+        before,
+        after,
+        "return_guard_count",
+        "testbench_return_oracle_weakened",
+    )
+    for field_name, code in (
+        ("top_reference_counts", "testbench_top_reference_removed"),
+        ("oracle_marker_counts", "testbench_oracle_marker_removed"),
+        ("comparison_operator_counts", "testbench_comparison_operator_weakened"),
+        ("failure_signal_counts", "testbench_failure_signal_weakened"),
+        ("runtime_protocol_counts", "testbench_runtime_protocol_weakened"),
+        ("control_flow_counts", "testbench_case_control_removed"),
+    ):
+        before_counts = _integer_mapping(before.get(field_name), field_name)
+        after_counts = _integer_mapping(after.get(field_name), field_name)
+        for key, expected in before_counts.items():
+            observed = after_counts.get(key, 0)
+            if observed < expected:
+                findings.append(
+                    EvidenceAuditFinding(
+                        code=code,
+                        severity=AuditSeverity.CRITICAL,
+                        message=f"Testbench revision reduced {field_name}.{key}.",
+                        expected=expected,
+                        observed=observed,
+                        evidence_refs=("testbench_semantic_revision",),
+                    )
+                )
+    before_definitions = _integer_mapping(
+        before.get("top_definition_counts"), "top_definition_counts"
+    )
+    after_definitions = _integer_mapping(
+        after.get("top_definition_counts"), "top_definition_counts"
+    )
+    for key, observed in after_definitions.items():
+        expected = before_definitions.get(key, 0)
+        if observed > expected:
+            findings.append(
+                EvidenceAuditFinding(
+                    code="testbench_top_reimplementation_added",
+                    severity=AuditSeverity.CRITICAL,
+                    message="Testbench revision introduced a top-function definition.",
+                    expected=expected,
+                    observed=observed,
+                    evidence_refs=("testbench_semantic_revision",),
+                )
+            )
+    before_literals = literal_counter(before)
+    after_literals = literal_counter(after)
+    missing_literals = before_literals - after_literals
+    if missing_literals:
+        findings.append(
+            EvidenceAuditFinding(
+                code="testbench_case_literal_changed",
+                severity=AuditSeverity.CRITICAL,
+                message="Testbench revision removed or changed existing case literals.",
+                expected=sum(before_literals.values()),
+                observed=sum(after_literals.values()),
+                evidence_refs=("testbench_semantic_revision",),
+            )
+        )
+    before_oracles = _string_counter(before.get("oracle_fingerprints"), "oracle_fingerprints")
+    after_oracles = _string_counter(after.get("oracle_fingerprints"), "oracle_fingerprints")
+    if before_oracles - after_oracles:
+        findings.append(
+            EvidenceAuditFinding(
+                code="testbench_oracle_identity_changed",
+                severity=AuditSeverity.CRITICAL,
+                message="Testbench revision removed or changed an existing oracle expression identity.",
+                expected=sum(before_oracles.values()),
+                observed=sum(after_oracles.values()),
+                evidence_refs=("testbench_semantic_revision",),
+            )
+        )
+    status = "contradiction" if any(
+        item.severity in {AuditSeverity.ERROR, AuditSeverity.CRITICAL}
+        for item in findings
+    ) else "clean"
+    return EvidenceAuditReport(
+        status=status,
+        findings=tuple(findings),
+        summary_status="revision_allowed" if status == "clean" else "revision_blocked",
+        terminal_stage="testbench_semantic_revision",
+        terminal_evidence={
+            "revision_sha256": value.get("revision_sha256"),
+            "authorization": authorization,
+            "changed": value.get("changed") is True,
+            "source_content_persisted": False,
+            "hidden_content_persisted": False,
+        },
+    )
+
+
+def _audit_count_floor(
+    findings: list[EvidenceAuditFinding],
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+    field_name: str,
+    code: str,
+) -> None:
+    expected = _integer(before.get(field_name)) or 0
+    observed = _integer(after.get(field_name)) or 0
+    if observed < expected:
+        findings.append(
+            EvidenceAuditFinding(
+                code=code,
+                severity=AuditSeverity.CRITICAL,
+                message=f"Testbench revision reduced {field_name}.",
+                expected=expected,
+                observed=observed,
+                evidence_refs=("testbench_semantic_revision",),
+            )
+        )
+
+
+def _integer_mapping(value: Any, name: str) -> dict[str, int]:
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{name} must be a mapping")
+    result: dict[str, int] = {}
+    for key, item in value.items():
+        if not isinstance(key, str) or not key:
+            raise ValueError(f"{name} keys must not be empty")
+        if isinstance(item, bool) or not isinstance(item, int) or item < 0:
+            raise ValueError(f"{name} values must be non-negative integers")
+        result[key] = item
+    return result
+
+
+def _string_counter(value: Any, name: str):
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise TypeError(f"{name} must be a list of strings")
+    from collections import Counter
+    return Counter(value)
 
 
 def _walk_typed_records(

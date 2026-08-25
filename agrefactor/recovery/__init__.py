@@ -32,6 +32,10 @@ from .timeout import (
     TimeoutOwner,
     classify_public_timeout,
 )
+from .quota import (
+    EffectiveRepairQuotaSummary,
+    build_effective_repair_quota_summary,
+)
 
 __all__ = [
     "AdvisoryConfidence",
@@ -60,4 +64,6 @@ __all__ = [
     "conservative_v1_policy",
     "default_restart_reserve",
     "validate_advisory_result",
+    "EffectiveRepairQuotaSummary",
+    "build_effective_repair_quota_summary",
 ]
