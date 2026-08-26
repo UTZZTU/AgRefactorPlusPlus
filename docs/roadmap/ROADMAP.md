@@ -1,20 +1,13 @@
 # AgRefactor++ Development Roadmap
 
 <!-- R0_V2_2_CURRENT_AUTHORITY:BEGIN -->
-## 当前研究路线权威（2026-08-25）
+## 当前研究路线权威（V2.3，2026-08-26）
 
-项目负责人已确认 [`RESEARCH_ROADMAP_V2_2.md`](RESEARCH_ROADMAP_V2_2.md)，其 R0–R6
-路线、能力分层、论文主线和非目标是当前开发依据；决策边界见
-[`R0_V2_2_ROUTE_DECISION.md`](R0_V2_2_ROUTE_DECISION.md)。当前行为基线为
-`5ef7fa9a6011534362a2094e159eee75c672619c`，服务器确定性回归为 `2335/2335`。
+当前路线为 docs/roadmap/RESEARCH_ROADMAP_V2_3.md，分支为 research-roadmap-v2.3，基线 HEAD 为 52d7d0097627ff1f92c3f384170bd1fd4771ada7，行为父基线为 5ef7fa9a6011534362a2094e159eee75c672619c。
 
-本文下方原有的“八项不可删除”、P4-0F、dynamic-v1 与 Stage 4 顺序只作为历史规划证据，
-不得覆盖 V2.2。`dynamic-v1` 不再是当前前置要求；版本迁移和跨工具链泛化属于未来工作。
-R1 已进入有界实施与外部验收流程；实施基线为文档提交
-`4d4cfdb92c8d181cf607cdf79368a9585ec4ca0e`，行为父提交为
-`5ef7fa9a6011534362a2094e159eee75c672619c`。实施范围只含 R1-A—R1-E，
-状态以 [`R1_IMPLEMENTATION_DECISION.md`](R1_IMPLEMENTATION_DECISION.md) 为准；
-R1 执行归档已由独立外部审计接受；`R1_ACCEPTED=true`，但 R2 仍须先冻结新的有界设计与执行计划。
+V2.3 standalone 文档完整继承 V2.2 的有效状态、八项能力、论文定位、相关工作、代码拓扑、repair lane 和历史证据，并直接改写 R0-R6、状态、验收和执行包条款。V2.2、旧 P4/Stage4 片段和旧 R0 决策仅作为 historical/evidence-only 保留，不再作为并行执行指针。
+
+当前阶段状态：R0 accepted；R1-Safety/R1-Data pending reconciliation；R2-R6 not started；Stage 4 not allowed。
 <!-- R0_V2_2_CURRENT_AUTHORITY:END -->
 
 > **权威范围文档。** 后续开发、新对话、阶段验收与论文表述均以本文档为准。任何核心目标不得在没有明确决策记录、代码证据与文档更新的情况下被删除、弱化或偷换概念。

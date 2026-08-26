@@ -1,0 +1,52 @@
+{
+  "behavior_parent": "5ef7fa9a6011534362a2094e159eee75c672619c",
+  "branch": "research-roadmap-v2.3",
+  "documents": [
+    {
+      "path": "docs/roadmap/RESEARCH_ROADMAP_V2_3.md",
+      "role": "standalone research route",
+      "status": "current"
+    },
+    {
+      "path": "docs/roadmap/V2_3_STATE.json",
+      "role": "machine-readable state",
+      "status": "current"
+    },
+    {
+      "path": "docs/roadmap/PROJECT_STATE.md",
+      "role": "human-readable state entry",
+      "status": "current"
+    },
+    {
+      "path": "docs/roadmap/ROADMAP.md",
+      "role": "development route entry",
+      "status": "current"
+    },
+    {
+      "path": "docs/roadmap/RESEARCH_ROADMAP_V2_2.md",
+      "role": "superseded research route",
+      "status": "historical"
+    },
+    {
+      "path": "docs/roadmap/R0_V2_2_ROUTE_DECISION.md",
+      "role": "R0 decision evidence; superseded by V2.3",
+      "status": "historical"
+    },
+    {
+      "path": "docs/roadmap/R1_IMPLEMENTATION_DECISION.md",
+      "role": "R1 external acceptance receipt; requires independent reconciliation under V2.3",
+      "status": "evidence_only"
+    }
+  ],
+  "head": "52d7d0097627ff1f92c3f384170bd1fd4771ada7",
+  "package_self_acceptance": false,
+  "primary_empirical_environment": "Vitis HLS 2023.2",
+  "repository": "UTZZTU/AgRefactorPlusPlus",
+  "route": "V2.3",
+  "schema_version": 1,
+  "status": "current",
+  "supersession": {
+    "V2.2": "historical",
+    "current_route": "V2.3"
+  }
+}

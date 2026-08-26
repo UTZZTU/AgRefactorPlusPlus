@@ -1,0 +1,22 @@
+{
+  "R0_ACCEPTED": true,
+  "R1_ACCEPTED": false,
+  "R1_DATA": "pending_reconciliation",
+  "R1_SAFETY": "pending_reconciliation",
+  "R2_STARTED": false,
+  "R3_STARTED": false,
+  "R4_STARTED": false,
+  "R5_STARTED": false,
+  "R6_STARTED": false,
+  "STAGE4_ALLOWED": false,
+  "behavior_parent": "5ef7fa9a6011534362a2094e159eee75c672619c",
+  "branch": "research-roadmap-v2.3",
+  "deterministic_state": "R1-external-receipt-declared-2342-2342",
+  "head": "52d7d0097627ff1f92c3f384170bd1fd4771ada7",
+  "implementation_state": "R1-implemented-as-declared",
+  "independent_audit_state": "pending-for-v2.3-freeze",
+  "package_self_acceptance": false,
+  "real_evidence_state": "R1-archive-reference-requires-independent-reproduction",
+  "route": "V2.3",
+  "schema_version": 1
+}

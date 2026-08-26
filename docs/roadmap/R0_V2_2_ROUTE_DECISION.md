@@ -1,3 +1,7 @@
+<!-- V2.3_SUPERSESSION_NOTICE:BEGIN -->
+> **V2.3 状态说明（2026-08-26）：** 本文件保留为 V2.2 R0 决策历史证据。当前执行路线已升级为 `docs/roadmap/RESEARCH_ROADMAP_V2_3.md`，当前分支为 `research-roadmap-v2.3`。本文件中的 governing-route、R1 未开始和 R0-R6 执行指针均不再作为当前执行命令；请以 V2.3 standalone 路线和其 authority index 为准。
+<!-- V2.3_SUPERSESSION_NOTICE:END -->
+
 # R0 V2.2 Route Decision
 
 > Decision date: 2026-08-25  

@@ -1,26 +1,27 @@
 # AgRefactor++ Current Project State
 
 <!-- R0_V2_2_CURRENT_STATE:BEGIN -->
-## R0 当前权威快照（2026-08-25）
+## V2.3 当前权威快照（2026-08-26）
 
-```text
-branch=stage2-general-feedback
-behavior_head=5ef7fa9a6011534362a2094e159eee75c672619c
-latest_deterministic_regression=2335/2335
-research_route=docs/roadmap/RESEARCH_ROADMAP_V2_2.md
-R0_DOCUMENT_SYNC_IMPLEMENTED=true
+text_route=V2.3
+branch=research-roadmap-v2.3
+implementation_head=52d7d0097627ff1f92c3f384170bd1fd4771ada7
+behavior_parent_head=5ef7fa9a6011534362a2094e159eee75c672619c
+primary_vitis=2023.2
 R0_ACCEPTED=true
-R1_STARTED=true
-R1_IMPLEMENTED_PENDING_EXTERNAL_AUDIT=false
-R1_ACCEPTED=true
-R0_INDEPENDENT_AUDIT_ARCHIVE_SHA256=7608be4b21ff2ceade20040caee255024a56666b2711b4a186b4c42360c13674
-NEXT_STEP=R2-design-only-after-new-bounded-plan
-```
+R1_SAFETY=pending_reconciliation
+R1_DATA=pending_reconciliation
+R1_ACCEPTED=false
+R2_STARTED=false
+R3_STARTED=false
+R4_STARTED=false
+R5_STARTED=false
+R6_STARTED=false
+STAGE4_ALLOWED=false
+PACKAGE_SELF_ACCEPTANCE=false
+NEXT_STEP=V2.3-R1-reconciliation-before-R2
 
-R0 执行归档已通过独立复核；R1 已按 V2.2 的 R1-A—R1-E 边界进入有界实施。
-R1 执行包不得自验收；在独立审计结论、全量回归和真实 Vitis 证据引用被回填前，
-外部验收已回填为 `R1_ACCEPTED=true`；R2 仍须先冻结新的有界计划。
-本文下方旧的 `0ca5dd9/2268` 与 P4-0F 下一步快照保留为历史，不再是当前执行指针。
+V2.2 remains historical evidence. V2.3 is the current standalone route on the isolated branch.
 <!-- R0_V2_2_CURRENT_STATE:END -->
 
 > **当前状态唯一入口。** 历史 package 状态只保留在对应 acceptance、audit 和 history 文件中，不再复制到本文。
