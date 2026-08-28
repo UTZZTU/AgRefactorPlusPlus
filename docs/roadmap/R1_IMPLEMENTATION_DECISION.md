@@ -1,3 +1,7 @@
+<!-- V2_3_EVIDENCE_ONLY_NOTICE:BEGIN -->
+> V2.3 authority notice (R0 synchronization): this V2.2 R1 decision record is retained as evidence-only. The current route is `docs/roadmap/RESEARCH_ROADMAP_V2_3.md`; its implementation lineage and acceptance claims require independent reconciliation under V2.3. This file is not a current execution pointer.
+<!-- V2_3_EVIDENCE_ONLY_NOTICE:END -->
+
 # R1 Deterministic Repair/Evidence Closure Decision
 
 ## 1. Authority and status

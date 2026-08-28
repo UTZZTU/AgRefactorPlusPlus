@@ -1,6 +1,7 @@
 {
   "behavior_parent": "5ef7fa9a6011534362a2094e159eee75c672619c",
   "branch": "research-roadmap-v2.3",
+  "documentation_sync_base_head": "5f1de2ed48fe176670851b206a7b2c7bc6af6f25",
   "documents": [
     {
       "path": "docs/roadmap/RESEARCH_ROADMAP_V2_3.md",
@@ -36,12 +37,24 @@
       "path": "docs/roadmap/R1_IMPLEMENTATION_DECISION.md",
       "role": "R1 external acceptance receipt; requires independent reconciliation under V2.3",
       "status": "evidence_only"
+    },
+    {
+      "path": "docs/roadmap/pre_stage4_current_state.json",
+      "role": "superseded Pre-Stage-4 state snapshot",
+      "status": "historical"
     }
   ],
   "head": "52d7d0097627ff1f92c3f384170bd1fd4771ada7",
+  "head_role": "implementation_lineage_head",
+  "implementation_head": "52d7d0097627ff1f92c3f384170bd1fd4771ada7",
   "package_self_acceptance": false,
   "primary_empirical_environment": "Vitis HLS 2023.2",
+  "r0_external_acceptance_archive": "agrefactor_v23_r0_correction_finalize_20260828T144812Z_2495321.tar.gz",
+  "r0_external_acceptance_archive_sha256": "4209d6330f0d9089cc92c97d25ba1112b460a0e5201f11298f99047da0304f77",
+  "r0_status": "accepted_independent_external_review",
   "repository": "UTZZTU/AgRefactorPlusPlus",
+  "repository_head": "5f1de2ed48fe176670851b206a7b2c7bc6af6f25",
+  "repository_head_role": "current_checkout_head",
   "route": "V2.3",
   "schema_version": 1,
   "status": "current",

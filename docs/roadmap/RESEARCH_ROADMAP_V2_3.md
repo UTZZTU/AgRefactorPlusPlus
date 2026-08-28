@@ -1,9 +1,10 @@
 # AgRefactor++ Research Roadmap V2.3（全链路代码追踪与证据治理路线）
 
 > 日期：2026-08-26  
-> 状态：**最终审阅稿；尚未固化到仓库。批准并执行文档固化包后，本文件替代 V2.2 成为后续开发权威**  
-> 审计分支：`stage2-general-feedback`  
-> 当前远端实现 HEAD：`52d7d0097627ff1f92c3f384170bd1fd4771ada7`  
+> 状态：**V2.3 当前路线；R0 已通过独立外部审计**
+> 审计分支：`research-roadmap-v2.3`
+> 当前检出 HEAD：`5f1de2ed48fe176670851b206a7b2c7bc6af6f25`
+> 实现谱系 HEAD：`52d7d0097627ff1f92c3f384170bd1fd4771ada7`
 > R1 实现基线：`4d4cfdb92c8d181cf607cdf79368a9585ec4ca0e`；行为父基线：`5ef7fa9a6011534362a2094e159eee75c672619c`  
 > 服务器确定性回归：R1 外部回执声明 `2342/2342`；该归档需独立复核，不能由本文自我验收  
 > 当前主要实证环境：Vitis HLS 2023.2  
@@ -965,13 +966,14 @@ HLSDebugger 聚焦 HLS logic bug identification/type/correction 和大规模标�
 | 项目 | 当前值 | 解释 |
 |---|---|---|
 | repository | UTZZTU/AgRefactorPlusPlus | 当前仓库 |
-| branch | stage2-general-feedback | 当前分支 |
-| implementation HEAD | 52d7d0097627ff1f92c3f384170bd1fd4771ada7 | 远端观察到的 R1 实现提交 |
+| branch | research-roadmap-v2.3 | 当前检出分支 |
+| repository checkout HEAD | 5f1de2ed48fe176670851b206a7b2c7bc6af6f25 | 服务器当前检出提交；R0 文档同步基线 |
+| implementation lineage HEAD | 52d7d0097627ff1f92c3f384170bd1fd4771ada7 | R1 实现谱系提交，不等同于当前检出 HEAD |
 | R1 implementation base | 4d4cfdb92c8d181cf607cdf79368a9585ec4ca0e | R1 实现基线 |
 | behavior parent | 5ef7fa9a6011534362a2094e159eee75c672619c | R1 行为父基线 |
 | research route | V2.3 | 本稿批准固化后生效 |
 | primary empirical target | Vitis HLS 2023.2 | 不外推到其他版本 |
-| R0 | accepted authority sync | 仅文档同步 |
+| R0 | documentation sync applied; pending independent audit | 仅文档同步 |
 | R1-Safety | implementation exists; closure must be retained | 安全实现门 |
 | R1-Data | corpus/evidence closure must be evidenced | 数据证据门 |
 | R2-R6 | not started | 按新路线逐门推进 |
@@ -1478,4 +1480,4 @@ V2.3 保留 V2.2 的研究主线、八项能力分类、论文定位、相关工
 6. R6 才能形成正式论文和发布结论；
 7. V2.2 固化后标记为 historical/superseded evidence，不与 V2.3 并行作为执行指针。
 
-在项目负责人批准前，本文件仍是审阅稿。批准后先生成只读、可逆的文档固化包；固化包独立审计通过后，才计划 R1 reconciliation 或 R2 design-only package。
+项目负责人已批准 V2.3 作为当前研究路线。R0 文档同步包只执行权威对账；包自身不验收，独立审计通过后才将 `R0_ACCEPTED=true` 并进入 R1-Safety/R1-Data。

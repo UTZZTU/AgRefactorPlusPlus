@@ -1,19 +1,19 @@
 # AgRefactor++ Development Roadmap
 
-<!-- R0_V2_2_CURRENT_AUTHORITY:BEGIN -->
+<!-- V2_3_CURRENT_AUTHORITY:BEGIN -->
 ## 当前研究路线权威（V2.3，2026-08-26）
 
-当前路线为 docs/roadmap/RESEARCH_ROADMAP_V2_3.md，分支为 research-roadmap-v2.3，基线 HEAD 为 52d7d0097627ff1f92c3f384170bd1fd4771ada7，行为父基线为 5ef7fa9a6011534362a2094e159eee75c672619c。
+当前路线为 docs/roadmap/RESEARCH_ROADMAP_V2_3.md，分支为 research-roadmap-v2.3，当前检出 HEAD 为 5f1de2ed48fe176670851b206a7b2c7bc6af6f25；实现谱系 HEAD 为 52d7d0097627ff1f92c3f384170bd1fd4771ada7；行为父基线为 5ef7fa9a6011534362a2094e159eee75c672619c。
 
 V2.3 standalone 文档完整继承 V2.2 的有效状态、八项能力、论文定位、相关工作、代码拓扑、repair lane 和历史证据，并直接改写 R0-R6、状态、验收和执行包条款。V2.2、旧 P4/Stage4 片段和旧 R0 决策仅作为 historical/evidence-only 保留，不再作为并行执行指针。
 
-当前阶段状态：R0 accepted；R1-Safety/R1-Data pending reconciliation；R2-R6 not started；Stage 4 not allowed。
-<!-- R0_V2_2_CURRENT_AUTHORITY:END -->
+当前阶段状态：R0 已通过独立外部审计；R1-Safety/R1-Data pending reconciliation；R2-R6 not started；Stage 4 not allowed。
+<!-- V2_3_CURRENT_AUTHORITY:END -->
 
 > **权威范围文档。** 后续开发、新对话、阶段验收与论文表述均以本文档为准。任何核心目标不得在没有明确决策记录、代码证据与文档更新的情况下被删除、弱化或偷换概念。
 
-<!-- P4_0F_R5_CURRENT_ROUTE:BEGIN -->
-## 当前 Pre-Stage-4 执行路线（2026-08-07 冻结）
+<!-- HISTORICAL_P4_0F_R5_ROUTE:BEGIN -->
+## 历史 Pre-Stage-4 执行路线（2026-08-07 冻结；非 V2.3 当前执行指针）
 
 ```text
 R5-D accepted at 0ca5dd99fabec1c2c003446975e28128a0926c52
@@ -33,7 +33,7 @@ R5-D accepted at 0ca5dd99fabec1c2c003446975e28128a0926c52
 Legacy differential 和 discovery 是 bounded diagnostic lane。P0/P1 产品回归会重开 R5.x，但这两条 lane 不替代 P4-0F-Final 或 P4-0H，也不能独立证明稳定模型质量或 PPA 优势。
 
 Authority: [P4-0F-R5 plan v2](PRE_STAGE4_P4_0F_R5_AUTHORITATIVE_EXECUTION_PLAN_V2.md).
-<!-- P4_0F_R5_CURRENT_ROUTE:END -->
+<!-- HISTORICAL_P4_0F_R5_ROUTE:END -->
 
 ## 1. 项目使命
 

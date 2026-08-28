@@ -1,5 +1,7 @@
 {
   "R0_ACCEPTED": true,
+  "R0_DOCUMENT_SYNC_APPLIED": true,
+  "R0_DOCUMENT_SYNC_PENDING_EXTERNAL_AUDIT": false,
   "R1_ACCEPTED": false,
   "R1_DATA": "pending_reconciliation",
   "R1_SAFETY": "pending_reconciliation",
@@ -12,11 +14,19 @@
   "behavior_parent": "5ef7fa9a6011534362a2094e159eee75c672619c",
   "branch": "research-roadmap-v2.3",
   "deterministic_state": "R1-external-receipt-declared-2342-2342",
+  "documentation_sync_base_head": "5f1de2ed48fe176670851b206a7b2c7bc6af6f25",
   "head": "52d7d0097627ff1f92c3f384170bd1fd4771ada7",
+  "head_role": "implementation_lineage_head",
+  "implementation_head": "52d7d0097627ff1f92c3f384170bd1fd4771ada7",
   "implementation_state": "R1-implemented-as-declared",
-  "independent_audit_state": "pending-for-v2.3-freeze",
+  "independent_audit_state": "r0-document-sync-accepted-independent-review",
+  "next_step": "V2.3-R1-Safety-and-R1-Data",
   "package_self_acceptance": false,
+  "r0_external_acceptance_archive": "agrefactor_v23_r0_correction_finalize_20260828T144812Z_2495321.tar.gz",
+  "r0_external_acceptance_archive_sha256": "4209d6330f0d9089cc92c97d25ba1112b460a0e5201f11298f99047da0304f77",
   "real_evidence_state": "R1-archive-reference-requires-independent-reproduction",
+  "repository_head": "5f1de2ed48fe176670851b206a7b2c7bc6af6f25",
+  "repository_head_role": "current_checkout_head",
   "route": "V2.3",
   "schema_version": 1
 }

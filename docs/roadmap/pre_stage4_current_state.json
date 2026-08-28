@@ -11,6 +11,7 @@
   "behavior_checkpoint": "r0-document-authority-sync-independently-accepted",
   "behavior_head": "5ef7fa9a6011534362a2094e159eee75c672619c",
   "branch": "stage2-general-feedback",
+  "current_route": "V2.3",
   "deterministic_regression": {
     "expected": 2335,
     "passed": 2335,
@@ -186,5 +187,7 @@
     "R1_IMPLEMENTED_PENDING_EXTERNAL_AUDIT": false,
     "R1_STARTED": true,
     "STAGE4_ALLOWED": false
-  }
+  },
+  "status": "historical_evidence_only",
+  "superseded_by": "docs/roadmap/V2_3_STATE.json"
 }

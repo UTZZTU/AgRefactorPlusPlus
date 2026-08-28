@@ -1,14 +1,17 @@
 # AgRefactor++ Current Project State
 
-<!-- R0_V2_2_CURRENT_STATE:BEGIN -->
+<!-- V2_3_CURRENT_AUTHORITY_STATE:BEGIN -->
 ## V2.3 当前权威快照（2026-08-26）
 
 text_route=V2.3
 branch=research-roadmap-v2.3
+repository_checkout_head=5f1de2ed48fe176670851b206a7b2c7bc6af6f25
 implementation_head=52d7d0097627ff1f92c3f384170bd1fd4771ada7
 behavior_parent_head=5ef7fa9a6011534362a2094e159eee75c672619c
 primary_vitis=2023.2
 R0_ACCEPTED=true
+R0_DOCUMENT_SYNC_APPLIED=true
+R0_DOCUMENT_SYNC_PENDING_EXTERNAL_AUDIT=false
 R1_SAFETY=pending_reconciliation
 R1_DATA=pending_reconciliation
 R1_ACCEPTED=false
@@ -19,14 +22,14 @@ R5_STARTED=false
 R6_STARTED=false
 STAGE4_ALLOWED=false
 PACKAGE_SELF_ACCEPTANCE=false
-NEXT_STEP=V2.3-R1-reconciliation-before-R2
+NEXT_STEP=V2.3-R1-Safety-and-R1-Data
 
 V2.2 remains historical evidence. V2.3 is the current standalone route on the isolated branch.
-<!-- R0_V2_2_CURRENT_STATE:END -->
+<!-- V2_3_CURRENT_AUTHORITY_STATE:END -->
 
-> **当前状态唯一入口。** 历史 package 状态只保留在对应 acceptance、audit 和 history 文件中，不再复制到本文。
+> **当前状态唯一入口。** 本文件顶部 V2.3 区块是当前入口；下方旧 Pre-Stage-4 内容仅作历史证据，不是当前执行指针。
 
-## 1. 当前快照
+## 历史 Pre-Stage-4 快照（非 V2.3 当前路线）
 
 ```text
 branch=stage2-general-feedback
@@ -474,3 +477,13 @@ R1 acceptance was applied from the external decision whose SHA-256 is
 `15c7b0e4f167596906a379722bb3a6ca065b18e96dd435d0ea60f18d5eafe55f`.  This repository script did not review or accept its
 own result.  R2 still requires a separately designed bounded plan.
 <!-- R1_EXTERNAL_ACCEPTANCE:END -->
+
+<!-- V2_3_R0_EXTERNAL_ACCEPTANCE:BEGIN -->
+R0 external acceptance reviewed archive: `agrefactor_v23_r0_correction_finalize_20260828T144812Z_2495321.tar.gz`
+archive_sha256=4209d6330f0d9089cc92c97d25ba1112b460a0e5201f11298f99047da0304f77
+review_authority=independent_external_review
+R0_ACCEPTED=true
+R1_SAFETY=pending_reconciliation
+R1_DATA=pending_reconciliation
+PACKAGE_SELF_ACCEPTANCE=false
+<!-- V2_3_R0_EXTERNAL_ACCEPTANCE:END -->
