@@ -1,8 +1,8 @@
 # V2.3 R2 Shadow Diagnostic Advisor Design
 
-状态：设计冻结；尚未实现；尚未验收。  
-路线：V2.3；前置门：R0、R1-Safety、R1-Data 已接受。  
-当前实现基线：R1 权威一致性修正后的 `research-roadmap-v2.3`，HEAD 前缀 `cd71447`。  
+状态：设计冻结；尚未实现；尚未验收。
+路线：V2.3；前置门：R0、R1-Safety、R1-Data 已接受。
+当前实现基线：R1 权威一致性修正后的 `research-roadmap-v2.3`，HEAD 前缀 `cd71447`。
 主要实证环境：Vitis HLS 2023.2。
 
 ## 1. 研究问题
