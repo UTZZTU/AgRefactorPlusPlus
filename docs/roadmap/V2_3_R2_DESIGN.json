@@ -1,0 +1,107 @@
+{
+  "acceptance": true,
+  "acceptance_run_id": "agrefactor_v23_r2_shadow_diagnostic_design_external_acceptance_20260829T141158Z_1149494",
+  "advisor_role": "shadow_only_diagnostic",
+  "allowed_output_fields": [
+    "suspected_owner",
+    "suspected_failure_class",
+    "evidence_refs",
+    "repair_scope",
+    "confidence",
+    "abstain_reason",
+    "bounded_repair_intent"
+  ],
+  "authority": "deterministic_fsm_and_evidence_auditor",
+  "external_acceptance_status": "accepted_independent_external_review",
+  "forbidden_output_fields": [
+    "accepted",
+    "transition",
+    "fsm_node",
+    "hidden_detail",
+    "secret",
+    "private_reasoning",
+    "raw_source_patch",
+    "testbench_authorization"
+  ],
+  "forbidden_triggers": [
+    "preflight_testbench_failure",
+    "hidden_evaluation",
+    "provided_testbench_semantic_edit",
+    "identity_incomplete",
+    "infrastructure_only_failure"
+  ],
+  "implementation_started": false,
+  "invariants": [
+    "advisory.accepted is always false",
+    "advisory evidence refs are a subset of the request event",
+    "shadow cannot change deterministic route or terminal status",
+    "shadow cannot mutate Candidate, Testbench, Hidden, RecoveryLedger, or best_correct",
+    "provider error, timeout, invalid output, out-of-scope citation, or unsafe scope becomes abstain",
+    "BudgetManager remains the only hard budget authority",
+    "Hidden content, paths, digests, and private reasoning never enter the advisory request or artifact"
+  ],
+  "milestone": "R2",
+  "minimum_evaluation": {
+    "calibration_split": "frozen before provider evaluation",
+    "primary_endpoints": [
+      "owner_macro_f1_or_balanced_accuracy",
+      "failure_class_macro_f1",
+      "citation_validity",
+      "abstention_coverage_risk",
+      "high_confidence_error_rate",
+      "unsafe_scope_rate",
+      "decision_equivalence"
+    ],
+    "required_negative_cases": [
+      "invalid_json",
+      "unknown_owner",
+      "wrong_evidence_ref",
+      "hidden_reference",
+      "testbench_scope",
+      "accepted_true",
+      "provider_timeout",
+      "budget_block"
+    ],
+    "required_real_evidence": "existing E3 Vitis 2023.2 Public unknown/review cases with identity-complete records",
+    "stop_on_critical_safety_violation": true
+  },
+  "next_step_after_external_acceptance": "V2.3-R2-implementation",
+  "non_goals": [
+    "memory retrieval",
+    "episode or pattern promotion",
+    "automatic Candidate repair",
+    "Testbench repair",
+    "FSM mutation",
+    "toolchain migration",
+    "cross-version generalization",
+    "dynamic model routing"
+  ],
+  "required_components": [
+    "shadow request adapter",
+    "strict advisory parser and validator",
+    "isolated token/cost/wall-time/error accounting",
+    "deterministic-versus-shadow equivalence reducer",
+    "frozen calibration evaluator",
+    "provider-independent audit artifact"
+  ],
+  "route": "V2.3",
+  "schema_version": 1,
+  "status": "design_frozen",
+  "title": "Provider-backed Shadow Diagnostic Advisor",
+  "trigger": {
+    "owner_states": [
+      "unknown",
+      "review"
+    ],
+    "requires_agent_safe_event": true,
+    "requires_complete_run_identity": true,
+    "requires_physical_tool_launch": true,
+    "requires_r1_data_evidence": true,
+    "requires_shadow_reserve": true,
+    "terminal_stages": [
+      "public_csim",
+      "csynth",
+      "public_cosim"
+    ]
+  }
+}

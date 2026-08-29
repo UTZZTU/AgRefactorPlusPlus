@@ -22,7 +22,10 @@ R5_STARTED=false
 R6_STARTED=false
 STAGE4_ALLOWED=false
 PACKAGE_SELF_ACCEPTANCE=false
-NEXT_STEP=V2.3-R2-design-only
+R2_DESIGN_STATUS=accepted_independent_external_review
+R2_DESIGN_ACCEPTED=true
+R2_ACCEPTED=false
+NEXT_STEP=V2.3-R2-implementation
 
 V2.2 remains historical evidence. V2.3 is the current standalone route on the isolated branch.
 <!-- V2_3_CURRENT_AUTHORITY_STATE:END -->

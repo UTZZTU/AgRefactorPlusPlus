@@ -1461,5 +1461,8 @@ physical-call provenance before the route advances to Stage 4.
 R1-Safety/R1-Data external acceptance archive: `agrefactor_v23_r1_safety_data_comprehensive_v1_20260829T044722Z_2189779.tar.gz`
 archive_sha256=41337c668f049e533d2a12ad627cbb2fe5bbeeabb12e693992ccf155f3dd7732
 R1_ACCEPTED=true
-NEXT_STEP=V2.3-R2-design-only
+R2_DESIGN_STATUS=accepted_independent_external_review
+R2_DESIGN_ACCEPTED=true
+R2_ACCEPTED=false
+NEXT_STEP=V2.3-R2-implementation
 <!-- V2_3_R1_EXTERNAL_ACCEPTANCE:END -->

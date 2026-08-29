@@ -17,7 +17,7 @@ R0 已接受；R1-Safety 与 R1-Data 已通过独立外部验收。当前下一�
 4. [当前项目状态](roadmap/PROJECT_STATE.md)
 5. [开发路线入口](roadmap/ROADMAP.md)
 
-当前检出 HEAD 为 `6229b5c1...`; 实现谱系 HEAD 为 `52d7d009...`。R0 已通过独立审计，R1-Safety/R1-Data 已通过独立外部验收，下一步为 R2 design-only，Stage 4 不允许。
+当前检出 HEAD 为 `6229b5c1...`; 实现谱系 HEAD 为 `52d7d009...`。R0 已通过独立审计，R1-Safety/R1-Data 已通过独立外部验收，R2 设计已通过独立外部验收，下一步为 R2 implementation，Stage 4 不允许。
 <!-- V2_3_AUTHORITY:END -->
 
 ## 当前权威阅读顺序

@@ -1131,6 +1131,8 @@ R1-Safety-accepted / R1-Data-pending
 R1 不做 provider-backed advisor、memory retrieval、AI Candidate repair、FSM mutation、version migration 或 dynamic optimizer。
 
 ## R2——Provider-backed Shadow Diagnostic Advisor
+> R2 设计已通过独立外部验收：`docs/roadmap/R2_SHADOW_DIAGNOSTIC_ADVISOR_DESIGN.md`；机器契约：`docs/roadmap/V2_3_R2_DESIGN.json`；R2 尚未实现，尚未进行产品验收。
+
 
 ### F.1 目标和触发
 
