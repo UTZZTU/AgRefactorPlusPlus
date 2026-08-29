@@ -5,7 +5,7 @@
 
 text_route=V2.3
 branch=research-roadmap-v2.3
-repository_checkout_head=5f1de2ed48fe176670851b206a7b2c7bc6af6f25
+repository_checkout_head=6229b5c1f6e08e99849c0ff9bc7824a1e93bec18
 implementation_head=52d7d0097627ff1f92c3f384170bd1fd4771ada7
 behavior_parent_head=5ef7fa9a6011534362a2094e159eee75c672619c
 primary_vitis=2023.2

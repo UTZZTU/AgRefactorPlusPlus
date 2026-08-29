@@ -57,7 +57,7 @@
   "r1_external_acceptance_archive_sha256": "41337c668f049e533d2a12ad627cbb2fe5bbeeabb12e693992ccf155f3dd7732",
   "r1_status": "accepted_independent_external_review",
   "repository": "UTZZTU/AgRefactorPlusPlus",
-  "repository_head": "5f1de2ed48fe176670851b206a7b2c7bc6af6f25",
+  "repository_head": "6229b5c1f6e08e99849c0ff9bc7824a1e93bec18",
   "repository_head_role": "current_checkout_head",
   "route": "V2.3",
   "schema_version": 1,

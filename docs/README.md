@@ -9,7 +9,7 @@ R0 已接受；R1-Safety 与 R1-Data 已通过独立外部验收。当前下一�
 这里是仓库文档的统一入口。文档按“当前权威、未来实施、用户指南、验收证据、审计和历史”分类，避免把已经关闭的阶段计划误当成当前执行指针。
 
 <!-- V2_3_AUTHORITY:BEGIN -->
-## 当前 V2.3 权威入口（R0 已通过独立审计）
+## 当前 V2.3 权威入口（R1-Safety/R1-Data 已通过独立外部验收）
 
 1. [V2.3 独立研究路线](roadmap/RESEARCH_ROADMAP_V2_3.md)
 2. [V2.3 机器可读状态](roadmap/V2_3_STATE.json)
@@ -17,7 +17,7 @@ R0 已接受；R1-Safety 与 R1-Data 已通过独立外部验收。当前下一�
 4. [当前项目状态](roadmap/PROJECT_STATE.md)
 5. [开发路线入口](roadmap/ROADMAP.md)
 
-当前检出 HEAD 为 `5f1de2ed...`; 实现谱系 HEAD 为 `52d7d009...`。R0 文档同步已通过独立审计，R1-Safety/R1-Data 尚未开始，Stage 4 不允许。
+当前检出 HEAD 为 `6229b5c1...`; 实现谱系 HEAD 为 `52d7d009...`。R0 已通过独立审计，R1-Safety/R1-Data 已通过独立外部验收，下一步为 R2 design-only，Stage 4 不允许。
 <!-- V2_3_AUTHORITY:END -->
 
 ## 当前权威阅读顺序

@@ -1,9 +1,9 @@
 # AgRefactor++ Research Roadmap V2.3（全链路代码追踪与证据治理路线）
 
 > 日期：2026-08-26  
-> 状态：**V2.3 当前路线；R0 已通过独立外部审计；R1-Safety/R1-Data 已通过独立外部验收**
+> 状态：**V2.3 当前路线；R0、R1-Safety/R1-Data 已通过独立外部验收**
 > 审计分支：`research-roadmap-v2.3`
-> 当前检出 HEAD：`5f1de2ed48fe176670851b206a7b2c7bc6af6f25`
+> 当前检出 HEAD：`6229b5c1f6e08e99849c0ff9bc7824a1e93bec18`
 > 实现谱系 HEAD：`52d7d0097627ff1f92c3f384170bd1fd4771ada7`
 > R1 实现基线：`4d4cfdb92c8d181cf607cdf79368a9585ec4ca0e`；行为父基线：`5ef7fa9a6011534362a2094e159eee75c672619c`  
 > 服务器确定性回归：R1 外部回执声明 `2342/2342`；该归档需独立复核，不能由本文自我验收  
