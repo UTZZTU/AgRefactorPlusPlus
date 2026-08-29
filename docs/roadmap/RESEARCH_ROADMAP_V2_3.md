@@ -1,7 +1,7 @@
 # AgRefactor++ Research Roadmap V2.3（全链路代码追踪与证据治理路线）
 
 > 日期：2026-08-26  
-> 状态：**V2.3 当前路线；R0 已通过独立外部审计**
+> 状态：**V2.3 当前路线；R0 已通过独立外部审计；R1-Safety/R1-Data 已通过独立外部验收**
 > 审计分支：`research-roadmap-v2.3`
 > 当前检出 HEAD：`5f1de2ed48fe176670851b206a7b2c7bc6af6f25`
 > 实现谱系 HEAD：`52d7d0097627ff1f92c3f384170bd1fd4771ada7`
@@ -1481,3 +1481,11 @@ V2.3 保留 V2.2 的研究主线、八项能力分类、论文定位、相关工
 7. V2.2 固化后标记为 historical/superseded evidence，不与 V2.3 并行作为执行指针。
 
 项目负责人已批准 V2.3 作为当前研究路线。R0 文档同步包只执行权威对账；包自身不验收，独立审计通过后才将 `R0_ACCEPTED=true` 并进入 R1-Safety/R1-Data。
+
+<!-- V2_3_R1_EXTERNAL_ACCEPTANCE:BEGIN -->
+R1-Safety/R1-Data external acceptance archive: `agrefactor_v23_r1_safety_data_comprehensive_v1_20260829T044722Z_2189779.tar.gz`
+archive_sha256=41337c668f049e533d2a12ad627cbb2fe5bbeeabb12e693992ccf155f3dd7732
+R1_ACCEPTED=true
+R2_STARTED=false
+NEXT_STEP=V2.3-R2-design-only
+<!-- V2_3_R1_EXTERNAL_ACCEPTANCE:END -->

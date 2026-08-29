@@ -1,3 +1,9 @@
+## 当前 V2.3 R1 权威状态
+
+R0 已接受；R1-Safety 与 R1-Data 已通过独立外部验收。当前下一步为 R2 design-only，Stage 4 仍不允许。
+
+验收归档：`agrefactor_v23_r1_safety_data_comprehensive_v1_20260829T044722Z_2189779.tar.gz`；SHA256：`41337c668f049e533d2a12ad627cbb2fe5bbeeabb12e693992ccf155f3dd7732`。
+
 # AgRefactor++ Documentation
 
 这里是仓库文档的统一入口。文档按“当前权威、未来实施、用户指南、验收证据、审计和历史”分类，避免把已经关闭的阶段计划误当成当前执行指针。

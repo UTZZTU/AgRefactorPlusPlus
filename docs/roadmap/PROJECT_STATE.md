@@ -12,9 +12,9 @@ primary_vitis=2023.2
 R0_ACCEPTED=true
 R0_DOCUMENT_SYNC_APPLIED=true
 R0_DOCUMENT_SYNC_PENDING_EXTERNAL_AUDIT=false
-R1_SAFETY=pending_reconciliation
-R1_DATA=pending_reconciliation
-R1_ACCEPTED=false
+R1_SAFETY=accepted_independent_external_review
+R1_DATA=accepted_independent_external_review
+R1_ACCEPTED=true
 R2_STARTED=false
 R3_STARTED=false
 R4_STARTED=false
@@ -22,7 +22,7 @@ R5_STARTED=false
 R6_STARTED=false
 STAGE4_ALLOWED=false
 PACKAGE_SELF_ACCEPTANCE=false
-NEXT_STEP=V2.3-R1-Safety-and-R1-Data
+NEXT_STEP=V2.3-R2-design-only
 
 V2.2 remains historical evidence. V2.3 is the current standalone route on the isolated branch.
 <!-- V2_3_CURRENT_AUTHORITY_STATE:END -->
@@ -487,3 +487,14 @@ R1_SAFETY=pending_reconciliation
 R1_DATA=pending_reconciliation
 PACKAGE_SELF_ACCEPTANCE=false
 <!-- V2_3_R0_EXTERNAL_ACCEPTANCE:END -->
+
+<!-- V2_3_R1_EXTERNAL_ACCEPTANCE:BEGIN -->
+R1-Safety reconciliation: accepted by independent external review
+R1-Data reconciliation: accepted by independent external review
+reviewed_archive=agrefactor_v23_r1_safety_data_comprehensive_v1_20260829T044722Z_2189779.tar.gz
+reviewed_archive_sha256=41337c668f049e533d2a12ad627cbb2fe5bbeeabb12e693992ccf155f3dd7732
+R1_ACCEPTED=true
+R2_STARTED=false
+STAGE4_ALLOWED=false
+PACKAGE_SELF_ACCEPTANCE=false
+<!-- V2_3_R1_EXTERNAL_ACCEPTANCE:END -->

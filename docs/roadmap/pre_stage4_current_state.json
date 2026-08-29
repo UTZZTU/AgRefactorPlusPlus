@@ -189,5 +189,14 @@
     "STAGE4_ALLOWED": false
   },
   "status": "historical_evidence_only",
-  "superseded_by": "docs/roadmap/V2_3_STATE.json"
+  "superseded_by": "docs/roadmap/V2_3_STATE.json",
+  "v23_r1_external_acceptance": {
+    "accepted": true,
+    "archive": "agrefactor_v23_r1_safety_data_comprehensive_v1_20260829T044722Z_2189779.tar.gz",
+    "archive_sha256": "41337c668f049e533d2a12ad627cbb2fe5bbeeabb12e693992ccf155f3dd7732",
+    "data": "accepted_independent_external_review",
+    "next_step": "V2.3-R2-design-only",
+    "package_self_acceptance": false,
+    "safety": "accepted_independent_external_review"
+  }
 }

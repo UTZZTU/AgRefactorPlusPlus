@@ -1456,3 +1456,10 @@ The first V1 target-host run cannot close S3.8 because all six Legacy units
 failed in the qualification observer before `simple_iter` model execution. V2
 retains the product evidence and requires a targeted six-unit Legacy rerun with
 physical-call provenance before the route advances to Stage 4.
+
+<!-- V2_3_R1_EXTERNAL_ACCEPTANCE:BEGIN -->
+R1-Safety/R1-Data external acceptance archive: `agrefactor_v23_r1_safety_data_comprehensive_v1_20260829T044722Z_2189779.tar.gz`
+archive_sha256=41337c668f049e533d2a12ad627cbb2fe5bbeeabb12e693992ccf155f3dd7732
+R1_ACCEPTED=true
+NEXT_STEP=V2.3-R2-design-only
+<!-- V2_3_R1_EXTERNAL_ACCEPTANCE:END -->
