@@ -34,6 +34,7 @@ from agrefactor.evidence import (
 )
 from agrefactor.models import CandidateModelAdapter
 from agrefactor.recovery import (
+    DiagnosticAdvisor,
     RecoveryAction,
     RecoveryAuthority,
     RecoveryLedger,
@@ -44,6 +45,7 @@ from agrefactor.recovery import (
     conservative_v1_policy,
     default_restart_reserve,
     build_effective_repair_quota_summary,
+    run_shadow_diagnostics,
 )
 from agrefactor.testing import (
     TestbenchRepairLoop,
@@ -747,6 +749,7 @@ class CandidateRepairValidationOrchestrator:
         *,
         model_adapter: CandidateModelAdapter,
         handler_factory: CandidateValidationHandlerFactory,
+        shadow_advisor: DiagnosticAdvisor | None = None,
     ) -> None:
         if not isinstance(
             model_adapter,
@@ -761,8 +764,15 @@ class CandidateRepairValidationOrchestrator:
             raise TypeError(
                 "handler_factory must provide build(request)"
             )
+        if shadow_advisor is not None and not callable(
+            getattr(shadow_advisor, "diagnose", None)
+        ):
+            raise TypeError(
+                "shadow_advisor must provide diagnose(request) or be None"
+            )
         self._model_adapter = model_adapter
         self._handler_factory = handler_factory
+        self._shadow_advisor = shadow_advisor
         self._recovery_policy = conservative_v1_policy()
 
     def run(
@@ -1296,6 +1306,41 @@ class CandidateRepairValidationOrchestrator:
                 runtime_testbench_local_max=1,
             ).to_dict()
         )
+        merged_metadata = dict(extra_metadata or {})
+        repair_count = (
+            0 if repair_result is None else len(repair_result.attempts)
+        )
+        def shadow_main_snapshot() -> dict[str, Any]:
+            return {
+                "route": last_validation_state.value,
+                "status": status.value,
+                "final_candidate_sha256": sha256(
+                    (final_candidate.rstrip() + "\n").encode("utf-8")
+                ).hexdigest(),
+                "recovery_ledger_count": (
+                    0 if recovery_ledger is None else len(recovery_ledger.events)
+                ),
+                "repair_count": repair_count,
+                "best_correct_pointer": None,
+            }
+
+        main_snapshot = shadow_main_snapshot()
+        shadow_events = merged_metadata.get("diagnostic_events", ())
+        if self._shadow_advisor is not None and isinstance(
+            shadow_events, (list, tuple)
+        ):
+            merged_metadata["r2_shadow_diagnostics"] = list(
+                run_shadow_diagnostics(
+                    shadow_events,
+                    advisor=self._shadow_advisor,
+                    main_before=main_snapshot,
+                    main_after=shadow_main_snapshot,
+                )
+            )
+            merged_metadata["r2_shadow_enabled"] = True
+        else:
+            merged_metadata["r2_shadow_diagnostics"] = []
+            merged_metadata["r2_shadow_enabled"] = False
         result = CandidateRepairOrchestrationResult(
             validation_id=validation_id,
             status=status,
@@ -1313,9 +1358,7 @@ class CandidateRepairValidationOrchestrator:
                     self.orchestrator_version
                 ),
                 "repair_attempt_count": (
-                    0
-                    if repair_result is None
-                    else len(repair_result.attempts)
+                    repair_count
                 ),
                 "candidate_validation_count": len(
                     candidate_validations
@@ -1345,7 +1388,7 @@ class CandidateRepairValidationOrchestrator:
                     else recovery_ledger.to_dict()
                 ),
                 "effective_repair_quota": effective_quota,
-                **dict(extra_metadata or {}),
+                **merged_metadata,
             },
         )
         context.trace.record(

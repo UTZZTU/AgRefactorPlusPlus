@@ -1,11 +1,11 @@
 # AgRefactor++ Current Project State
 
 <!-- V2_3_CURRENT_AUTHORITY_STATE:BEGIN -->
-## V2.3 当前权威快照（2026-08-26）
+## V2.3 当前权威快照（2026-08-29）
 
 text_route=V2.3
 branch=research-roadmap-v2.3
-repository_checkout_head=6229b5c1f6e08e99849c0ff9bc7824a1e93bec18
+repository_checkout_head_prefix=2bc253a
 implementation_head=52d7d0097627ff1f92c3f384170bd1fd4771ada7
 behavior_parent_head=5ef7fa9a6011534362a2094e159eee75c672619c
 primary_vitis=2023.2
@@ -15,7 +15,8 @@ R0_DOCUMENT_SYNC_PENDING_EXTERNAL_AUDIT=false
 R1_SAFETY=accepted_independent_external_review
 R1_DATA=accepted_independent_external_review
 R1_ACCEPTED=true
-R2_STARTED=false
+R2_STARTED=true
+R2_IMPLEMENTATION_STATUS=accepted_independent_external_review
 R3_STARTED=false
 R4_STARTED=false
 R5_STARTED=false
@@ -24,8 +25,8 @@ STAGE4_ALLOWED=false
 PACKAGE_SELF_ACCEPTANCE=false
 R2_DESIGN_STATUS=accepted_independent_external_review
 R2_DESIGN_ACCEPTED=true
-R2_ACCEPTED=false
-NEXT_STEP=V2.3-R2-implementation
+R2_ACCEPTED=true
+NEXT_STEP=V2.3-R3-design-only
 
 V2.2 remains historical evidence. V2.3 is the current standalone route on the isolated branch.
 <!-- V2_3_CURRENT_AUTHORITY_STATE:END -->
@@ -501,3 +502,35 @@ R2_STARTED=false
 STAGE4_ALLOWED=false
 PACKAGE_SELF_ACCEPTANCE=false
 <!-- V2_3_R1_EXTERNAL_ACCEPTANCE:END -->
+
+<!-- V2_3_R2_IMPLEMENTATION:BEGIN -->
+## V2.3 R2 implementation receipt
+
+R2 shadow diagnostic implementation is present on the `2bc253a` baseline.
+The default feature state remains off. Deterministic fake-provider tests verify
+the contract and safety boundaries but do not constitute real provider or
+Vitis evidence.
+
+```text
+R2_STARTED=true
+R2_IMPLEMENTATION_STATUS=implemented_pending_external_audit
+R2_ACCEPTED=false
+REAL_PROVIDER_EVIDENCE=pending
+REAL_VITIS_R2_EVIDENCE=pending
+PACKAGE_SELF_ACCEPTANCE=false
+NEXT_STEP=V2.3-R2-external-validation
+```
+<!-- V2_3_R2_IMPLEMENTATION:END -->
+
+<!-- V2_3_R2_EXTERNAL_ACCEPTANCE:BEGIN -->
+R2 external validation archive: `agrefactor_v23_r2_shadow_diagnostic_external_validation_correction_v7_20260830T143607Z_614600.tar.gz`
+archive_sha256=d0b1147596bc8e14695608ca74ce4f719e67f0419279e27eb4f745cc1dabea6c
+R2_EXTERNAL_VALIDATION=true
+R2_ACCEPTED=true
+R2_IMPLEMENTATION_STATUS=accepted_independent_external_review
+R3_STARTED=false
+NEXT_STEP=V2.3-R3-design-only
+independent_audit_state=r2-accepted-independent-external-review
+acceptance_run_id=agrefactor_v23_r2_shadow_diagnostic_external_acceptance_v1_20260830T163722Z_1474641
+PACKAGE_SELF_ACCEPTANCE=false
+<!-- V2_3_R2_EXTERNAL_ACCEPTANCE:END -->

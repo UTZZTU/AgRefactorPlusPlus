@@ -1,0 +1,43 @@
+{
+  "acceptance": true,
+  "acceptance_run_id": "agrefactor_v23_r2_shadow_diagnostic_external_acceptance_v1_20260830T163722Z_1474641",
+  "authority": "deterministic_fsm_and_evidence_auditor",
+  "branch": "research-roadmap-v2.3",
+  "default_enabled": false,
+  "implementation_base_head_prefix": "2bc253a",
+  "implementation_status": "accepted_independent_external_review",
+  "implemented_components": [
+    "shadow request adapter",
+    "fixed provider and model adapter",
+    "strict advisory parser and validator",
+    "shared hard budget plus isolated shadow reserve",
+    "shadow accounting and trace",
+    "deterministic versus shadow equivalence reducer",
+    "frozen calibration protocol and evaluator",
+    "provider-independent audit artifact",
+    "candidate repair orchestrator shadow-only integration"
+  ],
+  "milestone": "R2",
+  "next_step": "V2.3-R3-design-only",
+  "package_self_acceptance": false,
+  "product_paths": [
+    "agrefactor/recovery/shadow_advisor.py",
+    "agrefactor/recovery/__init__.py",
+    "agrefactor/runtime/candidate_repair_integration.py"
+  ],
+  "r2_external_validation_archive": "agrefactor_v23_r2_shadow_diagnostic_external_validation_correction_v7_20260830T143607Z_614600.tar.gz",
+  "r2_external_validation_archive_sha256": "d0b1147596bc8e14695608ca74ce4f719e67f0419279e27eb4f745cc1dabea6c",
+  "real_evidence_status": "accepted_real_provider_and_vitis",
+  "required_external_evidence": [
+    "frozen calibration split hash",
+    "identity-complete Vitis HLS 2023.2 Public unknown/review corpus records",
+    "provider request response and usage artifacts",
+    "main shadow equivalence report",
+    "negative case degradation report",
+    "independent audit decision"
+  ],
+  "route": "V2.3",
+  "schema_version": 1,
+  "shadow_only": true,
+  "synthetic_test_claim_limit": "contract verification only; not real provider or Vitis evidence"
+}

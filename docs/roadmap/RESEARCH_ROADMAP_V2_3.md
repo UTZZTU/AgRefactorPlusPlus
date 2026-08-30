@@ -1,14 +1,14 @@
 # AgRefactor++ Research Roadmap V2.3（全链路代码追踪与证据治理路线）
 
-> 日期：2026-08-26  
-> 状态：**V2.3 当前路线；R0、R1-Safety/R1-Data 已通过独立外部验收**
+> 日期：2026-08-29
+> 状态：**V2.3 当前路线；R2 shadow diagnostic 已通过外部验证与独立审计并接受**
 > 审计分支：`research-roadmap-v2.3`
-> 当前检出 HEAD：`6229b5c1f6e08e99849c0ff9bc7824a1e93bec18`
+> R2 实施基线 HEAD 前缀：`2bc253a`
 > 实现谱系 HEAD：`52d7d0097627ff1f92c3f384170bd1fd4771ada7`
-> R1 实现基线：`4d4cfdb92c8d181cf607cdf79368a9585ec4ca0e`；行为父基线：`5ef7fa9a6011534362a2094e159eee75c672619c`  
-> 服务器确定性回归：R1 外部回执声明 `2342/2342`；该归档需独立复核，不能由本文自我验收  
-> 当前主要实证环境：Vitis HLS 2023.2  
-> 当前项目名：暂用 AgRefactor++；方法和结果稳定后再决定论文名/系统名  
+> R1 实现基线：`4d4cfdb92c8d181cf607cdf79368a9585ec4ca0e`；行为父基线：`5ef7fa9a6011534362a2094e159eee75c672619c`
+> 服务器确定性回归：R1 外部回执声明 `2342/2342`；该归档需独立复核，不能由本文自我验收
+> 当前主要实证环境：Vitis HLS 2023.2
+> 当前项目名：暂用 AgRefactor++；方法和结果稳定后再决定论文名/系统名
 > 本文定位：V2.2 的完整继承版和执行治理修订版；保留 V2.2 的项目状态、八项能力、论文定位、相关工作、代码追踪和 R0-R6 有效内容，并在原章节中直接改写冲突条款。本文是 standalone 路线，不依赖另一个补丁文档。产品成功权威仍由真实验证与独立证据审计掌握。
 >
 > R0 独立审计：`agrefactor_r0_document_authority_sync_v1_20260824T172726Z_2546041.tar.gz`，SHA256 `7608be4b21ff2ceade20040caee255024a56666b2711b4a186b4c42360c13674`。
@@ -1131,7 +1131,7 @@ R1-Safety-accepted / R1-Data-pending
 R1 不做 provider-backed advisor、memory retrieval、AI Candidate repair、FSM mutation、version migration 或 dynamic optimizer。
 
 ## R2——Provider-backed Shadow Diagnostic Advisor
-> R2 设计已通过独立外部验收：`docs/roadmap/R2_SHADOW_DIAGNOSTIC_ADVISOR_DESIGN.md`；机器契约：`docs/roadmap/V2_3_R2_DESIGN.json`；R2 尚未实现，尚未进行产品验收。
+> R2 设计、shadow diagnostic 实现和真实 provider/Vitis 外部实证均已通过独立外部审计，当前状态为 `accepted_independent_external_review`；`R2_ACCEPTED=true`。R3 设计尚未开始。
 
 
 ### F.1 目标和触发
@@ -1488,6 +1488,17 @@ V2.3 保留 V2.2 的研究主线、八项能力分类、论文定位、相关工
 R1-Safety/R1-Data external acceptance archive: `agrefactor_v23_r1_safety_data_comprehensive_v1_20260829T044722Z_2189779.tar.gz`
 archive_sha256=41337c668f049e533d2a12ad627cbb2fe5bbeeabb12e693992ccf155f3dd7732
 R1_ACCEPTED=true
-R2_STARTED=false
-NEXT_STEP=V2.3-R2-design-only
+R2_STARTED=true
+R2_IMPLEMENTATION_STATUS=accepted_independent_external_review
+R2_ACCEPTED=true
+NEXT_STEP=V2.3-R3-design-only
 <!-- V2_3_R1_EXTERNAL_ACCEPTANCE:END -->
+
+<!-- V2_3_R2_EXTERNAL_ACCEPTANCE:BEGIN -->
+R2 external validation archive: `agrefactor_v23_r2_shadow_diagnostic_external_validation_correction_v7_20260830T143607Z_614600.tar.gz`
+archive_sha256=d0b1147596bc8e14695608ca74ce4f719e67f0419279e27eb4f745cc1dabea6c
+R2_EXTERNAL_VALIDATION=true
+R2_ACCEPTED=true
+NEXT_STEP=V2.3-R3-design-only
+PACKAGE_SELF_ACCEPTANCE=false
+<!-- V2_3_R2_EXTERNAL_ACCEPTANCE:END -->

@@ -7,7 +7,7 @@
 
 V2.3 standalone 文档完整继承 V2.2 的有效状态、八项能力、论文定位、相关工作、代码拓扑、repair lane 和历史证据，并直接改写 R0-R6、状态、验收和执行包条款。V2.2、旧 P4/Stage4 片段和旧 R0 决策仅作为 historical/evidence-only 保留，不再作为并行执行指针。
 
-当前阶段状态：R0、R1-Safety/R1-Data 均已通过独立外部审计；R2-R6 not started；Stage 4 not allowed。
+当前阶段状态：R0、R1-Safety/R1-Data 和 R2 均已通过独立外部审计；R3-R6 not started；Stage 4 not allowed。
 <!-- V2_3_CURRENT_AUTHORITY:END -->
 
 > **权威范围文档。** 后续开发、新对话、阶段验收与论文表述均以本文档为准。任何核心目标不得在没有明确决策记录、代码证据与文档更新的情况下被删除、弱化或偷换概念。
@@ -1463,6 +1463,16 @@ archive_sha256=41337c668f049e533d2a12ad627cbb2fe5bbeeabb12e693992ccf155f3dd7732
 R1_ACCEPTED=true
 R2_DESIGN_STATUS=accepted_independent_external_review
 R2_DESIGN_ACCEPTED=true
-R2_ACCEPTED=false
-NEXT_STEP=V2.3-R2-implementation
+R2_STARTED=true
+R2_IMPLEMENTATION_STATUS=accepted_independent_external_review
+R2_ACCEPTED=true
+NEXT_STEP=V2.3-R3-design-only
 <!-- V2_3_R1_EXTERNAL_ACCEPTANCE:END -->
+
+<!-- V2_3_R2_EXTERNAL_ACCEPTANCE:BEGIN -->
+R2 external validation archive: `agrefactor_v23_r2_shadow_diagnostic_external_validation_correction_v7_20260830T143607Z_614600.tar.gz`
+archive_sha256=d0b1147596bc8e14695608ca74ce4f719e67f0419279e27eb4f745cc1dabea6c
+R2_ACCEPTED=true
+NEXT_STEP=V2.3-R3-design-only
+PACKAGE_SELF_ACCEPTANCE=false
+<!-- V2_3_R2_EXTERNAL_ACCEPTANCE:END -->

@@ -36,6 +36,23 @@ from .quota import (
     EffectiveRepairQuotaSummary,
     build_effective_repair_quota_summary,
 )
+from .shadow_advisor import (
+    CalibrationProtocol,
+    CalibrationReport,
+    ProviderBackedShadowDiagnosticAdvisor,
+    ShadowAccounting,
+    ShadowAuditArtifact,
+    ShadowEquivalenceResult,
+    ShadowInputRejected,
+    ShadowOutputRejected,
+    ShadowReserve,
+    build_shadow_request,
+    compare_shadow_equivalence,
+    diagnostic_event_from_dict,
+    evaluate_calibration,
+    freeze_calibration_protocol,
+    run_shadow_diagnostics,
+)
 
 __all__ = [
     "AdvisoryConfidence",
@@ -66,4 +83,19 @@ __all__ = [
     "validate_advisory_result",
     "EffectiveRepairQuotaSummary",
     "build_effective_repair_quota_summary",
+    "CalibrationProtocol",
+    "CalibrationReport",
+    "ProviderBackedShadowDiagnosticAdvisor",
+    "ShadowAccounting",
+    "ShadowAuditArtifact",
+    "ShadowEquivalenceResult",
+    "ShadowInputRejected",
+    "ShadowOutputRejected",
+    "ShadowReserve",
+    "build_shadow_request",
+    "compare_shadow_equivalence",
+    "diagnostic_event_from_dict",
+    "evaluate_calibration",
+    "freeze_calibration_protocol",
+    "run_shadow_diagnostics",
 ]

@@ -1,6 +1,6 @@
-## 当前 V2.3 R1 权威状态
+## 当前 V2.3 R2 权威状态
 
-R0 已接受；R1-Safety 与 R1-Data 已通过独立外部验收。当前下一步为 R2 design-only，Stage 4 仍不允许。
+R0 已接受；R1-Safety/R1-Data 和 R2 设计已通过独立外部验收。R2 shadow diagnostic 实现已通过真实 provider/Vitis 外部验证与独立外部审计，R2 已接受，Stage 4 仍不允许。
 
 验收归档：`agrefactor_v23_r1_safety_data_comprehensive_v1_20260829T044722Z_2189779.tar.gz`；SHA256：`41337c668f049e533d2a12ad627cbb2fe5bbeeabb12e693992ccf155f3dd7732`。
 
@@ -9,7 +9,7 @@ R0 已接受；R1-Safety 与 R1-Data 已通过独立外部验收。当前下一�
 这里是仓库文档的统一入口。文档按“当前权威、未来实施、用户指南、验收证据、审计和历史”分类，避免把已经关闭的阶段计划误当成当前执行指针。
 
 <!-- V2_3_AUTHORITY:BEGIN -->
-## 当前 V2.3 权威入口（R1-Safety/R1-Data 已通过独立外部验收）
+## 当前 V2.3 权威入口（R2 已实现，待外部验证）
 
 1. [V2.3 独立研究路线](roadmap/RESEARCH_ROADMAP_V2_3.md)
 2. [V2.3 机器可读状态](roadmap/V2_3_STATE.json)
@@ -17,7 +17,7 @@ R0 已接受；R1-Safety 与 R1-Data 已通过独立外部验收。当前下一�
 4. [当前项目状态](roadmap/PROJECT_STATE.md)
 5. [开发路线入口](roadmap/ROADMAP.md)
 
-当前检出 HEAD 为 `6229b5c1...`; 实现谱系 HEAD 为 `52d7d009...`。R0 已通过独立审计，R1-Safety/R1-Data 已通过独立外部验收，R2 设计已通过独立外部验收，下一步为 R2 implementation，Stage 4 不允许。
+R2 实施基线 HEAD 前缀为 `2bc253a`；已实现 provider-backed shadow advisor、严格安全降级、独立 accounting/equivalence/calibration 和显式默认关闭的编排器接线。下一步为 R3 design-only；`R2_ACCEPTED=true`，Stage 4 不允许。
 <!-- V2_3_AUTHORITY:END -->
 
 ## 当前权威阅读顺序
@@ -119,3 +119,13 @@ R0 已接受；R1-Safety 与 R1-Data 已通过独立外部验收。当前下一�
 - `history/`：已完成实施、失败经验和历史计划，不作为当前执行指针。
 
 原 `reference/` 中的一次性交接、过期桥接和单次失败备忘已合并到历史材料后删除。
+
+<!-- V2_3_R2_EXTERNAL_ACCEPTANCE:BEGIN -->
+R2 external validation archive: `agrefactor_v23_r2_shadow_diagnostic_external_validation_correction_v7_20260830T143607Z_614600.tar.gz`
+archive_sha256=d0b1147596bc8e14695608ca74ce4f719e67f0419279e27eb4f745cc1dabea6c
+R2_EXTERNAL_VALIDATION=true
+R2_ACCEPTED=true
+R2_IMPLEMENTATION_STATUS=accepted_independent_external_review
+NEXT_STEP=V2.3-R3-design-only
+PACKAGE_SELF_ACCEPTANCE=false
+<!-- V2_3_R2_EXTERNAL_ACCEPTANCE:END -->
