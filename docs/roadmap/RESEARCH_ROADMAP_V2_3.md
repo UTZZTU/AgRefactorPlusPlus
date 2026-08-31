@@ -1502,3 +1502,14 @@ R2_ACCEPTED=true
 NEXT_STEP=V2.3-R3-design-only
 PACKAGE_SELF_ACCEPTANCE=false
 <!-- V2_3_R2_EXTERNAL_ACCEPTANCE:END -->
+
+> R3 设计冻结：`docs/roadmap/R3_CONDITIONED_MEMORY_GATE_DESIGN.md`；机器契约：`docs/roadmap/V2_3_R3_DESIGN.json`；R3 尚未实现或验收。
+
+<!-- V2_3_R3_EXTERNAL_ACCEPTANCE:BEGIN -->
+R3_DESIGN_STATUS=accepted_independent_external_review
+R3_ACCEPTED=true
+R3_STARTED=false
+NEXT_STEP=V2.3-R3-implementation
+acceptance_run_id=agrefactor_v23_r3_conditioned_memory_gate_external_acceptance_20260831T103638Z_2061801
+PACKAGE_SELF_ACCEPTANCE=false
+<!-- V2_3_R3_EXTERNAL_ACCEPTANCE:END -->

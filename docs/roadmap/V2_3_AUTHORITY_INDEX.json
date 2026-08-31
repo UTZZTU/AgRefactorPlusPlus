@@ -62,12 +62,22 @@
       "path": "docs/roadmap/V2_3_R2_IMPLEMENTATION.json",
       "role": "R2 machine-readable implementation contract",
       "status": "current"
+    },
+    {
+      "path": "docs/roadmap/R3_CONDITIONED_MEMORY_GATE_DESIGN.md",
+      "role": "R3 design contract",
+      "status": "current"
+    },
+    {
+      "path": "docs/roadmap/V2_3_R3_DESIGN.json",
+      "role": "R3 machine-readable design contract",
+      "status": "current"
     }
   ],
   "head": "52d7d0097627ff1f92c3f384170bd1fd4771ada7",
   "head_role": "implementation_lineage_head",
   "implementation_head": "52d7d0097627ff1f92c3f384170bd1fd4771ada7",
-  "next_step": "V2.3-R3-design-only",
+  "next_step": "V2.3-R3-implementation",
   "package_self_acceptance": false,
   "primary_empirical_environment": "Vitis HLS 2023.2",
   "r0_external_acceptance_archive": "agrefactor_v23_r0_correction_finalize_20260828T144812Z_2495321.tar.gz",
@@ -86,6 +96,11 @@
   "r2_external_validation_archive_sha256": "d0b1147596bc8e14695608ca74ce4f719e67f0419279e27eb4f745cc1dabea6c",
   "r2_implementation_base_head_prefix": "2bc253a",
   "r2_implementation_status": "accepted_independent_external_review",
+  "r3_acceptance_run_id": "agrefactor_v23_r3_conditioned_memory_gate_external_acceptance_20260831T103638Z_2061801",
+  "r3_accepted": true,
+  "r3_design_accepted": false,
+  "r3_design_base_head": "29422aa4dfe456c86c20b1d213cfe3d3c6d5f983",
+  "r3_design_status": "accepted_independent_external_review",
   "repository": "UTZZTU/AgRefactorPlusPlus",
   "repository_head_prefix": "2bc253a",
   "repository_head_role": "current_checkout_head",

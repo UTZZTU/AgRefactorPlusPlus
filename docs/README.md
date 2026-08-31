@@ -129,3 +129,14 @@ R2_IMPLEMENTATION_STATUS=accepted_independent_external_review
 NEXT_STEP=V2.3-R3-design-only
 PACKAGE_SELF_ACCEPTANCE=false
 <!-- V2_3_R2_EXTERNAL_ACCEPTANCE:END -->
+
+R3 design 已冻结；下一步为 R3 implementation，R3 acceptance 仍为 false，Stage 4 不允许。
+
+<!-- V2_3_R3_EXTERNAL_ACCEPTANCE:BEGIN -->
+R3_DESIGN_STATUS=accepted_independent_external_review
+R3_ACCEPTED=true
+R3_STARTED=false
+NEXT_STEP=V2.3-R3-implementation
+acceptance_run_id=agrefactor_v23_r3_conditioned_memory_gate_external_acceptance_20260831T103638Z_2061801
+PACKAGE_SELF_ACCEPTANCE=false
+<!-- V2_3_R3_EXTERNAL_ACCEPTANCE:END -->

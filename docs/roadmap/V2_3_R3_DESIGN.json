@@ -1,0 +1,118 @@
+{
+  "acceptance": {
+    "package_self_acceptance": false,
+    "r3_accepted": true
+  },
+  "authority": {
+    "accepted_episode_outcomes": [
+      "verified_positive",
+      "verified_negative",
+      "abstained",
+      "inconclusive",
+      "invalid_evidence"
+    ],
+    "accepted_outcomes": [
+      "accept",
+      "reject",
+      "abstain"
+    ]
+  },
+  "episode": {
+    "canonical_hash": "sha256",
+    "immutable": true,
+    "lineage_required": true,
+    "repair_authorization_in_r3": "not_requested",
+    "required_identity": [
+      "execution_identity",
+      "target",
+      "toolchain",
+      "parser",
+      "interface"
+    ]
+  },
+  "feature_firewall": {
+    "forbidden": [
+      "hidden_content",
+      "secret",
+      "oracle",
+      "hidden_path",
+      "future_outcome",
+      "private_reasoning",
+      "raw_provider_response",
+      "raw_exception",
+      "aggregate_to_owner_inference",
+      "aggregate_to_failure_class_inference"
+    ],
+    "legacy_cache_isolation": "execution_identity"
+  },
+  "gate": {
+    "decision_set": [
+      "accept",
+      "reject",
+      "abstain"
+    ],
+    "equal_strength_conflict": "abstain",
+    "ordered_checks": [
+      "identity_hard_reject",
+      "role_stage_scope",
+      "exact_exclusions",
+      "evidence_completeness",
+      "avoid_when",
+      "support",
+      "conflict_sparsity_ood",
+      "calibrated_risk",
+      "decision_reasons_refs"
+    ],
+    "similarity_only_authorization": false
+  },
+  "implementation_allowed": false,
+  "next_step": "V2.3-R3-implementation",
+  "non_goals": [
+    "repair_execution",
+    "candidate_mutation",
+    "testbench_mutation",
+    "fsm_change",
+    "main_path_budget_consumption",
+    "provider_authority"
+  ],
+  "pattern_revision": {
+    "future_window_access": false,
+    "lifecycle": [
+      "Quarantined",
+      "Provisional",
+      "Trusted",
+      "Deprecated",
+      "Rejected"
+    ],
+    "promotion_thresholds": {
+      "deprecation_window": null,
+      "max_attributable_negative_rate": null,
+      "max_false_repair_rate": null,
+      "max_unsafe_scope_rate": null,
+      "min_calibration_requirement": null,
+      "min_evidence_citation_validity": null,
+      "min_independent_context_count": null,
+      "min_positive_episode_count": null
+    },
+    "threshold_source_required": true
+  },
+  "product_code_changes": false,
+  "required_design_tests": [
+    "episode_immutability",
+    "lineage",
+    "a_positive_b_negative",
+    "action_attribution",
+    "deprecated_rejected",
+    "sample_sparsity",
+    "time_leakage",
+    "source_level_holdout",
+    "legacy_cache_isolation",
+    "firewall",
+    "conflict_ood_abstention",
+    "no_repair_no_fsm"
+  ],
+  "schema_version": 1,
+  "shadow_only": true,
+  "stage": "V2.3-R3",
+  "status": "accepted_independent_external_review"
+}

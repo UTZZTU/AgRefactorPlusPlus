@@ -534,3 +534,16 @@ independent_audit_state=r2-accepted-independent-external-review
 acceptance_run_id=agrefactor_v23_r2_shadow_diagnostic_external_acceptance_v1_20260830T163722Z_1474641
 PACKAGE_SELF_ACCEPTANCE=false
 <!-- V2_3_R2_EXTERNAL_ACCEPTANCE:END -->
+
+R3_DESIGN_STATUS=design_frozen
+R3_ACCEPTED=false
+NEXT_STEP=V2.3-R3-implementation
+
+<!-- V2_3_R3_EXTERNAL_ACCEPTANCE:BEGIN -->
+R3_DESIGN_STATUS=accepted_independent_external_review
+R3_ACCEPTED=true
+R3_STARTED=false
+NEXT_STEP=V2.3-R3-implementation
+acceptance_run_id=agrefactor_v23_r3_conditioned_memory_gate_external_acceptance_20260831T103638Z_2061801
+PACKAGE_SELF_ACCEPTANCE=false
+<!-- V2_3_R3_EXTERNAL_ACCEPTANCE:END -->
