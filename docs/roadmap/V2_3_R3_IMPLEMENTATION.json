@@ -1,0 +1,44 @@
+{
+  "acceptance": true,
+  "acceptance_run_id": "agrefactor_v23_r3_conditioned_memory_gate_independent_external_acceptance_20260831T134704Z_3407698",
+  "external_validation_archive": "agrefactor_v23_r3_conditioned_memory_gate_external_validation_20260831T130943Z_3145805.tar.gz",
+  "external_validation_archive_sha256": "401b7369f8f3125018ffee17fbcbb2fad9fe26a034cd1c8aab1829d865e42ca8",
+  "implementation_status": "accepted_independent_external_review",
+  "implemented_components": [
+    "immutable DiagnosticEpisode",
+    "append-only EpisodeStore",
+    "outcome attribution",
+    "RepairPatternRevision lifecycle",
+    "ordered ApplicabilityGate",
+    "feature firewall"
+  ],
+  "milestone": "R3",
+  "next_step": "V2.3-R4-design-only",
+  "non_goals": [
+    "repair_execution",
+    "candidate_mutation",
+    "testbench_mutation",
+    "fsm_change",
+    "provider_call",
+    "vitis_launch",
+    "main_path_budget_consumption"
+  ],
+  "package_self_acceptance": false,
+  "product_paths": [
+    "agrefactor/recovery/memory_gate.py",
+    "agrefactor/recovery/__init__.py"
+  ],
+  "real_evidence_status": "accepted_external_validation",
+  "required_external_evidence": [
+    "full deterministic regression",
+    "R3 negative-case contract matrix",
+    "source/time holdout",
+    "legacy cache isolation",
+    "independent audit"
+  ],
+  "schema_version": 1,
+  "shadow_only": true,
+  "test_paths": [
+    "tests/test_r3_memory_gate.py"
+  ]
+}

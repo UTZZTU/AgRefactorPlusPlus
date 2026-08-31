@@ -99,3 +99,16 @@ __all__ = [
     "freeze_calibration_protocol",
     "run_shadow_diagnostics",
 ]
+
+# R3_CONDITIONED_MEMORY_GATE_EXPORTS
+from .memory_gate import (
+    ApplicabilityGate, DiagnosticEpisode, EpisodeOutcome, EpisodeStore,
+    GateDecision, GateResult, MemoryContractError, PatternLifecycle,
+    RepairPatternRevision, classify_outcome,
+)
+__all__.extend([
+    "ApplicabilityGate", "DiagnosticEpisode", "EpisodeOutcome",
+    "EpisodeStore", "GateDecision", "GateResult",
+    "MemoryContractError", "PatternLifecycle",
+    "RepairPatternRevision", "classify_outcome",
+])
