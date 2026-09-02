@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "stage": "V2.3-R4-implementation",
+  "implementation_status": "implemented_pending_external_validation",
+  "acceptance": false,
+  "product_code_changes": true,
+  "package_self_acceptance": false,
+  "r4_controller": "agrefactor/recovery/gated_candidate_repair.py",
+  "runtime_integration_hook": "agrefactor/runtime/candidate_repair_integration.py:build_r4_candidate_repair_controller",
+  "default_r4_enabled": false,
+  "candidate_only": true,
+  "max_mutations_per_authorization": 1,
+  "formal_validator_success_authority": true,
+  "independent_auditor_required": true,
+  "provider_calls_by_apply_package": 0,
+  "vitis_launches_by_apply_package": 0,
+  "next_step": "V2.3-R4-external-validation",
+  "r3_temporal_memory_efficacy_established": false,
+  "r3_temporal_efficacy_evidence_owner": "V2.3-R5 paired time-ordered evaluation"
+}

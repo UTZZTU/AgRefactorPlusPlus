@@ -75,6 +75,16 @@ from .validation_orchestrator import (
 )
 
 
+def build_r4_candidate_repair_controller(*, policy=None, ledger=None, budget=None):
+    """Return the opt-in R4 controller without changing default orchestration.
+
+    The import is deliberately lazy so ordinary R0-R3 and deterministic
+    Candidate paths do not load or invoke the R4 lane.
+    """
+    from agrefactor.recovery.gated_candidate_repair import R4CandidateRepairController
+    return R4CandidateRepairController(policy=policy, ledger=ledger, budget=budget)
+
+
 def _select_family_instruction(
     resolved_instruction: str | None,
     request_instruction: str | None,

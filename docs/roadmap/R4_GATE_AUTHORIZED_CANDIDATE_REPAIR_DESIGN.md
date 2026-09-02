@@ -1,6 +1,6 @@
 # V2.3 R4 Gate-Authorized Candidate Repair Design
 
-Status: design accepted by independent external review.
+Status: implementation applied; pending external validation.
 
 Route: V2.3. Required predecessor evidence: R0, R1-Safety, R1-Data, R2,
 and R3 are independently accepted. R3 validation archive:

@@ -74,7 +74,9 @@
     "optimizer_or_best_correct_mutation",
     "nested_or_unbounded_r4_repair"
   ],
-  "implementation_allowed": false,
+  "implementation_allowed": true,
+  "implementation_run_id": "agrefactor_v23_r4_gate_authorized_candidate_repair_implementation_v1_20260902T163919Z_3793256",
+  "implementation_status": "implemented_pending_external_validation",
   "kill_switch": {
     "append_only_state": true,
     "blocks_llm_candidate_mutation": true,
@@ -92,6 +94,7 @@
       "unsafe_scope_attempt"
     ]
   },
+  "next_step_after_implementation": "V2.3-R4-external-validation",
   "next_step_after_independent_acceptance": "V2.3-R4-implementation",
   "outcomes": [
     "verified_positive",
