@@ -1,0 +1,150 @@
+{
+  "acceptance": true,
+  "acceptance_run_id": "agrefactor_v23_r4_gate_authorized_candidate_repair_design_external_acceptance_v1_20260902T151509Z_3192001",
+  "authority": {
+    "formal_validator_success_authority": true,
+    "gate_success_authority": false,
+    "independent_auditor_required_for_acceptance": true,
+    "model_success_authority": false,
+    "package_success_authority": false
+  },
+  "authorization_chain": [
+    "typed_physical_failure",
+    "complete_agent_safe_diagnostic_event",
+    "r2_advisory_or_abstain",
+    "r3_gate_accept_trusted_revision",
+    "pre_registered_canary_match",
+    "recovery_policy_candidate_only_allow",
+    "recovery_ledger_allow",
+    "isolated_budget_reserve",
+    "one_bounded_candidate_mutation",
+    "fresh_full_prefix_revalidation",
+    "independent_audit",
+    "immutable_episode_outcome"
+  ],
+  "budget_and_ledger": {
+    "isolated_r4_reserve": true,
+    "no_unbounded_retry": true,
+    "record_main_shadow_r4_separately": true,
+    "reserve_before_provider_call": true,
+    "same_authorization_requires_policy_and_ledger_allow": true,
+    "shared_budget_manager": true
+  },
+  "canary": {
+    "default_enabled": false,
+    "expiry_required": true,
+    "manifest_immutable": true,
+    "max_repairs_per_run": 1,
+    "operator_only_enablement": true,
+    "requires_exact_case_source_target_toolchain_model_prompt_identity": true
+  },
+  "candidate_authorization": {
+    "allowed_evidence_view": "agent_safe",
+    "allowed_owner_authority": "llm_advisory",
+    "allowed_role": "candidate",
+    "authorization_hash": "sha256_canonical_json",
+    "max_mutations_per_authorization": 1,
+    "preserve_deterministic_route": true,
+    "preserve_fixed_fsm": true,
+    "required_advisory_mode": "candidate-only",
+    "required_gate_decision": "accept",
+    "required_pattern_lifecycle": "Trusted",
+    "required_policy_action": "repair"
+  },
+  "fair_baseline": {
+    "baseline_mode": "no-advisory/no-memory",
+    "contract": "docs/roadmap/V2_3_R4_FAIR_BASELINE.json",
+    "minimum_repetitions_per_arm": 3,
+    "missing_or_unequal_frozen_field_outcome": "invalid_evidence",
+    "only_permitted_arm_difference": "r4_advisory_and_gate_approved_memory_enabled",
+    "required_before_real_canary": true
+  },
+  "forbidden": [
+    "hidden_content_or_path_or_digest_or_oracle",
+    "secret",
+    "private_reasoning",
+    "raw_provider_response",
+    "raw_exception",
+    "future_outcome",
+    "testbench_advisory_auto_edit",
+    "original_mutation",
+    "toolchain_or_target_mutation",
+    "fsm_or_route_rewrite",
+    "similarity_only_authorization",
+    "optimizer_or_best_correct_mutation",
+    "nested_or_unbounded_r4_repair"
+  ],
+  "implementation_allowed": false,
+  "kill_switch": {
+    "append_only_state": true,
+    "blocks_llm_candidate_mutation": true,
+    "read_before_provider_call": true,
+    "read_before_reserve": true,
+    "shadow_may_continue": true,
+    "triggers": [
+      "critical_auditor_finding",
+      "false_repair",
+      "semantic_weakening",
+      "hidden_or_secret_leak",
+      "identity_conflict",
+      "authority_violation",
+      "authorization_hash_mismatch",
+      "unsafe_scope_attempt"
+    ]
+  },
+  "next_step_after_independent_acceptance": "V2.3-R4-implementation",
+  "outcomes": [
+    "verified_positive",
+    "verified_negative",
+    "abstained",
+    "inconclusive",
+    "invalid_evidence"
+  ],
+  "package_self_acceptance": false,
+  "product_code_changes": false,
+  "quarantine": {
+    "append_only_safety_record": true,
+    "child_revision_requires_separate_review": true,
+    "prevents_new_automatic_repairs": true,
+    "revision_mutation_allowed": false
+  },
+  "required_implementation_tests": [
+    "disabled_canary",
+    "canary_identity_mismatch",
+    "gate_non_accept_and_non_trusted",
+    "visibility_identity_firewall",
+    "policy_ledger_budget_denial",
+    "stale_authorization",
+    "candidate_only_hash_boundary",
+    "one_attempt_cap",
+    "kill_before_and_after_provider",
+    "append_only_quarantine",
+    "invalid_and_unchanged_model_output",
+    "full_prefix_revalidation",
+    "outcome_attribution",
+    "route_fsm_and_success_authority_preserved",
+    "best_correct_failure_protection",
+    "r2_equivalence_when_r4_disabled"
+  ],
+  "required_predecessors": {
+    "evidence_contract": "R3_PREDECESSOR_EVIDENCE.json",
+    "r0_accepted": true,
+    "r1_accepted": true,
+    "r2_accepted": true,
+    "r3_accepted": true,
+    "r3_temporal_efficacy_evidence_owner": "V2.3-R5 paired time-ordered evaluation",
+    "r3_time_ordered_memory_efficacy_established": false,
+    "verify_archive_and_sidecar_before_state_reconciliation": true
+  },
+  "revalidation": {
+    "best_correct_mutation_allowed": false,
+    "complete_required_prefix": true,
+    "fresh_validation_id": true,
+    "original_and_target_identity_immutable": true,
+    "record_before_after_candidate_hash": true,
+    "record_public_and_hidden_suite_hashes_without_exposure": true
+  },
+  "schema_version": 1,
+  "stage": "V2.3-R4-design-only",
+  "status": "accepted_independent_external_review"
+}

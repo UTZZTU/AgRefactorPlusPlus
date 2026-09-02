@@ -11,9 +11,45 @@
   "R2_IMPLEMENTATION_STATUS": "accepted_independent_external_review",
   "R2_STARTED": true,
   "R3_ACCEPTED": true,
+  "R3_DESIGN_ACCEPTED": true,
   "R3_DESIGN_STATUS": "accepted_independent_external_review",
   "R3_IMPLEMENTATION_STATUS": "accepted_independent_external_review",
+  "R3_PREDECESSOR_EVIDENCE": [
+    {
+      "archive": "agrefactor_v23_r3_conditioned_memory_gate_external_acceptance_20260831T103638Z_2061801.tar.gz",
+      "archive_sha256": "7071b68f1e3a193fff9bdb39aad9d0d25a5e5c2796e665c9c546358e34f8c60b",
+      "receipt_verified": true,
+      "role": "r3_design_independent_external_acceptance",
+      "sidecar_verified": true
+    },
+    {
+      "archive": "agrefactor_v23_r3_conditioned_memory_gate_external_validation_20260831T130943Z_3145805.tar.gz",
+      "archive_sha256": "401b7369f8f3125018ffee17fbcbb2fad9fe26a034cd1c8aab1829d865e42ca8",
+      "receipt_verified": true,
+      "role": "r3_external_validation",
+      "sidecar_verified": true
+    },
+    {
+      "archive": "agrefactor_v23_r3_conditioned_memory_gate_independent_external_acceptance_20260831T134704Z_3407698.tar.gz",
+      "archive_sha256": "5323aeb5cc152338bde442ecedb04fb7048325644ab64afc3a4433088019ea70",
+      "receipt_verified": true,
+      "role": "r3_implementation_independent_external_acceptance",
+      "sidecar_verified": true
+    }
+  ],
+  "R3_PREDECESSOR_EVIDENCE_VERIFICATION_RUN_ID": "agrefactor_v23_r4_gate_authorized_candidate_repair_design_v2_20260831T161412Z_113292",
+  "R3_PREDECESSOR_EVIDENCE_VERIFIED": true,
   "R3_STARTED": true,
+  "R3_TEMPORAL_EFFICACY_EVIDENCE_OWNER": "V2.3-R5 paired time-ordered evaluation",
+  "R3_TEMPORAL_MEMORY_EFFICACY_ESTABLISHED": false,
+  "R4_ACCEPTED": true,
+  "R4_DESIGN_BASE_HEAD": "54e422989c6bff962312efc468200c28dd7b4276",
+  "R4_DESIGN_CONTRACT": "docs/roadmap/V2_3_R4_DESIGN.json",
+  "R4_DESIGN_DOCUMENT": "docs/roadmap/R4_GATE_AUTHORIZED_CANDIDATE_REPAIR_DESIGN.md",
+  "R4_DESIGN_EXTERNAL_ACCEPTANCE": "clean",
+  "R4_DESIGN_EXTERNAL_ACCEPTANCE_RUN_ID": "agrefactor_v23_r4_gate_authorized_candidate_repair_design_external_acceptance_v1_20260902T151509Z_3192001",
+  "R4_DESIGN_STATUS": "accepted_independent_external_review",
+  "R4_FAIR_BASELINE_CONTRACT": "docs/roadmap/V2_3_R4_FAIR_BASELINE.json",
   "R4_STARTED": false,
   "R5_STARTED": false,
   "R6_STARTED": false,
@@ -27,7 +63,7 @@
   "implementation_head": "52d7d0097627ff1f92c3f384170bd1fd4771ada7",
   "implementation_state": "R2-shadow-diagnostic-accepted-independent-external-review",
   "independent_audit_state": "r2-accepted-independent-external-review",
-  "next_step": "V2.3-R4-design-only",
+  "next_step": "V2.3-R4-implementation",
   "package_self_acceptance": false,
   "r0_external_acceptance_archive": "agrefactor_v23_r0_correction_finalize_20260828T144812Z_2495321.tar.gz",
   "r0_external_acceptance_archive_sha256": "4209d6330f0d9089cc92c97d25ba1112b460a0e5201f11298f99047da0304f77",
@@ -47,6 +83,33 @@
   "r3_design_base_head": "29422aa4dfe456c86c20b1d213cfe3d3c6d5f983",
   "r3_design_contract": "docs/roadmap/V2_3_R3_DESIGN.json",
   "r3_design_document": "docs/roadmap/R3_CONDITIONED_MEMORY_GATE_DESIGN.md",
+  "r3_design_state_reconciled_by": "v23_r4_gate_authorized_candidate_repair_design_v2",
+  "r3_design_state_reconciliation_evidence": [
+    {
+      "archive": "agrefactor_v23_r3_conditioned_memory_gate_external_acceptance_20260831T103638Z_2061801.tar.gz",
+      "archive_sha256": "7071b68f1e3a193fff9bdb39aad9d0d25a5e5c2796e665c9c546358e34f8c60b",
+      "receipt_verified": true,
+      "result_status": "clean",
+      "role": "r3_design_independent_external_acceptance",
+      "sidecar_verified": true
+    },
+    {
+      "archive": "agrefactor_v23_r3_conditioned_memory_gate_external_validation_20260831T130943Z_3145805.tar.gz",
+      "archive_sha256": "401b7369f8f3125018ffee17fbcbb2fad9fe26a034cd1c8aab1829d865e42ca8",
+      "receipt_verified": true,
+      "result_status": "clean",
+      "role": "r3_external_validation",
+      "sidecar_verified": true
+    },
+    {
+      "archive": "agrefactor_v23_r3_conditioned_memory_gate_independent_external_acceptance_20260831T134704Z_3407698.tar.gz",
+      "archive_sha256": "5323aeb5cc152338bde442ecedb04fb7048325644ab64afc3a4433088019ea70",
+      "receipt_verified": true,
+      "result_status": "clean",
+      "role": "r3_implementation_independent_external_acceptance",
+      "sidecar_verified": true
+    }
+  ],
   "r3_external_validation_archive": "agrefactor_v23_r3_conditioned_memory_gate_external_validation_20260831T130943Z_3145805.tar.gz",
   "r3_external_validation_archive_sha256": "401b7369f8f3125018ffee17fbcbb2fad9fe26a034cd1c8aab1829d865e42ca8",
   "r3_implementation_acceptance_run_id": "agrefactor_v23_r3_conditioned_memory_gate_independent_external_acceptance_20260831T134704Z_3407698",

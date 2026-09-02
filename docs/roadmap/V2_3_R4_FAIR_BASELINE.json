@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "stage": "V2.3-R4",
+  "purpose": "Contract for a later pre-registered fair comparison; this design document authorizes no canary execution.",
+  "baseline_arm": {
+    "advisory_mode": "off",
+    "memory_mode": "off"
+  },
+  "r4_canary_arm": {
+    "advisory_mode": "candidate-only",
+    "memory_mode": "gate-approved-snippets-only"
+  },
+  "only_permitted_arm_difference": [
+    "advisory_mode",
+    "memory_mode",
+    "authorization_id_and_feature_specific_artifacts"
+  ],
+  "required_frozen_fields": [
+    "manifest_schema_version",
+    "repository_commit",
+    "implementation_file_hashes",
+    "case_id",
+    "original_source_sha256",
+    "initial_candidate_sha256",
+    "public_suite_manifest_sha256",
+    "hidden_suite_manifest_sha256_or_not_applicable",
+    "target_profile_identity",
+    "toolchain_identity",
+    "parser_profile_identity",
+    "model_provider_identity",
+    "model_identity",
+    "prompt_template_sha256",
+    "prompt_contract_sha256",
+    "decoding_parameters",
+    "seed",
+    "provider_timeout_seconds",
+    "tool_timeout_seconds",
+    "parallelism",
+    "shared_budget_limits",
+    "r4_isolated_reserve_limits",
+    "maximum_repairs_per_run",
+    "retry_policy",
+    "validation_prefix_plan",
+    "independent_auditor_contract_sha256",
+    "canary_manifest_sha256",
+    "execution_order_and_time_window",
+    "repetitions_per_arm"
+  ],
+  "constraints": {
+    "minimum_repetitions_per_arm": 3,
+    "parallelism_must_be_one_unless_pre_registered_and_equal": true,
+    "same_case_order_required": true,
+    "same_time_window_or_pre_registered_counterbalanced_schedule_required": true,
+    "same_validator_and_hidden_policy_required": true,
+    "same_budget_accounting_required": true,
+    "same_retry_and_timeout_policy_required": true,
+    "missing_or_unequal_field_outcome": "invalid_evidence",
+    "provider_or_vitis_failure_outcome": "inconclusive",
+    "no_cross_arm_memory_or_artifact_reuse": true,
+    "no_result_may_be_called_positive_without_full_prefix_and_independent_audit": true
+  },
+  "required_result_fields": [
+    "arm_id",
+    "frozen_manifest_sha256",
+    "authorization_id_or_null",
+    "before_candidate_sha256",
+    "after_candidate_sha256_or_null",
+    "formal_validation_id_or_null",
+    "outcome",
+    "budget_delta",
+    "provider_call_count",
+    "vitis_phase_count",
+    "independent_auditor_result",
+    "quarantine_or_kill_switch_state",
+    "evidence_archive_sha256"
+  ],
+  "prohibited_claims": [
+    "single-canary-run establishes efficacy",
+    "model output establishes correctness",
+    "R3 temporal memory efficacy has already been established",
+    "an unmatched baseline is a fair comparison"
+  ]
+}

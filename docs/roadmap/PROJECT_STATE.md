@@ -567,3 +567,25 @@ validation_archive_sha256=401b7369f8f3125018ffee17fbcbb2fad9fe26a034cd1c8aab1829
 acceptance_run_id=agrefactor_v23_r3_conditioned_memory_gate_independent_external_acceptance_20260831T134704Z_3407698
 PACKAGE_SELF_ACCEPTANCE=false
 <!-- V2_3_R3_IMPLEMENTATION_EXTERNAL_ACCEPTANCE:END -->
+
+<!-- V2_3_R4_DESIGN_STATUS:BEGIN -->
+V2.3 R4 Gate-authorized Candidate repair design has been applied.
+R4_DESIGN_STATUS=accepted_independent_external_review
+R4_ACCEPTED=true
+R4_STARTED=false
+R4_DESIGN_BASE_HEAD=54e422989c6bff962312efc468200c28dd7b4276
+R3_PREDECESSOR_EVIDENCE_VERIFIED=true
+R3_TEMPORAL_MEMORY_EFFICACY_ESTABLISHED=false
+NEXT_STEP=V2.3-R4-implementation
+PACKAGE_SELF_ACCEPTANCE=false
+<!-- V2_3_R4_DESIGN_STATUS:END -->
+
+<!-- V2_3_R4_DESIGN_EXTERNAL_ACCEPTANCE:BEGIN -->
+R4_DESIGN_EXTERNAL_ACCEPTANCE=clean
+R4_ACCEPTED=true
+R4_DESIGN_STATUS=accepted_independent_external_review
+R4_STARTED=false
+NEXT_STEP=V2.3-R4-implementation
+acceptance_run_id=agrefactor_v23_r4_gate_authorized_candidate_repair_design_external_acceptance_v1_20260902T151509Z_3192001
+PACKAGE_SELF_ACCEPTANCE=false
+<!-- V2_3_R4_DESIGN_EXTERNAL_ACCEPTANCE:END -->
