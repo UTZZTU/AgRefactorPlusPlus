@@ -192,14 +192,16 @@ python -m agrefactor.cli run task.json --dry-run
 
 保留给高级复现和兼容迁移。隐藏的 `--legacy`、`--repair-aware` 是 deprecated compatibility selectors，不是普通产品入口。
 
-## 9. Stage 3 边界
+<!-- PACKAGE_A_USAGE_AUTHORITY:BEGIN -->
+## 9. V2.3 当前产品入口边界
 
-当前：
+当前正常入口为：
 
-- `refactor` 可执行；
-- `optimize/full` 仍明确拒绝；
-- Stage 3 实施合同已冻结，但功能实现尚未开始；
-- Stage 3 首包只允许实现 candidate state、checkpoint 和 best-correct 基础；
-- Memory、迁移、自动模型池和 cosim 不进入 Stage 3 首包。
+```text
+python -m agrefactor.cli refactor ...
+python -m agrefactor.cli optimize ...
+python -m agrefactor.cli full ...
+```
 
-详见 [Stage 3 Frozen Implementation Contract](../roadmap/STAGE3_IMPLEMENTATION_CONTRACT.md)。
+`optimize/full` 的 `safe-v1` Product Adapter 已存在，但它与 V2.3 R2/R3/R4 实验主线分开；R4 advisory、Memory Gate 和 Candidate-only canary 默认关闭。`run task.json`、`--legacy` 和 `--repair-aware` 仍是高级兼容/复现入口，不是新的产品入口。
+<!-- PACKAGE_A_USAGE_AUTHORITY:END -->

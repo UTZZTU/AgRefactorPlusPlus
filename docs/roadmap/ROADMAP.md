@@ -1,13 +1,13 @@
 # AgRefactor++ Development Roadmap
 
 <!-- V2_3_CURRENT_AUTHORITY:BEGIN -->
-## 当前研究路线权威（V2.3，2026-08-26）
+## 当前研究路线权威（V2.3，2026-09-11）
 
-当前路线为 docs/roadmap/RESEARCH_ROADMAP_V2_3.md，分支为 research-roadmap-v2.3，当前检出 HEAD 为 6229b5c1f6e08e99849c0ff9bc7824a1e93bec18；实现谱系 HEAD 为 52d7d0097627ff1f92c3f384170bd1fd4771ada7；行为父基线为 5ef7fa9a6011534362a2094e159eee75c672619c。
+当前路线为 `docs/roadmap/RESEARCH_ROADMAP_V2_3.md`，分支为
+`research-roadmap-v2.3`，实现基线为
+`a7d1c46072e8bc6f7e8d6b368f6d472b50d790a7`。
 
-V2.3 standalone 文档完整继承 V2.2 的有效状态、八项能力、论文定位、相关工作、代码拓扑、repair lane 和历史证据，并直接改写 R0-R6、状态、验收和执行包条款。V2.2、旧 P4/Stage4 片段和旧 R0 决策仅作为 historical/evidence-only 保留，不再作为并行执行指针。
-
-当前阶段状态：R0、R1-Safety/R1-Data 和 R2 均已通过独立外部审计；R3-R6 not started；Stage 4 not allowed。
+R0、R1-Safety/R1-Data、R2 和 R3 已有独立验收记录；R4 代码已实现但仍待真实外部验证；R5/R6 未开始；Stage 4 未开放。旧状态和 acceptance block 只作为 historical/evidence-only 保留。
 <!-- V2_3_CURRENT_AUTHORITY:END -->
 
 > **权威范围文档。** 后续开发、新对话、阶段验收与论文表述均以本文档为准。任何核心目标不得在没有明确决策记录、代码证据与文档更新的情况下被删除、弱化或偷换概念。

@@ -1,34 +1,24 @@
 # AgRefactor++ Current Project State
 
 <!-- V2_3_CURRENT_AUTHORITY_STATE:BEGIN -->
-## V2.3 当前权威快照（2026-08-29）
+## V2.3 当前权威状态（2026-09-11）
 
-text_route=V2.3
+```text
+route=V2.3
 branch=research-roadmap-v2.3
-repository_checkout_head_prefix=2bc253a
-implementation_head=52d7d0097627ff1f92c3f384170bd1fd4771ada7
-behavior_parent_head=5ef7fa9a6011534362a2094e159eee75c672619c
-primary_vitis=2023.2
+implementation_head=a7d1c46072e8bc6f7e8d6b368f6d472b50d790a7
 R0_ACCEPTED=true
-R0_DOCUMENT_SYNC_APPLIED=true
-R0_DOCUMENT_SYNC_PENDING_EXTERNAL_AUDIT=false
-R1_SAFETY=accepted_independent_external_review
-R1_DATA=accepted_independent_external_review
 R1_ACCEPTED=true
-R2_STARTED=true
-R2_IMPLEMENTATION_STATUS=accepted_independent_external_review
-R3_STARTED=false
-R4_STARTED=false
+R2_ACCEPTED=true
+R3_ACCEPTED=true
+R4_IMPLEMENTATION_STATUS=implemented_pending_external_validation
+R4_ACCEPTED=false
 R5_STARTED=false
 R6_STARTED=false
 STAGE4_ALLOWED=false
+NEXT_STEP=V2.3-R4-external-validation
 PACKAGE_SELF_ACCEPTANCE=false
-R2_DESIGN_STATUS=accepted_independent_external_review
-R2_DESIGN_ACCEPTED=true
-R2_ACCEPTED=true
-NEXT_STEP=V2.3-R3-design-only
-
-V2.2 remains historical evidence. V2.3 is the current standalone route on the isolated branch.
+```
 <!-- V2_3_CURRENT_AUTHORITY_STATE:END -->
 
 > **当前状态唯一入口。** 本文件顶部 V2.3 区块是当前入口；下方旧 Pre-Stage-4 内容仅作历史证据，不是当前执行指针。

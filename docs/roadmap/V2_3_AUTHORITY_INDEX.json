@@ -89,9 +89,9 @@
       "status": "current"
     }
   ],
-  "head": "52d7d0097627ff1f92c3f384170bd1fd4771ada7",
-  "head_role": "implementation_lineage_head",
-  "implementation_head": "52d7d0097627ff1f92c3f384170bd1fd4771ada7",
+  "head": "a7d1c46072e8bc6f7e8d6b368f6d472b50d790a7",
+  "head_role": "current_checkout_head",
+  "implementation_head": "a7d1c46072e8bc6f7e8d6b368f6d472b50d790a7",
   "next_step": "V2.3-R4-external-validation",
   "package_self_acceptance": false,
   "primary_empirical_environment": "Vitis HLS 2023.2",
@@ -163,7 +163,7 @@
   "r4_implementation_status": "implemented_pending_external_validation",
   "r4_started": true,
   "repository": "UTZZTU/AgRefactorPlusPlus",
-  "repository_head_prefix": "2bc253a",
+  "repository_head_prefix": "a7d1c46",
   "repository_head_role": "current_checkout_head",
   "route": "V2.3",
   "schema_version": 1,

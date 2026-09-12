@@ -1,3 +1,24 @@
+<!-- V2_3_CURRENT_AUTHORITY_STATE:BEGIN -->
+## V2.3 当前权威状态（2026-09-11）
+
+```text
+route=V2.3
+branch=research-roadmap-v2.3
+implementation_head=a7d1c46072e8bc6f7e8d6b368f6d472b50d790a7
+R0_ACCEPTED=true
+R1_ACCEPTED=true
+R2_ACCEPTED=true
+R3_ACCEPTED=true
+R4_IMPLEMENTATION_STATUS=implemented_pending_external_validation
+R4_ACCEPTED=false
+R5_STARTED=false
+R6_STARTED=false
+STAGE4_ALLOWED=false
+NEXT_STEP=V2.3-R4-external-validation
+PACKAGE_SELF_ACCEPTANCE=false
+```
+<!-- V2_3_CURRENT_AUTHORITY_STATE:END -->
+
 # AgRefactor++ Research Roadmap V2.3（全链路代码追踪与证据治理路线）
 
 > 日期：2026-08-29
