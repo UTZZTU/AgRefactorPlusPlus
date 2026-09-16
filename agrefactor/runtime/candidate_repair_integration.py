@@ -85,6 +85,12 @@ def build_r4_candidate_repair_controller(*, policy=None, ledger=None, budget=Non
     return R4CandidateRepairController(policy=policy, ledger=ledger, budget=budget)
 
 
+def build_r4_existing_orchestrator_integration(config, *, gate=None, policy=None, auditor=None):
+    """Build the explicit opt-in R4 post-validation extension."""
+    from .r4_integration import ExistingOrchestratorR4Integration
+    return ExistingOrchestratorR4Integration(config, gate=gate, policy=policy, auditor=auditor)
+
+
 def _select_family_instruction(
     resolved_instruction: str | None,
     request_instruction: str | None,
@@ -760,6 +766,7 @@ class CandidateRepairValidationOrchestrator:
         model_adapter: CandidateModelAdapter,
         handler_factory: CandidateValidationHandlerFactory,
         shadow_advisor: DiagnosticAdvisor | None = None,
+        r4_integration: Any | None = None,
     ) -> None:
         if not isinstance(
             model_adapter,
@@ -780,9 +787,12 @@ class CandidateRepairValidationOrchestrator:
             raise TypeError(
                 "shadow_advisor must provide diagnose(request) or be None"
             )
+        if r4_integration is not None and not callable(getattr(r4_integration, "run_from_existing_orchestrator", None)):
+            raise TypeError("r4_integration must provide run_from_existing_orchestrator or be None")
         self._model_adapter = model_adapter
         self._handler_factory = handler_factory
         self._shadow_advisor = shadow_advisor
+        self._r4_integration = r4_integration
         self._recovery_policy = conservative_v1_policy()
 
     def run(
@@ -1401,6 +1411,33 @@ class CandidateRepairValidationOrchestrator:
                 **merged_metadata,
             },
         )
+        if self._r4_integration is not None and request.llm_advisory_mode == "candidate-only":
+            try:
+                r4_result = self._r4_integration.run_from_existing_orchestrator(
+                    context=context,
+                    request=request,
+                    main_result=result,
+                    handler_factory=self._handler_factory,
+                )
+                if not isinstance(r4_result, Mapping):
+                    raise TypeError("R4 integration must return a mapping")
+                safe_r4_result = _json_mapping(r4_result, "r4_integration")
+            except Exception as exc:
+                safe_r4_result = {
+                    "schema_version": 1,
+                    "status": "inconclusive",
+                    "reason": "r4_integration_boundary_error:" + type(exc).__name__.casefold(),
+                    "main_result_unchanged": True,
+                    "accepted_by_integration": False,
+                }
+            result = replace(
+                result,
+                metadata={
+                    **dict(result.metadata),
+                    "r4_integration_enabled": True,
+                    "r4_integration": safe_r4_result,
+                },
+            )
         context.trace.record(
             "candidate_repair.orchestration.finished",
             phase="validation",

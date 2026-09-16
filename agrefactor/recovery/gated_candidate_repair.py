@@ -27,7 +27,8 @@ from .policy import (
     RecoveryRole,
     RecoveryStage,
 )
-from agrefactor.runtime.budget import BudgetLimits, BudgetManager
+from agrefactor.runtime.budget import BudgetManager
+from .r4_budget import R4ReservePlan
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _STAGES = frozenset({"preflight", "public_evaluation", "csynth", "public_cosim"})
@@ -300,12 +301,17 @@ class R4RunResult:
 class R4CandidateRepairController:
     """Authorize and execute exactly one opt-in Candidate mutation."""
 
-    def __init__(self, *, policy: RecoveryPolicy | None = None, ledger: RecoveryLedger | None = None, budget: BudgetManager | None = None) -> None:
+    def __init__(self, *, policy: RecoveryPolicy | None = None, ledger: RecoveryLedger | None = None, budget: BudgetManager | None = None, reserve_plan: R4ReservePlan | None = None) -> None:
         self._policy = policy or RecoveryPolicy()
         self._ledger = ledger or RecoveryLedger(self._policy)
         if budget is not None and not isinstance(budget, BudgetManager):
             raise TypeError("budget must be a BudgetManager")
+        if reserve_plan is not None and not isinstance(reserve_plan, R4ReservePlan):
+            raise TypeError("reserve_plan must be R4ReservePlan or None")
+        if reserve_plan is not None and budget is None:
+            raise ValueError("reserve_plan requires the shared BudgetManager")
         self._budget = budget
+        self._reserve_plan = reserve_plan
         self._mutation_count = 0
         self._provider_call_count = 0
 
@@ -328,9 +334,10 @@ class R4CandidateRepairController:
             return self._result(request, R4Outcome.INVALID_EVIDENCE, "one_attempt_cap")
         try:
             stage = RecoveryStage(request.canary.allowed_stage)
-            if self._budget is not None:
-                reserve = BudgetLimits(max_llm_calls=1, max_tool_calls=1, max_compile_calls=1, max_csim_calls=1, max_csynth_calls=1, max_cosim_calls=1)
-                self._budget.set_active_reserve(reserve)
+            if self._budget is not None and self._reserve_plan is not None:
+                self._reserve_plan.ensure_available(self._budget)
+            elif self._budget is not None:
+                self._budget.ensure_available(llm_calls=1)
             self._ledger.reserve(RecoveryRequest(action=RecoveryAction.REPAIR, role=RecoveryRole.CANDIDATE, stage=stage, evidence_view="agent_safe", owner_authority=RecoveryAuthority.LLM_ADVISORY, lineage_id=request.authorization.run_id, physical_tool_launched=True, evidence_complete=True, advisory_mode="candidate-only"))
         except Exception:
             return self._result(request, R4Outcome.INCONCLUSIVE, "policy_ledger_or_budget_denied")
@@ -362,7 +369,7 @@ class R4CandidateRepairController:
         except Exception:
             auditor_clean = False
         if not auditor_clean or validation.get("passed") is not True or validation.get("full_prefix") is not True:
-            return self._result(request, R4Outcome.VERIFIED_NEGATIVE, "validation_or_audit_not_positive", after_hash=after_hash)
+            return self._result(request, R4Outcome.VERIFIED_NEGATIVE, "validation_or_audit_not_positive", after_hash=after_hash, formal_validation_id=str(validation.get("validation_id", "validation")))
         return self._result(request, R4Outcome.VERIFIED_POSITIVE, "fresh_full_prefix_and_audit_passed", after_hash=after_hash, formal_validation_id=str(validation.get("validation_id", "validation")))
 
     def _result(self, request: R4ExecutionInput, outcome: R4Outcome, reason: str, *, after_hash: str | None = None, formal_validation_id: str | None = None, quarantine: bool = False) -> R4RunResult:

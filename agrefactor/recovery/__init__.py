@@ -130,3 +130,10 @@ __all__.extend([
     "R4CandidateRepairController", "R4ContractError", "R4ExecutionInput",
     "R4KillSwitchState", "R4Outcome", "R4RevisionSafetyRecord", "R4RunResult",
 ])
+
+
+# R4_EPISODE_FOUNDATION_EXPORTS
+from .r4_budget import R4ReservePlan, build_r4_reserve_plan
+from .r4_episode import R4RepairEpisode, R4RepairEpisodeReader
+from .r4_provenance import R4ProvenanceResult, validate_r4_provenance
+__all__.extend(["R4ReservePlan", "build_r4_reserve_plan", "R4RepairEpisode", "R4RepairEpisodeReader", "R4ProvenanceResult", "validate_r4_provenance"])
