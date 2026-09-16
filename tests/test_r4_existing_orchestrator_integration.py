@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from agrefactor.recovery.gated_candidate_repair import R4CanaryManifest, R4KillSwitchState
 from agrefactor.recovery.memory_gate import GateDecision, GateResult, DiagnosticEpisode, EpisodeOutcome, PatternLifecycle, RepairPatternRevision
-from agrefactor.recovery.r4_budget import build_r4_reserve_plan
 from agrefactor.recovery.r3_memory_snapshot import MemorySnapshot
+from agrefactor.recovery.r4_episode import R4RepairEpisodeReader
 from agrefactor.runtime.budget import BudgetLimits
 from agrefactor.runtime.r4_integration import ExistingOrchestratorR4Integration, R4IntegrationConfig
 
@@ -45,6 +48,22 @@ class HookProbe:
     def run_from_existing_orchestrator(self, **kwargs):
         self.calls += 1
         return {"schema_version": 1, "status": "abstained", "reason": "probe", "main_result_unchanged": True, "accepted_by_integration": False}
+
+
+class ContradictingAuditor:
+    def audit(self, validation):
+        return {"status": "contradiction", "has_errors": True, "failure_attributable": False, "environment_excluded": False}
+
+
+class AttributingAuditor:
+    def audit(self, validation):
+        return {"status": "clean", "has_errors": False, "failure_attributable": True, "environment_excluded": True}
+
+
+class FixedDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 9, 16, 0, 0, 0, tzinfo=tz or timezone.utc)
 
 
 class R4ExistingOrchestratorIntegrationTests(unittest.TestCase):
@@ -85,22 +104,38 @@ class R4ExistingOrchestratorIntegrationTests(unittest.TestCase):
         result = m.CandidateRepairValidationOrchestrator(model_adapter=adapter, handler_factory=factory, shadow_advisor=selected).run(m.make_context(limits=BudgetLimits(max_llm_calls=4, max_tool_calls=20, max_compile_calls=20, max_csim_calls=10, max_csynth_calls=10, max_cosim_calls=10, max_wall_time_s=5000)), request, validation_id="r4-main")
         return result, request, factory, selected
 
-    def _integration(self, m, request, mutation, root, event, *, calibrated=True):
+    def _integration(self, m, request, mutation, root, event, *, calibrated=True, kill=False, auditor=None, snapshot=None):
         target = event["target_identity"]["fingerprint"]
         toolchain = event["toolchain_identity"]["fingerprint"]
         identity = {"run_id": event["run_id"], "case_id": "case-1", "stage": "csynth", "identity_complete": True, "hidden_input_count": 0, "secret_present": False, "private_reasoning_present": False, "source_sha256": h(request.original_code), "target_identity": target, "toolchain_identity": toolchain, "parser_identity": "parser-1", "model_identity": "model-1", "prompt_sha256": h("prompt")}
         canary = R4CanaryManifest(manifest_id="canary-1", manifest_sha256=h("canary"), enabled=True, operator_enabled=True, case_ids=("case-1",), source_sha256=h(request.original_code), target_identity=target, toolchain_identity=toolchain, parser_identity="parser-1", model_identity="model-1", prompt_sha256=h("prompt"), allowed_stage="csynth", expires_at="2099-01-01T00:00:00Z")
-        plan = build_r4_reserve_plan(public_csim=True, csynth=True, public_cosim=True, hidden_evaluation=True, tool_calls=3, compile_calls=2, wall_time_s=100)
         revision = self._revision(event, {})
-        snapshot = self._snapshot(revision, calibrated=calibrated)
-        config = R4IntegrationConfig(canary=canary, execution_identity=identity, memory_snapshot=snapshot, reserve_plan=plan, episode_root=root, mutation_adapter=mutation, kill_switch=R4KillSwitchState())
-        return ExistingOrchestratorR4Integration(config)
+        selected_snapshot = snapshot or self._snapshot(revision, calibrated=calibrated)
+        config = R4IntegrationConfig(canary=canary, execution_identity=identity, memory_snapshot=selected_snapshot, episode_root=root, mutation_adapter=mutation, validation_wall_time_s=100, kill_switch=R4KillSwitchState(active=kill, trigger="test" if kill else None))
+        return ExistingOrchestratorR4Integration(config, auditor=auditor)
 
     def test_default_orchestrator_does_not_invoke_r4(self):
         m = helpers()
         result, _, _, shadow = self._run_main(m, shadow=False, advisory_mode="off")
         self.assertNotIn("r4_integration", result.metadata)
         self.assertIsNone(shadow)
+
+    def test_feature_off_full_serialized_result_is_equivalent(self):
+        m = helpers()
+        request = replace(m.make_request(max_attempts=1), llm_advisory_mode="off")
+        adapter1, provider1 = m.make_adapter([m.P1])
+        adapter2, provider2 = m.make_adapter([m.P1])
+        factory1 = m.ScenarioFactory(self._scenario(m))
+        factory2 = m.ScenarioFactory(self._scenario(m))
+        task = m.make_task()
+        context1 = m.RunContext(run_id="feature-off", task=task, budget=m.BudgetManager(m.BudgetLimits(), clock=lambda: 0.0), trace=m.TraceRecorder("feature-off", task_id=task.task_id))
+        context2 = m.RunContext(run_id="feature-off", task=task, budget=m.BudgetManager(m.BudgetLimits(), clock=lambda: 0.0), trace=m.TraceRecorder("feature-off", task_id=task.task_id))
+        with patch("agrefactor.evidence.diagnostic_event.datetime", FixedDateTime):
+            implicit = m.CandidateRepairValidationOrchestrator(model_adapter=adapter1, handler_factory=factory1).run(context1, request, validation_id="feature-off")
+            explicit = m.CandidateRepairValidationOrchestrator(model_adapter=adapter2, handler_factory=factory2, r4_integration=None).run(context2, request, validation_id="feature-off")
+        self.assertEqual(implicit.to_dict(), explicit.to_dict())
+        self.assertEqual(provider1.calls, provider2.calls)
+        self.assertEqual(context1.budget.snapshot().to_dict(), context2.budget.snapshot().to_dict())
 
     def test_existing_orchestrator_invokes_explicit_hook_only_in_candidate_mode(self):
         m = helpers()
@@ -153,6 +188,107 @@ class R4ExistingOrchestratorIntegrationTests(unittest.TestCase):
             outcome = integration.run_from_existing_orchestrator(context=m.make_context(limits=BudgetLimits(max_llm_calls=4, max_tool_calls=20, max_compile_calls=20, max_csim_calls=10, max_csynth_calls=10, max_cosim_calls=10, max_wall_time_s=5000)), request=request, main_result=result, handler_factory=m.ScenarioFactory(m.pass_scenario))
             self.assertEqual(outcome["status"], "abstained")
             self.assertEqual(mutation.calls, 0)
+
+    def test_budget_admission_failure_is_recorded_before_provider(self):
+        m = helpers()
+        result, request, _, _ = self._run_main(m)
+        event = result.metadata["diagnostic_events"][0]
+        mutation = Mutation(m.P1)
+        with tempfile.TemporaryDirectory() as root:
+            integration = self._integration(m, request, mutation, root, event)
+            outcome = integration.run_from_existing_orchestrator(context=m.make_context(limits=BudgetLimits(max_llm_calls=0, max_tool_calls=20, max_compile_calls=20, max_csim_calls=10, max_csynth_calls=10, max_cosim_calls=10, max_wall_time_s=5000)), request=request, main_result=result, handler_factory=m.ScenarioFactory(m.pass_scenario))
+            self.assertEqual(outcome["status"], "inconclusive")
+            self.assertEqual(outcome["reason"], "policy_ledger_or_budget_denied")
+            self.assertEqual(mutation.calls, 0)
+            self.assertEqual(outcome["budget_actual"]["provider_calls"], 0)
+            self.assertEqual(outcome["budget_actual"]["mutation_calls"], 0)
+            self.assertTrue(Path(outcome["episode_path"]).is_file())
+
+    def test_kill_switch_blocks_integration_before_provider(self):
+        m = helpers()
+        result, request, _, _ = self._run_main(m)
+        event = result.metadata["diagnostic_events"][0]
+        mutation = Mutation(m.P1)
+        with tempfile.TemporaryDirectory() as root:
+            integration = self._integration(m, request, mutation, root, event, kill=True)
+            outcome = integration.run_from_existing_orchestrator(context=m.make_context(limits=BudgetLimits(max_llm_calls=4, max_tool_calls=20, max_compile_calls=20, max_csim_calls=10, max_csynth_calls=10, max_cosim_calls=10, max_wall_time_s=5000)), request=request, main_result=result, handler_factory=m.ScenarioFactory(m.pass_scenario))
+            self.assertEqual(outcome["status"], "abstained")
+            self.assertEqual(mutation.calls, 0)
+
+    def test_auditor_contradiction_is_inconclusive_episode(self):
+        m = helpers()
+        result, request, _, _ = self._run_main(m)
+        event = result.metadata["diagnostic_events"][0]
+        mutation = Mutation(m.P1)
+        with tempfile.TemporaryDirectory() as root:
+            integration = self._integration(m, request, mutation, root, event, auditor=ContradictingAuditor())
+            outcome = integration.run_from_existing_orchestrator(context=m.make_context(limits=BudgetLimits(max_llm_calls=4, max_tool_calls=20, max_compile_calls=20, max_csim_calls=10, max_csynth_calls=10, max_cosim_calls=10, max_wall_time_s=5000)), request=request, main_result=result, handler_factory=m.ScenarioFactory(m.pass_scenario))
+            self.assertEqual(outcome["status"], "inconclusive")
+            episode = R4RepairEpisodeReader.read(outcome["episode_path"])
+            self.assertEqual(episode.outcome, "inconclusive")
+
+    def test_attributed_candidate_failure_writes_verified_negative(self):
+        m = helpers()
+        result, request, _, _ = self._run_main(m)
+        event = result.metadata["diagnostic_events"][0]
+        mutation = Mutation(m.P1)
+        def failing_scenario(plan, state):
+            if state is m.ValidationState.CSYNTH:
+                return m.report_for(state, item=m.feedback_item("candidate.failure", state=state, owner=m.FeedbackOwner.CANDIDATE, category=m.FeedbackCategory.TIMING_VIOLATION), report_id="candidate-failure")
+            return m.pass_scenario(plan, state)
+        with tempfile.TemporaryDirectory() as root:
+            integration = self._integration(m, request, mutation, root, event, auditor=AttributingAuditor())
+            outcome = integration.run_from_existing_orchestrator(context=m.make_context(limits=BudgetLimits(max_llm_calls=4, max_tool_calls=20, max_compile_calls=20, max_csim_calls=10, max_csynth_calls=10, max_cosim_calls=10, max_wall_time_s=5000)), request=request, main_result=result, handler_factory=m.ScenarioFactory(failing_scenario))
+            self.assertEqual(outcome["status"], "verified_negative")
+            episode = R4RepairEpisodeReader.read(outcome["episode_path"])
+            self.assertEqual(episode.outcome, "verified_negative")
+            self.assertTrue(episode.auditor_result["failure_attributable"])
+
+    def test_missing_snapshot_revision_fails_closed_at_hook_boundary(self):
+        m = helpers()
+        result, request, _, _ = self._run_main(m)
+        event = result.metadata["diagnostic_events"][0]
+        empty_snapshot = MemorySnapshot.freeze(episodes=(), revisions=(), gate_context={"identity_complete": True, "hidden_input_count": 0, "secret_present": False, "calibrated_risk_ok": True}, frozen_at="2026-09-12T00:00:00Z")
+        mutation = Mutation(m.P1)
+        with tempfile.TemporaryDirectory() as root:
+            integration = self._integration(m, request, mutation, root, event, snapshot=empty_snapshot)
+            adapter, _ = m.make_adapter([m.P1])
+            hooked = m.CandidateRepairValidationOrchestrator(model_adapter=adapter, handler_factory=m.ScenarioFactory(self._scenario(m)), shadow_advisor=StaticAdvisor(), r4_integration=integration).run(m.make_context(), replace(request, llm_advisory_mode="candidate-only"), validation_id="snapshot-missing")
+            self.assertEqual(hooked.metadata["r4_integration"]["status"], "inconclusive")
+            self.assertTrue(hooked.metadata["r4_integration"]["main_result_unchanged"])
+            self.assertEqual(mutation.calls, 0)
+
+    def test_episode_write_failure_is_contained_by_existing_orchestrator(self):
+        m = helpers()
+        result, request, _, _ = self._run_main(m)
+        event = result.metadata["diagnostic_events"][0]
+        mutation = Mutation(m.P1)
+        with tempfile.TemporaryDirectory() as root:
+            blocked_root = Path(root) / "not-a-directory"
+            blocked_root.write_text("occupied", encoding="utf-8")
+            integration = self._integration(m, request, mutation, str(blocked_root), event)
+            adapter, _ = m.make_adapter([m.P1])
+            hooked = m.CandidateRepairValidationOrchestrator(model_adapter=adapter, handler_factory=m.ScenarioFactory(self._scenario(m)), shadow_advisor=StaticAdvisor(), r4_integration=integration).run(m.make_context(), replace(request, llm_advisory_mode="candidate-only"), validation_id="episode-write-failure")
+            self.assertEqual(hooked.metadata["r4_integration"]["status"], "inconclusive")
+            self.assertTrue(hooked.metadata["r4_integration"]["main_result_unchanged"])
+
+    def test_episode_before_hash_uses_actual_main_candidate(self):
+        m = helpers()
+        result, request, _, _ = self._run_main(m)
+        final_candidate = m.P2
+        metadata = dict(result.metadata)
+        events = [dict(item) for item in metadata["diagnostic_events"]]
+        events[0]["candidate_sha256"] = h(final_candidate)
+        metadata["diagnostic_events"] = events
+        changed_result = replace(result, final_candidate=final_candidate, metadata=metadata)
+        event = events[0]
+        mutation = Mutation(m.P1)
+        with tempfile.TemporaryDirectory() as root:
+            integration = self._integration(m, request, mutation, root, event)
+            outcome = integration.run_from_existing_orchestrator(context=m.make_context(limits=BudgetLimits(max_llm_calls=4, max_tool_calls=20, max_compile_calls=20, max_csim_calls=10, max_csynth_calls=10, max_cosim_calls=10, max_wall_time_s=5000)), request=request, main_result=changed_result, handler_factory=m.ScenarioFactory(m.pass_scenario))
+            episode = R4RepairEpisodeReader.read(outcome["episode_path"])
+            self.assertEqual(episode.candidate_before_sha256, h(final_candidate))
+            self.assertNotEqual(episode.candidate_before_sha256, h(request.initial_candidate))
 
 
 if __name__ == "__main__": unittest.main()

@@ -14,6 +14,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
 
+from .r4_provenance import canonical_artifact_sha256
+
 OUTCOMES = frozenset({"verified_positive", "verified_negative", "abstained", "inconclusive", "invalid_evidence"})
 
 
@@ -63,11 +65,17 @@ class R4RepairEpisode:
     episode_id: str
     created_at: str
     event_ref: str
+    lineage: tuple[str, ...]
     execution_identity: Mapping[str, Any]
     request_identity: Mapping[str, Any]
     advisory_identity: Mapping[str, Any]
     gate_identity: Mapping[str, Any]
     authorization_identity: Mapping[str, Any]
+    policy_decision: Mapping[str, Any]
+    ledger_event: Mapping[str, Any]
+    budget_requested: Mapping[str, Any]
+    budget_effective: Mapping[str, Any]
+    budget_actual: Mapping[str, Any]
     candidate_before_sha256: str
     candidate_after_sha256: str | None
     public_testbench_before: Mapping[str, str]
@@ -90,7 +98,24 @@ class R4RepairEpisode:
             raise ValueError("episode_id must be a single path component")
         _text(self.created_at, "created_at")
         _text(self.event_ref, "event_ref")
-        for name in ("execution_identity", "request_identity", "advisory_identity", "gate_identity", "authorization_identity", "auditor_result", "budget_delta"):
+        lineage = tuple(_text(item, "lineage") for item in self.lineage)
+        if not lineage or len(lineage) != len(set(lineage)) or self.event_ref not in lineage:
+            raise ValueError("lineage must be unique and include event_ref")
+        object.__setattr__(self, "lineage", lineage)
+        for name in (
+            "execution_identity",
+            "request_identity",
+            "advisory_identity",
+            "gate_identity",
+            "authorization_identity",
+            "policy_decision",
+            "ledger_event",
+            "budget_requested",
+            "budget_effective",
+            "budget_actual",
+            "auditor_result",
+            "budget_delta",
+        ):
             object.__setattr__(self, name, _freeze(_json(getattr(self, name), name)))
         object.__setattr__(self, "candidate_before_sha256", _digest(self.candidate_before_sha256, "candidate_before_sha256"))
         if self.candidate_after_sha256 is not None:
@@ -114,6 +139,26 @@ class R4RepairEpisode:
         if self.outcome not in OUTCOMES:
             raise ValueError("unsupported R4 outcome")
         _text(self.outcome_reason, "outcome_reason")
+        authorization = _plain(self.authorization_identity)
+        if "before_candidate_sha256" in authorization and authorization["before_candidate_sha256"] != self.candidate_before_sha256:
+            raise ValueError("episode before Candidate hash does not match authorization")
+        if "policy_decision_id" in authorization and authorization["policy_decision_id"] != canonical_artifact_sha256(_plain(self.policy_decision)):
+            raise ValueError("episode policy producer hash mismatch")
+        if "ledger_reservation_id" in authorization and authorization["ledger_reservation_id"] != canonical_artifact_sha256(_plain(self.ledger_event)):
+            raise ValueError("episode ledger producer hash mismatch")
+        if "budget_reservation_id" in authorization and authorization["budget_reservation_id"] != self.budget_effective.get("reservation_id"):
+            raise ValueError("episode budget producer hash mismatch")
+        requested_plan = self.budget_requested.get("plan_sha256")
+        effective_requested = self.budget_effective.get("requested", {})
+        actual_plan = self.budget_actual.get("plan_sha256")
+        if requested_plan is not None and (
+            not isinstance(effective_requested, Mapping)
+            or effective_requested.get("plan_sha256") != requested_plan
+            or actual_plan != requested_plan
+        ):
+            raise ValueError("episode requested/effective/actual budget lineage mismatch")
+        if self.budget_delta and self.budget_actual.get("budget_delta") != _plain(self.budget_delta):
+            raise ValueError("episode budget_delta must match budget_actual")
         if self.outcome == "verified_positive":
             if self.candidate_after_sha256 is None or self.formal_validation_id is None or not refs:
                 raise ValueError("verified_positive requires mutation and full validation evidence")
@@ -128,6 +173,9 @@ class R4RepairEpisode:
                 raise ValueError("verified_negative requires independent failure attribution")
             if self.auditor_result.get("environment_excluded") is not True:
                 raise ValueError("verified_negative requires environment exclusion")
+        if self.outcome in {"verified_positive", "verified_negative"}:
+            if self.policy_decision.get("status") != "allowed" or self.ledger_event.get("accepted") is not True or self.budget_effective.get("admitted") is not True:
+                raise ValueError("verified R4 outcomes require policy, ledger, and budget producers")
         if self.outcome == "abstained" and (self.candidate_after_sha256 is not None or self.provider_call_count != 0):
             raise ValueError("abstained episode cannot contain a mutation or provider call")
         expected = self._compute_hash()
@@ -136,7 +184,37 @@ class R4RepairEpisode:
         object.__setattr__(self, "episode_hash", expected)
 
     def _payload(self) -> dict[str, Any]:
-        return {"schema_version": 1, "episode_id": self.episode_id, "created_at": self.created_at, "event_ref": self.event_ref, "execution_identity": _plain(self.execution_identity), "request_identity": _plain(self.request_identity), "advisory_identity": _plain(self.advisory_identity), "gate_identity": _plain(self.gate_identity), "authorization_identity": _plain(self.authorization_identity), "candidate_before_sha256": self.candidate_before_sha256, "candidate_after_sha256": self.candidate_after_sha256, "public_testbench_before": dict(self.public_testbench_before), "public_testbench_after": dict(self.public_testbench_after), "hidden_testbench_before": dict(self.hidden_testbench_before), "hidden_testbench_after": dict(self.hidden_testbench_after), "formal_validation_id": self.formal_validation_id, "validation_evidence_refs": list(self.validation_evidence_refs), "auditor_result": _plain(self.auditor_result), "budget_delta": _plain(self.budget_delta), "provider_call_count": self.provider_call_count, "vitis_phase_count": self.vitis_phase_count, "outcome": self.outcome, "outcome_reason": self.outcome_reason}
+        return {
+            "schema_version": 2,
+            "episode_id": self.episode_id,
+            "created_at": self.created_at,
+            "event_ref": self.event_ref,
+            "lineage": list(self.lineage),
+            "execution_identity": _plain(self.execution_identity),
+            "request_identity": _plain(self.request_identity),
+            "advisory_identity": _plain(self.advisory_identity),
+            "gate_identity": _plain(self.gate_identity),
+            "authorization_identity": _plain(self.authorization_identity),
+            "policy_decision": _plain(self.policy_decision),
+            "ledger_event": _plain(self.ledger_event),
+            "budget_requested": _plain(self.budget_requested),
+            "budget_effective": _plain(self.budget_effective),
+            "budget_actual": _plain(self.budget_actual),
+            "candidate_before_sha256": self.candidate_before_sha256,
+            "candidate_after_sha256": self.candidate_after_sha256,
+            "public_testbench_before": dict(self.public_testbench_before),
+            "public_testbench_after": dict(self.public_testbench_after),
+            "hidden_testbench_before": dict(self.hidden_testbench_before),
+            "hidden_testbench_after": dict(self.hidden_testbench_after),
+            "formal_validation_id": self.formal_validation_id,
+            "validation_evidence_refs": list(self.validation_evidence_refs),
+            "auditor_result": _plain(self.auditor_result),
+            "budget_delta": _plain(self.budget_delta),
+            "provider_call_count": self.provider_call_count,
+            "vitis_phase_count": self.vitis_phase_count,
+            "outcome": self.outcome,
+            "outcome_reason": self.outcome_reason,
+        }
 
     def _compute_hash(self) -> str:
         return hashlib.sha256(json.dumps(self._payload(), ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()

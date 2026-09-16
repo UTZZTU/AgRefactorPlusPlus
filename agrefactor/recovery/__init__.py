@@ -133,7 +133,24 @@ __all__.extend([
 
 
 # R4_EPISODE_FOUNDATION_EXPORTS
-from .r4_budget import R4ReservePlan, build_r4_reserve_plan
+from .r4_budget import (
+    R4BudgetReservation,
+    R4ReservePlan,
+    build_r4_budget_actual,
+    build_r4_reserve_plan,
+    build_r4_reserve_plan_from_handlers,
+    record_r4_budget_reservation,
+)
 from .r4_episode import R4RepairEpisode, R4RepairEpisodeReader
-from .r4_provenance import R4ProvenanceResult, validate_r4_provenance
-__all__.extend(["R4ReservePlan", "build_r4_reserve_plan", "R4RepairEpisode", "R4RepairEpisodeReader", "R4ProvenanceResult", "validate_r4_provenance"])
+from .r4_provenance import (
+    R4ProvenanceResult,
+    canonical_artifact_sha256,
+    validate_r4_provenance,
+)
+__all__.extend([
+    "R4BudgetReservation", "R4ReservePlan", "build_r4_budget_actual",
+    "build_r4_reserve_plan", "build_r4_reserve_plan_from_handlers",
+    "record_r4_budget_reservation", "R4RepairEpisode",
+    "R4RepairEpisodeReader", "R4ProvenanceResult",
+    "canonical_artifact_sha256", "validate_r4_provenance",
+])

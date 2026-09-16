@@ -199,11 +199,20 @@ class R4CandidateRepairAuthorization:
     before_candidate_sha256: str
     policy_decision_id: str
     budget_reservation_id: str
+    ledger_reservation_id: str
     deterministic_terminal_ref: str
     authorization_id: str = ""
 
     def __post_init__(self) -> None:
-        for field_name in ("run_id", "event_ref", "advisory_id", "policy_decision_id", "budget_reservation_id", "deterministic_terminal_ref"):
+        for field_name in (
+            "run_id",
+            "event_ref",
+            "advisory_id",
+            "policy_decision_id",
+            "budget_reservation_id",
+            "ledger_reservation_id",
+            "deterministic_terminal_ref",
+        ):
             _text(getattr(self, field_name), field_name)
         if self.gate_decision != GateDecision.ACCEPT.value:
             raise R4ContractError("R4 authorization requires Gate accept")
@@ -217,7 +226,24 @@ class R4CandidateRepairAuthorization:
         object.__setattr__(self, "authorization_id", expected)
 
     def to_dict(self, *, include_id: bool = True) -> dict[str, str]:
-        value = {name: getattr(self, name) for name in ("run_id", "event_ref", "advisory_id", "gate_decision", "pattern_lifecycle", "gate_contract_hash", "revision_sha256", "canary_manifest_sha256", "before_candidate_sha256", "policy_decision_id", "budget_reservation_id", "deterministic_terminal_ref")}
+        value = {
+            name: getattr(self, name)
+            for name in (
+                "run_id",
+                "event_ref",
+                "advisory_id",
+                "gate_decision",
+                "pattern_lifecycle",
+                "gate_contract_hash",
+                "revision_sha256",
+                "canary_manifest_sha256",
+                "before_candidate_sha256",
+                "policy_decision_id",
+                "budget_reservation_id",
+                "ledger_reservation_id",
+                "deterministic_terminal_ref",
+            )
+        }
         if include_id:
             value["authorization_id"] = self.authorization_id
         return value
@@ -234,6 +260,9 @@ class R4ExecutionInput:
     original: str
     testbench_hashes: Mapping[str, str]
     route_fingerprint: str
+    policy_decision: Mapping[str, Any]
+    ledger_event: Mapping[str, Any]
+    budget_reservation: Mapping[str, Any]
     agent_safe: bool = True
     physical_tool_launched: bool = True
     evidence_complete: bool = True
@@ -261,6 +290,17 @@ class R4ExecutionInput:
             _text(name, "testbench identity")
             _hash(value, "testbench hash")
         _hash(self.route_fingerprint, "route_fingerprint")
+        policy = _copy(self.policy_decision, "policy_decision")
+        ledger = _copy(self.ledger_event, "ledger_event")
+        reservation = _copy(self.budget_reservation, "budget_reservation")
+        if hashlib.sha256(_canonical(policy)).hexdigest() != self.authorization.policy_decision_id:
+            raise R4ContractError("policy decision producer hash mismatch")
+        if hashlib.sha256(_canonical(ledger)).hexdigest() != self.authorization.ledger_reservation_id:
+            raise R4ContractError("ledger producer hash mismatch")
+        if reservation.get("reservation_id") != self.authorization.budget_reservation_id:
+            raise R4ContractError("budget reservation producer hash mismatch")
+        if policy.get("status") != "allowed" or ledger.get("accepted") is not True or reservation.get("admitted") is not True:
+            raise R4ContractError("R4 producer evidence does not authorize execution")
         if not all(isinstance(value, bool) for value in (self.agent_safe, self.physical_tool_launched, self.evidence_complete)):
             raise TypeError("R4 execution flags must be boolean")
 
@@ -302,8 +342,9 @@ class R4CandidateRepairController:
     """Authorize and execute exactly one opt-in Candidate mutation."""
 
     def __init__(self, *, policy: RecoveryPolicy | None = None, ledger: RecoveryLedger | None = None, budget: BudgetManager | None = None, reserve_plan: R4ReservePlan | None = None) -> None:
-        self._policy = policy or RecoveryPolicy()
-        self._ledger = ledger or RecoveryLedger(self._policy)
+        legacy_admission = any(value is not None for value in (policy, ledger, budget, reserve_plan))
+        self._policy = (policy or RecoveryPolicy()) if legacy_admission else None
+        self._ledger = (ledger or RecoveryLedger(self._policy)) if legacy_admission else None
         if budget is not None and not isinstance(budget, BudgetManager):
             raise TypeError("budget must be a BudgetManager")
         if reserve_plan is not None and not isinstance(reserve_plan, R4ReservePlan):
@@ -316,10 +357,10 @@ class R4CandidateRepairController:
         self._provider_call_count = 0
 
     @property
-    def ledger(self) -> RecoveryLedger:
+    def ledger(self) -> RecoveryLedger | None:
         return self._ledger
 
-    def run(self, request: R4ExecutionInput, *, mutate_candidate: Callable[[str], str], validate_candidate: Callable[[str], Mapping[str, Any]], audit: Callable[[Mapping[str, Any]], bool], kill_switch_reader: Callable[[], R4KillSwitchState] | None = None) -> R4RunResult:
+    def run(self, request: R4ExecutionInput, *, mutate_candidate: Callable[[str], str], validate_candidate: Callable[[str], Mapping[str, Any]], audit: Callable[[Mapping[str, Any]], Mapping[str, Any]], kill_switch_reader: Callable[[], R4KillSwitchState] | None = None) -> R4RunResult:
         if not isinstance(request, R4ExecutionInput) or not callable(mutate_candidate) or not callable(validate_candidate) or not callable(audit):
             raise TypeError("invalid R4 execution request or callback")
         if not request.canary.enabled or request.canary.expired or not request.canary.matches(request.execution_identity):
@@ -332,15 +373,16 @@ class R4CandidateRepairController:
             return self._result(request, R4Outcome.INVALID_EVIDENCE, "evidence_firewall")
         if self._provider_call_count or self._mutation_count:
             return self._result(request, R4Outcome.INVALID_EVIDENCE, "one_attempt_cap")
-        try:
-            stage = RecoveryStage(request.canary.allowed_stage)
-            if self._budget is not None and self._reserve_plan is not None:
-                self._reserve_plan.ensure_available(self._budget)
-            elif self._budget is not None:
-                self._budget.ensure_available(llm_calls=1)
-            self._ledger.reserve(RecoveryRequest(action=RecoveryAction.REPAIR, role=RecoveryRole.CANDIDATE, stage=stage, evidence_view="agent_safe", owner_authority=RecoveryAuthority.LLM_ADVISORY, lineage_id=request.authorization.run_id, physical_tool_launched=True, evidence_complete=True, advisory_mode="candidate-only"))
-        except Exception:
-            return self._result(request, R4Outcome.INCONCLUSIVE, "policy_ledger_or_budget_denied")
+        if self._ledger is not None:
+            try:
+                stage = RecoveryStage(request.canary.allowed_stage)
+                if self._budget is not None and self._reserve_plan is not None:
+                    self._reserve_plan.ensure_available(self._budget)
+                elif self._budget is not None:
+                    self._budget.ensure_available(llm_calls=1)
+                self._ledger.reserve(RecoveryRequest(action=RecoveryAction.REPAIR, role=RecoveryRole.CANDIDATE, stage=stage, evidence_view="agent_safe", owner_authority=RecoveryAuthority.LLM_ADVISORY, lineage_id=request.authorization.run_id, physical_tool_launched=True, evidence_complete=True, advisory_mode="candidate-only"))
+            except Exception:
+                return self._result(request, R4Outcome.INCONCLUSIVE, "policy_ledger_or_budget_denied")
         if kill_switch_reader is not None and kill_switch_reader().active:
             return self._result(request, R4Outcome.ABSTAINED, "kill_switch_active_before_provider")
         self._provider_call_count += 1
@@ -364,13 +406,30 @@ class R4CandidateRepairController:
             return self._result(request, R4Outcome.INVALID_EVIDENCE, "testbench_identity_after_missing", after_hash=after_hash)
         if validation.get("testbench_hashes_after") != dict(request.testbench_hashes):
             return self._result(request, R4Outcome.INVALID_EVIDENCE, "testbench_identity_changed", after_hash=after_hash, quarantine=True)
+        terminal_prefix = (
+            validation.get("full_prefix") is True
+            or validation.get("prefix_executed_to_terminal") is True
+        )
+        if validation.get("fresh_validation") is not True or not terminal_prefix:
+            return self._result(request, R4Outcome.INVALID_EVIDENCE, "fresh_terminal_prefix_missing", after_hash=after_hash, quarantine=True)
+        if not isinstance(validation.get("passed"), bool):
+            return self._result(request, R4Outcome.INVALID_EVIDENCE, "validation_outcome_missing", after_hash=after_hash)
         try:
-            auditor_clean = bool(audit({"authorization_id": request.authorization.authorization_id, "before_candidate_sha256": request.authorization.before_candidate_sha256, "after_candidate_sha256": after_hash, "validation": validation, "route_fingerprint": request.route_fingerprint}))
+            audit_result = _copy(
+                audit({"authorization_id": request.authorization.authorization_id, "before_candidate_sha256": request.authorization.before_candidate_sha256, "after_candidate_sha256": after_hash, "validation": validation, "route_fingerprint": request.route_fingerprint}),
+                "auditor_result",
+            )
         except Exception:
-            auditor_clean = False
-        if not auditor_clean or validation.get("passed") is not True or validation.get("full_prefix") is not True:
-            return self._result(request, R4Outcome.VERIFIED_NEGATIVE, "validation_or_audit_not_positive", after_hash=after_hash, formal_validation_id=str(validation.get("validation_id", "validation")))
-        return self._result(request, R4Outcome.VERIFIED_POSITIVE, "fresh_full_prefix_and_audit_passed", after_hash=after_hash, formal_validation_id=str(validation.get("validation_id", "validation")))
+            return self._result(request, R4Outcome.INCONCLUSIVE, "independent_auditor_error", after_hash=after_hash, formal_validation_id=str(validation.get("validation_id", "validation")))
+        if audit_result.get("status") != "clean" or audit_result.get("has_errors") is True:
+            return self._result(request, R4Outcome.INCONCLUSIVE, "independent_auditor_not_clean", after_hash=after_hash, formal_validation_id=str(validation.get("validation_id", "validation")))
+        if validation["passed"] is True:
+            if validation.get("full_prefix") is not True:
+                return self._result(request, R4Outcome.INVALID_EVIDENCE, "positive_without_full_prefix", after_hash=after_hash, quarantine=True)
+            return self._result(request, R4Outcome.VERIFIED_POSITIVE, "fresh_full_prefix_and_audit_passed", after_hash=after_hash, formal_validation_id=str(validation.get("validation_id", "validation")))
+        if audit_result.get("failure_attributable") is True and audit_result.get("environment_excluded") is True:
+            return self._result(request, R4Outcome.VERIFIED_NEGATIVE, "independently_attributed_candidate_failure", after_hash=after_hash, formal_validation_id=str(validation.get("validation_id", "validation")))
+        return self._result(request, R4Outcome.INCONCLUSIVE, "negative_attribution_incomplete", after_hash=after_hash, formal_validation_id=str(validation.get("validation_id", "validation")))
 
     def _result(self, request: R4ExecutionInput, outcome: R4Outcome, reason: str, *, after_hash: str | None = None, formal_validation_id: str | None = None, quarantine: bool = False) -> R4RunResult:
         record = None
