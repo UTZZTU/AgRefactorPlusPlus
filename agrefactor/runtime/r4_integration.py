@@ -17,6 +17,7 @@ from agrefactor.recovery.gated_candidate_repair import (
     R4CandidateRepairController,
     R4ExecutionInput,
     R4KillSwitchState,
+    R4MutationFailure,
 )
 from agrefactor.recovery.memory_gate import ApplicabilityGate, RepairPatternRevision
 from agrefactor.recovery.policy import (
@@ -125,24 +126,54 @@ class CandidateModelR4MutationAdapter:
         advisory: Mapping[str, Any],
         task: Any,
     ) -> str:
-        self._budget.ensure_available(llm_calls=1)
-        prompt = self._prompt_factory.build(
-            event=event,
-            advisory=advisory,
-            task=task,
-            candidate=candidate,
-        )
-        result = self._model_adapter.generate(
-            CandidateModelRequest(
+        provider_call_observed = False
+
+        def before_provider_call() -> None:
+            nonlocal provider_call_observed
+            self._budget.consume(llm_calls=1)
+            provider_call_observed = True
+
+        try:
+            self._budget.ensure_available(llm_calls=1)
+        except Exception as exc:
+            raise R4MutationFailure(
+                "pre_provider_budget_failure",
+                provider_call_observed=False,
+            ) from exc
+        try:
+            prompt = self._prompt_factory.build(
+                event=event,
+                advisory=advisory,
+                task=task,
+                candidate=candidate,
+            )
+            request = CandidateModelRequest(
                 prompt=prompt,
                 task=task,
                 current_candidate=candidate,
-            ),
-            before_provider_call=lambda: self._budget.consume(llm_calls=1),
-            after_provider_response=lambda response: self._budget.record_model_usage(
-                response.usage
-            ),
-        )
+            )
+        except Exception as exc:
+            raise R4MutationFailure(
+                "pre_provider_mutation_contract_failure",
+                provider_call_observed=False,
+            ) from exc
+        try:
+            result = self._model_adapter.generate(
+                request,
+                before_provider_call=before_provider_call,
+                after_provider_response=lambda response: self._budget.record_model_usage(
+                    response.usage
+                ),
+            )
+        except Exception as exc:
+            raise R4MutationFailure(
+                (
+                    "provider_or_response_contract_failure"
+                    if provider_call_observed
+                    else "pre_provider_model_adapter_failure"
+                ),
+                provider_call_observed=provider_call_observed,
+            ) from exc
         return result.candidate_code
 
 
@@ -668,6 +699,14 @@ class ExistingOrchestratorR4Integration:
             audit=audit,
         )
         after_budget = context.budget.snapshot().to_dict()
+        actual_provider_calls = after_budget["llm_calls"] - budget_before["llm_calls"]
+        if actual_provider_calls < 0 or actual_provider_calls > 1:
+            raise RuntimeError("r4_provider_call_accounting_out_of_range")
+        if (
+            isinstance(self._config.mutation_adapter, CandidateModelR4MutationAdapter)
+            and result.provider_call_count != actual_provider_calls
+        ):
+            raise RuntimeError("r4_provider_call_accounting_mismatch")
         budget_actual = build_r4_budget_actual(
             reserve_plan,
             budget_before=budget_before,

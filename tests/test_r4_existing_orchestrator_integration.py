@@ -9,12 +9,14 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from agrefactor.recovery.gated_candidate_repair import R4CanaryManifest, R4KillSwitchState
+from agrefactor.models import ChatMessage
+from agrefactor.prompts import LayeredPrompt
+from agrefactor.recovery.gated_candidate_repair import R4CanaryManifest, R4KillSwitchState, R4MutationFailure
 from agrefactor.recovery.memory_gate import GateDecision, GateResult, DiagnosticEpisode, EpisodeOutcome, PatternLifecycle, RepairPatternRevision
 from agrefactor.recovery.r3_memory_snapshot import MemorySnapshot
 from agrefactor.recovery.r4_episode import R4RepairEpisodeReader
 from agrefactor.runtime.budget import BudgetLimits
-from agrefactor.runtime.r4_integration import ExistingOrchestratorR4Integration, R4IntegrationConfig
+from agrefactor.runtime.r4_integration import CandidateModelR4MutationAdapter, ExistingOrchestratorR4Integration, R4IntegrationConfig
 
 
 def h(value: str) -> str:
@@ -41,6 +43,27 @@ class StaticAdvisor:
 class Mutation:
     def __init__(self, replacement): self.replacement, self.calls = replacement, 0
     def mutate(self, **kwargs): self.calls += 1; return self.replacement
+
+
+class FailingMutation:
+    def __init__(self): self.calls = 0
+    def mutate(self, **kwargs):
+        self.calls += 1
+        raise R4MutationFailure(
+            "pre_provider_mutation_contract_failure",
+            provider_call_observed=False,
+        )
+
+
+class InvalidPromptFactory:
+    def build(self, **kwargs):
+        return LayeredPrompt(
+            messages=(
+                ChatMessage(role="system", content="system"),
+                ChatMessage(role="user", content="user"),
+            ),
+            manifest={"editable_artifacts": ["candidate"]},
+        )
 
 
 class HookProbe:
@@ -120,6 +143,40 @@ class R4ExistingOrchestratorIntegrationTests(unittest.TestCase):
         self.assertNotIn("r4_integration", result.metadata)
         self.assertIsNone(shadow)
 
+    def test_real_candidate_adapter_rejects_bad_prompt_before_provider(self):
+        m = helpers()
+        adapter, provider = m.make_adapter([m.P1])
+        context = m.make_context(
+            limits=BudgetLimits(
+                max_llm_calls=4,
+                max_tool_calls=20,
+                max_compile_calls=20,
+                max_csim_calls=10,
+                max_csynth_calls=10,
+                max_cosim_calls=10,
+                max_wall_time_s=5000,
+            )
+        )
+        mutation = CandidateModelR4MutationAdapter(
+            model_adapter=adapter,
+            prompt_factory=InvalidPromptFactory(),
+            budget=context.budget,
+        )
+        with self.assertRaises(R4MutationFailure) as raised:
+            mutation.mutate(
+                candidate=m.P1,
+                event={},
+                advisory={},
+                task=context.task,
+            )
+        self.assertEqual(
+            raised.exception.reason,
+            "pre_provider_mutation_contract_failure",
+        )
+        self.assertFalse(raised.exception.provider_call_observed)
+        self.assertEqual(provider.calls, [])
+        self.assertEqual(context.budget.snapshot().llm_calls, 0)
+
     def test_feature_off_full_serialized_result_is_equivalent(self):
         m = helpers()
         request = replace(m.make_request(max_attempts=1), llm_advisory_mode="off")
@@ -177,6 +234,37 @@ class R4ExistingOrchestratorIntegrationTests(unittest.TestCase):
             outcome = integration.run_from_existing_orchestrator(context=m.make_context(limits=BudgetLimits(max_llm_calls=4, max_tool_calls=20, max_compile_calls=20, max_csim_calls=10, max_csynth_calls=10, max_cosim_calls=10, max_wall_time_s=5000)), request=request, main_result=result, handler_factory=m.ScenarioFactory(m.pass_scenario))
             self.assertEqual(outcome["status"], "invalid_evidence")
             self.assertEqual(mutation.calls, 0)
+
+    def test_pre_provider_mutation_failure_is_not_counted_as_provider_call(self):
+        m = helpers()
+        result, request, _, _ = self._run_main(m)
+        event = result.metadata["diagnostic_events"][0]
+        mutation = FailingMutation()
+        with tempfile.TemporaryDirectory() as root:
+            integration = self._integration(m, request, mutation, root, event)
+            outcome = integration.run_from_existing_orchestrator(
+                context=m.make_context(
+                    limits=BudgetLimits(
+                        max_llm_calls=4,
+                        max_tool_calls=20,
+                        max_compile_calls=20,
+                        max_csim_calls=10,
+                        max_csynth_calls=10,
+                        max_cosim_calls=10,
+                        max_wall_time_s=5000,
+                    )
+                ),
+                request=request,
+                main_result=result,
+                handler_factory=m.ScenarioFactory(m.pass_scenario),
+            )
+            self.assertEqual(outcome["status"], "inconclusive")
+            episode = R4RepairEpisodeReader.read(outcome["episode_path"])
+            self.assertEqual(episode.outcome_reason, "pre_provider_mutation_contract_failure")
+            self.assertEqual(episode.provider_call_count, 0)
+            self.assertEqual(episode.budget_actual["provider_calls"], 0)
+            self.assertEqual(episode.budget_delta["llm_calls"], 0)
+            self.assertEqual(mutation.calls, 1)
 
     def test_gate_reject_writes_abstention_without_mutation(self):
         m = helpers()

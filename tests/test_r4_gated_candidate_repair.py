@@ -9,6 +9,7 @@ from agrefactor.recovery.gated_candidate_repair import (
     R4CandidateRepairController,
     R4ExecutionInput,
     R4KillSwitchState,
+    R4MutationFailure,
     R4Outcome,
 )
 from agrefactor.recovery.r4_budget import (
@@ -274,6 +275,51 @@ class R4GateContractTests(unittest.TestCase):
         controller.run(execution(), **kwargs)
         result = controller.run(execution(), **kwargs)
         self.assertEqual(result.outcome, R4Outcome.INVALID_EVIDENCE)
+
+    def test_pre_provider_failure_is_typed_and_still_consumes_attempt(self):
+        controller = R4CandidateRepairController()
+
+        def fail_before_provider(_):
+            raise R4MutationFailure(
+                "pre_provider_mutation_contract_failure",
+                provider_call_observed=False,
+            )
+
+        kwargs = {
+            "mutate_candidate": fail_before_provider,
+            "validate_candidate": lambda _: self.fail(),
+            "audit": lambda _: self.fail(),
+        }
+        first = controller.run(execution(), **kwargs)
+        self.assertEqual(first.outcome, R4Outcome.INCONCLUSIVE)
+        self.assertEqual(
+            first.reasons,
+            ("pre_provider_mutation_contract_failure",),
+        )
+        self.assertEqual(first.provider_call_count, 0)
+        self.assertEqual(first.mutation_count, 0)
+        second = controller.run(execution(), **kwargs)
+        self.assertEqual(second.outcome, R4Outcome.INVALID_EVIDENCE)
+        self.assertEqual(second.reasons, ("one_attempt_cap",))
+
+    def test_post_provider_failure_records_one_real_call(self):
+        controller = R4CandidateRepairController()
+
+        def fail_after_provider(_):
+            raise R4MutationFailure(
+                "provider_or_response_contract_failure",
+                provider_call_observed=True,
+            )
+
+        result = controller.run(
+            execution(),
+            mutate_candidate=fail_after_provider,
+            validate_candidate=lambda _: self.fail(),
+            audit=lambda _: self.fail(),
+        )
+        self.assertEqual(result.outcome, R4Outcome.INCONCLUSIVE)
+        self.assertEqual(result.provider_call_count, 1)
+        self.assertEqual(result.mutation_count, 0)
 
 
 if __name__ == "__main__":

@@ -121,6 +121,7 @@ from .gated_candidate_repair import (
     R4ContractError,
     R4ExecutionInput,
     R4KillSwitchState,
+    R4MutationFailure,
     R4Outcome,
     R4RevisionSafetyRecord,
     R4RunResult,
@@ -128,7 +129,8 @@ from .gated_candidate_repair import (
 __all__.extend([
     "R4CanaryManifest", "R4CandidateRepairAuthorization",
     "R4CandidateRepairController", "R4ContractError", "R4ExecutionInput",
-    "R4KillSwitchState", "R4Outcome", "R4RevisionSafetyRecord", "R4RunResult",
+    "R4KillSwitchState", "R4MutationFailure", "R4Outcome",
+    "R4RevisionSafetyRecord", "R4RunResult",
 ])
 
 

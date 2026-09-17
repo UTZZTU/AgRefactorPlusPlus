@@ -39,6 +39,17 @@ class R4ContractError(ValueError):
     """Raised when an R4 authorization or execution contract is invalid."""
 
 
+class R4MutationFailure(RuntimeError):
+    """Typed mutation failure with an authoritative provider-call boundary."""
+
+    def __init__(self, reason: str, *, provider_call_observed: bool) -> None:
+        self.reason = _text(reason, "reason")
+        if not isinstance(provider_call_observed, bool):
+            raise TypeError("provider_call_observed must be a boolean")
+        self.provider_call_observed = provider_call_observed
+        super().__init__(self.reason)
+
+
 class R4Outcome(str, Enum):
     VERIFIED_POSITIVE = "verified_positive"
     VERIFIED_NEGATIVE = "verified_negative"
@@ -353,6 +364,7 @@ class R4CandidateRepairController:
             raise ValueError("reserve_plan requires the shared BudgetManager")
         self._budget = budget
         self._reserve_plan = reserve_plan
+        self._attempt_count = 0
         self._mutation_count = 0
         self._provider_call_count = 0
 
@@ -371,7 +383,7 @@ class R4CandidateRepairController:
             return self._result(request, R4Outcome.ABSTAINED, "kill_switch_active")
         if not request.agent_safe or not request.physical_tool_launched or not request.evidence_complete:
             return self._result(request, R4Outcome.INVALID_EVIDENCE, "evidence_firewall")
-        if self._provider_call_count or self._mutation_count:
+        if self._attempt_count:
             return self._result(request, R4Outcome.INVALID_EVIDENCE, "one_attempt_cap")
         if self._ledger is not None:
             try:
@@ -385,11 +397,16 @@ class R4CandidateRepairController:
                 return self._result(request, R4Outcome.INCONCLUSIVE, "policy_ledger_or_budget_denied")
         if kill_switch_reader is not None and kill_switch_reader().active:
             return self._result(request, R4Outcome.ABSTAINED, "kill_switch_active_before_provider")
-        self._provider_call_count += 1
+        self._attempt_count += 1
         try:
             proposed = mutate_candidate(request.candidate)
+        except R4MutationFailure as exc:
+            if exc.provider_call_observed:
+                self._provider_call_count += 1
+            return self._result(request, R4Outcome.INCONCLUSIVE, exc.reason)
         except Exception:
             return self._result(request, R4Outcome.INCONCLUSIVE, "provider_or_mutation_failure")
+        self._provider_call_count += 1
         if not isinstance(proposed, str) or not proposed.strip() or proposed == request.candidate:
             return self._result(request, R4Outcome.INVALID_EVIDENCE, "invalid_or_unchanged_candidate")
         self._mutation_count += 1
@@ -438,4 +455,4 @@ class R4CandidateRepairController:
         return R4RunResult(outcome, request.authorization.authorization_id, request.authorization.before_candidate_sha256, after_hash, formal_validation_id, self._provider_call_count, self._mutation_count, (reason,), record)
 
 
-__all__ = ["R4CanaryManifest", "R4CandidateRepairAuthorization", "R4CandidateRepairController", "R4ContractError", "R4ExecutionInput", "R4KillSwitchState", "R4Outcome", "R4RevisionSafetyRecord", "R4RunResult"]
+__all__ = ["R4CanaryManifest", "R4CandidateRepairAuthorization", "R4CandidateRepairController", "R4ContractError", "R4ExecutionInput", "R4KillSwitchState", "R4MutationFailure", "R4Outcome", "R4RevisionSafetyRecord", "R4RunResult"]
