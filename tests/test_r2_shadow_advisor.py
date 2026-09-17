@@ -7,7 +7,16 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from agrefactor.evidence import DiagnosticEvent
+from agrefactor.evidence import (
+    DiagnosticEvent,
+    DiagnosticEventProjector,
+    FeedbackCategory,
+    FeedbackItem,
+    FeedbackOwner,
+    FeedbackReport,
+    FeedbackSeverity,
+    FeedbackStage,
+)
 from agrefactor.models import (
     ModelProvider,
     ModelResponse,
@@ -69,6 +78,19 @@ def event(**overrides) -> DiagnosticEvent:
         "evidence_complete": True,
         "context_signature": SHA_B,
         "created_at": "2026-08-29T00:00:00+00:00",
+        "diagnostic_items": (
+            {
+                "evidence_ref": "feedback-r2",
+                "stage": "public_evaluation",
+                "category": "runtime_mismatch",
+                "severity": "error",
+                "owner": "unknown",
+                "summary": "Public output differs from the reference",
+                "detail": "candidate output index 2 differs from reference",
+                "parser_rule": "public_differential_mismatch",
+            },
+        ),
+        "metadata": {"context_signature_includes_diagnostic_items": True},
     }
     values.update(overrides)
     return DiagnosticEvent(**values)
@@ -165,6 +187,7 @@ class R2ShadowAdvisorTests(unittest.TestCase):
             {"candidate_sha256": None},
             {"public_suite_identities": ()},
             {"failure_classes": ("infrastructure_failure",)},
+            {"diagnostic_items": ()},
         )
         for change in rejected:
             with self.subTest(change=change), self.assertRaises(ShadowInputRejected):
@@ -179,8 +202,15 @@ class R2ShadowAdvisorTests(unittest.TestCase):
         payload["accepted"] = True
         with self.assertRaises(ShadowInputRejected):
             diagnostic_event_from_dict(payload)
+        hidden_item = dict(event().diagnostic_items[0])
+        hidden_item["evidence_ref"] = "hidden-report"
         with self.assertRaises(ShadowInputRejected):
-            build_shadow_request(event(evidence_refs=("hidden-report",)))
+            build_shadow_request(
+                event(
+                    evidence_refs=("hidden-report",),
+                    diagnostic_items=(hidden_item,),
+                )
+            )
         with self.assertRaises(ShadowInputRejected):
             build_shadow_request(
                 event(
@@ -194,6 +224,171 @@ class R2ShadowAdvisorTests(unittest.TestCase):
         payload["evidence_view"] = "operator_full"
         with self.assertRaises(ShadowInputRejected):
             diagnostic_event_from_dict(payload)
+
+    def test_diagnostic_items_are_bounded_and_fail_closed(self):
+        payload = event().to_dict()
+        payload["diagnostic_items"][0]["detail"] = "tampered detail"
+        with self.assertRaises(ShadowInputRejected):
+            diagnostic_event_from_dict(payload)
+        with self.assertRaises(ValueError):
+            event(
+                diagnostic_items=(
+                    {
+                        "evidence_ref": "feedback-r2",
+                        "stage": "csynth",
+                        "category": "unknown",
+                        "severity": "error",
+                        "owner": "unknown",
+                        "summary": "unsafe path",
+                        "detail": "read /private/build/csynth.log",
+                        "parser_rule": "unknown_fallback",
+                    },
+                )
+            )
+        with self.assertRaises(ValueError):
+            event(
+                diagnostic_items=(
+                    {
+                        "evidence_ref": "feedback-r2",
+                        "stage": "csynth",
+                        "category": "unknown",
+                        "severity": "error",
+                        "owner": "unknown",
+                        "summary": "untrusted markup",
+                        "detail": "<think>private payload</think>",
+                        "parser_rule": "unknown_fallback",
+                    },
+                )
+            )
+
+    def test_projection_bounds_multiline_and_item_count(self):
+        items = tuple(
+            FeedbackItem(
+                feedback_id=f"bounded.item.{index}",
+                stage=FeedbackStage.CSYNTH,
+                category=FeedbackCategory.UNKNOWN,
+                severity=FeedbackSeverity.ERROR,
+                owner=FeedbackOwner.UNKNOWN,
+                summary="Unclassified CSYNTH diagnostic",
+                detail="first line\nsecond line " + ("x" * 2200),
+                source="csynth_diagnostic",
+                metadata={"parser_rule": "unknown_fallback"},
+            )
+            for index in range(9)
+        )
+        projected = DiagnosticEventProjector().from_feedback(
+            FeedbackReport(
+                report_id="bounded-report",
+                source="csynth",
+                items=items,
+                source_evidence={"redacted": True},
+                metadata={
+                    "evidence_view": "agent_safe",
+                    "physical_execution": True,
+                    "evidence_complete": True,
+                },
+            ),
+            run_id="run-r2",
+            validation_id="validation-r2",
+            validation_state="csynth",
+            route_action="review_unknown",
+            target={"name": "target", "toolchain": "vitis_hls"},
+            candidate_code="void top() {}",
+            public_suite_identities=(
+                {
+                    "suite_id": "public-main",
+                    "split": "public",
+                    "content_sha256": SHA_D,
+                },
+            ),
+        )
+        self.assertEqual(len(projected.diagnostic_items), 8)
+        self.assertTrue(projected.metadata["diagnostic_items_truncated"])
+        self.assertNotIn("\n", projected.diagnostic_items[0]["detail"])
+        self.assertLessEqual(len(projected.diagnostic_items[0]["detail"]), 2048)
+        with self.assertRaises(ValueError):
+            event(
+                diagnostic_items=(
+                    {
+                        "evidence_ref": "feedback-r2",
+                        "stage": "csynth",
+                        "category": "unknown",
+                        "severity": "error",
+                        "owner": "unknown",
+                        "summary": "x" * 513,
+                        "detail": "bounded",
+                        "parser_rule": "unknown_fallback",
+                    },
+                )
+            )
+
+    def test_agent_safe_feedback_content_reaches_r2_and_binds_identity(self):
+        def projected(detail: str) -> DiagnosticEvent:
+            report = FeedbackReport(
+                report_id="csynth-agent-report",
+                source="csynth",
+                items=(
+                    FeedbackItem(
+                        feedback_id="csynth-agent-report.item.1",
+                        stage=FeedbackStage.CSYNTH,
+                        category=FeedbackCategory.UNKNOWN,
+                        severity=FeedbackSeverity.ERROR,
+                        owner=FeedbackOwner.UNKNOWN,
+                        summary="Unclassified CSYNTH diagnostic",
+                        detail=detail,
+                        source="csynth_diagnostic",
+                        metadata={
+                            "message_id": "HLS 200-1715",
+                            "parser_rule": "unknown_fallback",
+                            "classification_confidence": "unknown",
+                            "file": "candidate.cpp",
+                            "line": 7,
+                            "column": 9,
+                        },
+                    ),
+                ),
+                source_evidence={"redacted": True},
+                metadata={
+                    "evidence_view": "agent_safe",
+                    "physical_execution": True,
+                    "evidence_complete": True,
+                },
+            )
+            return DiagnosticEventProjector().from_feedback(
+                report,
+                run_id="run-r2",
+                validation_id="validation-r2",
+                validation_state="csynth",
+                route_action="review_unknown",
+                target={
+                    "name": "target",
+                    "toolchain": "vitis_hls",
+                    "toolchain_version": "2023.2",
+                },
+                candidate_code="void top() {}",
+                public_suite_identities=(
+                    {
+                        "suite_id": "public-main",
+                        "split": "public",
+                        "content_sha256": SHA_D,
+                    },
+                ),
+                created_at="2026-09-17T00:00:00Z",
+            )
+
+        first = projected(
+            "ERROR: [HLS 200-1715] dynamic allocation is unsupported"
+        )
+        second = projected("ERROR: [HLS 200-1715] another bounded failure")
+        self.assertNotEqual(first.context_signature, second.context_signature)
+        request = build_shadow_request(first)
+        item = request.evidence_summary["diagnostic_items"][0]
+        self.assertIn("dynamic allocation", item["detail"])
+        self.assertEqual(item["source_file"], "candidate.cpp")
+        self.assertEqual(
+            request.evidence_summary["diagnostic_items_sha256"],
+            first.diagnostic_items_sha256,
+        )
 
     def test_valid_advisory_is_accounted_and_traced(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -258,6 +453,14 @@ class R2ShadowAdvisorTests(unittest.TestCase):
             ["report-r2", "feedback-r2"],
         )
         self.assertEqual(envelope["evidence"]["event_id"], "diagnostic-r2-test")
+        self.assertEqual(
+            envelope["evidence"]["diagnostic_items"][0]["evidence_ref"],
+            "feedback-r2",
+        )
+        self.assertEqual(
+            envelope["evidence"]["diagnostic_items_sha256"],
+            event().diagnostic_items_sha256,
+        )
         canonical = json.dumps(
             contract,
             ensure_ascii=False,

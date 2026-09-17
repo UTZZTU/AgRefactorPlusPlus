@@ -15,6 +15,31 @@ from .feedback import FeedbackReport
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _HIDDEN_STATES = frozenset({"hidden", "hidden_evaluation"})
+_ABSOLUTE_POSIX_PATH_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])/(?:[^/\s:;,()]+/)*[^/\s:;,()]+"
+)
+_WINDOWS_PATH_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])[A-Za-z]:\\(?:[^\\\s:;,()]+\\)*[^\\\s:;,()]+"
+)
+_PRIVATE_REASONING_TAGS = ("<think", "</think", "<reasoning", "</reasoning")
+_MAX_DIAGNOSTIC_ITEMS = 8
+_MAX_DIAGNOSTIC_SUMMARY = 512
+_MAX_DIAGNOSTIC_DETAIL = 2048
+_DIAGNOSTIC_REQUIRED_FIELDS = frozenset(
+    {"evidence_ref", "stage", "category", "severity", "owner", "summary"}
+)
+_DIAGNOSTIC_ALLOWED_FIELDS = _DIAGNOSTIC_REQUIRED_FIELDS | frozenset(
+    {
+        "detail",
+        "diagnostic_code",
+        "parser_rule",
+        "classification_confidence",
+        "source_file",
+        "line",
+        "column",
+        "occurrence_count",
+    }
+)
 
 
 def _required(value: object, name: str) -> str:
@@ -61,6 +86,165 @@ def _safe_code(value: object, default: str = "unknown") -> str:
     return cleaned if all(char in allowed for char in cleaned) else default
 
 
+def _safe_diagnostic_text(
+    value: object,
+    name: str,
+    *,
+    max_length: int,
+    optional: bool = False,
+) -> str | None:
+    if value is None and optional:
+        return None
+    if not isinstance(value, str):
+        suffix = " or null" if optional else ""
+        raise TypeError(f"{name} must be a string{suffix}")
+    cleaned = value.strip()
+    if not cleaned and optional:
+        return None
+    if (
+        not cleaned
+        or len(cleaned) > max_length
+        or "\n" in cleaned
+        or "\r" in cleaned
+        or "\x00" in cleaned
+    ):
+        raise ValueError(f"{name} must be bounded single-line text")
+    lowered = cleaned.casefold()
+    if any(tag in lowered for tag in _PRIVATE_REASONING_TAGS):
+        raise ValueError(f"{name} contains private-reasoning markup")
+    if _ABSOLUTE_POSIX_PATH_RE.search(cleaned) or _WINDOWS_PATH_RE.search(cleaned):
+        raise ValueError(f"{name} contains an absolute path")
+    return cleaned
+
+
+def _optional_positive_int(value: object, name: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{name} must be a positive integer or null")
+    return value
+
+
+def _project_text(value: object, *, max_length: int) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError("projected diagnostic text must be a string or null")
+    cleaned = " ".join(value.split())
+    if len(cleaned) > max_length:
+        cleaned = cleaned[:max_length].rstrip()
+    return cleaned or None
+
+
+def _normalize_diagnostic_items(
+    values: Sequence[Mapping[str, Any]],
+    *,
+    evidence_refs: Sequence[str],
+) -> tuple[dict[str, Any], ...]:
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+        raise TypeError("diagnostic_items must be a sequence")
+    if len(values) > _MAX_DIAGNOSTIC_ITEMS:
+        raise ValueError("diagnostic_items exceeds the item limit")
+    allowed_refs = set(evidence_refs)
+    normalized: list[dict[str, Any]] = []
+    seen_refs: set[str] = set()
+    for index, raw in enumerate(values):
+        if not isinstance(raw, Mapping):
+            raise TypeError("diagnostic_items must contain mappings")
+        fields = set(raw)
+        if (
+            not _DIAGNOSTIC_REQUIRED_FIELDS.issubset(fields)
+            or fields - _DIAGNOSTIC_ALLOWED_FIELDS
+        ):
+            raise ValueError("diagnostic item fields are invalid")
+        evidence_ref = _required(
+            raw.get("evidence_ref"),
+            f"diagnostic_items[{index}].evidence_ref",
+        )
+        if evidence_ref not in allowed_refs or evidence_ref in seen_refs:
+            raise ValueError(
+                "diagnostic item evidence_ref is missing, duplicated, or out of scope"
+            )
+        seen_refs.add(evidence_ref)
+        item: dict[str, Any] = {
+            "evidence_ref": evidence_ref,
+            "stage": _safe_code(raw.get("stage")),
+            "category": _safe_code(raw.get("category")),
+            "severity": _safe_code(raw.get("severity")),
+            "owner": _safe_code(raw.get("owner")),
+            "summary": _safe_diagnostic_text(
+                raw.get("summary"),
+                f"diagnostic_items[{index}].summary",
+                max_length=_MAX_DIAGNOSTIC_SUMMARY,
+            ),
+            "detail": _safe_diagnostic_text(
+                raw.get("detail"),
+                f"diagnostic_items[{index}].detail",
+                max_length=_MAX_DIAGNOSTIC_DETAIL,
+                optional=True,
+            ),
+        }
+        for name in (
+            "diagnostic_code",
+            "parser_rule",
+            "classification_confidence",
+        ):
+            value = raw.get(name)
+            if value is not None:
+                item[name] = _safe_diagnostic_text(
+                    value,
+                    f"diagnostic_items[{index}].{name}",
+                    max_length=160,
+                )
+        source_file = raw.get("source_file")
+        if source_file is not None:
+            source_file = _safe_diagnostic_text(
+                source_file,
+                f"diagnostic_items[{index}].source_file",
+                max_length=255,
+            )
+            if "/" in source_file or "\\" in source_file:
+                raise ValueError("diagnostic source_file must be a basename")
+            item["source_file"] = source_file
+        for name in ("line", "column", "occurrence_count"):
+            value = _optional_positive_int(
+                raw.get(name), f"diagnostic_items[{index}].{name}"
+            )
+            if value is not None:
+                item[name] = value
+        normalized.append(item)
+    return tuple(normalized)
+
+
+def _project_feedback_item(item: Any) -> dict[str, Any]:
+    metadata = dict(item.metadata)
+    value: dict[str, Any] = {
+        "evidence_ref": item.feedback_id,
+        "stage": item.stage.value,
+        "category": item.category.value,
+        "severity": item.severity.value,
+        "owner": item.owner.value,
+        "summary": _project_text(
+            item.summary, max_length=_MAX_DIAGNOSTIC_SUMMARY
+        ),
+        "detail": _project_text(
+            item.detail, max_length=_MAX_DIAGNOSTIC_DETAIL
+        ),
+        "diagnostic_code": metadata.get("message_id"),
+        "parser_rule": metadata.get("parser_rule"),
+        "classification_confidence": metadata.get("classification_confidence"),
+        "source_file": metadata.get("file"),
+        "line": metadata.get("line"),
+        "column": metadata.get("column"),
+        "occurrence_count": metadata.get("occurrence_count"),
+    }
+    return {
+        key: item_value
+        for key, item_value in value.items()
+        if item_value is not None
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class DiagnosticEvent:
     event_id: str
@@ -82,9 +266,11 @@ class DiagnosticEvent:
     context_signature: str
     created_at: str
     source_kind: str = "feedback_report"
+    diagnostic_items: tuple[Mapping[str, Any], ...] = ()
+    diagnostic_items_sha256: str = ""
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
-    schema_version = 1
+    schema_version = 2
 
     def __post_init__(self) -> None:
         for name in ("event_id", "run_id", "validation_id", "stage", "owner", "route_action", "repair_scope", "context_signature", "created_at", "source_kind"):
@@ -100,10 +286,29 @@ class DiagnosticEvent:
                 raise TypeError(f"{name} must be boolean")
         object.__setattr__(self, "failure_classes", tuple(sorted({_safe_code(item) for item in self.failure_classes})))
         object.__setattr__(self, "severities", tuple(sorted({_safe_code(item) for item in self.severities})))
-        object.__setattr__(self, "evidence_refs", tuple(dict.fromkeys(_required(item, "evidence_ref") for item in self.evidence_refs)))
+        evidence_refs = tuple(
+            dict.fromkeys(_required(item, "evidence_ref") for item in self.evidence_refs)
+        )
+        object.__setattr__(self, "evidence_refs", evidence_refs)
         object.__setattr__(self, "target_identity", _json_copy(dict(self.target_identity)))
         object.__setattr__(self, "toolchain_identity", _json_copy(dict(self.toolchain_identity)))
         object.__setattr__(self, "public_suite_identities", tuple(_json_copy(dict(item)) for item in self.public_suite_identities))
+        diagnostic_items = _normalize_diagnostic_items(
+            self.diagnostic_items,
+            evidence_refs=evidence_refs,
+        )
+        diagnostic_items_sha256 = _canonical_sha256(diagnostic_items)
+        if (
+            self.diagnostic_items_sha256
+            and self.diagnostic_items_sha256 != diagnostic_items_sha256
+        ):
+            raise ValueError(
+                "diagnostic_items_sha256 does not match diagnostic_items"
+            )
+        object.__setattr__(self, "diagnostic_items", diagnostic_items)
+        object.__setattr__(
+            self, "diagnostic_items_sha256", diagnostic_items_sha256
+        )
         object.__setattr__(self, "metadata", _json_copy(dict(self.metadata)))
 
     def to_dict(self) -> dict[str, Any]:
@@ -128,6 +333,8 @@ class DiagnosticEvent:
             "context_signature": self.context_signature,
             "created_at": self.created_at,
             "source_kind": self.source_kind,
+            "diagnostic_items": [dict(item) for item in self.diagnostic_items],
+            "diagnostic_items_sha256": self.diagnostic_items_sha256,
             "metadata": dict(self.metadata),
             "evidence_view": "agent_safe",
             "hidden_input_count": 0,
@@ -175,6 +382,16 @@ class DiagnosticEventProjector:
         owner = next(iter(owners)) if len(owners) == 1 else "mixed"
         classes = tuple(_safe_code(item.category.value) for item in items)
         severities = tuple(_safe_code(item.severity.value) for item in items)
+        evidence_refs = (
+            report.report_id,
+            *(item.feedback_id for item in items),
+        )
+        projected_items = items[:_MAX_DIAGNOSTIC_ITEMS]
+        diagnostic_items = _normalize_diagnostic_items(
+            tuple(_project_feedback_item(item) for item in projected_items),
+            evidence_refs=evidence_refs,
+        )
+        diagnostic_items_sha256 = _canonical_sha256(diagnostic_items)
         action = _safe_code(route_action)
         target_identity, toolchain_identity = _target_projection(target or {})
         suites = _suite_projection(public_suite_identities)
@@ -192,6 +409,7 @@ class DiagnosticEventProjector:
             "toolchain_identity": toolchain_identity,
             "candidate_sha256": candidate_sha,
             "public_suite_identities": list(suites),
+            "diagnostic_items_sha256": diagnostic_items_sha256,
         }
         context_signature = _canonical_sha256(signature_payload)
         event_key = {
@@ -210,7 +428,7 @@ class DiagnosticEventProjector:
             severities=severities,
             route_action=action,
             repair_scope=_repair_scope(action),
-            evidence_refs=(report.report_id, *(item.feedback_id for item in items)),
+            evidence_refs=evidence_refs,
             target_identity=target_identity,
             toolchain_identity=toolchain_identity,
             candidate_sha256=candidate_sha,
@@ -219,11 +437,16 @@ class DiagnosticEventProjector:
             evidence_complete=bool(report.metadata.get("evidence_complete", True)),
             context_signature=context_signature,
             created_at=created_at or datetime.now(timezone.utc).isoformat(),
+            diagnostic_items=diagnostic_items,
+            diagnostic_items_sha256=diagnostic_items_sha256,
             metadata={
                 "projector_version": self.projector_version,
                 "source_report_id": report.report_id,
                 "blocking_item_count": len(items),
+                "diagnostic_item_count": len(diagnostic_items),
+                "diagnostic_items_truncated": len(items) > len(diagnostic_items),
                 "owner_authority": "deterministic_typed_feedback",
+                "context_signature_includes_diagnostic_items": True,
             },
         )
 
@@ -274,11 +497,27 @@ class DiagnosticEventProjector:
             "candidate_sha256": candidate_sha,
             "public_suite_identities": list(suites),
         }
-        context_signature = _canonical_sha256(signature_payload)
         evidence_sha = typed.get("evidence_sha256")
         refs = [f"typed-outcome:{validation_id}"]
         if isinstance(evidence_sha, str) and _SHA256.fullmatch(evidence_sha):
             refs.append(f"sha256:{evidence_sha}")
+        diagnostic_items = _normalize_diagnostic_items(
+            (
+                {
+                    "evidence_ref": refs[0],
+                    "stage": phase,
+                    "category": failure,
+                    "severity": "error",
+                    "owner": owner,
+                    "summary": failure,
+                    "parser_rule": "typed_runtime_outcome",
+                },
+            ),
+            evidence_refs=refs,
+        )
+        diagnostic_items_sha256 = _canonical_sha256(diagnostic_items)
+        signature_payload["diagnostic_items_sha256"] = diagnostic_items_sha256
+        context_signature = _canonical_sha256(signature_payload)
         return DiagnosticEvent(
             event_id=f"diagnostic-{_canonical_sha256({'run_id': run_id, 'validation_id': validation_id, 'context_signature': context_signature})[:24]}",
             run_id=run_id,
@@ -299,12 +538,15 @@ class DiagnosticEventProjector:
             context_signature=context_signature,
             created_at=created_at or datetime.now(timezone.utc).isoformat(),
             source_kind="typed_runtime_outcome",
+            diagnostic_items=diagnostic_items,
+            diagnostic_items_sha256=diagnostic_items_sha256,
             metadata={
                 "projector_version": self.projector_version,
                 "reason_code": _safe_code(typed.get("reason_code")),
                 "returncode": typed.get("returncode"),
                 "timed_out": typed.get("timed_out") is True,
                 "owner_authority": _safe_code(typed.get("owner_authority")),
+                "context_signature_includes_diagnostic_items": True,
             },
         )
 
