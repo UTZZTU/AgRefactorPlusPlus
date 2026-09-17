@@ -67,6 +67,12 @@ class R3MemoryGateTests(unittest.TestCase):
     def test_lifecycle_and_trusted_threshold_source(self):
         self.assertEqual(RepairPatternRevision("r1", None, {}, {}, {}, (), (), (), ()).lifecycle, PatternLifecycle.QUARANTINED)
         with self.assertRaises(MemoryContractError): RepairPatternRevision("r2", None, {}, {}, {}, (), (), (), (), lifecycle=PatternLifecycle.TRUSTED)
+        with self.assertRaises(MemoryContractError):
+            RepairPatternRevision(
+                "r3", None, {}, {}, {}, (), (), (), (),
+                lifecycle=PatternLifecycle.TRUSTED,
+                threshold_source="frozen-calibration",
+            )
 
 
 if __name__ == "__main__":

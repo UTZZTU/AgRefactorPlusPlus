@@ -82,9 +82,17 @@ _AGGREGATE_SOURCE_SYNTHESIS_RE = re.compile(
     r"\bEncountered problem during source synthesis\b",
     flags=re.IGNORECASE,
 )
+_SYN_CHECK_FAIL_RE = re.compile(
+    r"^Syn check fail!$",
+    flags=re.IGNORECASE,
+)
 _GLOBAL_VARIABLE_DEFINITION_RE = re.compile(
     r"\bGlobal variable\s+['\"](?P<symbol>[A-Za-z_][A-Za-z0-9_]*)['\"]"
     r"\s+must have definition\b",
+    flags=re.IGNORECASE,
+)
+_UNSUPPORTED_DYNAMIC_ALLOCATION_RE = re.compile(
+    r"\bUndefined function operator\s+(?:new|delete)\s*\[\]",
     flags=re.IGNORECASE,
 )
 
@@ -375,6 +383,17 @@ class CsynthDiagnosticParser:
                 "high",
             )
 
+        if (
+            message_id == "HLS 214-194"
+            and _UNSUPPORTED_DYNAMIC_ALLOCATION_RE.search(message)
+        ):
+            return (
+                FeedbackCategory.UNSUPPORTED_CONSTRUCT,
+                "HLS source uses unsupported dynamic memory allocation",
+                "unsupported_dynamic_memory_allocation",
+                "high",
+            )
+
         if _S_AXILITE_BUNDLE_RE.search(message):
             return (
                 FeedbackCategory.INVALID_CONFIGURATION,
@@ -411,7 +430,13 @@ class CsynthDiagnosticParser:
                 "partial",
             )
 
-        if _AGGREGATE_SOURCE_SYNTHESIS_RE.search(message):
+        if (
+            _AGGREGATE_SOURCE_SYNTHESIS_RE.search(message)
+            or (
+                message_id == "HLS 214-135"
+                and _SYN_CHECK_FAIL_RE.fullmatch(message)
+            )
+        ):
             return (
                 FeedbackCategory.UNKNOWN,
                 "Vitis reported a source synthesis failure",
@@ -447,6 +472,7 @@ class CsynthDiagnosticParser:
                 "s_axilite_bundle_mismatch",
                 "pipeline_carried_dependence",
                 "global_variable_requires_definition",
+                "unsupported_dynamic_memory_allocation",
             }
             else FeedbackOwner.UNKNOWN
         )

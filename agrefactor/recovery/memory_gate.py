@@ -205,7 +205,11 @@ class RepairPatternRevision:
         object.__setattr__(self, "negative_episode_refs", _ids(self.negative_episode_refs, "negative_episode_refs"))
         object.__setattr__(self, "calibration_refs", _ids(self.calibration_refs, "calibration_refs"))
         object.__setattr__(self, "supported_when", _freeze(self.supported_when, path="supported_when")); object.__setattr__(self, "avoid_when", _freeze(self.avoid_when, path="avoid_when")); object.__setattr__(self, "exclusions", _freeze(self.exclusions, path="exclusions"))
-        if self.lifecycle is PatternLifecycle.TRUSTED and not self.threshold_source: raise MemoryContractError("Trusted revision requires threshold_source")
+        if self.lifecycle is PatternLifecycle.TRUSTED:
+            if not self.threshold_source:
+                raise MemoryContractError("Trusted revision requires threshold_source")
+            if not self.calibration_refs:
+                raise MemoryContractError("Trusted revision requires calibration_refs")
         expected = self._compute_hash()
         if self.revision_hash and self.revision_hash != expected: raise MemoryContractError("revision_hash mismatch")
         object.__setattr__(self, "revision_hash", expected)

@@ -41,6 +41,10 @@ from agrefactor.recovery.r4_provenance import (
     canonical_artifact_sha256,
     validate_r4_provenance,
 )
+from agrefactor.recovery.shadow_advisor import (
+    CalibrationCertificate,
+    verify_calibrated_advisory,
+)
 
 
 def _canonical(value: Mapping[str, Any]) -> str:
@@ -339,6 +343,7 @@ class R4IntegrationConfig:
     memory_snapshot: MemorySnapshot
     episode_root: str
     mutation_adapter: R4MutationAdapter
+    calibration_certificate: CalibrationCertificate | None = None
     reserve_plan: R4ReservePlan | None = None
     validation_wall_time_s: float = 1200.0
     kill_switch: R4KillSwitchState = R4KillSwitchState()
@@ -354,6 +359,12 @@ class R4IntegrationConfig:
             self.reserve_plan, R4ReservePlan
         ):
             raise TypeError("reserve_plan must be R4ReservePlan or None")
+        if self.calibration_certificate is not None and not isinstance(
+            self.calibration_certificate, CalibrationCertificate
+        ):
+            raise TypeError(
+                "calibration_certificate must be CalibrationCertificate or None"
+            )
         if not callable(getattr(self.mutation_adapter, "mutate", None)):
             raise TypeError("R4 integration providers are invalid")
         if not isinstance(self.episode_root, str) or not self.episode_root.strip():
@@ -424,33 +435,59 @@ class ExistingOrchestratorR4Integration:
                 and shadow.get("equivalence", {}).get("equivalent") is True
                 and advisory.get("suspected_owner") == "candidate"
                 and advisory.get("repair_scope") == "candidate_only"
-                and advisory.get("confidence") == "high"
                 and advisory.get("abstain_reason") is None
             ):
                 pairs.append((event, shadow, advisory))
-        if len(pairs) != 1:
-            return self._terminal("abstained", "eligible_r2_event_not_unique")
+        if not pairs:
+            return self._terminal("abstained", "eligible_r2_event_missing")
+        if len(pairs) > 1:
+            return self._terminal("abstained", "eligible_r2_event_ambiguous")
 
         event, shadow, advisory = pairs[0]
+        calibration = verify_calibrated_advisory(
+            self._config.calibration_certificate,
+            shadow=shadow,
+        )
+        if not calibration.verified:
+            return self._terminal(
+                "abstained",
+                "r2_calibration_unverified",
+                calibration=calibration.to_dict(),
+            )
         advisory["advisory_id"] = _canonical(
             {
                 "event_id": event["event_id"],
                 "request_sha256": shadow.get("request_sha256"),
                 "advisory": advisory,
                 "provider_identity": shadow.get("provider_identity", {}),
+                "calibration_certificate_id": calibration.certificate_id,
             }
         )
+        advisory["calibration_certificate_id"] = calibration.certificate_id
+        advisory["calibration_verified"] = True
         revision = SnapshotRevisionSource(self._config.memory_snapshot).resolve(
             event=event,
             advisory=advisory,
         )
         if not isinstance(revision, RepairPatternRevision):
             raise TypeError("snapshot revision source returned an invalid revision")
+        if calibration.certificate_id not in revision.calibration_refs:
+            return self._terminal(
+                "invalid_evidence",
+                "revision_calibration_certificate_mismatch",
+                calibration=calibration.to_dict(),
+                revision_id=revision.revision_id,
+            )
+        gate_context = self._config.memory_snapshot.context_for(
+            event=event,
+            advisory=advisory,
+        )
+        gate_context["calibrated_risk_ok"] = (
+            calibration.verified
+            and gate_context.get("calibrated_risk_ok") is True
+        )
         gate_result = self._gate.evaluate(
-            context=self._config.memory_snapshot.context_for(
-                event=event,
-                advisory=advisory,
-            ),
+            context=gate_context,
             revision=revision,
             evidence_refs=tuple(advisory.get("evidence_refs", ())),
         )

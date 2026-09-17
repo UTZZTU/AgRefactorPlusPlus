@@ -37,8 +37,11 @@ from .quota import (
     build_effective_repair_quota_summary,
 )
 from .shadow_advisor import (
+    CalibrationAcceptancePolicy,
+    CalibrationCertificate,
     CalibrationProtocol,
     CalibrationReport,
+    CalibrationVerification,
     ProviderBackedShadowDiagnosticAdvisor,
     ShadowAccounting,
     ShadowAuditArtifact,
@@ -48,10 +51,12 @@ from .shadow_advisor import (
     ShadowReserve,
     build_shadow_request,
     compare_shadow_equivalence,
+    certify_calibration,
     diagnostic_event_from_dict,
     evaluate_calibration,
     freeze_calibration_protocol,
     run_shadow_diagnostics,
+    verify_calibrated_advisory,
 )
 
 __all__ = [
@@ -83,8 +88,11 @@ __all__ = [
     "validate_advisory_result",
     "EffectiveRepairQuotaSummary",
     "build_effective_repair_quota_summary",
+    "CalibrationAcceptancePolicy",
+    "CalibrationCertificate",
     "CalibrationProtocol",
     "CalibrationReport",
+    "CalibrationVerification",
     "ProviderBackedShadowDiagnosticAdvisor",
     "ShadowAccounting",
     "ShadowAuditArtifact",
@@ -94,10 +102,12 @@ __all__ = [
     "ShadowReserve",
     "build_shadow_request",
     "compare_shadow_equivalence",
+    "certify_calibration",
     "diagnostic_event_from_dict",
     "evaluate_calibration",
     "freeze_calibration_protocol",
     "run_shadow_diagnostics",
+    "verify_calibrated_advisory",
 ]
 
 # R3_CONDITIONED_MEMORY_GATE_EXPORTS

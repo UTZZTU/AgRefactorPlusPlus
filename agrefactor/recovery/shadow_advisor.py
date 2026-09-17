@@ -121,6 +121,7 @@ _PUBLIC_SUITE_IDENTITY_FIELDS = frozenset(
     }
 )
 _FAILURE_CLASS = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,159}$")
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class ShadowInputRejected(ValueError):
@@ -143,6 +144,8 @@ def _canonical_sha256(value: Any) -> str:
 
 
 _SHADOW_OUTPUT_CONTRACT_VERSION = "r2-shadow-output-v2"
+_SHADOW_INPUT_CONTRACT_VERSION = "r2-agent-safe-diagnostic-evidence-v2"
+_SHADOW_STRICT_PARSER = "r2-v1"
 
 
 def _shadow_output_contract(
@@ -1055,6 +1058,8 @@ class CalibrationReport:
     citation_validity: float
     owner_macro_f1: float
     failure_class_macro_f1: float
+    high_confidence_total: int
+    high_confidence_errors: int
     high_confidence_error_rate: float
     unsafe_scope_rate: float
     confidence_intervals_95: Mapping[str, tuple[float, float]]
@@ -1072,6 +1077,8 @@ class CalibrationReport:
             "citation_validity": self.citation_validity,
             "owner_macro_f1": self.owner_macro_f1,
             "failure_class_macro_f1": self.failure_class_macro_f1,
+            "high_confidence_total": self.high_confidence_total,
+            "high_confidence_errors": self.high_confidence_errors,
             "high_confidence_error_rate": self.high_confidence_error_rate,
             "unsafe_scope_rate": self.unsafe_scope_rate,
             "confidence_intervals_95": {
@@ -1158,6 +1165,8 @@ def evaluate_calibration(
         citation_validity=citation_ok / covered if covered else 1.0,
         owner_macro_f1=_macro_f1(owner_truth, owner_pred),
         failure_class_macro_f1=_macro_f1(failure_truth, failure_pred),
+        high_confidence_total=high_total,
+        high_confidence_errors=high_errors,
         high_confidence_error_rate=(
             high_errors / high_total if high_total else 0.0
         ),
@@ -1168,4 +1177,280 @@ def evaluate_calibration(
             "high_confidence_error_rate": _wilson(high_errors, high_total),
             "unsafe_scope_rate": _wilson(unsafe, covered),
         },
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationAcceptancePolicy:
+    """Pre-frozen statistical bounds for consuming R2 confidence in R4."""
+
+    policy_id: str
+    minimum_total: int
+    minimum_covered: int
+    minimum_high_confidence: int
+    minimum_coverage: float
+    minimum_citation_validity_lower_95: float
+    maximum_selective_risk: float
+    maximum_high_confidence_error_rate: float
+    maximum_high_confidence_error_upper_95: float
+    maximum_unsafe_scope_rate: float
+    maximum_unsafe_scope_upper_95: float
+    policy_sha256: str = ""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.policy_id, str) or not self.policy_id.strip():
+            raise ValueError("policy_id must be non-empty")
+        for name in (
+            "minimum_total",
+            "minimum_covered",
+            "minimum_high_confidence",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        if self.minimum_covered > self.minimum_total:
+            raise ValueError("minimum_covered cannot exceed minimum_total")
+        for name in (
+            "minimum_coverage",
+            "minimum_citation_validity_lower_95",
+            "maximum_selective_risk",
+            "maximum_high_confidence_error_rate",
+            "maximum_high_confidence_error_upper_95",
+            "maximum_unsafe_scope_rate",
+            "maximum_unsafe_scope_upper_95",
+        ):
+            value = getattr(self, name)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not isfinite(float(value))
+                or not 0.0 <= float(value) <= 1.0
+            ):
+                raise ValueError(f"{name} must be between zero and one")
+        payload = self.to_dict(include_hash=False)
+        expected = _canonical_sha256(payload)
+        if self.policy_sha256 and self.policy_sha256 != expected:
+            raise ValueError("policy_sha256 does not match policy")
+        object.__setattr__(self, "policy_id", self.policy_id.strip())
+        object.__setattr__(self, "policy_sha256", expected)
+
+    def to_dict(self, *, include_hash: bool = True) -> dict[str, Any]:
+        value = {
+            "schema_version": 1,
+            "policy_id": self.policy_id,
+            "minimum_total": self.minimum_total,
+            "minimum_covered": self.minimum_covered,
+            "minimum_high_confidence": self.minimum_high_confidence,
+            "minimum_coverage": self.minimum_coverage,
+            "minimum_citation_validity_lower_95": (
+                self.minimum_citation_validity_lower_95
+            ),
+            "maximum_selective_risk": self.maximum_selective_risk,
+            "maximum_high_confidence_error_rate": (
+                self.maximum_high_confidence_error_rate
+            ),
+            "maximum_high_confidence_error_upper_95": (
+                self.maximum_high_confidence_error_upper_95
+            ),
+            "maximum_unsafe_scope_rate": self.maximum_unsafe_scope_rate,
+            "maximum_unsafe_scope_upper_95": self.maximum_unsafe_scope_upper_95,
+        }
+        if include_hash:
+            value["policy_sha256"] = self.policy_sha256
+        return value
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationCertificate:
+    """Content-addressed proof that an R2 confidence label passed calibration."""
+
+    split_id: str
+    split_sha256: str
+    report_sha256: str
+    policy_sha256: str
+    provider_identity_sha256: str
+    prompt_contract_version: str
+    strict_parser: str
+    input_contract_version: str
+    eligible_confidence_labels: tuple[str, ...]
+    accepted: bool
+    reasons: tuple[str, ...]
+    certificate_id: str = ""
+
+    def __post_init__(self) -> None:
+        for name in (
+            "split_id",
+            "prompt_contract_version",
+            "strict_parser",
+            "input_contract_version",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be non-empty")
+        for name in (
+            "split_sha256",
+            "report_sha256",
+            "policy_sha256",
+            "provider_identity_sha256",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
+                raise ValueError(f"{name} must be a SHA-256 digest")
+        labels = tuple(self.eligible_confidence_labels)
+        if any(label not in {"low", "medium", "high"} for label in labels):
+            raise ValueError("eligible confidence label is invalid")
+        if len(labels) != len(set(labels)):
+            raise ValueError("eligible confidence labels must be unique")
+        reasons = tuple(str(reason).strip() for reason in self.reasons)
+        if any(not reason for reason in reasons):
+            raise ValueError("certificate reasons must be non-empty")
+        if self.accepted != (not reasons and bool(labels)):
+            raise ValueError("certificate acceptance does not match reasons")
+        object.__setattr__(self, "eligible_confidence_labels", labels)
+        object.__setattr__(self, "reasons", reasons)
+        expected = "r2-calibration-" + _canonical_sha256(
+            self.to_dict(include_id=False)
+        )[:32]
+        if self.certificate_id and self.certificate_id != expected:
+            raise ValueError("certificate_id does not match certificate")
+        object.__setattr__(self, "certificate_id", expected)
+
+    def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
+        value = {
+            "schema_version": 1,
+            "split_id": self.split_id,
+            "split_sha256": self.split_sha256,
+            "report_sha256": self.report_sha256,
+            "policy_sha256": self.policy_sha256,
+            "provider_identity_sha256": self.provider_identity_sha256,
+            "prompt_contract_version": self.prompt_contract_version,
+            "strict_parser": self.strict_parser,
+            "input_contract_version": self.input_contract_version,
+            "eligible_confidence_labels": list(self.eligible_confidence_labels),
+            "accepted": self.accepted,
+            "reasons": list(self.reasons),
+        }
+        if include_id:
+            value["certificate_id"] = self.certificate_id
+        return value
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationVerification:
+    verified: bool
+    reasons: tuple[str, ...]
+    certificate_id: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": 1,
+            "verified": self.verified,
+            "reasons": list(self.reasons),
+            "certificate_id": self.certificate_id,
+        }
+
+
+def certify_calibration(
+    report: CalibrationReport,
+    *,
+    policy: CalibrationAcceptancePolicy,
+    provider_identity: Mapping[str, Any],
+) -> CalibrationCertificate:
+    if not isinstance(report, CalibrationReport):
+        raise TypeError("report must be CalibrationReport")
+    if not isinstance(policy, CalibrationAcceptancePolicy):
+        raise TypeError("policy must be CalibrationAcceptancePolicy")
+    if not isinstance(provider_identity, Mapping) or not provider_identity:
+        raise ValueError("provider_identity must be a non-empty mapping")
+    intervals = report.confidence_intervals_95
+    citation_interval = tuple(intervals.get("citation_validity", ()))
+    high_interval = tuple(intervals.get("high_confidence_error_rate", ()))
+    unsafe_interval = tuple(intervals.get("unsafe_scope_rate", ()))
+    if any(len(value) != 2 for value in (citation_interval, high_interval, unsafe_interval)):
+        raise ValueError("calibration confidence intervals are incomplete")
+    checks = {
+        "insufficient_total": report.total >= policy.minimum_total,
+        "insufficient_covered": report.covered >= policy.minimum_covered,
+        "insufficient_high_confidence": (
+            report.high_confidence_total >= policy.minimum_high_confidence
+        ),
+        "coverage_below_threshold": report.coverage >= policy.minimum_coverage,
+        "citation_lower_bound_below_threshold": (
+            citation_interval[0] >= policy.minimum_citation_validity_lower_95
+        ),
+        "selective_risk_above_threshold": (
+            report.selective_risk <= policy.maximum_selective_risk
+        ),
+        "high_confidence_error_rate_above_threshold": (
+            report.high_confidence_error_rate
+            <= policy.maximum_high_confidence_error_rate
+        ),
+        "high_confidence_error_upper_bound_above_threshold": (
+            high_interval[1] <= policy.maximum_high_confidence_error_upper_95
+        ),
+        "unsafe_scope_rate_above_threshold": (
+            report.unsafe_scope_rate <= policy.maximum_unsafe_scope_rate
+        ),
+        "unsafe_scope_upper_bound_above_threshold": (
+            unsafe_interval[1] <= policy.maximum_unsafe_scope_upper_95
+        ),
+    }
+    reasons = tuple(name for name, passed in checks.items() if not passed)
+    return CalibrationCertificate(
+        split_id=report.split_id,
+        split_sha256=report.split_sha256,
+        report_sha256=_canonical_sha256(report.to_dict()),
+        policy_sha256=policy.policy_sha256,
+        provider_identity_sha256=_canonical_sha256(dict(provider_identity)),
+        prompt_contract_version=_SHADOW_OUTPUT_CONTRACT_VERSION,
+        strict_parser=_SHADOW_STRICT_PARSER,
+        input_contract_version=_SHADOW_INPUT_CONTRACT_VERSION,
+        eligible_confidence_labels=("high",) if not reasons else (),
+        accepted=not reasons,
+        reasons=reasons,
+    )
+
+
+def verify_calibrated_advisory(
+    certificate: CalibrationCertificate | None,
+    *,
+    shadow: Mapping[str, Any],
+) -> CalibrationVerification:
+    if certificate is None:
+        return CalibrationVerification(False, ("certificate_missing",), None)
+    if not isinstance(certificate, CalibrationCertificate):
+        raise TypeError("certificate must be CalibrationCertificate or None")
+    advisory = shadow.get("advisory")
+    advisory = advisory if isinstance(advisory, Mapping) else {}
+    metadata = advisory.get("metadata")
+    metadata = metadata if isinstance(metadata, Mapping) else {}
+    provider_identity = shadow.get("provider_identity")
+    provider_identity = (
+        provider_identity if isinstance(provider_identity, Mapping) else {}
+    )
+    checks = {
+        "certificate_not_accepted": certificate.accepted,
+        "provider_identity_mismatch": (
+            certificate.provider_identity_sha256
+            == _canonical_sha256(dict(provider_identity))
+        ),
+        "prompt_contract_version_mismatch": (
+            metadata.get("prompt_contract_version")
+            == certificate.prompt_contract_version
+        ),
+        "strict_parser_mismatch": (
+            metadata.get("strict_parser") == certificate.strict_parser
+        ),
+        "input_contract_version_mismatch": (
+            certificate.input_contract_version == _SHADOW_INPUT_CONTRACT_VERSION
+        ),
+        "confidence_label_not_calibrated": (
+            advisory.get("confidence") in certificate.eligible_confidence_labels
+        ),
+    }
+    reasons = tuple(name for name, passed in checks.items() if not passed)
+    return CalibrationVerification(
+        verified=not reasons,
+        reasons=reasons,
+        certificate_id=certificate.certificate_id,
     )

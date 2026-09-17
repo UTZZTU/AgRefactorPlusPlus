@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import json
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,12 +16,42 @@ from agrefactor.recovery.gated_candidate_repair import R4CanaryManifest, R4KillS
 from agrefactor.recovery.memory_gate import GateDecision, GateResult, DiagnosticEpisode, EpisodeOutcome, PatternLifecycle, RepairPatternRevision
 from agrefactor.recovery.r3_memory_snapshot import MemorySnapshot
 from agrefactor.recovery.r4_episode import R4RepairEpisodeReader
+from agrefactor.recovery.shadow_advisor import CalibrationCertificate
 from agrefactor.runtime.budget import BudgetLimits
 from agrefactor.runtime.r4_integration import CandidateModelR4MutationAdapter, ExistingOrchestratorR4Integration, R4IntegrationConfig
 
 
 def h(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def canonical_h(value) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+PROVIDER_IDENTITY = {
+    "provider": "test-provider",
+    "model_name": "test-model",
+    "model": "test-model-id",
+}
+
+
+def calibration_certificate() -> CalibrationCertificate:
+    return CalibrationCertificate(
+        split_id="r2-calibration-test",
+        split_sha256=h("split"),
+        report_sha256=h("report"),
+        policy_sha256=h("policy"),
+        provider_identity_sha256=canonical_h(PROVIDER_IDENTITY),
+        prompt_contract_version="r2-shadow-output-v2",
+        strict_parser="r2-v1",
+        input_contract_version="r2-agent-safe-diagnostic-evidence-v2",
+        eligible_confidence_labels=("high",),
+        accepted=True,
+        reasons=(),
+    )
 
 
 def helpers():
@@ -34,10 +65,12 @@ def helpers():
 
 class StaticAdvisor:
     def __init__(self): self.calls = 0
+    @property
+    def identity(self): return dict(PROVIDER_IDENTITY)
     def diagnose(self, request):
         from agrefactor.recovery import AdvisoryConfidence, AdvisoryOwner, AdvisoryRepairScope, DiagnosticAdvisory
         self.calls += 1
-        return DiagnosticAdvisory(suspected_owner=AdvisoryOwner.CANDIDATE, suspected_failure_class="unknown_candidate_failure", evidence_refs=(request.evidence_ids[0],), repair_scope=AdvisoryRepairScope.CANDIDATE_ONLY, confidence=AdvisoryConfidence.HIGH)
+        return DiagnosticAdvisory(suspected_owner=AdvisoryOwner.CANDIDATE, suspected_failure_class="unknown_candidate_failure", evidence_refs=(request.evidence_ids[0],), repair_scope=AdvisoryRepairScope.CANDIDATE_ONLY, confidence=AdvisoryConfidence.HIGH, metadata={"strict_parser": "r2-v1", "prompt_contract_version": "r2-shadow-output-v2"})
 
 
 class Mutation:
@@ -97,8 +130,8 @@ class R4ExistingOrchestratorIntegrationTests(unittest.TestCase):
             return m.pass_scenario(request, state)
         return scenario
 
-    def _revision(self, event, advisory):
-        return RepairPatternRevision(revision_id="revision-1", parent_revision_id=None, supported_when={"stage": "csynth", "owner": "candidate"}, avoid_when={}, exclusions={}, required_evidence=(), positive_episode_refs=("positive-1",), negative_episode_refs=(), calibration_refs=("calibration-1",), lifecycle=PatternLifecycle.TRUSTED, threshold_source="frozen-calibration")
+    def _revision(self, event, advisory, *, certificate_id):
+        return RepairPatternRevision(revision_id="revision-1", parent_revision_id=None, supported_when={"stage": "csynth", "owner": "candidate"}, avoid_when={}, exclusions={}, required_evidence=(), positive_episode_refs=("positive-1",), negative_episode_refs=(), calibration_refs=(certificate_id,), lifecycle=PatternLifecycle.TRUSTED, threshold_source="frozen-calibration")
 
     def _snapshot(self, revision, *, calibrated=True):
         episode = DiagnosticEpisode(
@@ -127,14 +160,17 @@ class R4ExistingOrchestratorIntegrationTests(unittest.TestCase):
         result = m.CandidateRepairValidationOrchestrator(model_adapter=adapter, handler_factory=factory, shadow_advisor=selected).run(m.make_context(limits=BudgetLimits(max_llm_calls=4, max_tool_calls=20, max_compile_calls=20, max_csim_calls=10, max_csynth_calls=10, max_cosim_calls=10, max_wall_time_s=5000)), request, validation_id="r4-main")
         return result, request, factory, selected
 
-    def _integration(self, m, request, mutation, root, event, *, calibrated=True, kill=False, auditor=None, snapshot=None):
+    def _integration(self, m, request, mutation, root, event, *, calibrated=True, kill=False, auditor=None, snapshot=None, include_certificate=True):
         target = event["target_identity"]["fingerprint"]
         toolchain = event["toolchain_identity"]["fingerprint"]
         identity = {"run_id": event["run_id"], "case_id": "case-1", "stage": "csynth", "identity_complete": True, "hidden_input_count": 0, "secret_present": False, "private_reasoning_present": False, "source_sha256": h(request.original_code), "target_identity": target, "toolchain_identity": toolchain, "parser_identity": "parser-1", "model_identity": "model-1", "prompt_sha256": h("prompt")}
         canary = R4CanaryManifest(manifest_id="canary-1", manifest_sha256=h("canary"), enabled=True, operator_enabled=True, case_ids=("case-1",), source_sha256=h(request.original_code), target_identity=target, toolchain_identity=toolchain, parser_identity="parser-1", model_identity="model-1", prompt_sha256=h("prompt"), allowed_stage="csynth", expires_at="2099-01-01T00:00:00Z")
-        revision = self._revision(event, {})
+        certificate = calibration_certificate()
+        revision = self._revision(
+            event, {}, certificate_id=certificate.certificate_id
+        )
         selected_snapshot = snapshot or self._snapshot(revision, calibrated=calibrated)
-        config = R4IntegrationConfig(canary=canary, execution_identity=identity, memory_snapshot=selected_snapshot, episode_root=root, mutation_adapter=mutation, validation_wall_time_s=100, kill_switch=R4KillSwitchState(active=kill, trigger="test" if kill else None))
+        config = R4IntegrationConfig(canary=canary, execution_identity=identity, memory_snapshot=selected_snapshot, episode_root=root, mutation_adapter=mutation, calibration_certificate=certificate if include_certificate else None, validation_wall_time_s=100, kill_switch=R4KillSwitchState(active=kill, trigger="test" if kill else None))
         return ExistingOrchestratorR4Integration(config, auditor=auditor)
 
     def test_default_orchestrator_does_not_invoke_r4(self):
@@ -222,6 +258,69 @@ class R4ExistingOrchestratorIntegrationTests(unittest.TestCase):
             self.assertEqual(mutation.calls, 1)
             self.assertEqual(shadow.calls, 1)
             self.assertTrue(outcome["main_result_unchanged"])
+
+    def test_missing_calibration_certificate_blocks_before_mutation(self):
+        m = helpers()
+        result, request, _, _ = self._run_main(m)
+        event = result.metadata["diagnostic_events"][0]
+        mutation = Mutation(m.P1)
+        with tempfile.TemporaryDirectory() as root:
+            integration = self._integration(
+                m,
+                request,
+                mutation,
+                root,
+                event,
+                include_certificate=False,
+            )
+            outcome = integration.run_from_existing_orchestrator(
+                context=m.make_context(),
+                request=request,
+                main_result=result,
+                handler_factory=m.ScenarioFactory(m.pass_scenario),
+            )
+            self.assertEqual(outcome["status"], "abstained")
+            self.assertEqual(outcome["reason"], "r2_calibration_unverified")
+            self.assertEqual(
+                outcome["calibration"]["reasons"], ["certificate_missing"]
+            )
+            self.assertEqual(mutation.calls, 0)
+
+    def test_revision_must_reference_active_calibration_certificate(self):
+        m = helpers()
+        result, request, _, _ = self._run_main(m)
+        event = result.metadata["diagnostic_events"][0]
+        revision = RepairPatternRevision(
+            revision_id="revision-wrong-calibration",
+            parent_revision_id=None,
+            supported_when={"stage": "csynth", "owner": "candidate"},
+            avoid_when={},
+            exclusions={},
+            required_evidence=(),
+            positive_episode_refs=("positive-1",),
+            negative_episode_refs=(),
+            calibration_refs=("different-calibration-certificate",),
+            lifecycle=PatternLifecycle.TRUSTED,
+            threshold_source="frozen-calibration",
+        )
+        snapshot = self._snapshot(revision)
+        mutation = Mutation(m.P1)
+        with tempfile.TemporaryDirectory() as root:
+            integration = self._integration(
+                m, request, mutation, root, event, snapshot=snapshot
+            )
+            outcome = integration.run_from_existing_orchestrator(
+                context=m.make_context(),
+                request=request,
+                main_result=result,
+                handler_factory=m.ScenarioFactory(m.pass_scenario),
+            )
+            self.assertEqual(outcome["status"], "invalid_evidence")
+            self.assertEqual(
+                outcome["reason"],
+                "revision_calibration_certificate_mismatch",
+            )
+            self.assertEqual(mutation.calls, 0)
 
     def test_provenance_mismatch_blocks_before_mutation(self):
         m = helpers()

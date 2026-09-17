@@ -27,16 +27,19 @@ from agrefactor.recovery import (
     AdvisoryConfidence,
     AdvisoryOwner,
     AdvisoryRepairScope,
+    CalibrationAcceptancePolicy,
     DiagnosticAdvisory,
     ProviderBackedShadowDiagnosticAdvisor,
     ShadowInputRejected,
     ShadowReserve,
     build_shadow_request,
     compare_shadow_equivalence,
+    certify_calibration,
     diagnostic_event_from_dict,
     evaluate_calibration,
     freeze_calibration_protocol,
     run_shadow_diagnostics,
+    verify_calibrated_advisory,
 )
 from agrefactor.runtime.budget import BudgetLimits, BudgetManager
 from agrefactor.runtime.trace import TraceRecorder
@@ -654,8 +657,95 @@ class R2ShadowAdvisorTests(unittest.TestCase):
         self.assertEqual(report.coverage, 0.5)
         self.assertEqual(report.selective_risk, 0.0)
         self.assertEqual(report.citation_validity, 1.0)
+        self.assertEqual(report.high_confidence_total, 1)
+        self.assertEqual(report.high_confidence_errors, 0)
         with self.assertRaises(ValueError):
             evaluate_calibration(list(reversed(records)), protocol=protocol)
+
+        policy = CalibrationAcceptancePolicy(
+            policy_id="r2-policy-test",
+            minimum_total=2,
+            minimum_covered=1,
+            minimum_high_confidence=1,
+            minimum_coverage=0.5,
+            minimum_citation_validity_lower_95=0.2,
+            maximum_selective_risk=0.0,
+            maximum_high_confidence_error_rate=0.0,
+            maximum_high_confidence_error_upper_95=0.8,
+            maximum_unsafe_scope_rate=0.0,
+            maximum_unsafe_scope_upper_95=0.8,
+        )
+        identity = {
+            "provider": "test-provider",
+            "model_name": "test-model",
+            "model": "test-model-id",
+        }
+        certificate = certify_calibration(
+            report,
+            policy=policy,
+            provider_identity=identity,
+        )
+        self.assertTrue(certificate.accepted)
+        advisory = dict(records[0]["advisory"])
+        advisory["metadata"] = {
+            "strict_parser": "r2-v1",
+            "prompt_contract_version": "r2-shadow-output-v2",
+        }
+        verification = verify_calibrated_advisory(
+            certificate,
+            shadow={"provider_identity": identity, "advisory": advisory},
+        )
+        self.assertTrue(verification.verified)
+
+        medium = dict(advisory)
+        medium["confidence"] = "medium"
+        verification = verify_calibrated_advisory(
+            certificate,
+            shadow={"provider_identity": identity, "advisory": medium},
+        )
+        self.assertFalse(verification.verified)
+        self.assertIn("confidence_label_not_calibrated", verification.reasons)
+
+    def test_calibration_certificate_fails_closed_on_insufficient_split(self):
+        protocol = freeze_calibration_protocol("small", ["only"])
+        report = evaluate_calibration(
+            [
+                {
+                    "record_id": "only",
+                    "evidence_ids": ["e1"],
+                    "truth": {"owner": "candidate", "failure_class": "x"},
+                    "advisory": {
+                        "suspected_owner": "candidate",
+                        "suspected_failure_class": "x",
+                        "evidence_refs": ["e1"],
+                        "repair_scope": "candidate_only",
+                        "confidence": "high",
+                        "abstain_reason": None,
+                    },
+                }
+            ],
+            protocol=protocol,
+        )
+        policy = CalibrationAcceptancePolicy(
+            policy_id="requires-more-data",
+            minimum_total=2,
+            minimum_covered=1,
+            minimum_high_confidence=1,
+            minimum_coverage=0.5,
+            minimum_citation_validity_lower_95=0.0,
+            maximum_selective_risk=1.0,
+            maximum_high_confidence_error_rate=1.0,
+            maximum_high_confidence_error_upper_95=1.0,
+            maximum_unsafe_scope_rate=1.0,
+            maximum_unsafe_scope_upper_95=1.0,
+        )
+        certificate = certify_calibration(
+            report,
+            policy=policy,
+            provider_identity={"provider": "p", "model": "m"},
+        )
+        self.assertFalse(certificate.accepted)
+        self.assertIn("insufficient_total", certificate.reasons)
 
     def test_orchestrator_shadow_mode_preserves_main_result(self):
         path = Path(__file__).with_name("test_candidate_repair_integration.py")

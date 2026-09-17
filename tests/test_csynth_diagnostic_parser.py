@@ -166,6 +166,62 @@ class CsynthDiagnosticParserTests(unittest.TestCase):
             "s_axilite_bundle_mismatch",
         )
 
+    def test_hls_214_194_dynamic_allocation_is_candidate_owned(self) -> None:
+        for operator, line in (("new", 5), ("delete", 12)):
+            with self.subTest(operator=operator):
+                item = self.parse(
+                    "ERROR: [HLS 214-194] in function 'vector_add': "
+                    f"Undefined function operator {operator}[] "
+                    f"(vector_add.cpp:{line}:5)"
+                ).items[0]
+
+                self.assertEqual(
+                    item.category,
+                    FeedbackCategory.UNSUPPORTED_CONSTRUCT,
+                )
+                self.assertEqual(item.owner, FeedbackOwner.CANDIDATE)
+                self.assertEqual(
+                    item.metadata["parser_rule"],
+                    "unsupported_dynamic_memory_allocation",
+                )
+                self.assertEqual(
+                    item.metadata["classification_confidence"],
+                    "high",
+                )
+
+    def test_dynamic_allocation_words_with_other_code_remain_unknown(self) -> None:
+        item = self.parse(
+            "ERROR: [HLS 214-999] Undefined function operator new[] "
+            "(vector_add.cpp:5:19)"
+        ).items[0]
+
+        self.assertEqual(item.category, FeedbackCategory.UNKNOWN)
+        self.assertEqual(item.owner, FeedbackOwner.UNKNOWN)
+        self.assertEqual(item.metadata["parser_rule"], "unknown_fallback")
+
+    def test_dynamic_allocation_suppresses_syn_check_aggregate(self) -> None:
+        report = self.parse(
+            "\n".join(
+                (
+                    "ERROR: [HLS 214-194] in function 'vector_add': "
+                    "Undefined function operator new[] (vector_add.cpp:5:19)",
+                    "ERROR: [HLS 214-194] in function 'vector_add': "
+                    "Undefined function operator delete[] (vector_add.cpp:12:5)",
+                    "ERROR: [HLS 214-135] Syn check fail!",
+                )
+            )
+        )
+
+        self.assertEqual(len(report.items), 2)
+        self.assertTrue(
+            all(
+                item.metadata["parser_rule"]
+                == "unsupported_dynamic_memory_allocation"
+                for item in report.items
+            )
+        )
+        self.assertEqual(report.metadata["suppressed_aggregate_count"], 1)
+
     def test_pipeline_carried_dependence_is_warning(self) -> None:
         item = self.parse(
             "WARNING: [HLS 200-880] The II Violation in "
