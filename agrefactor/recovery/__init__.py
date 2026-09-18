@@ -162,6 +162,12 @@ from .r5_snapshot_builder import (
     R5SnapshotBuilder,
     SnapshotBoundaryError,
 )
+from .r5_predecessor_import import (
+    R5PredecessorImportError,
+    R5PredecessorImportResult,
+    import_package_d_predecessor,
+    verify_package_d_predecessor,
+)
 __all__.extend([
     "AppendOnlyEpisodeLedger", "EpisodeLedgerError", "R5EpisodeEnvelope",
     "R5EpisodeOutcome", "canonical_sha256", "Lifecycle", "LifecycleReduction",
@@ -173,6 +179,8 @@ __all__.extend([
     "memory_payload_manifest_sha256",
     "render_candidate_memory_snippets", "R5MemorySnapshot",
     "R5SnapshotBuilder", "SnapshotBoundaryError",
+    "R5PredecessorImportError", "R5PredecessorImportResult",
+    "import_package_d_predecessor", "verify_package_d_predecessor",
 ])
 
 # R4_GATED_CANDIDATE_REPAIR_EXPORTS
