@@ -29,6 +29,21 @@ class PreexistingHistoryAuditError(RuntimeError):
     """Raised when the frozen history acquisition cannot run safely."""
 
 
+def _certificate_scope(certificate: Mapping[str, Any]) -> list[str]:
+    explicit = certificate.get("failure_class_scope")
+    if isinstance(explicit, list) and all(
+        isinstance(item, str) and item for item in explicit
+    ):
+        return list(explicit)
+    if (
+        certificate.get("schema_version") == 1
+        and certificate.get("split_id")
+        == "v23-r2-real-vitis-unsupported-construct-v1"
+    ):
+        return ["unsupported_construct"]
+    raise PreexistingHistoryAuditError("calibration failure-class scope is missing")
+
+
 def _load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -179,13 +194,17 @@ def audit(
         raise PreexistingHistoryAuditError("calibration bundle hash mismatch")
     calibration = _load(calibration_path)
     certificate = calibration.get("certificate")
+    certificate_scope = (
+        _certificate_scope(certificate)
+        if isinstance(certificate, Mapping)
+        else []
+    )
     if (
         not isinstance(certificate, Mapping)
         or certificate.get("accepted") is not True
         or certificate.get("certificate_id")
         != plan.get("calibration_certificate_id")
-        or certificate.get("failure_class_scope")
-        != plan.get("calibration_failure_class_scope")
+        or certificate_scope != plan.get("calibration_failure_class_scope")
     ):
         raise PreexistingHistoryAuditError("calibration scope is incompatible")
 
@@ -233,7 +252,7 @@ def audit(
         "source_independence_verified": True,
         "calibration_bundle_file_sha256": file_sha256(calibration_path),
         "calibration_certificate_id": certificate["certificate_id"],
-        "calibration_failure_class_scope": certificate["failure_class_scope"],
+        "calibration_failure_class_scope": certificate_scope,
         "provider_call_upper_bound": 2,
         "vitis_launch_upper_bound": 6,
         "provider_calls": 0,
