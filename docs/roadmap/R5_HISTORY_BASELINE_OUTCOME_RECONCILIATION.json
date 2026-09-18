@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "status": "reconciled_data_insufficient_common_baseline_accepted",
+  "run_root": "/data/agrefactor_runs/r5_p3_history_real_75ef26c_run1",
+  "repository_head_at_execution": "75ef26cc2104cadc980750acfb5ea4dc78c97fe7",
+  "history_manifest": {
+    "manifest_sha256": "e0861857718e7317f1c54f6e62d9af5d4c87864b68134ef31527a12bdd5063f6",
+    "provider_calls_before": 39,
+    "vitis_launches_before": 12,
+    "future_outcomes_observed": false,
+    "future_files_executed": false
+  },
+  "observed_case": {
+    "case_id": "Exception_E2_Filter",
+    "predeclared_role": "history_positive",
+    "attempts": [
+      {
+        "attempt": 1,
+        "run_result_sha256": "003f9054bc56d1c03d25bf54b69b1cb03f9bc4e2df716f4c1c651ae2b3a07b3d",
+        "provider_calls": 9,
+        "vitis_launches": 4,
+        "formal_status": "accepted",
+        "diagnostic_event_count": 0,
+        "r2_advisor_calls": 0,
+        "r4_mutation_calls": 0
+      },
+      {
+        "attempt": 2,
+        "run_result_sha256": "dcf142ed2c83d1f0e79c82a2838fabf227818b2780a5275dad68ec2fc58e9423",
+        "provider_calls": 9,
+        "vitis_launches": 4,
+        "formal_status": "accepted",
+        "diagnostic_event_count": 0,
+        "r2_advisor_calls": 0,
+        "r4_mutation_calls": 0
+      },
+      {
+        "attempt": 3,
+        "run_result_sha256": "e0c905952e7f583b32b266460d6a437baf9410088f1ab5de3a2f0eb347c2f9e2",
+        "provider_calls": 9,
+        "vitis_launches": 4,
+        "formal_status": "accepted",
+        "diagnostic_event_count": 0,
+        "r2_advisor_calls": 0,
+        "r4_mutation_calls": 0
+      }
+    ],
+    "actual_provider_calls": 27,
+    "actual_vitis_launches": 12,
+    "conclusion": "ordinary refactor accepted the generated Candidate before R2; no legal Diagnostic Event or R4 repair episode exists"
+  },
+  "superseded_local_budget_summary": {
+    "path": "/data/agrefactor_runs/r5_p3_history_real_75ef26c_run1/budget_ledger.json",
+    "provider_calls": 33,
+    "vitis_launches": 24,
+    "reason": "the exception boundary conservatively charged a possible A2 advisor, mutation, and validation although the product run terminated accepted before R2"
+  },
+  "authoritative_global_budget": {
+    "provider_calls_before": 39,
+    "vitis_launches_before": 12,
+    "provider_calls_added": 27,
+    "vitis_launches_added": 12,
+    "provider_calls_after": 66,
+    "vitis_launches_after": 24,
+    "provider_hard_cap": 500,
+    "vitis_hard_cap": 500
+  },
+  "data_decision": {
+    "verified_positive_episode_created": false,
+    "trusted_revision_creation_allowed": false,
+    "first_history_case_suitable_for_r4_positive_acquisition": false,
+    "second_history_case_outcome_observed": false,
+    "protocol_revision_required_before_more_real_calls": true,
+    "reason": "a successful initial Candidate cannot be rewritten as an R4 repair episode; the driver must preserve this result and continue only under a newly audited acquisition protocol"
+  },
+  "future_outcomes_observed": false,
+  "future_files_executed": false,
+  "r5_accepted": false,
+  "r6_started": false
+}

@@ -165,3 +165,30 @@ Its `protocol_audit.json` file SHA-256 is
 `2bc9a298048a41d01f782e5e4bc0d810fbc66a85bed57aca70f0d3c5401a6b90`.
 It carries the cumulative `39/12` ledger and the corrected `60/72` pilot and
 `120/144` formal bounds. It made zero Provider calls and zero Vitis launches.
+
+## First Outcome-Bearing History Acquisition
+
+The next immutable history run is
+`/data/agrefactor_runs/r5_p3_history_real_75ef26c_run1`. Its first frozen
+history case, `Exception_E2_Filter`, completed three ordinary `refactor`
+baselines. Every baseline was formally accepted after exactly 9 Provider calls
+and 4 Vitis launches, and none produced a Diagnostic Event. The actual added
+usage is therefore `27/12`, making the authoritative cumulative R5 ledger
+`66/24`.
+
+This is a data result, not an R2/R4 success. Because the initial Candidate was
+already accepted, there is no legal R2 input and no R4 mutation or repair
+episode. The run must not be relabeled as a verified-positive R4 episode. The
+first case is unsuitable for the predeclared positive-history acquisition
+role under the current generated-Candidate protocol. The second history case
+and every future case remain unobserved.
+
+The run-local `33/24` ledger is retained as immutable evidence but is
+superseded by the per-run `run_result.json` records for global budget
+accounting. The reconciliation is recorded in
+`docs/roadmap/R5_HISTORY_BASELINE_OUTCOME_RECONCILIATION.json`. Before another
+real call, the history acquisition driver and protocol audit must be revised
+so that a data-insufficient case is preserved without aborting discovery of
+the remaining pre-frozen history case. This revision may not inject a defect,
+forge an episode, read future outcomes, or treat a checked-in legacy Candidate
+as valid R5 evidence without an explicit provenance and product-path design.
