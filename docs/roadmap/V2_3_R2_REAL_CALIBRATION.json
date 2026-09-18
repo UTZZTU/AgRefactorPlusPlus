@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "stage": "V2.3-R2-R4-real-calibration-certificate",
-  "implementation_base_head": "ff68e4df0eb9daffe9129d67040e5197d9d15bda",
+  "implementation_base_head": "0a5a77646df43f8551252edbe912546d21917b59",
   "product_entrypoints_unchanged": [
     "refactor",
     "optimize",
