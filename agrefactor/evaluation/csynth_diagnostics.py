@@ -51,6 +51,12 @@ _TRAILING_LOCATION_RE = re.compile(
 
 _WHITESPACE_RE = re.compile(r"\s+")
 
+
+def _source_position(value: str) -> int | None:
+    """Normalize Vitis' zero sentinel for an unknown source position."""
+    position = int(value)
+    return position if position > 0 else None
+
 _UNDECLARED_IDENTIFIER_RE = re.compile(
     r"\buse of undeclared identifier\b",
     flags=re.IGNORECASE,
@@ -277,8 +283,8 @@ class CsynthDiagnosticParser:
                     "message"
                 ).strip(),
                 "file": source_match.group("file").strip(),
-                "line": int(source_match.group("line")),
-                "column": int(source_match.group("column")),
+                "line": _source_position(source_match.group("line")),
+                "column": _source_position(source_match.group("column")),
             }
 
         message_match = _MESSAGE_LINE_RE.match(raw_line)
@@ -298,8 +304,10 @@ class CsynthDiagnosticParser:
         location_match = _TRAILING_LOCATION_RE.search(message)
         if location_match is not None:
             file_name = location_match.group("file").strip()
-            source_line = int(location_match.group("line"))
-            source_column = int(
+            source_line = _source_position(
+                location_match.group("line")
+            )
+            source_column = _source_position(
                 location_match.group("column")
             )
             message = message[: location_match.start()].strip()

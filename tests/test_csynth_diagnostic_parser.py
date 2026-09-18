@@ -341,6 +341,25 @@ class CsynthDiagnosticParserTests(unittest.TestCase):
         self.assertEqual(item.metadata["line"], 14)
         self.assertEqual(item.metadata["column"], 9)
 
+    def test_zero_source_column_is_normalized_to_unknown(self) -> None:
+        report = self.parse(
+            "\n".join(
+                [
+                    (
+                        "ERROR: [HLS 214-400] Unsupported virtual "
+                        "function found in class 'Addition' "
+                        "(vector_add.cpp:8:0)"
+                    ),
+                    "vector_add.cpp:9:0: error: expected ';'",
+                ]
+            )
+        )
+
+        self.assertEqual(len(report.items), 2)
+        for item in report.items:
+            self.assertIsNotNone(item.metadata["line"])
+            self.assertIsNone(item.metadata["column"])
+
     def test_error_then_source_location_form_is_parsed(
         self,
     ) -> None:
