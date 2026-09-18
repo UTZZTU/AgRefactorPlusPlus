@@ -158,3 +158,10 @@ successful baselines consumed `27/12` before the stale three-launch campaign
 guard failed closed. The cumulative R5 ledger is therefore `39/12`; the v3
 audit is retained but superseded, and the corrected bounds are `60/72` for a
 one-case pilot and `120/144` for the two-case formal campaign.
+
+The v4 zero-call protocol audit passed at
+`/data/agrefactor_runs/r5_p2_oracle_protocol_audit_v4_vitis_corrected_7784252`.
+Its `protocol_audit.json` file SHA-256 is
+`2bc9a298048a41d01f782e5e4bc0d810fbc66a85bed57aca70f0d3c5401a6b90`.
+It carries the cumulative `39/12` ledger and the corrected `60/72` pilot and
+`120/144` formal bounds. It made zero Provider calls and zero Vitis launches.

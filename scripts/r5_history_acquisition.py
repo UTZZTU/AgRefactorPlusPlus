@@ -51,7 +51,7 @@ DEFAULT_ADAPTER_MANIFEST = Path(
 )
 DEFAULT_PROTOCOL_AUDIT = Path(
     "/data/agrefactor_runs/"
-    "r5_p2_oracle_protocol_audit_v3_budget_corrected_6e523d6/"
+    "r5_p2_oracle_protocol_audit_v4_vitis_corrected_7784252/"
     "protocol_audit.json"
 )
 DEFAULT_CALIBRATION_BUNDLE = Path(
