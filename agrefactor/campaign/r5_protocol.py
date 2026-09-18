@@ -41,9 +41,10 @@ _GIT_COMMIT = re.compile(r"^[0-9a-f]{40,64}$")
 # identifier agents, one deduplicator, one planner, and one refactoring worker.
 # These are logical Provider calls enforced by the shared BudgetManager.
 COMMON_BASELINE_PROVIDER_CAP = 9
-COMMON_BASELINE_VITIS_CAP = 3
+COMMON_BASELINE_VITIS_CAP = 4
 ADVISOR_ARM_COUNT = 6
 MUTATION_ARM_COUNT = 5
+MUTATION_ARM_VITIS_CAP = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,8 +116,9 @@ def estimate_upper_bound(*, case_count: int, repeats: int = 3) -> tuple[int, int
 
     Each case/repeat has one nine-call initial generation prefix. Advisor arms
     A1-A6 call once; repair arms A2-A6 may call once more. The common baseline
-    has at most three Vitis stages; mutation arms may launch one fresh full
-    validation (three stages).
+    has four physical Vitis launches (Public csim, csynth, Public cosim, and
+    Hidden csim); mutation arms may launch one fresh full validation with the
+    same four-launch bound.
     """
     if case_count < 1 or repeats != 3:
         raise R5ProtocolError("invalid case_count or repeats")
@@ -124,7 +126,8 @@ def estimate_upper_bound(*, case_count: int, repeats: int = 3) -> tuple[int, int
         COMMON_BASELINE_PROVIDER_CAP + ADVISOR_ARM_COUNT + MUTATION_ARM_COUNT
     )
     vitis = case_count * repeats * (
-        COMMON_BASELINE_VITIS_CAP + MUTATION_ARM_COUNT * 3
+        COMMON_BASELINE_VITIS_CAP
+        + MUTATION_ARM_COUNT * MUTATION_ARM_VITIS_CAP
     )
     return provider, vitis
 
@@ -145,6 +148,7 @@ __all__ = [
     "COMMON_BASELINE_PROVIDER_CAP",
     "COMMON_BASELINE_VITIS_CAP",
     "MUTATION_ARM_COUNT",
+    "MUTATION_ARM_VITIS_CAP",
     "R5Arm",
     "R5CampaignManifest",
     "R5ProtocolError",

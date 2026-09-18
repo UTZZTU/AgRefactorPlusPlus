@@ -21,6 +21,7 @@ from agrefactor.recovery.r5_budget import R5BudgetLedger
 from .r5_protocol import (
     COMMON_BASELINE_PROVIDER_CAP,
     COMMON_BASELINE_VITIS_CAP,
+    MUTATION_ARM_VITIS_CAP,
     R5Arm,
     R5CampaignManifest,
     estimate_upper_bound,
@@ -135,11 +136,11 @@ def _validate_arm_usage(
     provider_cap, vitis_cap = {
         R5Arm.A0: (0, 0),
         R5Arm.A1: (1, 0),
-        R5Arm.A2: (2, 3),
-        R5Arm.A3: (2, 3),
-        R5Arm.A4: (2, 3),
-        R5Arm.A5: (2, 3),
-        R5Arm.A6: (2, 3),
+        R5Arm.A2: (2, MUTATION_ARM_VITIS_CAP),
+        R5Arm.A3: (2, MUTATION_ARM_VITIS_CAP),
+        R5Arm.A4: (2, MUTATION_ARM_VITIS_CAP),
+        R5Arm.A5: (2, MUTATION_ARM_VITIS_CAP),
+        R5Arm.A6: (2, MUTATION_ARM_VITIS_CAP),
     }[arm]
     if provider_calls > provider_cap or vitis_launches > vitis_cap:
         raise R5CampaignError(

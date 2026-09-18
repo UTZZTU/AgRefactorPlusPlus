@@ -174,9 +174,9 @@ class R5OracleProtocolAuditTests(unittest.TestCase):
         )
         self.assertFalse(result["protocol_audit"]["real_campaign_allowed"])
         self.assertEqual(result["budget_plan"]["pilot_provider_upper_bound"], 60)
-        self.assertEqual(result["budget_plan"]["pilot_vitis_upper_bound"], 54)
+        self.assertEqual(result["budget_plan"]["pilot_vitis_upper_bound"], 72)
         self.assertEqual(result["budget_plan"]["formal_provider_upper_bound"], 120)
-        self.assertEqual(result["budget_plan"]["formal_vitis_upper_bound"], 108)
+        self.assertEqual(result["budget_plan"]["formal_vitis_upper_bound"], 144)
 
     def test_manifest_signature_mismatch_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

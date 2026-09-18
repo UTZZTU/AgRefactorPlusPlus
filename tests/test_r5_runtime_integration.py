@@ -163,7 +163,7 @@ class R5RuntimeIntegrationTests(unittest.TestCase):
             self.assertEqual(plan["future_case_ids"], ["future-01"])
             self.assertEqual(
                 plan["budget_upper_bound"],
-                {"provider_calls": 60, "vitis_launches": 54},
+                {"provider_calls": 60, "vitis_launches": 72},
             )
         self.assertEqual(
             executor.baseline_calls,

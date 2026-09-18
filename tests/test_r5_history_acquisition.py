@@ -103,7 +103,7 @@ class R5HistoryAcquisitionTests(unittest.TestCase):
         self.assertEqual(manifest["arm"], "A2")
         self.assertEqual(manifest["entrypoint"], "refactor")
         self.assertEqual(manifest["provider_call_upper_bound"], 66)
-        self.assertEqual(manifest["vitis_launch_upper_bound"], 36)
+        self.assertEqual(manifest["vitis_launch_upper_bound"], 48)
         self.assertEqual(manifest["provider_calls_before"], 12)
         self.assertFalse(manifest["future_outcomes_observed"])
         unsigned = dict(manifest)

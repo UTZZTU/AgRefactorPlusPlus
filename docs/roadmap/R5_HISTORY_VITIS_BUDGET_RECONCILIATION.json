@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "status": "reconciled_from_authoritative_per_run_results",
+  "failed_run_root": "/data/agrefactor_runs/r5_p3_history_real_d163832_run1",
+  "repository_head_at_execution": "d163832",
+  "failure_reason": "common_baseline_vitis_upper_bound_was_incorrectly_frozen_at_three",
+  "physical_launch_model": {
+    "public_csim": 1,
+    "csynth": 1,
+    "public_cosim": 1,
+    "hidden_csim": 1,
+    "total_per_complete_validation": 4
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "case_id": "Exception_E2_Filter",
+      "run_result_sha256": "8412a4eea2cdd71eccbe2f3a75a92e91b759c3463890d0166bfc743de40b764d",
+      "provider_calls": 9,
+      "vitis_launches": 4,
+      "product_status": "succeeded",
+      "campaign_error": "captured baseline exceeded frozen usage bound"
+    },
+    {
+      "attempt": 2,
+      "case_id": "Exception_E2_Filter",
+      "run_result_sha256": "c7df95d474b0704176ffcb2d21dd2f5f28a5c46ce8aba3c344aa4af03900eeeb",
+      "provider_calls": 9,
+      "vitis_launches": 4,
+      "product_status": "succeeded",
+      "campaign_error": "captured baseline exceeded frozen usage bound"
+    },
+    {
+      "attempt": 3,
+      "case_id": "Exception_E2_Filter",
+      "run_result_sha256": "cb5e4954c03294fa8a4467c3a4394198f29b34527530f402f3176c229f263be5",
+      "provider_calls": 9,
+      "vitis_launches": 4,
+      "product_status": "succeeded",
+      "campaign_error": "captured baseline exceeded frozen usage bound"
+    }
+  ],
+  "run_provider_calls": 27,
+  "run_vitis_launches": 12,
+  "r5_provider_calls_before": 12,
+  "r5_vitis_launches_before": 0,
+  "r5_provider_calls_after": 39,
+  "r5_vitis_launches_after": 12,
+  "budget_ledger": {
+    "sha256": "d6cc23f4617701017fd64d8ab90c215b6a69e84f439e0ef7c3b17f46bde6a8f3",
+    "provider_calls": 27,
+    "vitis_launches": 12
+  },
+  "history_manifest": {
+    "sha256": "ee241a943d4f0e2edf25a623d132d3c9c682137af7502e9c7f1da5361048a412",
+    "status": "superseded_vitis_launch_model"
+  },
+  "r2_advisor_calls": 0,
+  "r4_mutation_calls": 0,
+  "future_outcomes_observed": false,
+  "future_files_executed": false,
+  "r5_accepted": false,
+  "r6_started": false
+}

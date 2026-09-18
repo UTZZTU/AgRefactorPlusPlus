@@ -23,6 +23,7 @@ from agrefactor.campaign import ExistingRefactorR5CampaignExecutor, R5Arm
 from agrefactor.campaign.r5_protocol import (
     COMMON_BASELINE_PROVIDER_CAP,
     COMMON_BASELINE_VITIS_CAP,
+    MUTATION_ARM_VITIS_CAP,
 )
 from agrefactor.cli import build_parser
 from agrefactor.models import resolve_model_runtime
@@ -59,9 +60,9 @@ DEFAULT_CALIBRATION_BUNDLE = Path(
 )
 STATE_PATH = Path("docs/roadmap/V2_3_STATE.json")
 HISTORY_PROVIDER_CAP = 66
-HISTORY_VITIS_CAP = 36
+HISTORY_VITIS_CAP = 48
 PER_ATTEMPT_PROVIDER_CAP = COMMON_BASELINE_PROVIDER_CAP + 2
-PER_ATTEMPT_VITIS_CAP = COMMON_BASELINE_VITIS_CAP + 3
+PER_ATTEMPT_VITIS_CAP = COMMON_BASELINE_VITIS_CAP + MUTATION_ARM_VITIS_CAP
 
 
 class HistoryAcquisitionError(RuntimeError):
@@ -711,7 +712,7 @@ def acquire_history(
                             2 if arm_started else 0
                         )
                         usage["vitis_launches"] += attempt_vitis + (
-                            3 if arm_started else 0
+                            MUTATION_ARM_VITIS_CAP if arm_started else 0
                         )
                     else:
                         observed = _read_product_budget_usage(product_root)

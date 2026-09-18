@@ -132,9 +132,9 @@ they are not guessed from the benchmark.
 The provided-Testbench baseline contains six identifier calls, one
 deduplicator, one planner, and one refactoring call. Therefore its frozen
 Provider upper bound is 9, not 1. An A2 history attempt adds at most one R2
-advisory and one R4 mutation, for 11 Provider calls and 6 Vitis launches per
+advisory and one R4 mutation, for 11 Provider calls and 8 Vitis launches per
 attempt. The predeclared acquisition upper bound is consequently 66 Provider
-calls and 36 Vitis launches for up to three fail-closed attempts on each of two
+calls and 48 Vitis launches for up to three fail-closed attempts on each of two
 sources.
 
 The first real history run at
@@ -149,6 +149,12 @@ The corrected zero-call audit passed at
 `/data/agrefactor_runs/r5_p2_oracle_protocol_audit_v3_budget_corrected_6e523d6`.
 Its `protocol_audit.json` file SHA-256 is
 `0b27dd5a7e576a9893346468ff2fd8622ba9b63c345c071c430cea4f2e306fa7`.
-It carries the reconciled `12/0` ledger and freezes one-case pilot bounds at
-`60/54` and two-case formal bounds at `120/108` Provider/Vitis launches. It
-made zero Provider calls and zero Vitis launches.
+It carried the reconciled `12/0` ledger and froze one-case pilot bounds at
+`60/54` and two-case formal bounds at `120/108` Provider/Vitis launches. A
+subsequent real baseline proved that this Vitis model was still incomplete:
+the ordinary provided-Testbench path launches Public csim, csynth, Public
+cosim, and Hidden csim, for four launches per complete validation. Three
+successful baselines consumed `27/12` before the stale three-launch campaign
+guard failed closed. The cumulative R5 ledger is therefore `39/12`; the v3
+audit is retained but superseded, and the corrected bounds are `60/72` for a
+one-case pilot and `120/144` for the two-case formal campaign.

@@ -322,7 +322,7 @@ class R5ProtocolTests(unittest.TestCase):
 
     def test_upper_bound_and_paired_reducer(self) -> None:
         provider, vitis = estimate_upper_bound(case_count=2)
-        self.assertEqual((provider, vitis), (120, 108))
+        self.assertEqual((provider, vitis), (120, 144))
         rows = []
         for arm in R5Arm:
             rows.append(R5ArmObservation("case", 1, arm, "baseline", "ok", arm is R5Arm.A6, False, False, arm is R5Arm.A0, False, False, 1, 1, digest("source"), digest("context"), digest(arm.value)))
