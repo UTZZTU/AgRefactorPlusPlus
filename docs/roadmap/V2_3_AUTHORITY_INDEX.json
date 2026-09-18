@@ -218,7 +218,7 @@
   "r5_deterministic_implementation_status": "implemented_full_regression_passed",
   "r5_evidence_inventory_status": "ready_predecessor_only",
   "r5_dataset_status": "blocked_data_acquisition",
-  "r5_consumed_provider_calls": 0,
+  "r5_consumed_provider_calls": 1,
   "r5_consumed_vitis_launches": 0,
   "r5_real_campaign_allowed": false,
   "repository": "UTZZTU/AgRefactorPlusPlus",

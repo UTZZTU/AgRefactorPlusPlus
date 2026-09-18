@@ -56,12 +56,24 @@ future partition and no paired positive/inapplicable controls. The generated
 real campaign. Historical reports or Package D canaries must not be relabeled
 as an R5 future set.
 
+The deterministic HLSRewriter source audit now covers all 20 checked-in roots.
+It found 0 directly admissible cases, 13 cases that require a separately
+reviewed Public/Hidden adapter, and 7 rejected cases. The common deficiencies
+are implementation-including testbenches, missing process-failure oracles,
+missing distinct Public/Hidden suites, and Tcl flows that run only synthesis.
+The immutable audit is
+`/data/agrefactor_runs/r5_p2_hlsrewritter_audit/hlsrewritter_case_audit.json`
+with file SHA-256
+`5b0bdf3c074cda2b73b43c80032413c809c1528c18b15b7c3dcfbe2f92be3cfb`.
+No Provider or Vitis call was made. An `adapter_required` classification is
+not campaign admission and does not authorize creating an oracle.
+
 ## Next Authorized Step
 
-Audit the 20 candidate benchmark roots under `src/hlsrewritter` and create an
-immutable eligibility manifest with explicit acceptance/rejection reasons.
-Only cases with enforceable Public/Hidden oracles, complete Target/toolchain/
-parser/model identity, temporal provenance, source-level holdout, and paired
-controls may enter the dataset. Re-run the inventory and dataset contract,
-then perform a zero-call protocol audit before the bounded real pilot. R6
-remains stopped.
+Design and review adapters only for the 13 `adapter_required` cases. An
+adapter may expose an existing oracle but must not invent expected outcomes or
+weaken failure semantics. Rejected cases remain outside the dataset. Freeze
+history/future and paired control roles only after adapter identity, complete
+Target/toolchain/parser/model identity, temporal provenance, and source-level
+holdout are proven. Re-run the inventory and dataset contract, then perform a
+zero-call protocol audit before the bounded real pilot. R6 remains stopped.

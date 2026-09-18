@@ -17,6 +17,8 @@ from typing import Any, Iterable, Mapping
 
 
 CAP = 500
+R5_CONSUMED_PROVIDER_CALLS = 1
+R5_CONSUMED_VITIS_LAUNCHES = 0
 R5_AUTHORIZATION_COMMIT = "9d03b9e90710b1e6e8cd5f57d728e95ba1fc58a8"
 R4_ROOTS = (
     "/data/package_d_v1_1_1_r4_evidence",
@@ -325,10 +327,10 @@ def build_inventory(roots: Iterable[Path]) -> dict[str, Any]:
         "r5_budget_ledger": {
             "provider_cap": CAP,
             "vitis_cap": CAP,
-            "consumed_provider_calls": 0,
-            "consumed_vitis_launches": 0,
-            "remaining_provider_calls": CAP,
-            "remaining_vitis_launches": CAP,
+            "consumed_provider_calls": R5_CONSUMED_PROVIDER_CALLS,
+            "consumed_vitis_launches": R5_CONSUMED_VITIS_LAUNCHES,
+            "remaining_provider_calls": CAP - R5_CONSUMED_PROVIDER_CALLS,
+            "remaining_vitis_launches": CAP - R5_CONSUMED_VITIS_LAUNCHES,
             "historical_pre_r5_provider_calls": historical_provider,
             "historical_pre_r5_vitis_launches": historical_vitis,
             "recovery_and_audit_reserve_fraction": 0.10,
@@ -362,10 +364,10 @@ def main() -> int:
     print(f"DUPLICATE_ARTIFACTS={payload['deduplication']['duplicate_artifact_count']}")
     print(f"HISTORICAL_PROVIDER_CALLS={payload['historical_evidence_usage']['provider_calls']}")
     print(f"HISTORICAL_VITIS_LAUNCHES={payload['historical_evidence_usage']['vitis_launches']}")
-    print("R5_CONSUMED_PROVIDER_CALLS=0")
-    print("R5_CONSUMED_VITIS_LAUNCHES=0")
-    print(f"R5_REMAINING_PROVIDER_CALLS={CAP}")
-    print(f"R5_REMAINING_VITIS_LAUNCHES={CAP}")
+    print(f"R5_CONSUMED_PROVIDER_CALLS={R5_CONSUMED_PROVIDER_CALLS}")
+    print(f"R5_CONSUMED_VITIS_LAUNCHES={R5_CONSUMED_VITIS_LAUNCHES}")
+    print(f"R5_REMAINING_PROVIDER_CALLS={CAP - R5_CONSUMED_PROVIDER_CALLS}")
+    print(f"R5_REMAINING_VITIS_LAUNCHES={CAP - R5_CONSUMED_VITIS_LAUNCHES}")
     print(f"R5_PRIMARY_DATASET_READY={str(payload['dataset_readiness']['primary_r5_campaign_ready']).lower()}")
     return 0
 

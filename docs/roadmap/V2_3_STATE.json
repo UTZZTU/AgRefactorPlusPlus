@@ -89,7 +89,8 @@
   "R5_DATASET_STATUS": "blocked_data_acquisition",
   "R5_DATASET_REASON": [
     "no frozen R5 history/future case partition is present",
-    "no paired positive and inapplicable repair controls are present"
+    "no paired positive and inapplicable repair controls are present",
+    "hlsrewritter audit found 0 direct, 13 adapter-required, and 7 rejected cases"
   ],
   "R5_CONSUMED_PROVIDER_CALLS": 1,
   "R5_CONSUMED_VITIS_LAUNCHES": 0,
@@ -105,7 +106,7 @@
   "implementation_head": "75a4b49c4e5256f5a7ff36c2adc455d47851dba6",
   "implementation_state": "R5-product-campaign-executor-implemented-dataset-qualification-next",
   "independent_audit_state": "R4-real-canary-file-only-audit-clean-project-owner-accepted",
-  "next_step": "V2.3-R5-benchmark-eligibility-audit",
+  "next_step": "V2.3-R5-reviewed-oracle-adapter-design",
   "package_self_acceptance": false,
   "r0_external_acceptance_archive": "agrefactor_v23_r0_correction_finalize_20260828T144812Z_2495321.tar.gz",
   "r0_external_acceptance_archive_sha256": "4209d6330f0d9089cc92c97d25ba1112b460a0e5201f11298f99047da0304f77",
