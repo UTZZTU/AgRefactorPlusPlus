@@ -211,3 +211,24 @@ its internal canonical hash is
 `7bca0ab9e5b9bf14c648293434e1c75bd28245d9586f5871a4d972313be52cf4`.
 It made zero Provider calls and zero Vitis launches and does not authorize a
 Trusted revision, future execution, R5 acceptance, or R6.
+
+The authorized continuation ran at
+`/data/agrefactor_runs/r5_p3_history_continuation_real_a156709_run1` and
+consumed an actual `27` Provider calls and `9` Vitis launches, bringing the
+global R5 ledger to `93/33`. All three generated Candidates passed Public csim
+and csynth, then stopped at Public cosim with the typed safe summary
+`cosim_failed_without_typed_owner`. R2 rejected each event as
+`diagnostic_item_not_actionable` before a Provider request, so R4 made no
+mutation and no episode was created.
+
+This result invalidates the predeclared `unsupported_construct` positive role
+for `Recursive_E2_DFS` under the generated-Candidate protocol. It does not
+justify weakening the R2 contract: the observed evidence identifies neither a
+Candidate-attributable failure nor a bounded repair scope. Both frozen history
+cases are now exhausted with zero eligible positive episodes, while all future
+cases and outcomes remain unobserved. The machine-readable reconciliation is
+`docs/roadmap/R5_HISTORY_CONTINUATION_OUTCOME_RECONCILIATION.json` with file
+SHA-256
+`5546893b0e66311c6c92d7f3d368336cb48a37bf05eb48d39bf72fed8dec825e`.
+R5 must return to P2 and freeze an expanded history-only pool before another
+real call.

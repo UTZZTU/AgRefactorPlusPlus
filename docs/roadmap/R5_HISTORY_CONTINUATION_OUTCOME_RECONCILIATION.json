@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "status": "reconciled_history_split_exhausted_without_positive_episode",
+  "run_root": "/data/agrefactor_runs/r5_p3_history_continuation_real_a156709_run1",
+  "repository_head_at_execution": "a156709",
+  "history_acquisition_manifest_file_sha256": "64fb1457771473c7c5f807c841120ef0cd0a8c2768b6f7581e54f8741ed010a3",
+  "history_acquisition_result_file_sha256": "4c7a7bdd30b5bd499ded126083af3af5350b881fa10713b21dd15e1e9eac7f84",
+  "history_acquisition_result_sha256": "d0395113c4c4688d1ff3a270a495d4f30fa5faf7a1ab1668b38f73f7bbcfc35e",
+  "budget_ledger_file_sha256": "9934f1ff981cb555cbd1cd4e27a070682a5d8d09633045cd3117ce1607cb0270",
+  "observed_case": {
+    "case_id": "Recursive_E2_DFS",
+    "predeclared_role": "history_positive_unsupported_construct",
+    "attempts": [
+      {
+        "attempt": 1,
+        "run_result_sha256": "cc41ee78e89990526f888024275635a2f663b10fe3dc09ed9d8affc2e704a040",
+        "attempt_result_sha256": "6089b36d70a381f8b32dcc5b31d228e1456d862e50f56872e535c5bee9b1b627",
+        "provider_calls": 9,
+        "vitis_launches": 3,
+        "formal_status": "validation_terminal",
+        "last_validation_state": "review_required",
+        "diagnostic_event_count": 1,
+        "diagnostic_stage": "public_cosim",
+        "diagnostic_summary": "cosim_failed_without_typed_owner",
+        "r2_input_status": "rejected:diagnostic_item_not_actionable",
+        "r2_provider_calls": 0,
+        "r4_mutation_calls": 0
+      },
+      {
+        "attempt": 2,
+        "run_result_sha256": "6af5c1b5b648cd81455422364a7f1ab201dcb12b52d8a4baf4c1ec08fde16066",
+        "attempt_result_sha256": "a5b9276b757af783cfb9a93b67d1f0144f18a1e49b7de07b108989fee5249282",
+        "provider_calls": 9,
+        "vitis_launches": 3,
+        "formal_status": "validation_terminal",
+        "last_validation_state": "review_required",
+        "diagnostic_event_count": 1,
+        "diagnostic_stage": "public_cosim",
+        "diagnostic_summary": "cosim_failed_without_typed_owner",
+        "r2_input_status": "rejected:diagnostic_item_not_actionable",
+        "r2_provider_calls": 0,
+        "r4_mutation_calls": 0
+      },
+      {
+        "attempt": 3,
+        "run_result_sha256": "59f9fa64d53c650d13f270075c6e3c2410d526d2ab55052c6511049b8d72fb18",
+        "attempt_result_sha256": "2b3aa3e20c5a7f47f7d0b6dc74df3c7156271903a21fb4900815ac2977ab246b",
+        "provider_calls": 9,
+        "vitis_launches": 3,
+        "formal_status": "validation_terminal",
+        "last_validation_state": "review_required",
+        "diagnostic_event_count": 1,
+        "diagnostic_stage": "public_cosim",
+        "diagnostic_summary": "cosim_failed_without_typed_owner",
+        "r2_input_status": "rejected:diagnostic_item_not_actionable",
+        "r2_provider_calls": 0,
+        "r4_mutation_calls": 0
+      }
+    ],
+    "actual_provider_calls": 27,
+    "actual_vitis_launches": 9,
+    "verified_positive_episode_count": 0,
+    "conclusion": "the generated Candidates synthesized but failed Public cosim with no typed owner; the unsupported_construct positive role was not realized"
+  },
+  "authoritative_global_budget": {
+    "provider_calls_before": 66,
+    "vitis_launches_before": 24,
+    "provider_calls_added": 27,
+    "vitis_launches_added": 9,
+    "provider_calls_after": 93,
+    "vitis_launches_after": 33,
+    "provider_hard_cap": 500,
+    "vitis_hard_cap": 500
+  },
+  "data_decision": {
+    "frozen_history_case_count": 2,
+    "observed_history_case_count": 2,
+    "verified_positive_episode_count": 0,
+    "trusted_revision_creation_allowed": false,
+    "r2_contract_should_be_weakened": false,
+    "history_pool_expansion_required": true,
+    "reason": "the first case was initially accepted and the second exposed an untyped cosim semantic failure outside the calibrated unsupported_construct boundary"
+  },
+  "future_outcomes_observed": false,
+  "future_files_executed": false,
+  "r5_accepted": false,
+  "r6_started": false
+}
