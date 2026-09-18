@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "plan_id": "v2.3-r5-reference-oracle-adapters-v1",
+  "frozen_at": "2026-09-19T04:45:00Z",
+  "status": "predeclared_before_outcome_observation",
+  "primary_failure_family": "candidate_compile_or_unsupported_construct",
+  "candidate_top_suffix": "_hls",
+  "cases": [
+    {
+      "case_id": "Exception_E2_Filter",
+      "period": "history",
+      "control_role": "positive",
+      "source": "src/hlsrewritter/Exception_E2_Filter/kernel.cpp",
+      "legacy_candidate": "src/hlsrewritter/Exception_E2_Filter/main.cpp",
+      "legacy_testbench": "src/hlsrewritter/Exception_E2_Filter/tb.cpp",
+      "top": "run",
+      "public_test": "configs/r5/oracle_adapters/Exception_E2_Filter/public.cpp",
+      "hidden_test": "configs/r5/oracle_adapters/Exception_E2_Filter/hidden.cpp",
+      "prior_evidence": "checked-in legacy candidate contains a pre-R5 compile defect"
+    },
+    {
+      "case_id": "Pointer_E2_hash_table",
+      "period": "history",
+      "control_role": "positive",
+      "source": "src/hlsrewritter/Pointer_E2_hash_table/kernel.cpp",
+      "legacy_candidate": "src/hlsrewritter/Pointer_E2_hash_table/main.cpp",
+      "legacy_testbench": "src/hlsrewritter/Pointer_E2_hash_table/tb.cpp",
+      "top": "length",
+      "public_test": "configs/r5/oracle_adapters/Pointer_E2_hash_table/public.cpp",
+      "hidden_test": "configs/r5/oracle_adapters/Pointer_E2_hash_table/hidden.cpp",
+      "prior_evidence": "checked-in legacy candidate contains a pre-R5 compile defect"
+    },
+    {
+      "case_id": "Exception_E3_Turbo_Encoder",
+      "period": "future",
+      "control_role": "positive",
+      "source": "src/hlsrewritter/Exception_E3_Turbo_Encoder/kernel.cpp",
+      "legacy_candidate": "src/hlsrewritter/Exception_E3_Turbo_Encoder/main.cpp",
+      "legacy_testbench": "src/hlsrewritter/Exception_E3_Turbo_Encoder/tb.cpp",
+      "top": "regUpdate",
+      "public_test": "configs/r5/oracle_adapters/Exception_E3_Turbo_Encoder/public.cpp",
+      "hidden_test": "configs/r5/oracle_adapters/Exception_E3_Turbo_Encoder/hidden.cpp",
+      "prior_evidence": "checked-in legacy candidate contains a pre-R5 compile defect"
+    },
+    {
+      "case_id": "Pointer_E3_double_pointer",
+      "period": "future",
+      "control_role": "inapplicable_or_confusable",
+      "source": "src/hlsrewritter/Pointer_E3_double_pointer/kernel.cpp",
+      "legacy_candidate": "src/hlsrewritter/Pointer_E3_double_pointer/main.cpp",
+      "legacy_testbench": "src/hlsrewritter/Pointer_E3_double_pointer/tb.cpp",
+      "top": "trap",
+      "public_test": "configs/r5/oracle_adapters/Pointer_E3_double_pointer/public.cpp",
+      "hidden_test": "configs/r5/oracle_adapters/Pointer_E3_double_pointer/hidden.cpp",
+      "prior_evidence": "checked-in legacy candidate is a pre-R5 confusable control"
+    }
+  ],
+  "invariants": {
+    "expected_outputs_invented": false,
+    "reference_top_is_oracle": true,
+    "public_hidden_inputs_distinct": true,
+    "original_benchmark_files_mutated": false,
+    "history_future_roles_predeclared": true,
+    "outcomes_observed_at_freeze": false,
+    "hidden_model_visible": false,
+    "trusted_revision_creation_allowed": false,
+    "real_campaign_allowed": false
+  }
+}
