@@ -477,12 +477,24 @@ class R2ShadowAdvisorTests(unittest.TestCase):
         self.assertEqual(result.metadata["prompt_contract_sha256"], digest)
         self.assertEqual(
             model_request.metadata["prompt_contract_version"],
-            "r2-shadow-output-v2",
+            "r2-shadow-output-v3",
         )
         self.assertEqual(
             result.metadata["prompt_contract_version"],
-            "r2-shadow-output-v2",
+            "r2-shadow-output-v3",
         )
+
+        rubric = contract["confidence_rubric"]
+        self.assertEqual(
+            set(rubric), {"meaning", "high", "medium", "low", "abstain"}
+        )
+        self.assertIn("does not predict repair success", rubric["meaning"])
+        self.assertIn("directly supported", rubric["high"])
+        self.assertIn("no conflicting or equally plausible", rubric["high"])
+        self.assertIn("alternative attribution remains plausible", rubric["medium"])
+        self.assertIn("tentative hypothesis", rubric["low"])
+        self.assertIn("only an aggregate failure", rubric["abstain"])
+        self.assertIn("Do not maximize confidence", system)
 
     def test_prompt_contract_abstention_and_authority_rules_are_explicit(self):
         advisor, provider = self.advisor(
@@ -502,6 +514,8 @@ class R2ShadowAdvisorTests(unittest.TestCase):
         rules = "\n".join(envelope["output_contract"]["semantic_rules"])
         self.assertIn("suspected_owner=unknown", rules)
         self.assertIn("testbench_only is forbidden", rules)
+        self.assertIn("Do not maximize confidence", rules)
+        self.assertIn("confidence never predicts repair success", rules)
         self.assertIn("do not claim acceptance", rules)
 
     def test_strict_output_negative_cases_abstain(self):
@@ -689,13 +703,23 @@ class R2ShadowAdvisorTests(unittest.TestCase):
         advisory = dict(records[0]["advisory"])
         advisory["metadata"] = {
             "strict_parser": "r2-v1",
-            "prompt_contract_version": "r2-shadow-output-v2",
+            "prompt_contract_version": "r2-shadow-output-v3",
         }
         verification = verify_calibrated_advisory(
             certificate,
             shadow={"provider_identity": identity, "advisory": advisory},
         )
         self.assertTrue(verification.verified)
+
+        legacy = dict(advisory)
+        legacy["metadata"] = dict(advisory["metadata"])
+        legacy["metadata"]["prompt_contract_version"] = "r2-shadow-output-v2"
+        verification = verify_calibrated_advisory(
+            certificate,
+            shadow={"provider_identity": identity, "advisory": legacy},
+        )
+        self.assertFalse(verification.verified)
+        self.assertIn("prompt_contract_version_mismatch", verification.reasons)
 
         medium = dict(advisory)
         medium["confidence"] = "medium"
