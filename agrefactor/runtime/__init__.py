@@ -51,6 +51,8 @@ from .trace import (
     TraceEvidenceView,
     TraceRecorder,
 )
+from .r5_profile import R5Arm, R5Profile, R5ProfileError, resolve_r5_profile
+from .r5_binding import R5RuntimeBinding, R5RuntimeBindingError
 
 
 _LAZY_EXPORTS = {
@@ -218,6 +220,12 @@ __all__ = [
     "TraceEvent",
     "TraceEvidenceView",
     "TraceRecorder",
+    "R5Arm",
+    "R5Profile",
+    "R5ProfileError",
+    "resolve_r5_profile",
+    "R5RuntimeBinding",
+    "R5RuntimeBindingError",
     "read_csim_invocation_summary",
     "read_csynth_invocation_summary",
     "read_preflight_invocation_summary",

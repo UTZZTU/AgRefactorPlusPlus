@@ -44,6 +44,10 @@ class CandidateRepairPhaseConfig:
     csim_timelimit: int = 60
     cosim_timelimit: int = DEFAULT_COSIM_TIMEOUT_S
     cosim_policy: str = "required"
+    shadow_advisor: Any | None = None
+    r4_integration: Any | None = None
+    shadow_advisor_factory: Any | None = None
+    r4_integration_factory: Any | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(
@@ -88,6 +92,10 @@ class CandidateRepairPhaseConfig:
             "cosim_timelimit",
             validate_cosim_timeout_s(self.cosim_timelimit),
         )
+        for name in ("shadow_advisor_factory", "r4_integration_factory"):
+            factory = getattr(self, name)
+            if factory is not None and not callable(factory):
+                raise TypeError(f"{name} must be callable or None")
 
 
 @dataclass(frozen=True, slots=True)
@@ -352,14 +360,7 @@ class CandidateRepairPhase:
                 cosim_policy=config.cosim_policy,
             )
         )
-        self._orchestrator = (
-            CandidateRepairValidationOrchestrator(
-                model_adapter=model_adapter,
-                handler_factory=(
-                    self._handler_factory
-                ),
-            )
-        )
+        self._model_adapter = model_adapter
         self._last_result: (
             CandidateRepairOrchestrationResult
             | None
@@ -406,7 +407,19 @@ class CandidateRepairPhase:
         validation_id = (
             f"{context.run_id}.candidate-repair"
         )
-        result = self._orchestrator.run(
+        shadow_advisor = self._config.shadow_advisor
+        if self._config.shadow_advisor_factory is not None:
+            shadow_advisor = self._config.shadow_advisor_factory(context)
+        r4_integration = self._config.r4_integration
+        if self._config.r4_integration_factory is not None:
+            r4_integration = self._config.r4_integration_factory(context)
+        orchestrator = CandidateRepairValidationOrchestrator(
+            model_adapter=self._model_adapter,
+            handler_factory=self._handler_factory,
+            shadow_advisor=shadow_advisor,
+            r4_integration=r4_integration,
+        )
+        result = orchestrator.run(
             context,
             self._config.request,
             validation_id=validation_id,
@@ -479,6 +492,10 @@ def build_candidate_repair_phase(
     handler_factory: (
         CandidateValidationHandlerFactory | None
     ) = None,
+    shadow_advisor: Any | None = None,
+    r4_integration: Any | None = None,
+    shadow_advisor_factory: Any | None = None,
+    r4_integration_factory: Any | None = None,
 ) -> CandidateRepairPhase:
     """Build the formal repair-aware refactor handler."""
 
@@ -492,6 +509,10 @@ def build_candidate_repair_phase(
             csim_timelimit=csim_timelimit,
             cosim_timelimit=cosim_timelimit,
             cosim_policy=cosim_policy,
+            shadow_advisor=shadow_advisor,
+            r4_integration=r4_integration,
+            shadow_advisor_factory=shadow_advisor_factory,
+            r4_integration_factory=r4_integration_factory,
         ),
         handler_factory=handler_factory,
     )

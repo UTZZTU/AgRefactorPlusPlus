@@ -37,6 +37,7 @@ from .source_bootstrap import (
     SourceRunLayout,
     build_test_source_plan,
     run_source_command,
+    run_source_command_with_r5_binding,
 )
 
 __all__ = [
@@ -67,6 +68,7 @@ __all__ = [
     "render_product_output",
     "resolve_output_mode",
     "run_source_command",
+    "run_source_command_with_r5_binding",
     "write_direct_optimize_execution_identity",
     "write_rejection_support_artifacts",
 ]

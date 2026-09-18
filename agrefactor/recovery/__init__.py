@@ -123,6 +123,54 @@ __all__.extend([
     "RepairPatternRevision", "classify_outcome",
 ])
 
+# R5_CONTINUAL_MEMORY_EXPORTS
+from .episode_ledger import (
+    AppendOnlyEpisodeLedger,
+    EpisodeLedgerError,
+    R5EpisodeEnvelope,
+    R5EpisodeOutcome,
+    canonical_sha256,
+)
+from .pattern_lifecycle import (
+    Lifecycle,
+    LifecycleReduction,
+    R5LifecyclePolicy,
+    R5LifecycleReducer,
+    R5PatternRevision,
+)
+from .r5_authorization import (
+    R5AuthorizationError,
+    R5AuthorizationMode,
+    R5ResearchAuthorization,
+)
+from .r5_budget import (
+    R5BudgetError,
+    R5BudgetLedger,
+    R5BudgetReservation,
+    load_budget_ledger,
+    write_budget_ledger,
+)
+from .r5_memory_payload import (
+    MemoryPayloadError,
+    R5MemoryPayload,
+    render_candidate_memory_snippets,
+)
+from .r5_snapshot_builder import (
+    R5MemorySnapshot,
+    R5SnapshotBuilder,
+    SnapshotBoundaryError,
+)
+__all__.extend([
+    "AppendOnlyEpisodeLedger", "EpisodeLedgerError", "R5EpisodeEnvelope",
+    "R5EpisodeOutcome", "canonical_sha256", "Lifecycle", "LifecycleReduction",
+    "R5LifecyclePolicy", "R5LifecycleReducer", "R5PatternRevision",
+    "R5AuthorizationError", "R5AuthorizationMode", "R5ResearchAuthorization",
+    "R5BudgetError", "R5BudgetLedger", "R5BudgetReservation",
+    "load_budget_ledger", "write_budget_ledger", "MemoryPayloadError",
+    "R5MemoryPayload", "render_candidate_memory_snippets", "R5MemorySnapshot",
+    "R5SnapshotBuilder", "SnapshotBoundaryError",
+])
+
 # R4_GATED_CANDIDATE_REPAIR_EXPORTS
 from .gated_candidate_repair import (
     R4CanaryManifest,

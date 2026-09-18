@@ -67,6 +67,7 @@ from agrefactor.runtime.budget import (
 )
 
 from .runner import RunContext
+from .r5_profile import R5Arm
 from .validation_orchestrator import (
     ValidationExecutionOutcome,
     ValidationOrchestrationResult,
@@ -207,6 +208,7 @@ class CandidateRepairOrchestrationRequest:
     approved_memory_snippets: tuple[str, ...] = ()
     recovery_profile: str = "conservative-v1"
     llm_advisory_mode: str = "off"
+    r5_arm: str | None = None
 
     def __post_init__(self) -> None:
         _required_text(self.initial_candidate, "initial_candidate")
@@ -250,6 +252,16 @@ class CandidateRepairOrchestrationRequest:
             raise ValueError(
                 "llm_advisory_mode must be off or candidate-only"
             )
+        if self.r5_arm is not None:
+            try:
+                arm = R5Arm(str(self.r5_arm).upper())
+            except ValueError as exc:
+                raise ValueError("r5_arm must be A0-A6 or None") from exc
+            if arm in {R5Arm.A0, R5Arm.A1} and self.llm_advisory_mode != "off":
+                raise ValueError("A0/A1 do not authorize Candidate mutation")
+            if arm in {R5Arm.A2, R5Arm.A3, R5Arm.A4, R5Arm.A5, R5Arm.A6} and self.llm_advisory_mode != "candidate-only":
+                raise ValueError("A2-A6 require candidate-only orchestration")
+            object.__setattr__(self, "r5_arm", arm.value)
         object.__setattr__(
             self,
             "suite_testbench_codes",
@@ -974,6 +986,42 @@ class CandidateRepairValidationOrchestrator:
                 )
             initial_terminal_step = active_outcome.result.steps[-1]
 
+        # R5 arms own the post-diagnostic repair decision.  A0/A1 are
+        # observation-only; A2-A6 must hand the unchanged main result to the
+        # existing R4 controller so there can be at most one mutation.
+        if request.r5_arm in {
+            "A0",
+            "A1",
+            "A2",
+            "A3",
+            "A4",
+            "A5",
+            "A6",
+        }:
+            return self._finish(
+                context,
+                validation_id=validation_id,
+                status=(
+                    CandidateRepairOrchestrationStatus.REPAIR_NOT_APPLICABLE
+                    if active_outcome.result.final_state
+                    is ValidationState.REPAIR_PENDING
+                    else CandidateRepairOrchestrationStatus.VALIDATION_TERMINAL
+                ),
+                request=active_request,
+                initial_validation=initial_outcome.result,
+                repair_result=None,
+                candidate_validations=(),
+                final_candidate=request.initial_candidate,
+                last_validation_state=active_outcome.result.final_state,
+                family_instruction=family_instruction,
+                family_instruction_source=family_instruction_source,
+                recovery_ledger=recovery_ledger,
+                extra_metadata={
+                    **recovery_metadata,
+                    "r5_repair_lane": "r4_controller" if request.r5_arm not in {"A0", "A1"} else "observation_only",
+                },
+            )
+
         if (
             active_outcome.result.final_state
             is not ValidationState.REPAIR_PENDING
@@ -1402,6 +1450,7 @@ class CandidateRepairValidationOrchestrator:
                 ),
                 "recovery_profile": request.recovery_profile,
                 "llm_advisory_mode": request.llm_advisory_mode,
+                "r5_arm": request.r5_arm,
                 "recovery_ledger": (
                     None
                     if recovery_ledger is None

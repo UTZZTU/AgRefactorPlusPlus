@@ -92,6 +92,8 @@ from agrefactor.runtime.budget_profile import (
     EffectiveRunBudget,
     run_budget_profile_for_mode,
 )
+from agrefactor.runtime.r5_profile import resolve_r5_profile
+from agrefactor.runtime.r5_binding import R5RuntimeBinding
 
 from .run_output import (
     capture_product_streams,
@@ -460,6 +462,8 @@ class SourceBootstrapRequest:
     cosim_timeout_s: int = DEFAULT_COSIM_TIMEOUT_S
     cosim_policy: str = "required"
     require_complete_execution_identity: bool = False
+    r5_arm: str | None = None
+    r5_binding: R5RuntimeBinding | None = None
 
     def __post_init__(self) -> None:
         source = Path(self.source_path).expanduser().resolve()
@@ -622,6 +626,21 @@ class SourceBootstrapRequest:
             raise TypeError(
                 "require_complete_execution_identity must be boolean"
             )
+        profile = resolve_r5_profile(self.r5_arm)
+        if mode is RunMode.OPTIMIZE and profile.selected:
+            raise ValueError("R5 profiles are internal to refactor/full; optimize remains safe-v1")
+        object.__setattr__(self, "r5_arm", None if profile.arm is None else profile.arm.value)
+        if self.r5_binding is not None and not isinstance(
+            self.r5_binding, R5RuntimeBinding
+        ):
+            raise TypeError("r5_binding must be R5RuntimeBinding or None")
+        if profile.arm is not None:
+            if self.r5_binding is None:
+                raise ValueError(
+                    "selected R5 arm requires a complete internal runtime binding"
+                )
+            if self.r5_binding.profile.arm is not profile.arm:
+                raise ValueError("r5_binding profile does not match r5_arm")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -675,6 +694,10 @@ class SourceBootstrapRequest:
             "csynth_timeout_s": self.csynth_timeout_s,
             "cosim_timeout_s": self.cosim_timeout_s,
             "cosim_policy": self.cosim_policy,
+            "r5_arm": self.r5_arm,
+            "r5_binding": (
+                None if self.r5_binding is None else self.r5_binding.to_dict()
+            ),
         }
 
 
@@ -1616,7 +1639,17 @@ class SourceBootstrapPhase:
             ),
             candidate_top_function=candidate_top,
             recovery_profile="conservative-v1",
-            llm_advisory_mode="off",
+            llm_advisory_mode=(
+                "candidate-only"
+                if resolve_r5_profile(self._request.r5_arm).mutation_enabled
+                else "off"
+            ),
+            r5_arm=self._request.r5_arm,
+            approved_memory_snippets=(
+                ()
+                if self._request.r5_binding is None
+                else self._request.r5_binding.approved_memory_snippets
+            ),
         )
         _atomic_json(
             bootstrap_root / "formal_validation_request.json",
@@ -1637,7 +1670,18 @@ class SourceBootstrapPhase:
                     self._request.max_candidate_repairs
                 ),
                 "recovery_profile": "conservative-v1",
-                "llm_advisory_mode": "off",
+                "llm_advisory_mode": formal_request.llm_advisory_mode,
+                "r5_arm": formal_request.r5_arm,
+                "r5_binding": (
+                    None
+                    if self._request.r5_binding is None
+                    else self._request.r5_binding.to_dict()
+                ),
+                "approved_memory_snippets_sha256": (
+                    None
+                    if self._request.r5_binding is None
+                    else self._request.r5_binding.approved_memory_snippets_sha256
+                ),
                 "public_testbench_preparation": (
                     None
                     if public_preparation is None
@@ -2787,6 +2831,30 @@ def _validate_mode_specific_cli(args) -> None:
             )
 
 
+def _build_r5_shadow_advisor_factory(*, profile, model_runtime):
+    """Build the R2 shadow advisor lazily against the shared run budget."""
+
+    from agrefactor.recovery import (
+        ProviderBackedShadowDiagnosticAdvisor,
+        ShadowReserve,
+    )
+
+    def factory(context):
+        model, provider = model_runtime.registry.resolve(
+            model_runtime.effective_config.logical_model_name
+        )
+        return ProviderBackedShadowDiagnosticAdvisor(
+            provider=provider,
+            model=model,
+            budget=context.budget,
+            request_parameters=model_runtime.effective_config.effective_parameters,
+            reserve=ShadowReserve(max_calls=1),
+            trace=context.trace,
+        )
+
+    return factory
+
+
 def run_source_command(
     args,
     *,
@@ -2919,6 +2987,7 @@ def run_source_command(
             rejection=rejection,
         )
     budget = _budget_from_cli(args, model_runtime)
+    r5_binding = getattr(args, "_r5_binding", None)
 
     request = SourceBootstrapRequest(
         source_path=source,
@@ -2978,6 +3047,8 @@ def run_source_command(
         ),
         cosim_policy=getattr(args, "cosim_policy", "required"),
         require_complete_execution_identity=True,
+        r5_arm=os.environ.get("AGREFACTOR_R5_ARM"),
+        r5_binding=r5_binding,
     )
 
     phase = None
@@ -3002,6 +3073,7 @@ def run_source_command(
             formal_request: CandidateRepairOrchestrationRequest,
         ):
             del task
+            profile = resolve_r5_profile(request.r5_arm)
             return build_candidate_repair_phase(
                 model_adapter=candidate_adapter,
                 request=formal_request,
@@ -3011,6 +3083,19 @@ def run_source_command(
                 csim_timelimit=request.csim_timeout_s,
                 cosim_timelimit=request.cosim_timeout_s,
                 cosim_policy=request.cosim_policy,
+                shadow_advisor_factory=(
+                    _build_r5_shadow_advisor_factory(
+                        profile=profile,
+                        model_runtime=model_runtime,
+                    )
+                    if profile.shadow_enabled
+                    else None
+                ),
+                r4_integration_factory=(
+                    None
+                    if request.r5_binding is None
+                    else request.r5_binding.r4_integration_factory
+                ),
             )
 
         phase = SourceBootstrapPhase(
@@ -3174,3 +3259,26 @@ def run_source_command(
         result=result,
         layout=layout,
     )
+
+
+def run_source_command_with_r5_binding(
+    args,
+    binding: R5RuntimeBinding,
+    *,
+    stdout: TextIO | None = None,
+    stderr: TextIO | None = None,
+) -> SourceBootstrapRunResult:
+    """Run an existing product entrypoint with an internal R5 binding.
+
+    This helper is for the paired campaign executor only.  It does not add a
+    CLI option or a second execution flow; it copies the parsed namespace and
+    delegates to ``run_source_command`` unchanged.
+    """
+
+    if not isinstance(binding, R5RuntimeBinding):
+        raise TypeError("binding must be R5RuntimeBinding")
+    from copy import copy
+
+    internal_args = copy(args)
+    setattr(internal_args, "_r5_binding", binding)
+    return run_source_command(internal_args, stdout=stdout, stderr=stderr)
