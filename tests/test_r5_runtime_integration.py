@@ -174,6 +174,79 @@ class R5RuntimeIntegrationTests(unittest.TestCase):
             authorization.payload_manifest_sha256,
         )
 
+    def test_memory_binding_rejects_retrieval_or_revision_substitution(self):
+        a3 = R5ResearchAuthorization(
+            authorization_id="a3",
+            arm_id="A3",
+            mode=R5AuthorizationMode.SIMILARITY_ONLY,
+            calibration_certificate_sha256=_sha("cal"),
+            advisory_sha256=_sha("adv"),
+            policy_sha256=_sha("pol"),
+            ledger_sha256=_sha("ledger"),
+            budget_reservation_sha256=_sha("budget"),
+            r4_controller_contract_sha256=_sha("r4"),
+            memory_mode="similarity_only",
+            retrieval_manifest_sha256=_sha("authorized-retrieval"),
+        )
+        with self.assertRaises(R5RuntimeBindingError):
+            R5RuntimeBinding(
+                resolve_r5_profile("A3"),
+                authorization=a3,
+                retrieval_manifest_sha256=_sha("substituted-retrieval"),
+                r4_integration_factory=lambda _: object(),
+            )
+
+        revision = R5PatternRevision(
+            revision_id="trusted-substitution",
+            parent_revision_id=None,
+            failure_family="f",
+            stage="csynth",
+            owner="candidate",
+            supported_when={},
+            avoid_when={},
+            exact_exclusions={},
+            required_evidence=(),
+            positive_episode_refs=("p",),
+            negative_episode_refs=(),
+            calibration_refs=("cal",),
+            memory_payload_manifest_sha256=_sha("placeholder"),
+            lifecycle=Lifecycle.TRUSTED,
+            transition_reason="trusted",
+            threshold_source="r5-lifecycle-v1",
+            created_at="2026-09-18T00:00:00Z",
+        )
+        payload = R5MemoryPayload.from_revision(
+            revision,
+            snapshot_sha256=_sha("snapshot-substitution"),
+            repair_intent_or_recipe="bounded candidate-only rewrite",
+            source_episode_hashes=(_sha("episode-substitution"),),
+            evidence_refs=("episode-substitution",),
+        )
+        from agrefactor.runtime.r5_binding import _payload_manifest_sha256
+        a4 = R5ResearchAuthorization(
+            authorization_id="a4-substitution",
+            arm_id="A4",
+            mode=R5AuthorizationMode.GATED_MEMORY,
+            calibration_certificate_sha256=_sha("cal"),
+            advisory_sha256=_sha("adv"),
+            policy_sha256=_sha("pol"),
+            ledger_sha256=_sha("ledger"),
+            budget_reservation_sha256=_sha("budget"),
+            r4_controller_contract_sha256=_sha("r4"),
+            memory_mode="positive_only_gated",
+            gate_contract_sha256=_sha("gate"),
+            revision_sha256=_sha("different-revision"),
+            snapshot_sha256=payload.snapshot_sha256,
+            payload_manifest_sha256=_payload_manifest_sha256((payload,)),
+        )
+        with self.assertRaises(R5RuntimeBindingError):
+            R5RuntimeBinding(
+                resolve_r5_profile("A4"),
+                authorization=a4,
+                memory_payloads=(payload,),
+                r4_integration_factory=lambda _: object(),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

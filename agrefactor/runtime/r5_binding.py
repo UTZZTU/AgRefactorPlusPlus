@@ -102,6 +102,10 @@ class R5RuntimeBinding:
                 raise R5RuntimeBindingError(
                     "A3 requires a content-addressed retrieval manifest"
                 )
+            if self.retrieval_manifest_sha256 != self.authorization.retrieval_manifest_sha256:
+                raise R5RuntimeBindingError(
+                    "A3 retrieval manifest does not match authorization"
+                )
         else:
             if self.authorization.mode is not R5AuthorizationMode.GATED_MEMORY:
                 raise R5RuntimeBindingError(
@@ -120,6 +124,13 @@ class R5RuntimeBinding:
             if any(item.snapshot_sha256 != expected_snapshot for item in payloads):
                 raise R5RuntimeBindingError(
                     "memory payload snapshot does not match authorization"
+                )
+            expected_revision = self.authorization.revision_sha256
+            if expected_revision is None or any(
+                item.revision_sha256 != expected_revision for item in payloads
+            ):
+                raise R5RuntimeBindingError(
+                    "memory payload revision does not match authorization"
                 )
             actual_manifest = _payload_manifest_sha256(payloads)
             if actual_manifest != expected_manifest:
