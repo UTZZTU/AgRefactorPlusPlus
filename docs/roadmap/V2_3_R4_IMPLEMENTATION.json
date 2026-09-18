@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "stage": "V2.3-R4-implementation",
-  "implementation_status": "ready_for_user_acceptance_real_canary_independent_audit_passed",
-  "acceptance": false,
+  "implementation_status": "accepted_real_canary_independent_audit_and_project_owner_acceptance",
+  "acceptance": true,
   "product_code_changes": true,
   "package_self_acceptance": false,
   "r4_controller": "agrefactor/recovery/gated_candidate_repair.py",
@@ -21,7 +21,7 @@
     "evidence_root": "/data/package_d_v1_6_r4_evidence_run1",
     "evidence_archive_sha256": "41f24168856b18683ee47c6285bf925cc48ddea97e369a440af38fd780d26703",
     "independent_audit_status": "ready_for_manual_checkpoint",
-    "manual_checkpoint": "ready_for_user_acceptance",
+    "manual_checkpoint": "accepted_by_project_owner",
     "critical_finding_count": 0,
     "environmental_finding_count": 0,
     "baseline_run_count": 3,
@@ -32,7 +32,12 @@
     "vitis_launches": 20,
     "git_history_mutations": 0
   },
-  "next_step": "V2.3-R4-user-acceptance",
+  "project_owner_acceptance": {
+    "date": "2026-09-18",
+    "decision": "accepted",
+    "scope": "enter_R5_without_establishing_temporal_memory_efficacy"
+  },
+  "next_step": "V2.3-R5-design-freeze",
   "r3_temporal_memory_efficacy_established": false,
   "r3_temporal_efficacy_evidence_owner": "V2.3-R5 paired time-ordered evaluation"
 }

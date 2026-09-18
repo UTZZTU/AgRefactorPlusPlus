@@ -10,12 +10,12 @@ R1_ACCEPTED=true
 R2_ACCEPTED=true
 R3_ACCEPTED=true
 R2_REAL_CALIBRATION_STATUS=accepted_identity_complete_independent_audit
-R4_IMPLEMENTATION_STATUS=ready_for_user_acceptance_real_canary_independent_audit_passed
-R4_ACCEPTED=false
+R4_IMPLEMENTATION_STATUS=accepted_real_canary_independent_audit_and_project_owner_acceptance
+R4_ACCEPTED=true
 R5_STARTED=false
 R6_STARTED=false
 STAGE4_ALLOWED=false
-NEXT_STEP=V2.3-R4-user-acceptance
+NEXT_STEP=V2.3-R5-design-freeze
 PACKAGE_SELF_ACCEPTANCE=false
 ```
 <!-- V2_3_CURRENT_AUTHORITY_STATE:END -->
@@ -1588,14 +1588,14 @@ PACKAGE_SELF_ACCEPTANCE=false
 implementation_run_id=agrefactor_v23_r4_gate_authorized_candidate_repair_implementation_v1_20260902T163919Z_3793256
 <!-- V2_3_R4_IMPLEMENTATION:END -->
 
-<!-- V2_3_R4_EXTERNAL_ACCEPTANCE_CHECKPOINT:BEGIN -->
-R4_IMPLEMENTATION_STATUS=ready_for_user_acceptance_real_canary_independent_audit_passed
-R4_ACCEPTED=false
+<!-- V2_3_R4_EXTERNAL_ACCEPTANCE:BEGIN -->
+R4_IMPLEMENTATION_STATUS=accepted_real_canary_independent_audit_and_project_owner_acceptance
+R4_ACCEPTED=true
 R4_STARTED=true
 R4_DEFAULT_ENABLED=false
 R3_TEMPORAL_MEMORY_EFFICACY_ESTABLISHED=false
 R5_STARTED=false
-NEXT_STEP=V2.3-R4-user-acceptance
+NEXT_STEP=V2.3-R5-design-freeze
 calibration_certificate_id=r2-calibration-87bc3a17b85a03ae7c323d7c4cf9bdbc
 package_version=1.6
 evidence_archive_sha256=41f24168856b18683ee47c6285bf925cc48ddea97e369a440af38fd780d26703
@@ -1604,6 +1604,8 @@ safe_selective_abstentions=1
 critical_findings=0
 environmental_findings=0
 decision_record=docs/roadmap/R4_REAL_CANARY_ACCEPTANCE.md
-MANUAL_CHECKPOINT=awaiting_user_decision
+PROJECT_OWNER_ACCEPTANCE=accepted
+PROJECT_OWNER_ACCEPTANCE_DATE=2026-09-18
+PROJECT_OWNER_ACCEPTANCE_SCOPE=enter_R5_without_establishing_temporal_memory_efficacy
 PACKAGE_SELF_ACCEPTANCE=false
-<!-- V2_3_R4_EXTERNAL_ACCEPTANCE_CHECKPOINT:END -->
+<!-- V2_3_R4_EXTERNAL_ACCEPTANCE:END -->

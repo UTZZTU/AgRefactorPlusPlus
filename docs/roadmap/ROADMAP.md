@@ -7,7 +7,7 @@
 `research-roadmap-v2.3`，实现基线为
 `2e5971b0b74f7557870fc46b23f8ed5389d1685b`。
 
-R0、R1-Safety/R1-Data、R2 和 R3 已有独立验收记录。R4 在 Package D v1.6 中取得两个真实 verified-positive canary 和一个经独立重算确认的安全拒答，已满足人工关口的证据条件，等待项目负责人正式接受；R5/R6 未开始，Stage 4 未开放。旧状态和 acceptance block 只作为 historical/evidence-only 保留。
+R0、R1-Safety/R1-Data、R2 和 R3 已有独立验收记录。R4 在 Package D v1.6 中取得两个真实 verified-positive canary 和一个经独立重算确认的安全拒答，并已于 2026-09-18 由项目负责人正式接受；R5/R6 尚未开始，Stage 4 未开放。下一步是冻结 R5 设计，旧状态和 acceptance block 只作为 historical/evidence-only 保留。
 <!-- V2_3_CURRENT_AUTHORITY:END -->
 
 > **权威范围文档。** 后续开发、新对话、阶段验收与论文表述均以本文档为准。任何核心目标不得在没有明确决策记录、代码证据与文档更新的情况下被删除、弱化或偷换概念。
@@ -1542,14 +1542,14 @@ PACKAGE_SELF_ACCEPTANCE=false
 implementation_run_id=agrefactor_v23_r4_gate_authorized_candidate_repair_implementation_v1_20260902T163919Z_3793256
 <!-- V2_3_R4_IMPLEMENTATION:END -->
 
-<!-- V2_3_R4_EXTERNAL_ACCEPTANCE_CHECKPOINT:BEGIN -->
-R4_IMPLEMENTATION_STATUS=ready_for_user_acceptance_real_canary_independent_audit_passed
-R4_ACCEPTED=false
+<!-- V2_3_R4_EXTERNAL_ACCEPTANCE:BEGIN -->
+R4_IMPLEMENTATION_STATUS=accepted_real_canary_independent_audit_and_project_owner_acceptance
+R4_ACCEPTED=true
 R4_STARTED=true
 R4_DEFAULT_ENABLED=false
 R3_TEMPORAL_MEMORY_EFFICACY_ESTABLISHED=false
 R5_STARTED=false
-NEXT_STEP=V2.3-R4-user-acceptance
+NEXT_STEP=V2.3-R5-design-freeze
 calibration_certificate_id=r2-calibration-87bc3a17b85a03ae7c323d7c4cf9bdbc
 package_version=1.6
 evidence_archive_sha256=41f24168856b18683ee47c6285bf925cc48ddea97e369a440af38fd780d26703
@@ -1558,6 +1558,8 @@ safe_selective_abstentions=1
 critical_findings=0
 environmental_findings=0
 decision_record=docs/roadmap/R4_REAL_CANARY_ACCEPTANCE.md
-MANUAL_CHECKPOINT=awaiting_user_decision
+PROJECT_OWNER_ACCEPTANCE=accepted
+PROJECT_OWNER_ACCEPTANCE_DATE=2026-09-18
+PROJECT_OWNER_ACCEPTANCE_SCOPE=enter_R5_without_establishing_temporal_memory_efficacy
 PACKAGE_SELF_ACCEPTANCE=false
-<!-- V2_3_R4_EXTERNAL_ACCEPTANCE_CHECKPOINT:END -->
+<!-- V2_3_R4_EXTERNAL_ACCEPTANCE:END -->

@@ -1,18 +1,19 @@
-# V2.3 R4 Real Canary Acceptance Checkpoint
+# V2.3 R4 Real Canary Acceptance Record
 
 Date: 2026-09-18
 
-## Readiness Decision
+## Acceptance Decision
 
-R4 Gate-authorized Candidate repair is ready for the project owner's formal
-acceptance at implementation base
+R4 Gate-authorized Candidate repair was formally accepted by the project
+owner on 2026-09-18 at implementation base
 `2e5971b0b74f7557870fc46b23f8ed5389d1685b`.
 
-This checkpoint records that the Package D v1.6 file-only independent audit
-reached `ready_for_manual_checkpoint`. It does not make the formal acceptance
-decision. The package and execution agent do not accept R4 themselves:
-`R4_ACCEPTED=false` and `package_self_acceptance=false` remain part of the
-contract and evidence until the project owner explicitly accepts the result.
+The Package D v1.6 file-only independent audit reached
+`ready_for_manual_checkpoint`, after which the project owner explicitly
+stated: “我正式接受 R4，进入 R5。” The package and execution agent did not
+self-accept R4; `package_self_acceptance=false` remains part of the contract
+and evidence. This user decision changes `R4_ACCEPTED` to `true` without
+changing any technical evidence or broadening the claims below.
 
 The only product entrypoints remain `refactor`, `optimize`, and `full`. R4 is
 default-off and is enabled only by the existing canary/authorization controls.
@@ -55,7 +56,7 @@ The remaining canary was rejected before mutation because its R2 confidence
 was not covered by the accepted high-confidence calibration boundary. That is
 the required safe refusal behavior, not a failed repair hidden as success.
 
-## Claims Supported For User Acceptance
+## Claims Supported By The Accepted Evidence
 
 - The existing R2 advisor, R3 Gate, R4 controller, existing orchestrator,
   provider registry, Vitis executors, and product auditor operate as one
@@ -72,7 +73,7 @@ the required safe refusal behavior, not a failed repair hidden as success.
 
 ## Claims Not Yet Established
 
-Formal R4 acceptance would not establish historical-memory efficacy, open-world
+Formal R4 acceptance does not establish historical-memory efficacy, open-world
 generalization, negative-transfer rate, temporal learning benefit, or causal
 improvement over all ablation arms. `R3_TEMPORAL_MEMORY_EFFICACY_ESTABLISHED`
 therefore remains `false`. Those questions belong to the frozen V2.3 R5
@@ -81,8 +82,10 @@ time-ordered A0-A6 campaign.
 ## Next Step
 
 ```text
-R4_ACCEPTED=false
+R4_ACCEPTED=true
 R5_STARTED=false
-NEXT_STEP=V2.3-R4-user-acceptance
+NEXT_STEP=V2.3-R5-design-freeze
+PROJECT_OWNER_ACCEPTANCE=accepted
+PROJECT_OWNER_ACCEPTANCE_DATE=2026-09-18
 PACKAGE_SELF_ACCEPTANCE=false
 ```
