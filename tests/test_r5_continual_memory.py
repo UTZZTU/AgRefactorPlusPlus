@@ -149,6 +149,43 @@ class R5LedgerTests(unittest.TestCase):
 
 
 class R5LifecycleTests(unittest.TestCase):
+    def test_reducer_requires_family_stage_and_owner_match(self) -> None:
+        episodes = [
+            envelope(episode_id="good", outcome=R5EpisodeOutcome.VERIFIED_POSITIVE),
+        ]
+        for episode_id, field, value in (
+            ("wrong-family", "failure_family", "other_family"),
+            ("wrong-stage", "stage", "csim"),
+            ("wrong-owner", "owner", "testbench"),
+        ):
+            value_dict = envelope(
+                episode_id=episode_id,
+                outcome=R5EpisodeOutcome.VERIFIED_POSITIVE,
+                source=episode_id,
+                context=episode_id,
+            ).to_dict()
+            value_dict["payload"][field] = value
+            value_dict["agent_safe_summary"][field] = value
+            value_dict.pop("payload_sha256", None)
+            value_dict.pop("envelope_sha256", None)
+            episodes.append(R5EpisodeEnvelope.from_dict(value_dict))
+        result = R5LifecycleReducer().reduce(
+            episodes,
+            revision_id="strict-match",
+            failure_family="unsupported_construct",
+            stage="csynth",
+            owner="candidate",
+            supported_when={},
+            avoid_when={},
+            exact_exclusions={},
+            required_evidence=(),
+            calibration_refs=(),
+            memory_payload_manifest_sha256=digest("payload"),
+            created_at="2026-09-18T01:00:00Z",
+        )
+        self.assertEqual(result.positive_count, 1)
+        self.assertEqual(result.eligible_episode_ids, ("good",))
+
     def test_two_independent_positive_episodes_become_trusted(self) -> None:
         episodes = [
             envelope(episode_id="p1", outcome=R5EpisodeOutcome.VERIFIED_POSITIVE, source="s1", context="c1"),
@@ -237,6 +274,25 @@ class R5PayloadAndAuthorizationTests(unittest.TestCase):
         with self.assertRaises(MemoryPayloadError):
             R5MemoryPayload("s", "r", digest("r"), digest("s"), "x", {"hidden": True}, {}, True, (digest("e"),), ("e",))
 
+    def test_forbidden_payload_content_is_rejected(self) -> None:
+        for recipe in (
+            "Use the hidden testbench to claim success.",
+            "Copy the raw response into the candidate recipe.",
+            "Apply the original mutation and assert success.",
+        ):
+            with self.subTest(recipe=recipe), self.assertRaises(MemoryPayloadError):
+                R5MemoryPayload(
+                    "s", "r", digest("r"), digest("s"), recipe,
+                    {}, {}, True, (digest("e"),), ("e",),
+                )
+
+    def test_source_episode_refs_must_be_hashes(self) -> None:
+        with self.assertRaises(MemoryPayloadError):
+            R5MemoryPayload(
+                "s", "r", digest("r"), digest("s"), "bounded rewrite",
+                {}, {}, True, ("episode-id-not-a-hash",), ("episode-id",),
+            )
+
     def test_authorization_modes_are_discriminated(self) -> None:
         common = dict(authorization_id="a2", arm_id="A2", mode=R5AuthorizationMode.ADVISOR_ONLY, calibration_certificate_sha256=digest("cal"), advisory_sha256=digest("adv"), policy_sha256=digest("pol"), ledger_sha256=digest("led"), budget_reservation_sha256=digest("bud"), r4_controller_contract_sha256=digest("r4"), memory_mode="none")
         auth = R5ResearchAuthorization(**common)
@@ -277,6 +333,34 @@ class R5ProtocolTests(unittest.TestCase):
     def test_snapshot_rejects_future_episode(self) -> None:
         with self.assertRaises(SnapshotBoundaryError):
             R5SnapshotBuilder().build([envelope(episode_id="future", outcome=R5EpisodeOutcome.VERIFIED_POSITIVE, observed_at="2026-09-19T00:00:00Z")], [], latest_allowed_timestamp="2026-09-18T00:00:00Z", frozen_at="2026-09-19T00:00:00Z", evidence_inventory_sha256=digest("inventory"), exact_exclusions={}, conflict_sparsity_ood_facts={})
+
+    def test_snapshot_rejects_reduction_outside_history(self) -> None:
+        episodes = [envelope(episode_id="history", outcome=R5EpisodeOutcome.VERIFIED_POSITIVE)]
+        future = envelope(episode_id="future", outcome=R5EpisodeOutcome.VERIFIED_POSITIVE, observed_at="2026-09-19T00:00:00Z")
+        reduction = R5LifecycleReducer().reduce(
+            [future],
+            revision_id="future-revision",
+            failure_family="unsupported_construct",
+            stage="csynth",
+            owner="candidate",
+            supported_when={},
+            avoid_when={},
+            exact_exclusions={},
+            required_evidence=(),
+            calibration_refs=(),
+            memory_payload_manifest_sha256=digest("payload"),
+            created_at="2026-09-19T01:00:00Z",
+        )
+        with self.assertRaises(SnapshotBoundaryError):
+            R5SnapshotBuilder().build(
+                episodes,
+                [reduction],
+                latest_allowed_timestamp="2026-09-18T00:00:00Z",
+                frozen_at="2026-09-19T00:00:00Z",
+                evidence_inventory_sha256=digest("inventory"),
+                exact_exclusions={},
+                conflict_sparsity_ood_facts={},
+            )
 
 
 if __name__ == "__main__":

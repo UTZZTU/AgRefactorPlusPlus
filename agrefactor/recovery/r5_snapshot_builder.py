@@ -89,11 +89,23 @@ class R5SnapshotBuilder:
     ) -> R5MemorySnapshot:
         cutoff = datetime.fromisoformat(latest_allowed_timestamp.replace("Z", "+00:00"))
         history = []
+        history_by_id = {}
         for episode in episodes:
             observed = datetime.fromisoformat(episode.observed_at.replace("Z", "+00:00"))
             if observed > cutoff:
                 raise SnapshotBoundaryError("future episode supplied to history snapshot")
+            previous = history_by_id.get(episode.episode_id)
+            if previous is not None and previous.envelope_sha256 != episode.envelope_sha256:
+                raise SnapshotBoundaryError("history contains duplicate episode id with changed payload")
+            history_by_id[episode.episode_id] = episode
             history.append(episode)
+        history_ids = set(history_by_id)
+        for reduction in reductions:
+            outside_history = set(reduction.eligible_episode_ids) - history_ids
+            if outside_history:
+                raise SnapshotBoundaryError(
+                    "lifecycle reduction references future or external episode"
+                )
         selected = [item.revision for item in reductions if item.revision.lifecycle.value in {"Provisional", "Trusted"}]
         rejected = [item.revision for item in reductions if item.revision.lifecycle.value not in {"Provisional", "Trusted"}]
         policy_hash = self.reducer.policy.policy_sha256
@@ -105,7 +117,7 @@ class R5SnapshotBuilder:
                 "rejected": [item.revision_sha256 for item in rejected],
                 "policy": policy_hash,
                 "inventory": evidence_inventory_sha256,
-                "episodes": sorted(item.episode_id for item in history),
+                "episodes": sorted(history_ids),
             })[:32],
             frozen_at=frozen_at,
             latest_allowed_timestamp=latest_allowed_timestamp,
@@ -115,7 +127,7 @@ class R5SnapshotBuilder:
             evidence_inventory_sha256=evidence_inventory_sha256,
             exact_exclusions=dict(exact_exclusions),
             conflict_sparsity_ood_facts=dict(conflict_sparsity_ood_facts),
-            history_episode_ids=tuple(item.episode_id for item in history),
+            history_episode_ids=tuple(sorted(history_ids)),
         )
 
 

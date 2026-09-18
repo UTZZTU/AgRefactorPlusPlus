@@ -15,6 +15,20 @@ from .pattern_lifecycle import Lifecycle, R5PatternRevision
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _FORBIDDEN = ("hidden", "original", "testbench", "target", "configuration", "private", "reasoning", "raw_provider", "future_outcome", "success")
+_FORBIDDEN_CONTENT_MARKERS = (
+    "hidden",
+    "testbench",
+    "private reasoning",
+    "raw provider",
+    "raw response",
+    "future outcome",
+    "original mutation",
+    "target mutation",
+    "configuration mutation",
+    "success assertion",
+    "assert success",
+    "claim success",
+)
 
 
 class MemoryPayloadError(ValueError):
@@ -45,6 +59,16 @@ def _digest(value: Any, field: str) -> str:
     return value
 
 
+def _safe_text(value: str, path: str) -> str:
+    lowered = value.casefold()
+    if any(
+        token in lowered
+        for token in ("<think", "<reasoning", *_FORBIDDEN_CONTENT_MARKERS)
+    ):
+        raise MemoryPayloadError(f"forbidden payload content at {path}")
+    return value
+
+
 def _safe(value: Any, path: str = "root") -> Any:
     if isinstance(value, Mapping):
         result = {}
@@ -58,10 +82,7 @@ def _safe(value: Any, path: str = "root") -> Any:
     if isinstance(value, (list, tuple)):
         return [_safe(item, f"{path}[]") for item in value]
     if isinstance(value, str):
-        lowered = value.casefold()
-        if any(token in lowered for token in ("<think", "<reasoning", "private reasoning")):
-            raise MemoryPayloadError(f"private reasoning marker at {path}")
-        return value
+        return _safe_text(value, path)
     if isinstance(value, (int, float, bool)) or value is None:
         return value
     raise MemoryPayloadError(f"unsupported payload value at {path}")
@@ -87,7 +108,14 @@ class R5MemoryPayload:
         object.__setattr__(self, "revision_id", _text(self.revision_id, "revision_id"))
         object.__setattr__(self, "revision_sha256", _digest(self.revision_sha256, "revision_sha256"))
         object.__setattr__(self, "snapshot_sha256", _digest(self.snapshot_sha256, "snapshot_sha256"))
-        object.__setattr__(self, "repair_intent_or_recipe", _text(self.repair_intent_or_recipe, "repair_intent_or_recipe"))
+        object.__setattr__(
+            self,
+            "repair_intent_or_recipe",
+            _safe_text(
+                _text(self.repair_intent_or_recipe, "repair_intent_or_recipe"),
+                "repair_intent_or_recipe",
+            ),
+        )
         if self.candidate_only_scope is not True:
             raise MemoryPayloadError("candidate_only_scope must be true")
         for name in ("supported_when", "avoid_when"):
@@ -96,6 +124,8 @@ class R5MemoryPayload:
             values = tuple(_text(item, name) for item in getattr(self, name))
             if len(values) != len(set(values)):
                 raise MemoryPayloadError(f"{name} must be unique")
+            if name == "source_episode_hashes":
+                values = tuple(_digest(item, name) for item in values)
             object.__setattr__(self, name, values)
         expected = canonical_sha256(self.to_dict(include_hash=False))
         if self.payload_sha256 and self.payload_sha256 != expected:

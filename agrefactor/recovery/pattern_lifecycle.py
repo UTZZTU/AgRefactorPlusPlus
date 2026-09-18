@@ -153,8 +153,20 @@ class LifecycleReduction:
 def _episode_matches(episode: R5EpisodeEnvelope, *, family: str, stage: str, owner: str) -> bool:
     summary = episode.agent_safe_summary
     payload = episode.payload
-    values = {str(summary.get("failure_family", payload.get("failure_family", ""))), str(summary.get("stage", payload.get("stage", ""))), str(summary.get("owner", payload.get("owner", "")))}
-    return family in values or stage in values or owner in values
+    # All dimensions identify the pattern.  Matching on any one dimension
+    # would silently transfer evidence between unrelated failure families,
+    # stages, or owners.
+    observed = {
+        "failure_family": summary.get("failure_family", payload.get("failure_family", "")),
+        "stage": summary.get("stage", payload.get("stage", "")),
+        "owner": summary.get("owner", payload.get("owner", "")),
+    }
+    expected = {
+        "failure_family": family,
+        "stage": stage,
+        "owner": owner,
+    }
+    return all(str(observed[key]) == str(expected[key]) for key in expected)
 
 
 class R5LifecycleReducer:
