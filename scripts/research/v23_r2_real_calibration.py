@@ -740,6 +740,7 @@ def main() -> int:
         report,
         policy=policy,
         provider_identity=provider_identity,
+        eligible_failure_classes=(str(manifest["truth"]["failure_class"]),),
     )
     bundle = {
         "schema_version": 1,

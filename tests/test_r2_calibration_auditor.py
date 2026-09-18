@@ -97,6 +97,12 @@ def calibration_bundle():
         report,
         policy=policy,
         provider_identity=provider_identity,
+        eligible_failure_classes=(
+            "bounds",
+            "interface",
+            "syntax",
+            "unsupported_construct",
+        ),
     )
     return {
         "schema_version": 1,
@@ -129,6 +135,18 @@ class R2CalibrationAuditorTests(unittest.TestCase):
         self.assertEqual(report.status, "clean")
         self.assertEqual(report.summary_status, "calibration_accepted")
         self.assertTrue(report.terminal_evidence["independently_accepted"])
+
+    def test_legacy_certificate_cannot_claim_multiple_failure_classes(self):
+        bundle = calibration_bundle()
+        bundle["certificate"].pop("eligible_failure_classes")
+        bundle["certificate"]["schema_version"] = 1
+        refresh_certificate_id(bundle["certificate"])
+        report = audit_r2_calibration_bundle(bundle)
+        self.assertEqual(report.status, "contradiction")
+        self.assertIn(
+            "r2_calibration_legacy_scope_violation",
+            {item.code for item in report.findings},
+        )
 
     def test_report_and_certificate_forged_together_are_rejected(self):
         bundle = calibration_bundle()

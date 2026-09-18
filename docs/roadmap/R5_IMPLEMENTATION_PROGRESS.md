@@ -91,3 +91,20 @@ new outcomes, and only after adapter identity, complete Target/toolchain/
 parser/model identity, temporal provenance, and source-level holdout are
 proven. Re-run the inventory and dataset contract, then perform a zero-call
 protocol audit before the bounded real pilot. R6 remains stopped.
+
+## Calibration-Scope Correction
+
+A later zero-call review found that the accepted schema-v1 R2 certificate was
+statistically established only for `unsupported_construct`, while its runtime
+shape exposed confidence labels without an explicit failure-class scope. The
+consumer now treats every legacy schema-v1 certificate as
+`unsupported_construct`-only. New schema-v2 certificates bind an explicit
+failure-class list, and R4 rejects an advisory outside that list.
+
+The v1 oracle-adapter plan was re-audited with this rule and a host syntax
+preflight. The superseding audit status is `blocked_history_acquisition` at
+`/data/agrefactor_runs/r5_p2_oracle_protocol_audit_superseding_v2`; its
+`protocol_audit.json` file SHA-256 is
+`3a0b3eff7c515e4f372c01424ce613912189fc810e172597f87c57f366f9aae6`.
+The old audit remains immutable but no longer authorizes the next step. This
+correction consumed zero Provider calls and zero Vitis launches.

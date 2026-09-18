@@ -96,6 +96,49 @@ def _verify_signed_object(value: Mapping[str, Any], field: str) -> str:
     return stored
 
 
+def _calibration_scope(certificate: Mapping[str, Any]) -> tuple[str, ...]:
+    if certificate.get("accepted") is not True:
+        raise ValueError("calibration certificate is not accepted")
+    certificate_id = certificate.get("certificate_id")
+    if not isinstance(certificate_id, str) or not certificate_id.startswith(
+        "r2-calibration-"
+    ):
+        raise ValueError("calibration certificate ID is malformed")
+    unsigned = {key: value for key, value in certificate.items() if key != "certificate_id"}
+    if certificate_id != "r2-calibration-" + _sha(unsigned)[:32]:
+        raise ValueError("calibration certificate ID mismatch")
+    schema = certificate.get("schema_version")
+    if schema == 1:
+        return ("unsupported_construct",)
+    if schema != 2:
+        raise ValueError("calibration certificate schema is unsupported")
+    values = certificate.get("eligible_failure_classes")
+    if (
+        not isinstance(values, list)
+        or not values
+        or any(not isinstance(value, str) or not value.strip() for value in values)
+        or len(values) != len(set(values))
+    ):
+        raise ValueError("calibration failure-class scope is malformed")
+    return tuple(values)
+
+
+def _host_syntax_check(repository: Path, relative: str) -> dict[str, Any]:
+    path = repository / relative
+    completed = subprocess.run(
+        ["g++", "-std=c++17", "-fsyntax-only", str(path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    diagnostic = (completed.stderr or completed.stdout).strip()
+    return {
+        "passed": completed.returncode == 0,
+        "returncode": completed.returncode,
+        "diagnostic_sha256": _sha_bytes(diagnostic.encode("utf-8")),
+    }
+
+
 def _signed(value: dict[str, Any], field: str) -> dict[str, Any]:
     value[field] = _sha(value)
     return value
@@ -106,6 +149,7 @@ def build_audit(
     manifest: Mapping[str, Any],
     plan: Mapping[str, Any],
     state: Mapping[str, Any],
+    calibration_certificate: Mapping[str, Any],
     *,
     manifest_file_sha256: str,
     plan_relative_path: str,
@@ -114,6 +158,7 @@ def build_audit(
     if not _SHA256.fullmatch(manifest_file_sha256):
         raise ValueError("manifest_file_sha256 must be SHA-256")
     manifest_sha256 = _verify_signed_object(manifest, "manifest_sha256")
+    calibration_scope = _calibration_scope(calibration_certificate)
     if manifest.get("status") != "ready_for_zero_call_protocol_audit":
         raise ValueError("adapter manifest is not ready for protocol audit")
     if any(
@@ -164,6 +209,7 @@ def build_audit(
         raise ValueError("plan and manifest case identities do not match")
 
     records: list[dict[str, Any]] = []
+    admission_issues: list[dict[str, str]] = []
     source_periods: dict[str, set[str]] = {}
     adapter_hashes: set[str] = set()
     for raw in manifest_cases:
@@ -173,7 +219,15 @@ def build_audit(
         expected = planned.get(case_id)
         if expected is None:
             raise ValueError("manifest contains an unplanned case")
-        for field in ("period", "control_role", "top", "prior_evidence"):
+        for field in (
+            "period",
+            "control_role",
+            "top",
+            "prior_evidence",
+            "expected_r2_failure_class",
+            "expected_r2_entry_boundary",
+            "deterministic_repair_expected",
+        ):
             if raw.get(field) != expected.get(field):
                 raise ValueError(f"{case_id}.{field} differs from the frozen plan")
         if raw.get("candidate_top") != str(raw.get("top")) + str(
@@ -207,6 +261,30 @@ def build_audit(
         source_hash = hashes["source"]
         period = str(raw.get("period"))
         source_periods.setdefault(source_hash, set()).add(period)
+        failure_class = raw.get("expected_r2_failure_class")
+        entry_boundary = raw.get("expected_r2_entry_boundary")
+        deterministic_expected = raw.get("deterministic_repair_expected")
+        syntax_check = _host_syntax_check(repository, paths["legacy_candidate"])
+        if not isinstance(failure_class, str) or failure_class not in calibration_scope:
+            admission_issues.append({
+                "case_id": str(case_id),
+                "code": "failure_class_outside_calibration_scope",
+            })
+        if raw.get("control_role") == "positive" and entry_boundary != "unknown_or_mixed_review":
+            admission_issues.append({
+                "case_id": str(case_id),
+                "code": "positive_case_cannot_reach_r2_review_boundary",
+            })
+        if deterministic_expected is not False:
+            admission_issues.append({
+                "case_id": str(case_id),
+                "code": "deterministic_repair_preclassified",
+            })
+        if raw.get("control_role") == "positive" and not syntax_check["passed"]:
+            admission_issues.append({
+                "case_id": str(case_id),
+                "code": "candidate_host_syntax_invalid_before_r2",
+            })
         records.append(
             {
                 "case_id": case_id,
@@ -221,6 +299,10 @@ def build_audit(
                 "hidden_test_sha256": hashes["hidden_test"],
                 "outcome_observed": False,
                 "hidden_model_visible": False,
+                "expected_r2_failure_class": failure_class,
+                "expected_r2_entry_boundary": entry_boundary,
+                "deterministic_repair_expected": deterministic_expected,
+                "host_syntax_preflight": syntax_check,
             }
         )
 
@@ -269,11 +351,17 @@ def build_audit(
         vitis_upper_bound=formal_vitis,
     )
 
+    ready_for_history = not admission_issues
+    protocol_status = (
+        "ready_for_history_acquisition"
+        if ready_for_history
+        else "blocked_history_acquisition"
+    )
     dataset = _signed(
         {
             "schema_version": 1,
             "dataset_id": "v2.3-r5-reference-oracle-dataset-v1",
-            "status": "ready_for_history_acquisition",
+            "status": protocol_status,
             "repository_commit": commit,
             "adapter_manifest_file_sha256": manifest_file_sha256,
             "adapter_manifest_sha256": manifest_sha256,
@@ -284,9 +372,16 @@ def build_audit(
             "future_case_ids": [item["case_id"] for item in future],
             "history_outcomes_observed": False,
             "future_outcomes_observed": False,
+            "calibration_certificate_id": calibration_certificate.get("certificate_id"),
+            "calibration_failure_class_scope": list(calibration_scope),
+            "admission_issues": admission_issues,
             "trusted_revision_creation_allowed": False,
             "real_campaign_allowed": False,
-            "next_step": "acquire_two_independently_validated_positive_history_episodes",
+            "next_step": (
+                "acquire_two_independently_validated_positive_history_episodes"
+                if ready_for_history
+                else "freeze_superseding_calibration_compatible_dataset"
+            ),
         },
         "dataset_manifest_sha256",
     )
@@ -333,7 +428,7 @@ def build_audit(
         {
             "schema_version": 1,
             "audit_id": "v2.3-r5-reference-oracle-protocol-audit-v1",
-            "status": "ready_for_history_acquisition",
+            "status": protocol_status,
             "adapter_manifest_file_sha256": manifest_file_sha256,
             "adapter_manifest_sha256": manifest_sha256,
             "dataset_manifest_sha256": dataset["dataset_manifest_sha256"],
@@ -351,13 +446,22 @@ def build_audit(
                 "future_only_upper_bound_verified": True,
                 "no_outcomes_observed": True,
                 "no_manual_trusted_revision": True,
+                "calibration_scope_matches_positive_cases": ready_for_history,
+                "positive_candidates_are_host_syntax_clean": ready_for_history,
             },
+            "calibration_certificate_id": calibration_certificate.get("certificate_id"),
+            "calibration_failure_class_scope": list(calibration_scope),
+            "admission_issues": admission_issues,
             "provider_calls": 0,
             "vitis_launches": 0,
             "git_history_mutations": 0,
             "trusted_revision_creation_allowed": False,
             "real_campaign_allowed": False,
-            "next_step": "history_acquisition_through_existing_refactor_r4_path",
+            "next_step": (
+                "history_acquisition_through_existing_refactor_r4_path"
+                if ready_for_history
+                else "freeze_superseding_calibration_compatible_dataset"
+            ),
         },
         "protocol_audit_sha256",
     )
@@ -393,15 +497,21 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--state", type=Path, required=True)
+    parser.add_argument("--calibration-bundle", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
     repository = args.repo.resolve()
     manifest_bytes = args.manifest.read_bytes()
+    calibration_bundle = _load(args.calibration_bundle)
+    calibration_certificate = calibration_bundle.get("certificate")
+    if not isinstance(calibration_certificate, Mapping):
+        raise ValueError("calibration bundle certificate is missing")
     outputs = build_audit(
         repository,
         json.loads(manifest_bytes.decode("utf-8")),
         _load(args.plan),
         _load(args.state),
+        calibration_certificate,
         manifest_file_sha256=_sha_bytes(manifest_bytes),
         plan_relative_path=_relative(repository, args.plan, "plan"),
     )

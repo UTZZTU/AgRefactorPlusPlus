@@ -834,6 +834,7 @@ class R2ShadowAdvisorTests(unittest.TestCase):
             report,
             policy=policy,
             provider_identity=identity,
+            eligible_failure_classes=("x",),
         )
         self.assertTrue(certificate.accepted)
         advisory = dict(records[0]["advisory"])
@@ -865,6 +866,15 @@ class R2ShadowAdvisorTests(unittest.TestCase):
         )
         self.assertFalse(verification.verified)
         self.assertIn("confidence_label_not_calibrated", verification.reasons)
+
+        outside_scope = dict(advisory)
+        outside_scope["suspected_failure_class"] = "syntax"
+        verification = verify_calibrated_advisory(
+            certificate,
+            shadow={"provider_identity": identity, "advisory": outside_scope},
+        )
+        self.assertFalse(verification.verified)
+        self.assertIn("failure_class_not_calibrated", verification.reasons)
 
     def test_calibration_certificate_fails_closed_on_insufficient_split(self):
         protocol = freeze_calibration_protocol("small", ["only"])

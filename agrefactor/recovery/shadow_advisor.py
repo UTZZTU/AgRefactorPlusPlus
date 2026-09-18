@@ -1401,6 +1401,7 @@ class CalibrationCertificate:
     accepted: bool
     reasons: tuple[str, ...]
     certificate_id: str = ""
+    eligible_failure_classes: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -1426,12 +1427,23 @@ class CalibrationCertificate:
             raise ValueError("eligible confidence label is invalid")
         if len(labels) != len(set(labels)):
             raise ValueError("eligible confidence labels must be unique")
+        failure_classes = self.eligible_failure_classes
+        if failure_classes is not None:
+            failure_classes = tuple(failure_classes)
+            if not failure_classes or any(
+                not isinstance(item, str) or not item.strip()
+                for item in failure_classes
+            ):
+                raise ValueError("eligible failure classes must be non-empty text")
+            if len(failure_classes) != len(set(failure_classes)):
+                raise ValueError("eligible failure classes must be unique")
         reasons = tuple(str(reason).strip() for reason in self.reasons)
         if any(not reason for reason in reasons):
             raise ValueError("certificate reasons must be non-empty")
         if self.accepted != (not reasons and bool(labels)):
             raise ValueError("certificate acceptance does not match reasons")
         object.__setattr__(self, "eligible_confidence_labels", labels)
+        object.__setattr__(self, "eligible_failure_classes", failure_classes)
         object.__setattr__(self, "reasons", reasons)
         expected = "r2-calibration-" + _canonical_sha256(
             self.to_dict(include_id=False)
@@ -1442,7 +1454,7 @@ class CalibrationCertificate:
 
     def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
         value = {
-            "schema_version": 1,
+            "schema_version": 2 if self.eligible_failure_classes is not None else 1,
             "split_id": self.split_id,
             "split_sha256": self.split_sha256,
             "report_sha256": self.report_sha256,
@@ -1455,9 +1467,19 @@ class CalibrationCertificate:
             "accepted": self.accepted,
             "reasons": list(self.reasons),
         }
+        if self.eligible_failure_classes is not None:
+            value["eligible_failure_classes"] = list(self.eligible_failure_classes)
         if include_id:
             value["certificate_id"] = self.certificate_id
         return value
+
+    @property
+    def failure_class_scope(self) -> tuple[str, ...]:
+        """Return the explicit v2 scope or the narrow legacy-v1 scope."""
+
+        if self.eligible_failure_classes is None:
+            return ("unsupported_construct",)
+        return self.eligible_failure_classes
 
 
 @dataclass(frozen=True, slots=True)
@@ -1480,6 +1502,7 @@ def certify_calibration(
     *,
     policy: CalibrationAcceptancePolicy,
     provider_identity: Mapping[str, Any],
+    eligible_failure_classes: Sequence[str] | None = None,
 ) -> CalibrationCertificate:
     if not isinstance(report, CalibrationReport):
         raise TypeError("report must be CalibrationReport")
@@ -1533,6 +1556,11 @@ def certify_calibration(
         eligible_confidence_labels=("high",) if not reasons else (),
         accepted=not reasons,
         reasons=reasons,
+        eligible_failure_classes=(
+            tuple(eligible_failure_classes)
+            if eligible_failure_classes is not None
+            else None
+        ),
     )
 
 
@@ -1571,6 +1599,10 @@ def verify_calibrated_advisory(
         ),
         "confidence_label_not_calibrated": (
             advisory.get("confidence") in certificate.eligible_confidence_labels
+        ),
+        "failure_class_not_calibrated": (
+            advisory.get("suspected_failure_class")
+            in certificate.failure_class_scope
         ),
     }
     reasons = tuple(name for name, passed in checks.items() if not passed)

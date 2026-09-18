@@ -40,6 +40,26 @@ def _state() -> dict:
     }
 
 
+def _certificate(*, failure_classes=("family",)) -> dict:
+    value = {
+        "schema_version": 2,
+        "split_id": "test-split",
+        "split_sha256": "a" * 64,
+        "report_sha256": "b" * 64,
+        "policy_sha256": "c" * 64,
+        "provider_identity_sha256": "d" * 64,
+        "prompt_contract_version": "r2-shadow-output-v4",
+        "strict_parser": "r2-v1",
+        "input_contract_version": "r2-agent-safe-diagnostic-evidence-v2",
+        "eligible_confidence_labels": ["high"],
+        "accepted": True,
+        "reasons": [],
+        "eligible_failure_classes": list(failure_classes),
+    }
+    value["certificate_id"] = "r2-calibration-" + AUDIT._sha(value)[:32]
+    return value
+
+
 def _fixture(root: Path, *, future_control: bool = True):
     repo = root / "repo"
     repo.mkdir()
@@ -88,6 +108,13 @@ def _fixture(root: Path, *, future_control: bool = True):
                 "public_test": f"case{index}/public.cpp",
                 "hidden_test": f"case{index}/hidden.cpp",
                 "prior_evidence": "pre-R5 fixture",
+                "expected_r2_failure_class": "family",
+                "expected_r2_entry_boundary": (
+                    "unknown_or_mixed_review"
+                    if control == "positive"
+                    else "inapplicable_or_confusable"
+                ),
+                "deterministic_repair_expected": False,
             }
         )
     plan = {
@@ -137,6 +164,7 @@ class R5OracleProtocolAuditTests(unittest.TestCase):
                 manifest,
                 plan,
                 _state(),
+                _certificate(),
                 manifest_file_sha256=_sha_bytes(manifest_bytes),
                 plan_relative_path="plan.json",
             )
@@ -160,6 +188,7 @@ class R5OracleProtocolAuditTests(unittest.TestCase):
                     manifest,
                     plan,
                     _state(),
+                    _certificate(),
                     manifest_file_sha256=_sha_bytes(manifest_bytes),
                     plan_relative_path="plan.json",
                 )
@@ -175,6 +204,7 @@ class R5OracleProtocolAuditTests(unittest.TestCase):
                     manifest,
                     plan,
                     _state(),
+                    _certificate(),
                     manifest_file_sha256=_sha_bytes(manifest_bytes),
                     plan_relative_path="plan.json",
                 )
@@ -190,9 +220,31 @@ class R5OracleProtocolAuditTests(unittest.TestCase):
                     manifest,
                     plan,
                     state,
+                    _certificate(),
                     manifest_file_sha256=_sha_bytes(manifest_bytes),
                     plan_relative_path="plan.json",
                 )
+
+    def test_failure_class_outside_certificate_scope_blocks_history(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            repo, plan, manifest, manifest_bytes = _fixture(Path(raw))
+            result = AUDIT.build_audit(
+                repo,
+                manifest,
+                plan,
+                _state(),
+                _certificate(failure_classes=("unsupported_construct",)),
+                manifest_file_sha256=_sha_bytes(manifest_bytes),
+                plan_relative_path="plan.json",
+            )
+        self.assertEqual(
+            result["protocol_audit"]["status"],
+            "blocked_history_acquisition",
+        )
+        self.assertEqual(
+            {item["code"] for item in result["protocol_audit"]["admission_issues"]},
+            {"failure_class_outside_calibration_scope"},
+        )
 
 
 if __name__ == "__main__":

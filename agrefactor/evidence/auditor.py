@@ -483,8 +483,15 @@ def audit_r2_calibration_bundle(
 
     expected_accepted = not expected_reasons
     expected_labels = ["high"] if expected_accepted else []
+    truth_failure_classes = sorted({
+        str(record.get("truth", {}).get("failure_class", "unknown"))
+        for record in records
+        if isinstance(record, Mapping)
+        and isinstance(record.get("truth"), Mapping)
+    })
+    certificate_schema = certificate.get("schema_version")
     expected_certificate = {
-        "schema_version": 1,
+        "schema_version": certificate_schema,
         "split_id": split_id,
         "split_sha256": expected_split_sha,
         "report_sha256": _audit_sha256(expected_report),
@@ -495,6 +502,30 @@ def audit_r2_calibration_bundle(
         "accepted": expected_accepted,
         "reasons": list(expected_reasons),
     }
+    if certificate_schema == 1:
+        if truth_failure_classes != ["unsupported_construct"]:
+            findings.append(EvidenceAuditFinding(
+                code="r2_calibration_legacy_scope_violation",
+                severity=AuditSeverity.CRITICAL,
+                message=(
+                    "Legacy schema-v1 certificates are restricted to the "
+                    "unsupported_construct failure class."
+                ),
+                expected=["unsupported_construct"],
+                observed=truth_failure_classes,
+                evidence_refs=("certificate", "records"),
+            ))
+    elif certificate_schema == 2:
+        expected_certificate["eligible_failure_classes"] = truth_failure_classes
+    else:
+        findings.append(EvidenceAuditFinding(
+            code="r2_calibration_certificate_schema_unsupported",
+            severity=AuditSeverity.CRITICAL,
+            message="Calibration certificate schema is unsupported.",
+            expected=[1, 2],
+            observed=certificate_schema,
+            evidence_refs=("certificate",),
+        ))
     expected_certificate["certificate_id"] = (
         "r2-calibration-" + _audit_sha256(expected_certificate)[:32]
     )

@@ -53,6 +53,13 @@ def _write_repo(root: Path) -> tuple[Path, dict]:
                 "public_test": f"case{index}/public.cpp",
                 "hidden_test": f"case{index}/hidden.cpp",
                 "prior_evidence": "pre-R5",
+                "expected_r2_failure_class": "unsupported_construct",
+                "expected_r2_entry_boundary": (
+                    "unknown_or_mixed_review"
+                    if control == "positive"
+                    else "inapplicable_or_confusable"
+                ),
+                "deterministic_repair_expected": False,
             }
         )
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
@@ -114,28 +121,14 @@ class R5OracleAdapterFreezeTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "crosses"):
                 MODULE.build_manifest(repo, plan)
 
-    def test_checked_plan_has_syntax_valid_distinct_adapters(self) -> None:
+    def test_legacy_checked_plan_requires_superseding_r2_semantics(self) -> None:
         plan = json.loads(
             (ROOT / "configs/r5/oracle_adapters/plan.json").read_text(
                 encoding="utf-8"
             )
         )
-        manifest = MODULE.build_manifest(ROOT, plan)
-        self.assertEqual(len(manifest["history_case_ids"]), 2)
-        self.assertEqual(len(manifest["future_case_ids"]), 2)
-        for record in manifest["cases"]:
-            for split in ("public_test", "hidden_test"):
-                subprocess.run(
-                    [
-                        "g++",
-                        "-std=c++17",
-                        "-fsyntax-only",
-                        str(ROOT / record["paths"][split]),
-                    ],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
+        with self.assertRaisesRegex(ValueError, "expected R2 failure class"):
+            MODULE.build_manifest(ROOT, plan)
 
 
 if __name__ == "__main__":

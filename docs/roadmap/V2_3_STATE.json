@@ -86,13 +86,19 @@
   "R5_VITIS_LAUNCH_HARD_CAP": 500,
   "R5_DETERMINISTIC_IMPLEMENTATION_STATUS": "existing_refactor_campaign_executor_2515_regression_passed",
   "R5_EVIDENCE_INVENTORY_STATUS": "predecessor_ready_oracle_adapter_review_blocked",
-  "R5_DATASET_STATUS": "blocked_data_acquisition",
-  "R5_DATASET_REASON": [
-    "no frozen R5 history/future case partition is present",
-    "no paired positive and inapplicable repair controls are present",
-    "hlsrewritter audit found 0 direct, 13 adapter-required, and 7 rejected cases",
-    "reviewed adapter boundary kept all 13 adapter-required cases blocked pending independent enforceable Public/Hidden oracles"
+  "R5_CALIBRATION_FAILURE_CLASS_SCOPE": [
+    "unsupported_construct"
   ],
+  "R5_CALIBRATION_SCOPE_CONTRACT_VERSION": "legacy-v1-narrow-or-v2-explicit",
+  "R5_DATASET_STATUS": "blocked_history_acquisition",
+  "R5_DATASET_REASON": [
+    "superseding zero-call audit found the v1 plan outside the accepted unsupported_construct calibration scope",
+    "v1 positive cases did not predeclare a legitimate R2 unknown-or-mixed review boundary",
+    "v1 positive candidates were not clean at the host syntax preflight boundary",
+    "a calibration-compatible v2 real-data split must be frozen before history acquisition"
+  ],
+  "R5_DATASET_SUPERSEDING_PROTOCOL_AUDIT": "/data/agrefactor_runs/r5_p2_oracle_protocol_audit_superseding_v2/protocol_audit.json",
+  "R5_DATASET_SUPERSEDING_PROTOCOL_AUDIT_SHA256": "3a0b3eff7c515e4f372c01424ce613912189fc810e172597f87c57f366f9aae6",
   "R5_CONSUMED_PROVIDER_CALLS": 0,
   "R5_CONSUMED_VITIS_LAUNCHES": 0,
   "R5_REAL_CAMPAIGN_ALLOWED": false,
@@ -107,7 +113,7 @@
   "implementation_head": "169e64b4c0f24b16292eaa7125357ac8071bdfef",
   "implementation_state": "R5-product-campaign-executor-implemented-oracle-adapter-acquisition-next",
   "independent_audit_state": "R4-real-canary-file-only-audit-clean-project-owner-accepted",
-  "next_step": "V2.3-R5-reference-backed-oracle-adapter-implementation",
+  "next_step": "V2.3-R5-freeze-superseding-calibration-compatible-real-dataset",
   "package_self_acceptance": false,
   "r0_external_acceptance_archive": "agrefactor_v23_r0_correction_finalize_20260828T144812Z_2495321.tar.gz",
   "r0_external_acceptance_archive_sha256": "4209d6330f0d9089cc92c97d25ba1112b460a0e5201f11298f99047da0304f77",

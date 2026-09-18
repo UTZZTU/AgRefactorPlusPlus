@@ -15,6 +15,7 @@ from typing import Any, Mapping
 _SAFE_RELATIVE = re.compile(r"^[A-Za-z0-9_./-]+$")
 _ALLOWED_PERIODS = {"history", "future"}
 _ALLOWED_CONTROLS = {"positive", "inapplicable_or_confusable"}
+_ALLOWED_R2_BOUNDARIES = {"unknown_or_mixed_review", "inapplicable_or_confusable"}
 
 
 def _canonical(value: Any) -> bytes:
@@ -105,6 +106,9 @@ def build_manifest(repository: Path, plan: Mapping[str, Any]) -> dict[str, Any]:
         period = raw.get("period")
         control = raw.get("control_role")
         top = raw.get("top")
+        failure_class = raw.get("expected_r2_failure_class")
+        r2_boundary = raw.get("expected_r2_entry_boundary")
+        deterministic_repair_expected = raw.get("deterministic_repair_expected")
         if not isinstance(case_id, str) or not case_id or case_id in case_ids:
             raise ValueError("case_id must be unique and non-empty")
         case_ids.add(case_id)
@@ -114,6 +118,14 @@ def build_manifest(repository: Path, plan: Mapping[str, Any]) -> dict[str, Any]:
             raise ValueError(f"invalid control role for {case_id}")
         if not isinstance(top, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", top):
             raise ValueError(f"invalid top for {case_id}")
+        if not isinstance(failure_class, str) or not failure_class.strip():
+            raise ValueError(f"expected R2 failure class is required for {case_id}")
+        if r2_boundary not in _ALLOWED_R2_BOUNDARIES:
+            raise ValueError(f"invalid expected R2 entry boundary for {case_id}")
+        if deterministic_repair_expected is not False:
+            raise ValueError(f"{case_id} is preclassified for deterministic repair")
+        if control == "positive" and r2_boundary != "unknown_or_mixed_review":
+            raise ValueError(f"positive case {case_id} cannot reach the R2 review boundary")
         paths: dict[str, str] = {}
         hashes: dict[str, str] = {}
         texts: dict[str, str] = {}
@@ -155,6 +167,9 @@ def build_manifest(repository: Path, plan: Mapping[str, Any]) -> dict[str, Any]:
             "paths": paths,
             "hashes": hashes,
             "prior_evidence": raw.get("prior_evidence"),
+            "expected_r2_failure_class": failure_class.strip(),
+            "expected_r2_entry_boundary": r2_boundary,
+            "deterministic_repair_expected": False,
             "outcome_observed": False,
             "hidden_model_visible": False,
             "adapter_identity_sha256": "",
@@ -193,8 +208,8 @@ def build_manifest(repository: Path, plan: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("plan invariants are incomplete")
 
     manifest = {
-        "schema_version": 1,
-        "manifest_id": "v2.3-r5-reference-oracle-adapter-manifest-v1",
+        "schema_version": 2,
+        "manifest_id": "v2.3-r5-reference-oracle-adapter-manifest-v2",
         "plan_id": plan.get("plan_id"),
         "plan_sha256": _sha(plan),
         "frozen_at": plan.get("frozen_at"),
