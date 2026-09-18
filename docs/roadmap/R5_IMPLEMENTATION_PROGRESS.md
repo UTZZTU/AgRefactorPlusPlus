@@ -35,8 +35,8 @@ authoritative.
 ## Verification
 
 - Deterministic R5 and adjacent boundary tests: passed.
-- Full repository regression: `2494` tests passed at implementation commit
-  `75a4b49c4e5256f5a7ff36c2adc455d47851dba6`.
+- Full repository regression: `2515` tests passed on the worktree that became
+  implementation commit `169e64b4c0f24b16292eaa7125357ac8071bdfef`.
 - This deterministic checkpoint consumed `0` new Provider calls and `0` new
   Vitis launches. The credential was removed from the test environment.
 
@@ -44,10 +44,11 @@ authoritative.
 
 The immutable predecessor inventory reports `64` historical Provider calls and
 `180` historical Vitis launches. They are predecessor evidence, not R5 budget
-consumption. One earlier full-regression invocation unintentionally reached a
-legacy conditional network smoke after the R5 authorization started. It is
-therefore charged to R5 even though it was not an efficacy experiment. The
-reconciled R5 ledger is `1/500` Provider calls and `0/500` Vitis launches.
+consumption. Full-regression output includes
+`P4_0E_R1_REAL_NETWORK_SMOKE_PASSED`, but the only discovered caller is a unit
+test that replaces the provider client with an in-process fake and supplies a
+literal `unit-secret`; it does not cross the Provider boundary. The reconciled
+R5 ledger is therefore `0/500` Provider calls and `0/500` Vitis launches.
 
 The current inventory is not a campaign dataset: it has no frozen history/
 future partition and no paired positive/inapplicable controls. The generated
@@ -68,12 +69,25 @@ with file SHA-256
 No Provider or Vitis call was made. An `adapter_required` classification is
 not campaign admission and does not authorize creating an oracle.
 
+The reviewed adapter-boundary pass records all 13 adapter-required cases and
+keeps all 13 blocked. It references only existing source/reference/testbench/
+Tcl hashes, leaves history/future and control roles unassigned, and explicitly
+forbids invented expected outputs, duplicated Public/Hidden tests, or manual
+Trusted revisions. The immutable review is
+`/data/agrefactor_runs/r5_p2_adapter_review/oracle_adapter_review.json` with
+file SHA-256
+`8db47e2243c6640f515b215fd4cd035cf5d8cd22ef137c9ceb96edb32a23b1ab`.
+Its canonical internal review hash is
+`59d1f7b2f64cba5994521fa94f19e529aedd715a91858c11174da73ad2f73768`.
+It consumed zero Provider and zero Vitis calls.
+
 ## Next Authorized Step
 
-Design and review adapters only for the 13 `adapter_required` cases. An
-adapter may expose an existing oracle but must not invent expected outcomes or
-weaken failure semantics. Rejected cases remain outside the dataset. Freeze
-history/future and paired control roles only after adapter identity, complete
-Target/toolchain/parser/model identity, temporal provenance, and source-level
-holdout are proven. Re-run the inventory and dataset contract, then perform a
-zero-call protocol audit before the bounded real pilot. R6 remains stopped.
+Implement reference-backed adapters only where existing repository artifacts
+can produce distinct, enforceable Public/Hidden checks without inventing an
+expected outcome or weakening failure semantics. Rejected cases remain outside
+the dataset. Freeze history/future and paired control roles before observing
+new outcomes, and only after adapter identity, complete Target/toolchain/
+parser/model identity, temporal provenance, and source-level holdout are
+proven. Re-run the inventory and dataset contract, then perform a zero-call
+protocol audit before the bounded real pilot. R6 remains stopped.
