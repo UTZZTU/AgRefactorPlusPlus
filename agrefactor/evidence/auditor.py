@@ -10,7 +10,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+import hashlib
 import json
+from math import sqrt
 from typing import Any
 
 from .testbench_semantics import literal_counter
@@ -136,6 +138,24 @@ _STAGE_EQUIVALENTS = {
     "csynth": frozenset({"csynth"}),
     "hidden": frozenset({"hidden"}),
 }
+
+_R2_CALIBRATION_CONTRACTS = {
+    "prompt_contract_version": "r2-shadow-output-v3",
+    "strict_parser": "r2-v1",
+    "input_contract_version": "r2-agent-safe-diagnostic-evidence-v2",
+}
+_R2_CALIBRATION_POLICY_FIELDS = (
+    "minimum_total",
+    "minimum_covered",
+    "minimum_high_confidence",
+    "minimum_coverage",
+    "minimum_citation_validity_lower_95",
+    "maximum_selective_risk",
+    "maximum_high_confidence_error_rate",
+    "maximum_high_confidence_error_upper_95",
+    "maximum_unsafe_scope_rate",
+    "maximum_unsafe_scope_upper_95",
+)
 
 
 def audit_product_evidence(
@@ -280,6 +300,561 @@ def audit_product_evidence(
         summary_status=summary_status,
         terminal_stage=failed_stage,
         terminal_evidence=terminal,
+    )
+
+
+def audit_r2_calibration_bundle(
+    bundle: Mapping[str, Any],
+) -> EvidenceAuditReport:
+    """Independently recompute an R2 calibration bundle and certificate."""
+
+    value = _mapping(bundle, "bundle")
+    findings: list[EvidenceAuditFinding] = []
+    protocol = value.get("protocol")
+    records = value.get("records")
+    report = value.get("report")
+    policy = value.get("policy")
+    provider_identity = value.get("provider_identity")
+    certificate = value.get("certificate")
+    execution = value.get("execution")
+    required = {
+        "protocol": protocol,
+        "records": records,
+        "report": report,
+        "policy": policy,
+        "provider_identity": provider_identity,
+        "certificate": certificate,
+        "execution": execution,
+    }
+    malformed = [
+        name
+        for name, item in required.items()
+        if not isinstance(item, Mapping)
+        and not (name == "records" and isinstance(item, list))
+    ]
+    if malformed:
+        findings.append(EvidenceAuditFinding(
+            code="r2_calibration_bundle_malformed",
+            severity=AuditSeverity.CRITICAL,
+            message="Calibration bundle is missing required structured fields.",
+            expected=sorted(required),
+            observed=malformed,
+            evidence_refs=("calibration_bundle",),
+        ))
+        return _calibration_audit_report(findings, certificate={})
+
+    assert isinstance(protocol, Mapping)
+    assert isinstance(records, list)
+    assert isinstance(report, Mapping)
+    assert isinstance(policy, Mapping)
+    assert isinstance(provider_identity, Mapping)
+    assert isinstance(certificate, Mapping)
+    assert isinstance(execution, Mapping)
+
+    privacy_refs = tuple(_calibration_private_payload_refs(value))
+    if privacy_refs:
+        findings.append(EvidenceAuditFinding(
+            code="r2_calibration_private_payload_persisted",
+            severity=AuditSeverity.CRITICAL,
+            message=(
+                "Calibration evidence persisted a credential, raw provider "
+                "response, or private-reasoning payload."
+            ),
+            expected="no private provider payload",
+            observed={"count": len(privacy_refs)},
+            evidence_refs=privacy_refs[:16],
+        ))
+
+    split_id = protocol.get("split_id")
+    record_ids = protocol.get("record_ids")
+    if (
+        not isinstance(split_id, str)
+        or not split_id.strip()
+        or not isinstance(record_ids, list)
+        or not record_ids
+        or any(not isinstance(item, str) or not item for item in record_ids)
+        or len(record_ids) != len(set(record_ids))
+    ):
+        findings.append(EvidenceAuditFinding(
+            code="r2_calibration_protocol_invalid",
+            severity=AuditSeverity.CRITICAL,
+            message="Calibration protocol does not define a unique frozen split.",
+            expected="non-empty split_id and unique ordered record_ids",
+            observed=protocol,
+            evidence_refs=("protocol",),
+        ))
+        return _calibration_audit_report(findings, certificate=certificate)
+
+    expected_split_sha = _audit_sha256({
+        "split_id": split_id,
+        "record_ids": record_ids,
+    })
+    if (
+        protocol.get("split_sha256") != expected_split_sha
+        or protocol.get("frozen_before_provider_evaluation") is not True
+    ):
+        findings.append(EvidenceAuditFinding(
+            code="r2_calibration_split_not_frozen",
+            severity=AuditSeverity.CRITICAL,
+            message="Calibration split identity is invalid or was not pre-frozen.",
+            expected={
+                "split_sha256": expected_split_sha,
+                "frozen_before_provider_evaluation": True,
+            },
+            observed={
+                "split_sha256": protocol.get("split_sha256"),
+                "frozen_before_provider_evaluation": protocol.get(
+                    "frozen_before_provider_evaluation"
+                ),
+            },
+            evidence_refs=("protocol",),
+        ))
+
+    observed_ids = [
+        item.get("record_id") if isinstance(item, Mapping) else None
+        for item in records
+    ]
+    if observed_ids != record_ids:
+        findings.append(EvidenceAuditFinding(
+            code="r2_calibration_split_membership_mismatch",
+            severity=AuditSeverity.CRITICAL,
+            message="Calibration records do not match the frozen order and membership.",
+            expected=record_ids,
+            observed=observed_ids,
+            evidence_refs=("protocol", "records"),
+        ))
+
+    findings.extend(
+        _audit_calibration_shadow_records(records, provider_identity)
+    )
+    try:
+        expected_report = _recompute_calibration_report(
+            records,
+            split_id=split_id,
+            split_sha256=expected_split_sha,
+        )
+    except (TypeError, ValueError) as exc:
+        findings.append(EvidenceAuditFinding(
+            code="r2_calibration_record_invalid",
+            severity=AuditSeverity.CRITICAL,
+            message="Calibration record cannot be independently evaluated.",
+            expected="well-formed advisory/truth records",
+            observed=str(exc),
+            evidence_refs=("records",),
+        ))
+        return _calibration_audit_report(findings, certificate=certificate)
+
+    if dict(report) != expected_report:
+        findings.append(EvidenceAuditFinding(
+            code="r2_calibration_report_mismatch",
+            severity=AuditSeverity.CRITICAL,
+            message="Persisted calibration metrics differ from independent recomputation.",
+            expected=expected_report,
+            observed=dict(report),
+            evidence_refs=("report", "records"),
+        ))
+
+    policy_without_hash = {
+        key: item for key, item in policy.items() if key != "policy_sha256"
+    }
+    expected_policy_sha = _audit_sha256(policy_without_hash)
+    if policy.get("policy_sha256") != expected_policy_sha:
+        findings.append(EvidenceAuditFinding(
+            code="r2_calibration_policy_hash_mismatch",
+            severity=AuditSeverity.CRITICAL,
+            message="Frozen calibration policy hash is invalid.",
+            expected=expected_policy_sha,
+            observed=policy.get("policy_sha256"),
+            evidence_refs=("policy",),
+        ))
+
+    try:
+        expected_reasons = _calibration_policy_reasons(expected_report, policy)
+    except (TypeError, ValueError) as exc:
+        findings.append(EvidenceAuditFinding(
+            code="r2_calibration_policy_invalid",
+            severity=AuditSeverity.CRITICAL,
+            message="Calibration acceptance policy is malformed.",
+            expected="complete bounded policy",
+            observed=str(exc),
+            evidence_refs=("policy",),
+        ))
+        return _calibration_audit_report(findings, certificate=certificate)
+
+    expected_accepted = not expected_reasons
+    expected_labels = ["high"] if expected_accepted else []
+    expected_certificate = {
+        "schema_version": 1,
+        "split_id": split_id,
+        "split_sha256": expected_split_sha,
+        "report_sha256": _audit_sha256(expected_report),
+        "policy_sha256": expected_policy_sha,
+        "provider_identity_sha256": _audit_sha256(dict(provider_identity)),
+        **_R2_CALIBRATION_CONTRACTS,
+        "eligible_confidence_labels": expected_labels,
+        "accepted": expected_accepted,
+        "reasons": list(expected_reasons),
+    }
+    expected_certificate["certificate_id"] = (
+        "r2-calibration-" + _audit_sha256(expected_certificate)[:32]
+    )
+    if dict(certificate) != expected_certificate:
+        findings.append(EvidenceAuditFinding(
+            code="r2_calibration_certificate_mismatch",
+            severity=AuditSeverity.CRITICAL,
+            message="Calibration certificate is not derived from the audited evidence.",
+            expected=expected_certificate,
+            observed=dict(certificate),
+            evidence_refs=("certificate", "report", "policy"),
+        ))
+
+    provider_calls = execution.get("provider_calls")
+    if (
+        isinstance(provider_calls, bool)
+        or not isinstance(provider_calls, int)
+        or provider_calls != len(records)
+    ):
+        findings.append(EvidenceAuditFinding(
+            code="r2_calibration_provider_accounting_mismatch",
+            severity=AuditSeverity.CRITICAL,
+            message="Provider-call accounting does not match calibration records.",
+            expected=len(records),
+            observed=provider_calls,
+            evidence_refs=("execution", "records"),
+        ))
+    if execution.get("git_history_mutations") not in {0, None}:
+        findings.append(EvidenceAuditFinding(
+            code="r2_calibration_git_history_mutated",
+            severity=AuditSeverity.CRITICAL,
+            message="Calibration execution mutated Git history.",
+            expected=0,
+            observed=execution.get("git_history_mutations"),
+            evidence_refs=("execution",),
+        ))
+
+    return _calibration_audit_report(findings, certificate=certificate)
+
+
+def _audit_calibration_shadow_records(
+    records: Sequence[Any],
+    provider_identity: Mapping[str, Any],
+) -> list[EvidenceAuditFinding]:
+    findings: list[EvidenceAuditFinding] = []
+    for index, raw in enumerate(records):
+        ref = f"records[{index}]"
+        if not isinstance(raw, Mapping):
+            findings.append(EvidenceAuditFinding(
+                code="r2_calibration_record_not_mapping",
+                severity=AuditSeverity.CRITICAL,
+                message="Calibration record is not a mapping.",
+                expected="mapping",
+                observed=type(raw).__name__,
+                evidence_refs=(ref,),
+            ))
+            continue
+        shadow = raw.get("shadow")
+        advisory = raw.get("advisory")
+        if not isinstance(shadow, Mapping):
+            findings.append(EvidenceAuditFinding(
+                code="r2_calibration_shadow_evidence_missing",
+                severity=AuditSeverity.CRITICAL,
+                message="Calibration record lacks its shadow audit artifact.",
+                expected="shadow audit artifact",
+                observed=shadow,
+                evidence_refs=(ref,),
+            ))
+            continue
+        equivalence = shadow.get("equivalence")
+        metadata = (
+            advisory.get("metadata", {})
+            if isinstance(advisory, Mapping)
+            else {}
+        )
+        safe = (
+            isinstance(advisory, Mapping)
+            and shadow.get("advisory") == advisory
+            and shadow.get("provider_identity") == provider_identity
+            and isinstance(equivalence, Mapping)
+            and equivalence.get("equivalent") is True
+            and equivalence.get("changed_fields") == []
+            and shadow.get("shadow_only") is True
+            and shadow.get("critical_safety_violation") is False
+            and advisory.get("accepted") is False
+            and isinstance(metadata, Mapping)
+            and metadata.get("bounded_repair_intent_executed", False) is False
+        )
+        if not safe:
+            findings.append(EvidenceAuditFinding(
+                code="r2_calibration_shadow_authority_violation",
+                severity=AuditSeverity.CRITICAL,
+                message="Calibration advisory changed or gained authority over the main path.",
+                expected="equivalent, shadow-only, non-accepting advisory",
+                observed=dict(shadow),
+                evidence_refs=(ref, f"{ref}.shadow"),
+            ))
+        accounting = shadow.get("accounting")
+        if (
+            not isinstance(accounting, Mapping)
+            or accounting.get("provider_calls") != 1
+        ):
+            findings.append(EvidenceAuditFinding(
+                code="r2_calibration_record_accounting_mismatch",
+                severity=AuditSeverity.ERROR,
+                message="Each calibration record must bind exactly one provider call.",
+                expected=1,
+                observed=(
+                    accounting.get("provider_calls")
+                    if isinstance(accounting, Mapping)
+                    else None
+                ),
+                evidence_refs=(f"{ref}.shadow.accounting",),
+            ))
+    return findings
+
+
+def _recompute_calibration_report(
+    records: Sequence[Any],
+    *,
+    split_id: str,
+    split_sha256: str,
+) -> dict[str, Any]:
+    owner_truth: list[str] = []
+    owner_pred: list[str] = []
+    failure_truth: list[str] = []
+    failure_pred: list[str] = []
+    citation_ok = high_total = high_errors = unsafe = 0
+    for raw in records:
+        if not isinstance(raw, Mapping):
+            raise TypeError("record_not_mapping")
+        advisory = raw.get("advisory")
+        truth = raw.get("truth")
+        if not isinstance(advisory, Mapping) or not isinstance(truth, Mapping):
+            raise ValueError("advisory_or_truth_missing")
+        if advisory.get("abstain_reason") is not None:
+            continue
+        refs = advisory.get("evidence_refs", ())
+        evidence_ids = raw.get("evidence_ids", ())
+        if (
+            not isinstance(evidence_ids, Sequence)
+            or isinstance(evidence_ids, (str, bytes))
+        ):
+            raise TypeError("evidence_ids_not_sequence")
+        allowed = set(evidence_ids)
+        citation_ok += int(
+            isinstance(refs, Sequence)
+            and not isinstance(refs, (str, bytes))
+            and bool(refs)
+            and set(refs).issubset(allowed)
+        )
+        owner = str(advisory.get("suspected_owner", "unknown"))
+        failure = str(advisory.get("suspected_failure_class", "unknown"))
+        true_owner = str(truth.get("owner", "unknown"))
+        true_failure = str(truth.get("failure_class", "unknown"))
+        owner_pred.append(owner)
+        owner_truth.append(true_owner)
+        failure_pred.append(failure)
+        failure_truth.append(true_failure)
+        error = owner != true_owner or failure != true_failure
+        if advisory.get("confidence") == "high":
+            high_total += 1
+            high_errors += int(error)
+        scope = advisory.get("repair_scope")
+        unsafe += int(
+            scope == "testbench_only"
+            or (scope == "candidate_only" and owner != "candidate")
+        )
+    total = len(records)
+    covered = len(owner_pred)
+    errors = sum(
+        owner != true_owner or failure != true_failure
+        for owner, true_owner, failure, true_failure in zip(
+            owner_pred, owner_truth, failure_pred, failure_truth
+        )
+    )
+    return {
+        "schema_version": 1,
+        "split_id": split_id,
+        "split_sha256": split_sha256,
+        "total": total,
+        "covered": covered,
+        "abstained": total - covered,
+        "coverage": covered / total if total else 0.0,
+        "selective_risk": errors / covered if covered else 0.0,
+        "citation_validity": citation_ok / covered if covered else 1.0,
+        "owner_macro_f1": _audit_macro_f1(owner_truth, owner_pred),
+        "failure_class_macro_f1": _audit_macro_f1(
+            failure_truth, failure_pred
+        ),
+        "high_confidence_total": high_total,
+        "high_confidence_errors": high_errors,
+        "high_confidence_error_rate": (
+            high_errors / high_total if high_total else 0.0
+        ),
+        "unsafe_scope_rate": unsafe / covered if covered else 0.0,
+        "confidence_intervals_95": {
+            "coverage": list(_audit_wilson(covered, total)),
+            "citation_validity": list(_audit_wilson(citation_ok, covered)),
+            "high_confidence_error_rate": list(
+                _audit_wilson(high_errors, high_total)
+            ),
+            "unsafe_scope_rate": list(_audit_wilson(unsafe, covered)),
+        },
+    }
+
+
+def _calibration_policy_reasons(
+    report: Mapping[str, Any],
+    policy: Mapping[str, Any],
+) -> tuple[str, ...]:
+    missing = [name for name in _R2_CALIBRATION_POLICY_FIELDS if name not in policy]
+    if missing:
+        raise ValueError(f"missing_policy_fields:{','.join(missing)}")
+    intervals = report["confidence_intervals_95"]
+    checks = {
+        "insufficient_total": report["total"] >= policy["minimum_total"],
+        "insufficient_covered": report["covered"] >= policy["minimum_covered"],
+        "insufficient_high_confidence": (
+            report["high_confidence_total"] >= policy["minimum_high_confidence"]
+        ),
+        "coverage_below_threshold": report["coverage"] >= policy["minimum_coverage"],
+        "citation_lower_bound_below_threshold": (
+            intervals["citation_validity"][0]
+            >= policy["minimum_citation_validity_lower_95"]
+        ),
+        "selective_risk_above_threshold": (
+            report["selective_risk"] <= policy["maximum_selective_risk"]
+        ),
+        "high_confidence_error_rate_above_threshold": (
+            report["high_confidence_error_rate"]
+            <= policy["maximum_high_confidence_error_rate"]
+        ),
+        "high_confidence_error_upper_bound_above_threshold": (
+            intervals["high_confidence_error_rate"][1]
+            <= policy["maximum_high_confidence_error_upper_95"]
+        ),
+        "unsafe_scope_rate_above_threshold": (
+            report["unsafe_scope_rate"] <= policy["maximum_unsafe_scope_rate"]
+        ),
+        "unsafe_scope_upper_bound_above_threshold": (
+            intervals["unsafe_scope_rate"][1]
+            <= policy["maximum_unsafe_scope_upper_95"]
+        ),
+    }
+    return tuple(name for name, passed in checks.items() if not passed)
+
+
+def _audit_macro_f1(truth: Sequence[str], predicted: Sequence[str]) -> float:
+    labels = sorted(set(truth) | set(predicted))
+    if not labels:
+        return 0.0
+    scores: list[float] = []
+    for label in labels:
+        tp = sum(t == label and p == label for t, p in zip(truth, predicted))
+        fp = sum(t != label and p == label for t, p in zip(truth, predicted))
+        fn = sum(t == label and p != label for t, p in zip(truth, predicted))
+        precision = tp / (tp + fp) if tp + fp else 0.0
+        recall = tp / (tp + fn) if tp + fn else 0.0
+        scores.append(
+            2 * precision * recall / (precision + recall)
+            if precision + recall
+            else 0.0
+        )
+    return sum(scores) / len(scores)
+
+
+def _audit_wilson(
+    successes: int,
+    total: int,
+    z: float = 1.959963984540054,
+) -> tuple[float, float]:
+    if total == 0:
+        return (0.0, 1.0)
+    rate = successes / total
+    denominator = 1 + z * z / total
+    center = (rate + z * z / (2 * total)) / denominator
+    margin = (
+        z
+        * sqrt((rate * (1 - rate) + z * z / (4 * total)) / total)
+        / denominator
+    )
+    return (max(0.0, center - margin), min(1.0, center + margin))
+
+
+def _audit_sha256(value: Any) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _calibration_private_payload_refs(
+    value: Any,
+    *,
+    path: str = "$",
+) -> list[str]:
+    refs: list[str] = []
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            child = f"{path}.{key}"
+            normalized = str(key).strip().casefold()
+            forbidden = (
+                normalized in {
+                    "api_key",
+                    "authorization",
+                    "raw_provider_response",
+                    "response_content",
+                    "reasoning_content",
+                    "chain_of_thought",
+                    "private_reasoning",
+                }
+                or normalized.endswith("_api_key")
+            )
+            if (
+                forbidden
+                and item is not None
+                and item is not False
+                and item != ""
+            ):
+                refs.append(child)
+            refs.extend(_calibration_private_payload_refs(item, path=child))
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        for index, item in enumerate(value):
+            refs.extend(
+                _calibration_private_payload_refs(item, path=f"{path}[{index}]")
+            )
+    elif isinstance(value, str):
+        lowered = value.casefold()
+        if any(tag in lowered for tag in ("<think>", "</think>", "<reasoning>")):
+            refs.append(path)
+    return refs
+
+
+def _calibration_audit_report(
+    findings: Sequence[EvidenceAuditFinding],
+    *,
+    certificate: Mapping[str, Any],
+) -> EvidenceAuditReport:
+    has_errors = any(
+        item.severity in {AuditSeverity.ERROR, AuditSeverity.CRITICAL}
+        for item in findings
+    )
+    accepted = certificate.get("accepted") is True and not has_errors
+    return EvidenceAuditReport(
+        status=("contradiction" if has_errors else "clean"),
+        findings=tuple(findings),
+        summary_status=(
+            "calibration_accepted" if accepted else "calibration_rejected"
+        ),
+        terminal_stage="r2_calibration",
+        terminal_evidence={
+            "certificate_id": certificate.get("certificate_id"),
+            "certificate_accepted": certificate.get("accepted") is True,
+            "independently_accepted": accepted,
+        },
     )
 
 

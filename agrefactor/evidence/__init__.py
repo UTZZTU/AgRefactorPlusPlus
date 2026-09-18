@@ -3,6 +3,7 @@ from .auditor import (
     EvidenceAuditFinding,
     EvidenceAuditReport,
     audit_product_evidence,
+    audit_r2_calibration_bundle,
     audit_testbench_semantic_revision,
 )
 from .testbench_semantics import (
@@ -49,6 +50,7 @@ __all__ = [
     "EvidenceAuditFinding",
     "EvidenceAuditReport",
     "audit_product_evidence",
+    "audit_r2_calibration_bundle",
     "audit_testbench_semantic_revision",
     "FeedbackCategory",
     "FeedbackItem",
