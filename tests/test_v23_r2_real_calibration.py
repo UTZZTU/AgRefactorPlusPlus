@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import argparse
 from pathlib import Path
 import tempfile
 import unittest
@@ -115,6 +116,31 @@ class V23R2RealCalibrationTests(unittest.TestCase):
         self.assertTrue(value["held_out_boundary"]["case_id_reuse_forbidden"])
         self.assertTrue(value["held_out_boundary"]["candidate_source_hash_reuse_forbidden"])
         self.assertEqual(value["product_entrypoints_unchanged"], ["refactor", "optimize", "full"])
+        self.assertEqual(value["model_runtime"], {
+            "model": "deepseek-flash",
+            "family": "deepseek",
+            "base_url": "https://api.deepseek.com",
+            "api_key_env": "DEEPSEEK_API_KEY",
+            "request_parameters": {
+                "max_tokens": 4096,
+                "seed": 23,
+                "temperature": 0.0,
+            },
+        })
+
+    def test_runtime_must_match_frozen_manifest(self):
+        selected_manifest = manifest()
+        args = argparse.Namespace(
+            model="deepseek-flash",
+            family="deepseek",
+            base_url="https://api.deepseek.com",
+            api_key_env="DEEPSEEK_API_KEY",
+        )
+        runtime = MODULE.validate_model_runtime(args, selected_manifest)
+        self.assertEqual(runtime["request_parameters"]["seed"], 23)
+        args.base_url = "https://other.example"
+        with self.assertRaisesRegex(RuntimeError, "base_url"):
+            MODULE.validate_model_runtime(args, selected_manifest)
 
     def test_qualification_reuse_revalidates_identity_and_never_calls_tools(self):
         selected_manifest = manifest()

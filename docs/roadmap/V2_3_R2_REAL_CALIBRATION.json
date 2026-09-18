@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "stage": "V2.3-R2-R4-real-calibration-certificate",
-  "implementation_base_head": "0a5a77646df43f8551252edbe912546d21917b59",
+  "implementation_base_head": "63b556a3d3303105b028c4692c4971a8248281ab",
   "product_entrypoints_unchanged": [
     "refactor",
     "optimize",
@@ -18,6 +18,17 @@
     "toolchain_version": "2023.2",
     "public_only": true,
     "cosim_policy": "off"
+  },
+  "model_runtime": {
+    "model": "deepseek-flash",
+    "family": "deepseek",
+    "base_url": "https://api.deepseek.com",
+    "api_key_env": "DEEPSEEK_API_KEY",
+    "request_parameters": {
+      "max_tokens": 4096,
+      "seed": 23,
+      "temperature": 0.0
+    }
   },
   "hard_budgets": {
     "provider_calls": 200,

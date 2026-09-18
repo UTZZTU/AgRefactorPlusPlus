@@ -497,6 +497,44 @@ def policy_from_manifest(manifest: Mapping[str, Any]) -> CalibrationAcceptancePo
     return CalibrationAcceptancePolicy(**value)
 
 
+def validate_model_runtime(
+    args: argparse.Namespace,
+    manifest: Mapping[str, Any],
+) -> dict[str, Any]:
+    frozen = manifest.get("model_runtime")
+    if not isinstance(frozen, Mapping):
+        raise RuntimeError("frozen model runtime is missing")
+    expected = {
+        "model": args.model,
+        "family": args.family,
+        "base_url": args.base_url,
+        "api_key_env": args.api_key_env,
+    }
+    mismatches = [
+        key for key, value in expected.items() if frozen.get(key) != value
+    ]
+    parameters = frozen.get("request_parameters")
+    if not isinstance(parameters, Mapping) or not parameters:
+        mismatches.append("request_parameters")
+    if mismatches:
+        raise RuntimeError(
+            "runtime differs from frozen calibration manifest: "
+            + ",".join(sorted(set(mismatches)))
+        )
+    return {
+        "model": str(frozen["model"]),
+        "family": str(frozen["family"]),
+        "base_url": str(frozen["base_url"]),
+        "api_key_env": str(frozen["api_key_env"]),
+        "request_parameters": json.loads(json.dumps(
+            dict(parameters),
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+        )),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=Path, default=Path.cwd())
@@ -521,7 +559,8 @@ def main() -> int:
             raise RuntimeError("qualification reuse root must differ from output")
     manifest = json.loads((repo / MANIFEST_PATH).read_text(encoding="utf-8"))
     identity = repository_identity(repo, manifest)
-    if not os.environ.get(args.api_key_env):
+    model_runtime = validate_model_runtime(args, manifest)
+    if not os.environ.get(model_runtime["api_key_env"]):
         raise RuntimeError("selected provider credential is missing")
     output.mkdir(parents=True, exist_ok=True)
     manifest_sha = sha256_value(manifest)
@@ -534,12 +573,12 @@ def main() -> int:
         atomic_json(frozen_manifest, manifest)
 
     runtime = resolve_model_runtime(
-        args.model,
-        family=args.family,
-        base_url=args.base_url,
-        api_key_env=args.api_key_env,
+        model_runtime["model"],
+        family=model_runtime["family"],
+        base_url=model_runtime["base_url"],
+        api_key_env=model_runtime["api_key_env"],
         reasoning_effort="auto",
-        parameters={"max_tokens": 4096, "temperature": 0.0},
+        parameters=model_runtime["request_parameters"],
     )
     model_adapter = CandidateModelAdapter(
         registry=runtime.registry,
@@ -711,6 +750,7 @@ def main() -> int:
         "report": report.to_dict(),
         "policy": policy.to_dict(),
         "provider_identity": provider_identity,
+        "model_runtime": model_runtime,
         "certificate": certificate.to_dict(),
         "qualification": {
             "pool_size": len(qualifications),
