@@ -49,7 +49,9 @@ DEFAULT_ADAPTER_MANIFEST = Path(
     "/data/agrefactor_runs/r5_p2_adapter_freeze_v2/oracle_adapter_manifest.json"
 )
 DEFAULT_PROTOCOL_AUDIT = Path(
-    "/data/agrefactor_runs/r5_p2_oracle_protocol_audit_v2/protocol_audit.json"
+    "/data/agrefactor_runs/"
+    "r5_p2_oracle_protocol_audit_v3_budget_corrected_6e523d6/"
+    "protocol_audit.json"
 )
 DEFAULT_CALIBRATION_BUNDLE = Path(
     "/data/agrefactor_runs/v23_r2_real_calibration_identity_v2_20260918/"

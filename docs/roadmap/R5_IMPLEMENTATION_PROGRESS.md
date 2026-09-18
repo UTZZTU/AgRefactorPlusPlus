@@ -144,3 +144,11 @@ and then failed closed at the fifth logical launch. The authoritative R5 ledger
 therefore records 12 Provider calls and 0 Vitis launches. The old zero-call
 protocol audit is retained as immutable evidence but is superseded for budget
 authorization; a corrected zero-call audit is required before retrying history.
+
+The corrected zero-call audit passed at
+`/data/agrefactor_runs/r5_p2_oracle_protocol_audit_v3_budget_corrected_6e523d6`.
+Its `protocol_audit.json` file SHA-256 is
+`0b27dd5a7e576a9893346468ff2fd8622ba9b63c345c071c430cea4f2e306fa7`.
+It carries the reconciled `12/0` ledger and freezes one-case pilot bounds at
+`60/54` and two-case formal bounds at `120/108` Provider/Vitis launches. It
+made zero Provider calls and zero Vitis launches.
