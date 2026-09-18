@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import tempfile
 import unittest
 
 
@@ -114,6 +115,74 @@ class V23R2RealCalibrationTests(unittest.TestCase):
         self.assertTrue(value["held_out_boundary"]["case_id_reuse_forbidden"])
         self.assertTrue(value["held_out_boundary"]["candidate_source_hash_reuse_forbidden"])
         self.assertEqual(value["product_entrypoints_unchanged"], ["refactor", "optimize", "full"])
+
+    def test_qualification_reuse_revalidates_identity_and_never_calls_tools(self):
+        selected_manifest = manifest()
+        spec = MODULE.case_specs(selected_manifest)[0]
+        source = MODULE.candidate_source(spec["family"], spec["variant"])
+        selected_event = event()
+        selected_event["candidate_sha256"] = MODULE.sha256_text(
+            source.rstrip() + "\n"
+        )
+        record = {
+            "schema_version": 1,
+            **spec,
+            "candidate_source_sha256": selected_event["candidate_sha256"],
+            "truth": dict(selected_manifest["truth"]),
+            "status": "validation_terminal",
+            "last_validation_state": "review_required",
+            "diagnostic_events": [selected_event],
+            "main_snapshot": {},
+            "budget_usage": {
+                "llm_calls": 0,
+                "tokens": 0,
+                "cost_usd": 0.0,
+                "csim_calls": 1,
+                "csynth_calls": 1,
+                "cosim_calls": 0,
+            },
+            "provider_calls": 0,
+            "vitis_launches": 2,
+            "raw_provider_response_persisted": False,
+            "private_reasoning_persisted": False,
+        }
+        record["eligible_event"] = MODULE.eligible_event(
+            record, selected_manifest
+        )
+        with tempfile.TemporaryDirectory() as source_dir, tempfile.TemporaryDirectory() as output_dir:
+            source_root = Path(source_dir)
+            output_root = Path(output_dir)
+            MODULE.atomic_json(
+                source_root / "qualification" / f"{spec['case_id']}.json",
+                record,
+            )
+            reused, proof = MODULE.reuse_qualification_record(
+                spec=spec,
+                source=source,
+                qualification_root=source_root,
+                output=output_root,
+                manifest=selected_manifest,
+            )
+            self.assertEqual(reused, record)
+            self.assertEqual(proof["record_sha256"], MODULE.sha256_value(record))
+            self.assertTrue(proof["revalidated_without_provider_or_vitis"])
+            self.assertTrue(
+                (output_root / "qualification" / f"{spec['case_id']}.json").is_file()
+            )
+
+            record["candidate_source_sha256"] = "f" * 64
+            MODULE.atomic_json(
+                source_root / "qualification" / f"{spec['case_id']}.json",
+                record,
+            )
+            with self.assertRaisesRegex(RuntimeError, "candidate_source_sha256"):
+                MODULE.reuse_qualification_record(
+                    spec=spec,
+                    source=source,
+                    qualification_root=source_root,
+                    output=output_root,
+                    manifest=selected_manifest,
+                )
 
 
 if __name__ == "__main__":

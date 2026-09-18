@@ -176,6 +176,48 @@ class R2CalibrationAuditorTests(unittest.TestCase):
                     {item.code for item in report.findings},
                 )
 
+    def test_reused_qualification_is_hash_bound_and_zero_vitis(self):
+        bundle = calibration_bundle()
+        record = {
+            "case_id": "qualification-1",
+            "candidate_source_sha256": "a" * 64,
+            "eligible_event": {"event_id": "event-1"},
+        }
+        proof = {
+            "case_id": "qualification-1",
+            "family": "recursion",
+            "variant": 1,
+            "candidate_source_sha256": "a" * 64,
+            "source_record": "qualification/qualification-1.json",
+            "source_file_sha256": "b" * 64,
+            "record_sha256": canonical_sha256(record),
+            "eligible_event_sha256": canonical_sha256(record["eligible_event"]),
+            "revalidated_without_provider_or_vitis": True,
+        }
+        bundle["qualification"] = {
+            "records": [record],
+            "reuse": {
+                "enabled": True,
+                "source_root": "/read-only/source",
+                "record_count": 1,
+                "records": [proof],
+                "all_records_revalidated": True,
+                "provider_results_reused": False,
+                "current_execution_vitis_launches": 0,
+            },
+        }
+        report = audit_r2_calibration_bundle(bundle)
+        self.assertEqual(report.status, "clean")
+
+        bundle["qualification"]["records"][0][
+            "candidate_source_sha256"
+        ] = "c" * 64
+        report = audit_r2_calibration_bundle(bundle)
+        self.assertIn(
+            "r2_calibration_qualification_reuse_invalid",
+            {item.code for item in report.findings},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

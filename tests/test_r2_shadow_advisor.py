@@ -601,6 +601,131 @@ class R2ShadowAdvisorTests(unittest.TestCase):
         self.assertEqual(provider.calls, [])
         self.assertEqual(advisor.accounting.provider_calls, 0)
 
+    def test_effective_request_parameters_are_frozen_sent_and_identified(self):
+        parameters = {
+            "temperature": 0.0,
+            "max_tokens": 4096,
+            "seed": 23,
+        }
+        provider = FakeProvider([valid_output()])
+        model = ModelSpec(
+            name="deepseek-flash",
+            provider="fake-r2",
+            model="deepseek-flash",
+            family="deepseek",
+            base_url="https://api.deepseek.com",
+        )
+        advisor = ProviderBackedShadowDiagnosticAdvisor(
+            provider=provider,
+            model=model,
+            budget=BudgetManager(),
+            request_parameters=parameters,
+        )
+        parameters["seed"] = 999
+
+        result = advisor.diagnose(build_shadow_request(event()))
+
+        self.assertIsNone(result.abstain_reason)
+        expected = {
+            "max_tokens": 4096,
+            "response_format": {"type": "json_object"},
+            "seed": 23,
+            "temperature": 0.0,
+        }
+        self.assertEqual(provider.calls[0][1].parameters, expected)
+        self.assertEqual(advisor.request_parameters, expected)
+        self.assertEqual(advisor.identity, {
+            "provider": "fake-r2",
+            "model_name": "deepseek-flash",
+            "model": "deepseek-flash",
+            "family": "deepseek",
+            "base_url": "https://api.deepseek.com",
+            "request_parameters": expected,
+        })
+
+    def test_request_parameters_reject_format_override_and_secrets(self):
+        provider = FakeProvider([valid_output()])
+        for parameters in (
+            {"response_format": {"type": "text"}},
+            {"nested": {"api_key": "not-allowed"}},
+            {"temperature": float("nan")},
+        ):
+            with self.subTest(parameters=parameters), self.assertRaises(ValueError):
+                ProviderBackedShadowDiagnosticAdvisor(
+                    provider=provider,
+                    model=self.model(),
+                    budget=BudgetManager(),
+                    request_parameters=parameters,
+                )
+
+    def test_calibration_identity_rejects_parameter_or_endpoint_drift(self):
+        identity = {
+            "provider": "openai-compatible",
+            "model_name": "deepseek-flash",
+            "model": "deepseek-flash",
+            "family": "deepseek",
+            "base_url": "https://api.deepseek.com",
+            "request_parameters": {
+                "max_tokens": 4096,
+                "response_format": {"type": "json_object"},
+                "seed": 23,
+                "temperature": 0.0,
+            },
+        }
+        protocol = freeze_calibration_protocol("identity", ["record"])
+        record = {
+            "record_id": "record",
+            "evidence_ids": ["evidence"],
+            "truth": {"owner": "candidate", "failure_class": "x"},
+            "advisory": {
+                "suspected_owner": "candidate",
+                "suspected_failure_class": "x",
+                "evidence_refs": ["evidence"],
+                "repair_scope": "candidate_only",
+                "confidence": "high",
+                "abstain_reason": None,
+            },
+        }
+        report = evaluate_calibration([record], protocol=protocol)
+        policy = CalibrationAcceptancePolicy(
+            policy_id="identity-policy",
+            minimum_total=1,
+            minimum_covered=1,
+            minimum_high_confidence=1,
+            minimum_coverage=1.0,
+            minimum_citation_validity_lower_95=0.0,
+            maximum_selective_risk=0.0,
+            maximum_high_confidence_error_rate=0.0,
+            maximum_high_confidence_error_upper_95=1.0,
+            maximum_unsafe_scope_rate=0.0,
+            maximum_unsafe_scope_upper_95=1.0,
+        )
+        certificate = certify_calibration(
+            report,
+            policy=policy,
+            provider_identity=identity,
+        )
+        advisory = dict(record["advisory"])
+        advisory["metadata"] = {
+            "strict_parser": "r2-v1",
+            "prompt_contract_version": "r2-shadow-output-v4",
+        }
+        for mutate in (
+            lambda value: value["request_parameters"].update({"seed": 24}),
+            lambda value: value.update({"base_url": "https://other.example"}),
+        ):
+            drifted = json.loads(json.dumps(identity))
+            mutate(drifted)
+            verification = verify_calibrated_advisory(
+                certificate,
+                shadow={
+                    "provider_identity": drifted,
+                    "advisory": advisory,
+                },
+            )
+            self.assertFalse(verification.verified)
+            self.assertIn("provider_identity_mismatch", verification.reasons)
+
     def test_shadow_call_reserve_is_enforced(self):
         advisor, provider = self.advisor(
             [valid_output()], reserve=ShadowReserve(max_calls=1)

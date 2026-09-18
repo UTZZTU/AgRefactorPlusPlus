@@ -532,7 +532,94 @@ def audit_r2_calibration_bundle(
             evidence_refs=("execution",),
         ))
 
+    findings.extend(
+        _audit_calibration_qualification_reuse(value, execution)
+    )
+
     return _calibration_audit_report(findings, certificate=certificate)
+
+
+def _audit_calibration_qualification_reuse(
+    bundle: Mapping[str, Any],
+    execution: Mapping[str, Any],
+) -> list[EvidenceAuditFinding]:
+    qualification = bundle.get("qualification")
+    if not isinstance(qualification, Mapping):
+        return []
+    reuse = qualification.get("reuse")
+    if not isinstance(reuse, Mapping) or reuse.get("enabled") is not True:
+        return []
+    records = qualification.get("records")
+    evidence = reuse.get("records")
+    valid = (
+        isinstance(records, list)
+        and bool(records)
+        and isinstance(evidence, list)
+        and len(evidence) == len(records)
+        and reuse.get("record_count") == len(records)
+        and reuse.get("all_records_revalidated") is True
+        and reuse.get("provider_results_reused") is False
+        and reuse.get("current_execution_vitis_launches") == 0
+        and execution.get("vitis_launches") == 0
+    )
+    observed_ids: set[str] = set()
+    if valid:
+        for index, (record, proof) in enumerate(zip(records, evidence)):
+            if not isinstance(record, Mapping) or not isinstance(proof, Mapping):
+                valid = False
+                break
+            case_id = record.get("case_id")
+            source_sha = record.get("candidate_source_sha256")
+            event = record.get("eligible_event")
+            hashes = (
+                proof.get("source_file_sha256"),
+                proof.get("record_sha256"),
+                proof.get("eligible_event_sha256"),
+                proof.get("candidate_source_sha256"),
+            )
+            if (
+                not isinstance(case_id, str)
+                or not case_id
+                or case_id in observed_ids
+                or proof.get("case_id") != case_id
+                or not isinstance(source_sha, str)
+                or len(source_sha) != 64
+                or any(
+                    not isinstance(item, str)
+                    or len(item) != 64
+                    or any(character not in "0123456789abcdef" for character in item)
+                    for item in hashes
+                )
+                or proof.get("candidate_source_sha256") != source_sha
+                or proof.get("record_sha256") != _audit_sha256(dict(record))
+                or proof.get("eligible_event_sha256") != _audit_sha256(event)
+                or proof.get("revalidated_without_provider_or_vitis") is not True
+            ):
+                valid = False
+                break
+            observed_ids.add(case_id)
+    if valid:
+        return []
+    return [EvidenceAuditFinding(
+        code="r2_calibration_qualification_reuse_invalid",
+        severity=AuditSeverity.CRITICAL,
+        message=(
+            "Reused qualification evidence is incomplete, unbound, or "
+            "claims current provider/Vitis execution."
+        ),
+        expected=(
+            "all reused records revalidated and content-hash bound with "
+            "zero current Vitis launches and no provider-result reuse"
+        ),
+        observed={
+            "reuse": dict(reuse),
+            "qualification_record_count": (
+                len(records) if isinstance(records, list) else None
+            ),
+            "execution_vitis_launches": execution.get("vitis_launches"),
+        },
+        evidence_refs=("qualification", "qualification.reuse", "execution"),
+    )]
 
 
 def _audit_calibration_shadow_records(

@@ -95,6 +95,14 @@ def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def atomic_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name("." + path.name + ".tmp")
@@ -393,6 +401,96 @@ def qualification_record(
     return record
 
 
+def reuse_qualification_record(
+    *,
+    spec: Mapping[str, Any],
+    source: str,
+    qualification_root: Path,
+    output: Path,
+    manifest: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    case_id = str(spec["case_id"])
+    source_dir = (
+        qualification_root / "qualification"
+        if (qualification_root / "qualification").is_dir()
+        else qualification_root
+    )
+    source_path = source_dir / f"{case_id}.json"
+    if not source_path.is_file():
+        raise RuntimeError(f"qualification reuse record missing: {case_id}")
+    record = json.loads(source_path.read_text(encoding="utf-8"))
+    if not isinstance(record, dict):
+        raise RuntimeError(f"qualification reuse record invalid: {case_id}")
+    expected_source_sha = sha256_text(source.rstrip() + "\n")
+    expected = {
+        "case_id": case_id,
+        "family": str(spec["family"]),
+        "variant": int(spec["variant"]),
+        "candidate_source_sha256": expected_source_sha,
+        "truth": dict(manifest["truth"]),
+        "provider_calls": 0,
+        "raw_provider_response_persisted": False,
+        "private_reasoning_persisted": False,
+    }
+    mismatches = [
+        key for key, value in expected.items() if record.get(key) != value
+    ]
+    budget_usage = record.get("budget_usage")
+    recorded_cost = (
+        budget_usage.get("cost_usd")
+        if isinstance(budget_usage, Mapping)
+        else None
+    )
+    if (
+        not isinstance(budget_usage, Mapping)
+        or budget_usage.get("llm_calls") != 0
+        or budget_usage.get("tokens") != 0
+        or isinstance(recorded_cost, bool)
+        or not isinstance(recorded_cost, (int, float))
+        or float(recorded_cost) != 0.0
+    ):
+        mismatches.append("budget_usage")
+    launches = record.get("vitis_launches")
+    expected_launches = (
+        int(budget_usage.get("csim_calls", 0))
+        + int(budget_usage.get("csynth_calls", 0))
+        + int(budget_usage.get("cosim_calls", 0))
+        if isinstance(budget_usage, Mapping)
+        else -1
+    )
+    if (
+        isinstance(launches, bool)
+        or not isinstance(launches, int)
+        or launches <= 0
+        or launches != expected_launches
+    ):
+        mismatches.append("vitis_launches")
+    recomputed_event = eligible_event(record, manifest)
+    if recomputed_event != record.get("eligible_event"):
+        mismatches.append("eligible_event")
+    if mismatches:
+        raise RuntimeError(
+            "qualification reuse validation failed: "
+            + case_id
+            + ":"
+            + ",".join(sorted(set(mismatches)))
+        )
+    target_path = output / "qualification" / f"{case_id}.json"
+    atomic_json(target_path, record)
+    evidence = {
+        "case_id": case_id,
+        "family": str(spec["family"]),
+        "variant": int(spec["variant"]),
+        "candidate_source_sha256": expected_source_sha,
+        "source_record": f"qualification/{case_id}.json",
+        "source_file_sha256": sha256_file(source_path),
+        "record_sha256": sha256_value(record),
+        "eligible_event_sha256": sha256_value(recomputed_event),
+        "revalidated_without_provider_or_vitis": True,
+    }
+    return record, evidence
+
+
 def policy_from_manifest(manifest: Mapping[str, Any]) -> CalibrationAcceptancePolicy:
     value = dict(manifest["acceptance_policy"])
     value.pop("schema_version", None)
@@ -407,9 +505,20 @@ def main() -> int:
     parser.add_argument("--family", default="deepseek")
     parser.add_argument("--base-url", default="https://api.deepseek.com")
     parser.add_argument("--api-key-env", default="DEEPSEEK_API_KEY")
+    parser.add_argument("--qualification-root", type=Path)
     args = parser.parse_args()
     repo = args.repo.expanduser().resolve()
     output = args.output.expanduser().resolve()
+    qualification_root = (
+        args.qualification_root.expanduser().resolve()
+        if args.qualification_root is not None
+        else None
+    )
+    if qualification_root is not None:
+        if not qualification_root.is_dir():
+            raise RuntimeError("qualification reuse root is missing")
+        if qualification_root == output:
+            raise RuntimeError("qualification reuse root must differ from output")
     manifest = json.loads((repo / MANIFEST_PATH).read_text(encoding="utf-8"))
     identity = repository_identity(repo, manifest)
     if not os.environ.get(args.api_key_env):
@@ -438,24 +547,51 @@ def main() -> int:
     )
     task = build_task(repo)
     qualifications = []
+    qualification_reuse_records = []
     vitis_launches = 0
     hard_vitis = int(manifest["hard_budgets"]["vitis_launches"])
     for spec in case_specs(manifest):
         source = candidate_source(str(spec["family"]), int(spec["variant"]))
-        record = qualification_record(
-            spec=spec,
-            source=source,
-            repo=repo,
-            output=output,
-            task=task,
-            model_adapter=model_adapter,
-            manifest=manifest,
-        )
+        if qualification_root is None:
+            record = qualification_record(
+                spec=spec,
+                source=source,
+                repo=repo,
+                output=output,
+                task=task,
+                model_adapter=model_adapter,
+                manifest=manifest,
+            )
+            vitis_launches += int(record["vitis_launches"])
+        else:
+            record, reuse_evidence = reuse_qualification_record(
+                spec=spec,
+                source=source,
+                qualification_root=qualification_root,
+                output=output,
+                manifest=manifest,
+            )
+            qualification_reuse_records.append(reuse_evidence)
         qualifications.append(record)
-        vitis_launches += int(record["vitis_launches"])
         if vitis_launches > hard_vitis:
             raise RuntimeError("Vitis launch hard budget exceeded")
         print(f"R2_CALIBRATION_QUALIFIED={spec['case_id']} eligible={record['eligible_event'] is not None}")
+
+    qualification_reuse = {
+        "enabled": qualification_root is not None,
+        "source_root": (
+            str(qualification_root) if qualification_root is not None else None
+        ),
+        "record_count": len(qualification_reuse_records),
+        "records": qualification_reuse_records,
+        "all_records_revalidated": (
+            qualification_root is not None
+            and len(qualification_reuse_records) == len(qualifications)
+        ),
+        "provider_results_reused": False,
+        "current_execution_vitis_launches": vitis_launches,
+    }
+    atomic_json(output / "qualification_reuse.json", qualification_reuse)
 
     selected = [item for item in qualifications if item.get("eligible_event") is not None]
     selection = manifest["selection"]
@@ -514,6 +650,7 @@ def main() -> int:
                 provider=runtime.registry.get_provider(runtime.effective_config.provider_name),
                 model=runtime.effective_config.to_model_spec(),
                 budget=advisor_budget,
+                request_parameters=runtime.effective_config.parameters,
                 reserve=ShadowReserve(
                     max_calls=1,
                     max_tokens=8192,
@@ -580,6 +717,8 @@ def main() -> int:
             "eligible_count": sum(item.get("eligible_event") is not None for item in qualifications),
             "selected_count": len(selected),
             "selection_before_provider_calls": True,
+            "records": qualifications,
+            "reuse": qualification_reuse,
         },
         "execution": {
             "provider_calls": provider_calls,

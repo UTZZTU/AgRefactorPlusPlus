@@ -122,6 +122,11 @@ _PUBLIC_SUITE_IDENTITY_FIELDS = frozenset(
 )
 _FAILURE_CLASS = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,159}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_SECRET_PARAMETER_KEY = re.compile(
+    r"(?:api[_-]?key|authorization|bearer|credential|password|"
+    r"refresh[_-]?token|secret|access[_-]?token)",
+    re.IGNORECASE,
+)
 
 
 class ShadowInputRejected(ValueError):
@@ -141,6 +146,50 @@ def _canonical_sha256(value: Any) -> str:
         separators=(",", ":"),
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _reject_secret_parameter_keys(value: Any, path: str) -> None:
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            key_text = str(key)
+            child_path = f"{path}.{key_text}"
+            if _SECRET_PARAMETER_KEY.search(key_text):
+                raise ValueError(
+                    "request_parameters must not contain credential-like key: "
+                    + child_path
+                )
+            _reject_secret_parameter_keys(child, child_path)
+    elif isinstance(value, (list, tuple)):
+        for index, child in enumerate(value):
+            _reject_secret_parameter_keys(child, f"{path}[{index}]")
+
+
+def _freeze_shadow_request_parameters(
+    value: Mapping[str, Any] | None,
+) -> str:
+    if value is not None and not isinstance(value, Mapping):
+        raise TypeError("request_parameters must be a mapping or None")
+    parameters = dict(value or {})
+    response_format = parameters.get("response_format")
+    required_format = {"type": "json_object"}
+    if response_format is not None and response_format != required_format:
+        raise ValueError(
+            "request_parameters.response_format must require json_object"
+        )
+    parameters["response_format"] = required_format
+    _reject_secret_parameter_keys(parameters, "request_parameters")
+    try:
+        return json.dumps(
+            parameters,
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "request_parameters must contain finite JSON-serializable data"
+        ) from exc
 
 
 _SHADOW_OUTPUT_CONTRACT_VERSION = "r2-shadow-output-v4"
@@ -664,6 +713,7 @@ class ProviderBackedShadowDiagnosticAdvisor:
         provider: ModelProvider,
         model: ModelSpec,
         budget: BudgetManager,
+        request_parameters: Mapping[str, Any] | None = None,
         reserve: ShadowReserve | None = None,
         trace: TraceRecorder | None = None,
     ) -> None:
@@ -678,6 +728,9 @@ class ProviderBackedShadowDiagnosticAdvisor:
         self._provider = provider
         self._model = model
         self._budget = budget
+        self._request_parameters_json = _freeze_shadow_request_parameters(
+            request_parameters
+        )
         self._reserve = reserve or ShadowReserve()
         self._trace = trace
         self._accounting = ShadowAccounting()
@@ -687,11 +740,20 @@ class ProviderBackedShadowDiagnosticAdvisor:
         return self._accounting
 
     @property
-    def identity(self) -> dict[str, str]:
+    def request_parameters(self) -> dict[str, Any]:
+        value = json.loads(self._request_parameters_json)
+        assert isinstance(value, dict)
+        return value
+
+    @property
+    def identity(self) -> dict[str, Any]:
         return {
             "provider": self._provider.name,
             "model_name": self._model.name,
             "model": self._model.model,
+            "family": self._model.family,
+            "base_url": self._model.base_url,
+            "request_parameters": self.request_parameters,
         }
 
     def _record(
@@ -784,7 +846,7 @@ class ProviderBackedShadowDiagnosticAdvisor:
         messages, prompt_contract_sha256 = _shadow_prompt(request)
         model_request = ModelRequest(
             messages=messages,
-            parameters={"response_format": {"type": "json_object"}},
+            parameters=self.request_parameters,
             metadata={
                 "r2_shadow": True,
                 "evidence_view": "agent_safe",
