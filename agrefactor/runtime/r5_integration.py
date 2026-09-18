@@ -375,6 +375,14 @@ class ExistingOrchestratorR5Integration:
         self._policy = policy or RecoveryPolicy()
         self._auditor = auditor or ExistingFormalR4Auditor()
 
+    @property
+    def approved_memory_snippets(self) -> tuple[str, ...]:
+        return self._config.approved_memory_snippets
+
+    @property
+    def profile(self) -> R5Profile:
+        return self._config.profile
+
     def run_from_existing_orchestrator(
         self,
         *,

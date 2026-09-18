@@ -30,6 +30,7 @@ from .stage3_optimizer import (
     write_direct_optimize_execution_identity,
 )
 from .source_bootstrap import (
+    R5CommonBaselineCapture,
     SourceBootstrapPhase,
     SourceBootstrapRequest,
     SourceBootstrapRunResult,
@@ -38,6 +39,7 @@ from .source_bootstrap import (
     build_test_source_plan,
     run_source_command,
     run_source_command_with_r5_binding,
+    run_source_command_with_r5_capture,
 )
 
 __all__ = [
@@ -50,6 +52,7 @@ __all__ = [
     "OriginalCsynthEvidence",
     "ProductOutputMode",
     "RefactorEligibilityReport",
+    "R5CommonBaselineCapture",
     "SourceBoundaryEvidence",
     "SourceBootstrapPhase",
     "SourceBootstrapRequest",
@@ -69,6 +72,7 @@ __all__ = [
     "resolve_output_mode",
     "run_source_command",
     "run_source_command_with_r5_binding",
+    "run_source_command_with_r5_capture",
     "write_direct_optimize_execution_identity",
     "write_rejection_support_artifacts",
 ]

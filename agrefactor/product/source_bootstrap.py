@@ -68,8 +68,11 @@ from agrefactor.models import (
     load_invocation_dotenv,
 )
 from agrefactor.runtime import (
+    BudgetLimits,
     BudgetManager,
     CandidateRepairOrchestrationRequest,
+    CandidateRepairOrchestrationResult,
+    CandidateRepairPhaseConfig,
     PhaseResult,
     PhaseStatus,
     RunContext,
@@ -92,7 +95,7 @@ from agrefactor.runtime.budget_profile import (
     EffectiveRunBudget,
     run_budget_profile_for_mode,
 )
-from agrefactor.runtime.r5_profile import resolve_r5_profile
+from agrefactor.runtime.r5_profile import R5Arm, resolve_r5_profile
 from agrefactor.runtime.r5_binding import R5RuntimeBinding
 
 from .run_output import (
@@ -464,6 +467,7 @@ class SourceBootstrapRequest:
     require_complete_execution_identity: bool = False
     r5_arm: str | None = None
     r5_binding: R5RuntimeBinding | None = None
+    capture_r5_common_baseline: bool = False
 
     def __post_init__(self) -> None:
         source = Path(self.source_path).expanduser().resolve()
@@ -634,6 +638,8 @@ class SourceBootstrapRequest:
             self.r5_binding, R5RuntimeBinding
         ):
             raise TypeError("r5_binding must be R5RuntimeBinding or None")
+        if not isinstance(self.capture_r5_common_baseline, bool):
+            raise TypeError("capture_r5_common_baseline must be boolean")
         if profile.arm is not None:
             if self.r5_binding is None:
                 raise ValueError(
@@ -641,9 +647,11 @@ class SourceBootstrapRequest:
                 )
             if self.r5_binding.profile.arm is not profile.arm:
                 raise ValueError("r5_binding profile does not match r5_arm")
+        if self.capture_r5_common_baseline and profile.arm is not R5Arm.A0:
+            raise ValueError("R5 common baseline capture requires A0")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        value = {
             "schema_version": 1,
             "run_id": self.run_id,
             "require_complete_execution_identity": (
@@ -699,6 +707,9 @@ class SourceBootstrapRequest:
                 None if self.r5_binding is None else self.r5_binding.to_dict()
             ),
         }
+        if self.capture_r5_common_baseline:
+            value["capture_r5_common_baseline"] = True
+        return value
 
 
 
@@ -920,12 +931,122 @@ def _extract_generation_failure_metadata(
 class SourceBootstrapRunResult:
     result: RunResult
     layout: SourceRunLayout
+    r5_common_baseline: "R5CommonBaselineCapture | None" = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.result, RunResult):
             raise TypeError("result must be RunResult")
         if not isinstance(self.layout, SourceRunLayout):
             raise TypeError("layout must be SourceRunLayout")
+        if self.r5_common_baseline is not None and not isinstance(
+            self.r5_common_baseline,
+            R5CommonBaselineCapture,
+        ):
+            raise TypeError(
+                "r5_common_baseline must be R5CommonBaselineCapture or None"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class R5CommonBaselineCapture:
+    """Private in-process capture of one existing refactor baseline."""
+
+    baseline_id: str
+    run_id: str
+    source_sha256: str
+    context_signature: str
+    formal_task: TaskSpec
+    formal_request: CandidateRepairOrchestrationRequest
+    formal_result: CandidateRepairOrchestrationResult
+    phase_config: CandidateRepairPhaseConfig
+    model_adapter: CandidateModelAdapter
+    execution_identity: Mapping[str, Any]
+    budget_before: Mapping[str, Any]
+    budget_after: Mapping[str, Any]
+    budget_limits: BudgetLimits
+    artifact_sha256: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "baseline_id",
+            "source_sha256",
+            "context_signature",
+            "artifact_sha256",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+                raise ValueError(f"{name} must be SHA-256")
+        if not isinstance(self.formal_task, TaskSpec):
+            raise TypeError("formal_task must be TaskSpec")
+        if not isinstance(
+            self.formal_request,
+            CandidateRepairOrchestrationRequest,
+        ):
+            raise TypeError(
+                "formal_request must be CandidateRepairOrchestrationRequest"
+            )
+        if not isinstance(
+            self.formal_result,
+            CandidateRepairOrchestrationResult,
+        ):
+            raise TypeError(
+                "formal_result must be CandidateRepairOrchestrationResult"
+            )
+        if not isinstance(self.phase_config, CandidateRepairPhaseConfig):
+            raise TypeError("phase_config must be CandidateRepairPhaseConfig")
+        if not isinstance(self.model_adapter, CandidateModelAdapter):
+            raise TypeError("model_adapter must be CandidateModelAdapter")
+        if not isinstance(self.budget_limits, BudgetLimits):
+            raise TypeError("budget_limits must be BudgetLimits")
+        if self.formal_request.initial_candidate != self.formal_result.initial_candidate:
+            raise ValueError("formal request/result baseline candidate mismatch")
+        for name in ("execution_identity", "budget_before", "budget_after"):
+            object.__setattr__(
+                self,
+                name,
+                json.loads(
+                    json.dumps(
+                        dict(getattr(self, name)),
+                        ensure_ascii=False,
+                        allow_nan=False,
+                        sort_keys=True,
+                    )
+                ),
+            )
+
+    @property
+    def provider_calls(self) -> int:
+        return int(self.budget_after["llm_calls"]) - int(
+            self.budget_before["llm_calls"]
+        )
+
+    @property
+    def vitis_launches(self) -> int:
+        return sum(
+            int(self.budget_after[name]) - int(self.budget_before[name])
+            for name in ("csim_calls", "csynth_calls", "cosim_calls")
+        )
+
+    def to_manifest(self) -> dict[str, Any]:
+        return {
+            "schema_version": "r5-common-baseline-capture-v1",
+            "baseline_id": self.baseline_id,
+            "run_id": self.run_id,
+            "source_sha256": self.source_sha256,
+            "context_signature": self.context_signature,
+            "formal_task_id": self.formal_task.task_id,
+            "formal_validation_id": self.formal_result.validation_id,
+            "formal_status": self.formal_result.status.value,
+            "final_candidate_sha256": _sha256_text(
+                self.formal_result.final_candidate.rstrip() + "\n"
+            ),
+            "execution_identity": dict(self.execution_identity),
+            "provider_calls": self.provider_calls,
+            "vitis_launches": self.vitis_launches,
+            "artifact_sha256": self.artifact_sha256,
+            "hidden_input_count": 0,
+            "cross_arm_cache_used": False,
+        }
 
 
 
@@ -1262,10 +1383,15 @@ class SourceBootstrapPhase:
             Mapping[str, Any], ...
         ] = ()
         self._accepted_optimization_material = None
+        self._r5_common_baseline_capture: R5CommonBaselineCapture | None = None
 
     @property
     def accepted_optimization_material(self):
         return self._accepted_optimization_material
+
+    @property
+    def r5_common_baseline_capture(self) -> R5CommonBaselineCapture | None:
+        return self._r5_common_baseline_capture
 
     def __call__(self, context: RunContext) -> PhaseResult:
         if self._request.mode not in {RunMode.REFACTOR, RunMode.FULL}:
@@ -1273,6 +1399,7 @@ class SourceBootstrapPhase:
                 "source bootstrap execution supports refactor/full only; "
                 "direct optimize uses the Stage 3 product adapter"
             )
+        budget_before = context.budget.snapshot().to_dict()
         bootstrap_root = self._layout.artifact_root / "bootstrap"
         bootstrap_root.mkdir(parents=True, exist_ok=True)
         _atomic_json(
@@ -1836,6 +1963,89 @@ class SourceBootstrapPhase:
                 "execution_identity": identity_summary,
             }
         )
+        orchestration_result = getattr(formal_phase, "last_result", None)
+        phase_config = getattr(formal_phase, "config", None)
+        model_adapter = getattr(formal_phase, "model_adapter", None)
+        formal_artifacts = getattr(formal_phase, "last_artifacts", None)
+        artifact_manifest_path = getattr(
+            formal_artifacts,
+            "artifact_manifest_path",
+            None,
+        )
+        if (
+            self._request.capture_r5_common_baseline
+            and isinstance(
+                orchestration_result,
+                CandidateRepairOrchestrationResult,
+            )
+            and isinstance(phase_config, CandidateRepairPhaseConfig)
+            and isinstance(model_adapter, CandidateModelAdapter)
+            and isinstance(artifact_manifest_path, str)
+            and Path(artifact_manifest_path).is_file()
+        ):
+            events = orchestration_result.metadata.get(
+                "diagnostic_events",
+                (),
+            )
+            context_signatures = sorted(
+                {
+                    item.get("context_signature")
+                    for item in events
+                    if isinstance(item, Mapping)
+                    and isinstance(item.get("context_signature"), str)
+                    and re.fullmatch(
+                        r"[0-9a-f]{64}",
+                        item["context_signature"],
+                    )
+                }
+            )
+            context_signature = (
+                context_signatures[0]
+                if len(context_signatures) == 1
+                else _sha256_text(
+                    json.dumps(
+                        context_signatures,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                )
+            )
+            source_sha256 = _sha256_file(self._request.source_path)
+            artifact_sha256 = _sha256_file(Path(artifact_manifest_path))
+            baseline_id = _sha256_text(
+                json.dumps(
+                    {
+                        "run_id": context.run_id,
+                        "source_sha256": source_sha256,
+                        "context_signature": context_signature,
+                        "formal_validation_id": orchestration_result.validation_id,
+                        "artifact_sha256": artifact_sha256,
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+            capture = R5CommonBaselineCapture(
+                baseline_id=baseline_id,
+                run_id=context.run_id,
+                source_sha256=source_sha256,
+                context_signature=context_signature,
+                formal_task=formal_task,
+                formal_request=formal_request,
+                formal_result=orchestration_result,
+                phase_config=phase_config,
+                model_adapter=model_adapter,
+                execution_identity=identity_summary,
+                budget_before=budget_before,
+                budget_after=context.budget.snapshot().to_dict(),
+                budget_limits=context.budget.limits,
+                artifact_sha256=artifact_sha256,
+            )
+            self._r5_common_baseline_capture = capture
+            _atomic_json(
+                bootstrap_root / "r5_common_baseline_capture.json",
+                capture.to_manifest(),
+            )
         return PhaseResult(
             phase=RunPhase.REFACTOR,
             status=formal_result.status,
@@ -3047,8 +3257,17 @@ def run_source_command(
         ),
         cosim_policy=getattr(args, "cosim_policy", "required"),
         require_complete_execution_identity=True,
-        r5_arm=os.environ.get("AGREFACTOR_R5_ARM"),
+        r5_arm=getattr(
+            args,
+            "_r5_arm_override",
+            os.environ.get("AGREFACTOR_R5_ARM"),
+        ),
         r5_binding=r5_binding,
+        capture_r5_common_baseline=getattr(
+            args,
+            "_capture_r5_common_baseline",
+            False,
+        ),
     )
 
     phase = None
@@ -3258,6 +3477,14 @@ def run_source_command(
     return SourceBootstrapRunResult(
         result=result,
         layout=layout,
+        r5_common_baseline=(
+            phase.r5_common_baseline_capture
+            if (
+                getattr(args, "_capture_r5_common_baseline", False)
+                and isinstance(phase, SourceBootstrapPhase)
+            )
+            else None
+        ),
     )
 
 
@@ -3281,4 +3508,30 @@ def run_source_command_with_r5_binding(
 
     internal_args = copy(args)
     setattr(internal_args, "_r5_binding", binding)
+    setattr(
+        internal_args,
+        "_r5_arm_override",
+        None if binding.profile.arm is None else binding.profile.arm.value,
+    )
     return run_source_command(internal_args, stdout=stdout, stderr=stderr)
+
+
+def run_source_command_with_r5_capture(
+    args,
+    *,
+    stdout: TextIO | None = None,
+    stderr: TextIO | None = None,
+) -> SourceBootstrapRunResult:
+    """Capture one A0 product baseline for the paired R5 executor."""
+
+    from copy import copy
+
+    internal_args = copy(args)
+    binding = R5RuntimeBinding(resolve_r5_profile("A0"))
+    setattr(internal_args, "_r5_binding", binding)
+    setattr(internal_args, "_r5_arm_override", "A0")
+    setattr(internal_args, "_capture_r5_common_baseline", True)
+    result = run_source_command(internal_args, stdout=stdout, stderr=stderr)
+    if result.r5_common_baseline is None:
+        raise RuntimeError("existing refactor path did not expose an R5 baseline")
+    return result

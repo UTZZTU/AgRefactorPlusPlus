@@ -40,10 +40,18 @@ from .r5_runner import (
     R5CampaignRunner,
     R5CaseSpec,
 )
+from .r5_product_executor import (
+    ExistingRefactorR5CampaignExecutor,
+    R5AdvisorFactory,
+    R5BaselineRunner,
+    R5IntegrationFactory,
+)
 __all__.extend([
     "ARM_SEMANTICS", "R5Arm", "R5CampaignManifest", "R5ProtocolError",
     "estimate_upper_bound", "validate_arm_diff", "R5ArmObservation",
     "R5CampaignReduction", "R5ReductionError", "reduce_observations",
     "R5BaselineObservation", "R5CampaignError", "R5CampaignExecutor", "R5CampaignRun",
     "R5CampaignRunner", "R5CaseSpec",
+    "ExistingRefactorR5CampaignExecutor", "R5AdvisorFactory",
+    "R5BaselineRunner", "R5IntegrationFactory",
 ])

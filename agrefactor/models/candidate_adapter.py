@@ -479,6 +479,7 @@ class CandidateModelAdapter:
             resolved_config = effective_config
 
         self._effective_config = resolved_config
+        self._registry = registry
         self._model = resolved_config.to_model_spec()
         self._provider = registry.get_provider(
             resolved_config.provider_name
@@ -506,6 +507,14 @@ class CandidateModelAdapter:
     @property
     def effective_config(self) -> EffectiveModelConfig:
         return self._effective_config
+
+    def fork(self) -> "CandidateModelAdapter":
+        """Return an isolated adapter with the same immutable model binding."""
+
+        return CandidateModelAdapter(
+            registry=self._registry,
+            effective_config=self._effective_config,
+        )
 
     @property
     def family_instruction(self) -> str | None:

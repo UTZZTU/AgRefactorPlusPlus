@@ -5,6 +5,8 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from agrefactor.campaign import (
     R5Arm,
@@ -14,6 +16,10 @@ from agrefactor.campaign import (
 )
 from agrefactor.runtime.r5_profile import R5ProfileError, resolve_r5_profile
 from agrefactor.runtime.r5_binding import R5RuntimeBinding, R5RuntimeBindingError
+from agrefactor.product.source_bootstrap import (
+    run_source_command_with_r5_binding,
+    run_source_command_with_r5_capture,
+)
 from agrefactor.recovery import (
     R5AuthorizationMode,
     R5ResearchAuthorization,
@@ -79,6 +85,38 @@ class _Executor:
 
 
 class R5RuntimeIntegrationTests(unittest.TestCase):
+    def test_internal_helpers_bind_arm_without_global_environment(self):
+        binding = R5RuntimeBinding(resolve_r5_profile("A0"))
+        expected = object()
+        with patch(
+            "agrefactor.product.source_bootstrap.run_source_command",
+            return_value=expected,
+        ) as run:
+            self.assertIs(
+                run_source_command_with_r5_binding(
+                    SimpleNamespace(),
+                    binding,
+                ),
+                expected,
+            )
+        internal_args = run.call_args.args[0]
+        self.assertEqual(internal_args._r5_arm_override, "A0")
+        self.assertIs(internal_args._r5_binding, binding)
+
+        capture = object()
+        captured_result = SimpleNamespace(r5_common_baseline=capture)
+        with patch(
+            "agrefactor.product.source_bootstrap.run_source_command",
+            return_value=captured_result,
+        ) as run:
+            self.assertIs(
+                run_source_command_with_r5_capture(SimpleNamespace()),
+                captured_result,
+            )
+        internal_args = run.call_args.args[0]
+        self.assertEqual(internal_args._r5_arm_override, "A0")
+        self.assertTrue(internal_args._capture_r5_common_baseline)
+
     def test_profile_is_off_by_default_and_discriminated(self):
         self.assertFalse(resolve_r5_profile().selected)
         self.assertEqual(resolve_r5_profile("A3").authorization_mode, "similarity_only")

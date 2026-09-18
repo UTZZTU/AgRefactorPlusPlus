@@ -381,6 +381,10 @@ class CandidateRepairPhase:
         return self._handler_factory
 
     @property
+    def model_adapter(self) -> CandidateModelAdapter:
+        return self._model_adapter
+
+    @property
     def last_result(
         self,
     ) -> CandidateRepairOrchestrationResult | None:

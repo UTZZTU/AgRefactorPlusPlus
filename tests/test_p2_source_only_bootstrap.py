@@ -175,6 +175,17 @@ def make_request(root, *, plan):
 
 
 class P2SourceOnlyBootstrapTests(unittest.TestCase):
+    def test_r5_capture_flag_is_absent_from_default_request_artifact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            request = make_request(
+                Path(directory),
+                plan=build_test_source_plan(),
+            )
+            self.assertNotIn(
+                "capture_r5_common_baseline",
+                request.to_dict(),
+            )
+
     def test_p4_independent_modes_and_derivation_remain_real(self):
         auto = build_test_source_plan()
         self.assertEqual(
