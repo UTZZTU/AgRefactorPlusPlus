@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 import hashlib
 import json
+import re
 from typing import Any, Mapping, Sequence
 
 
@@ -33,6 +34,9 @@ ARM_SEMANTICS: dict[R5Arm, dict[str, str]] = {
     R5Arm.A6: {"advisor": "on", "memory": "full_lifecycle_gated", "repair": "once"},
 }
 
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_GIT_COMMIT = re.compile(r"^[0-9a-f]{40,64}$")
+
 
 @dataclass(frozen=True, slots=True)
 class R5CampaignManifest:
@@ -59,8 +63,10 @@ class R5CampaignManifest:
             raise R5ProtocolError("case_ids must be unique and non-empty")
         if self.repeats != 3:
             raise R5ProtocolError("R5 target repeats are frozen at three")
+        if not isinstance(self.repository_commit, str) or not _GIT_COMMIT.fullmatch(self.repository_commit):
+            raise R5ProtocolError("repository_commit must be a 40-64 character git SHA")
         for name in ("source_inventory_sha256", "history_snapshot_sha256", "prompt_identity_sha256", "model_identity_sha256", "target_identity_sha256", "toolchain_identity_sha256"):
-            if not isinstance(getattr(self, name), str) or len(getattr(self, name)) != 64:
+            if not isinstance(getattr(self, name), str) or not _SHA256.fullmatch(getattr(self, name)):
                 raise R5ProtocolError(f"{name} must be SHA-256")
         if self.provider_cap != 500 or self.vitis_cap != 500:
             raise R5ProtocolError("R5 hard caps are 500 Provider and 500 Vitis launches")

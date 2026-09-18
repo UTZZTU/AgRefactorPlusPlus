@@ -316,7 +316,7 @@ class R5ProtocolTests(unittest.TestCase):
             ledger.reserve(provider_calls=600)
 
     def test_manifest_requires_all_arms_and_three_repeats(self) -> None:
-        kwargs = dict(campaign_id="r5", repository_commit="abc", source_inventory_sha256=digest("source"), history_snapshot_sha256=digest("snapshot"), arm_order=tuple(R5Arm), case_ids=("case-1",), prompt_identity_sha256=digest("prompt"), model_identity_sha256=digest("model"), target_identity_sha256=digest("target"), toolchain_identity_sha256=digest("tool"))
+        kwargs = dict(campaign_id="r5", repository_commit=digest("repo"), source_inventory_sha256=digest("source"), history_snapshot_sha256=digest("snapshot"), arm_order=tuple(R5Arm), case_ids=("case-1",), prompt_identity_sha256=digest("prompt"), model_identity_sha256=digest("model"), target_identity_sha256=digest("target"), toolchain_identity_sha256=digest("tool"))
         manifest = R5CampaignManifest(**kwargs)
         self.assertEqual(len(manifest.to_dict()["arm_semantics"]), 7)
 

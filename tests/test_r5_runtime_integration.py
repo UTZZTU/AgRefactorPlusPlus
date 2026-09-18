@@ -22,6 +22,7 @@ from agrefactor.product.source_bootstrap import (
 )
 from agrefactor.recovery import (
     R5AuthorizationMode,
+    R5BudgetLedger,
     R5ResearchAuthorization,
     R5MemoryPayload,
     R5PatternRevision,
@@ -123,6 +124,21 @@ class R5RuntimeIntegrationTests(unittest.TestCase):
         with self.assertRaises(R5ProfileError):
             resolve_r5_profile("A7")
 
+    def test_campaign_manifest_rejects_noncanonical_identity_hashes(self):
+        with self.assertRaises(Exception):
+            R5CampaignManifest(
+                campaign_id="r5-bad",
+                repository_commit="z" * 40,
+                source_inventory_sha256=_sha("inventory"),
+                history_snapshot_sha256=_sha("snapshot"),
+                arm_order=tuple(R5Arm),
+                case_ids=("case-1",),
+                prompt_identity_sha256=_sha("prompt"),
+                model_identity_sha256=_sha("model"),
+                target_identity_sha256=_sha("target"),
+                toolchain_identity_sha256=_sha("toolchain"),
+            )
+
     def test_paired_runner_uses_one_baseline_per_case_repeat(self):
         cases = (
             R5CaseSpec("history-01", _sha("source-history"), _sha("context-history"), "history"),
@@ -162,6 +178,24 @@ class R5RuntimeIntegrationTests(unittest.TestCase):
                 cases=cases,
                 executor=executor,
             ).run()
+
+    def test_runner_fails_budget_preflight_before_any_real_work(self):
+        cases = (
+            R5CaseSpec("history-01", _sha("source-history"), _sha("context-history"), "history"),
+            R5CaseSpec("future-01", _sha("source-future"), _sha("context-future"), "future"),
+        )
+        executor = _Executor()
+        with self.assertRaisesRegex(Exception, "budget preflight"):
+            R5CampaignRunner(
+                manifest=_manifest(),
+                cases=cases,
+                executor=executor,
+                budget=R5BudgetLedger(
+                    provider_used=440,
+                    vitis_used=400,
+                ),
+            ).run()
+        self.assertEqual(executor.baseline_calls, [])
 
     def test_source_holdout_crossing_is_rejected(self):
         source = _sha("same")

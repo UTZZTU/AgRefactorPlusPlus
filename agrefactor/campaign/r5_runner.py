@@ -12,13 +12,16 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any, Protocol
 
 from agrefactor.recovery.r5_budget import R5BudgetLedger
 
-from .r5_protocol import R5Arm, R5CampaignManifest
+from .r5_protocol import R5Arm, R5CampaignManifest, estimate_upper_bound
 from .r5_reducer import R5ArmObservation, R5CampaignReduction, reduce_observations
+
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class R5CampaignError(RuntimeError):
@@ -34,7 +37,13 @@ class R5CaseSpec:
     synthetic: bool = False
 
     def __post_init__(self) -> None:
-        if not self.case_id.strip() or len(self.source_sha256) != 64 or len(self.context_signature) != 64:
+        if (
+            not self.case_id.strip()
+            or not isinstance(self.source_sha256, str)
+            or not _SHA256.fullmatch(self.source_sha256)
+            or not isinstance(self.context_signature, str)
+            or not _SHA256.fullmatch(self.context_signature)
+        ):
             raise R5CampaignError("case identity is incomplete")
         if self.period not in {"history", "future"}:
             raise R5CampaignError("case period must be history or future")
@@ -78,6 +87,7 @@ class R5CampaignRun:
     reduction: R5CampaignReduction
     budget: R5BudgetLedger
     output_root: str | None
+    budget_reservation: Mapping[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -88,6 +98,9 @@ class R5CampaignRun:
             "reduction": self.reduction.to_dict(),
             "budget": self.budget.to_dict(),
             "output_root": self.output_root,
+            "budget_reservation": (
+                None if self.budget_reservation is None else dict(self.budget_reservation)
+            ),
         }
 
 
@@ -96,7 +109,7 @@ def _sha(value: Any) -> str:
 
 
 def _required_sha(value: Any, name: str) -> str:
-    if not isinstance(value, str) or len(value) != 64:
+    if not isinstance(value, str) or not _SHA256.fullmatch(value):
         raise R5CampaignError(f"{name} must be SHA-256")
     return value
 
@@ -175,6 +188,17 @@ class R5CampaignRunner:
     def plan(self) -> dict[str, Any]:
         """Return the frozen schedule without invoking the executor."""
 
+        provider_upper_bound, vitis_upper_bound = estimate_upper_bound(
+            case_count=len(self.cases), repeats=self.manifest.repeats
+        )
+        try:
+            reservation = self.budget.reserve_with_recovery(
+                provider_upper_bound=provider_upper_bound,
+                vitis_upper_bound=vitis_upper_bound,
+            )
+        except Exception as exc:
+            raise R5CampaignError("campaign budget preflight failed") from exc
+
         return {
             "schema_version": 1,
             "manifest": self.manifest.to_dict(),
@@ -188,11 +212,31 @@ class R5CampaignRunner:
                 for case in self.cases
                 for repeat in range(1, self.manifest.repeats + 1)
             ],
+            "budget_upper_bound": {
+                "provider_calls": provider_upper_bound,
+                "vitis_launches": vitis_upper_bound,
+            },
+            "budget_reservation": {
+                "reservation_sha256": reservation.reservation_sha256,
+                "provider_recovery_reserve": reservation.provider_recovery_reserve,
+                "vitis_recovery_reserve": reservation.vitis_recovery_reserve,
+            },
             "provider_calls": 0,
             "vitis_launches": 0,
         }
 
     def run(self) -> R5CampaignRun:
+        provider_upper_bound, vitis_upper_bound = estimate_upper_bound(
+            case_count=len(self.cases), repeats=self.manifest.repeats
+        )
+        try:
+            reservation = self.budget.reserve_with_recovery(
+                provider_upper_bound=provider_upper_bound,
+                vitis_upper_bound=vitis_upper_bound,
+            )
+        except Exception as exc:
+            raise R5CampaignError("campaign budget preflight failed") from exc
+        frozen_plan = self.plan()
         baselines: list[R5BaselineObservation] = []
         observations: list[R5ArmObservation] = []
         for case in sorted(self.cases, key=lambda item: item.case_id):
@@ -283,10 +327,17 @@ class R5CampaignRunner:
             reduction,
             self.budget,
             None if self.output_root is None else str(self.output_root),
+            {
+                "reservation_sha256": reservation.reservation_sha256,
+                "provider_upper_bound": reservation.provider_upper_bound,
+                "vitis_upper_bound": reservation.vitis_upper_bound,
+                "provider_recovery_reserve": reservation.provider_recovery_reserve,
+                "vitis_recovery_reserve": reservation.vitis_recovery_reserve,
+            },
         )
         if self.output_root is not None:
             self.output_root.mkdir(parents=True, exist_ok=True)
-            (self.output_root / "campaign_plan.json").write_text(json.dumps(self.plan(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            (self.output_root / "campaign_plan.json").write_text(json.dumps(frozen_plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             (self.output_root / "baseline_observations.json").write_text(
                 json.dumps(
                     {
