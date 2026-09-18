@@ -139,7 +139,7 @@ class R5RuntimeIntegrationTests(unittest.TestCase):
                 toolchain_identity_sha256=_sha("toolchain"),
             )
 
-    def test_paired_runner_uses_one_baseline_per_case_repeat(self):
+    def test_paired_runner_executes_only_future_cases(self):
         cases = (
             R5CaseSpec("history-01", _sha("source-history"), _sha("context-history"), "history"),
             R5CaseSpec("future-01", _sha("source-future"), _sha("context-future"), "future"),
@@ -156,15 +156,24 @@ class R5RuntimeIntegrationTests(unittest.TestCase):
             self.assertTrue(baseline_artifact.is_file())
             self.assertEqual(
                 len(json.loads(baseline_artifact.read_text())["baselines"]),
-                6,
+                3,
             )
-        self.assertEqual(len(executor.baseline_calls), 6)
-        self.assertEqual(len(set(executor.baseline_calls)), 6)
-        self.assertEqual(len(result.baselines), 6)
-        self.assertEqual(len(result.observations), 42)
-        self.assertEqual(result.reduction.pair_count, 6)
-        self.assertEqual(result.budget.provider_used, 6)
-        self.assertEqual(result.budget.vitis_used, 18)
+            plan = json.loads((Path(root) / "campaign_plan.json").read_text())
+            self.assertEqual(plan["history_case_ids"], ["history-01"])
+            self.assertEqual(plan["future_case_ids"], ["future-01"])
+            self.assertEqual(
+                plan["budget_upper_bound"],
+                {"provider_calls": 36, "vitis_launches": 54},
+            )
+        self.assertEqual(
+            executor.baseline_calls,
+            [("future-01", 1), ("future-01", 2), ("future-01", 3)],
+        )
+        self.assertEqual(len(result.baselines), 3)
+        self.assertEqual(len(result.observations), 21)
+        self.assertEqual(result.reduction.pair_count, 3)
+        self.assertEqual(result.budget.provider_used, 3)
+        self.assertEqual(result.budget.vitis_used, 9)
 
     def test_runner_rejects_work_in_observation_only_arms(self):
         cases = (
@@ -191,7 +200,7 @@ class R5RuntimeIntegrationTests(unittest.TestCase):
                 cases=cases,
                 executor=executor,
                 budget=R5BudgetLedger(
-                    provider_used=440,
+                    provider_used=470,
                     vitis_used=400,
                 ),
             ).run()

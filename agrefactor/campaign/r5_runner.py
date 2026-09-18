@@ -166,6 +166,12 @@ class R5CampaignRunner:
         self.output_root = None if output_root is None else Path(output_root)
         self._validate_inventory()
 
+    @property
+    def _future_cases(self) -> tuple[R5CaseSpec, ...]:
+        """Cases eligible for arm execution after the history snapshot freeze."""
+
+        return tuple(case for case in self.cases if case.period == "future")
+
     def _validate_inventory(self) -> None:
         source_periods: dict[str, set[str]] = {}
         for case in self.cases:
@@ -188,8 +194,9 @@ class R5CampaignRunner:
     def plan(self) -> dict[str, Any]:
         """Return the frozen schedule without invoking the executor."""
 
+        future_cases = self._future_cases
         provider_upper_bound, vitis_upper_bound = estimate_upper_bound(
-            case_count=len(self.cases), repeats=self.manifest.repeats
+            case_count=len(future_cases), repeats=self.manifest.repeats
         )
         try:
             reservation = self.budget.reserve_with_recovery(
@@ -209,9 +216,13 @@ class R5CampaignRunner:
                     "period": case.period,
                     "arms": [arm.value for arm in self._arm_schedule(case, repeat)],
                 }
-                for case in self.cases
+                for case in future_cases
                 for repeat in range(1, self.manifest.repeats + 1)
             ],
+            "history_case_ids": [
+                case.case_id for case in self.cases if case.period == "history"
+            ],
+            "future_case_ids": [case.case_id for case in future_cases],
             "budget_upper_bound": {
                 "provider_calls": provider_upper_bound,
                 "vitis_launches": vitis_upper_bound,
@@ -226,8 +237,9 @@ class R5CampaignRunner:
         }
 
     def run(self) -> R5CampaignRun:
+        future_cases = self._future_cases
         provider_upper_bound, vitis_upper_bound = estimate_upper_bound(
-            case_count=len(self.cases), repeats=self.manifest.repeats
+            case_count=len(future_cases), repeats=self.manifest.repeats
         )
         try:
             reservation = self.budget.reserve_with_recovery(
@@ -239,7 +251,10 @@ class R5CampaignRunner:
         frozen_plan = self.plan()
         baselines: list[R5BaselineObservation] = []
         observations: list[R5ArmObservation] = []
-        for case in sorted(self.cases, key=lambda item: item.case_id):
+        # History is identity input to the already-frozen snapshot. Replaying
+        # A0-A6 on it would allow memory to affect the evidence that created
+        # that same memory, violating the time-ordered R5 contract.
+        for case in sorted(future_cases, key=lambda item: item.case_id):
             for repeat in range(1, self.manifest.repeats + 1):
                 baseline = dict(self.executor.prepare_common_baseline(case, repeat))
                 baseline_id = str(baseline.get("baseline_id", "")).strip()
