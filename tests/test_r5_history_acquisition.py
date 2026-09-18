@@ -53,6 +53,14 @@ def _history(case_id: str, source: str) -> dict:
 
 
 class R5HistoryAcquisitionTests(unittest.TestCase):
+    def test_run_namespace_is_stable_per_output_and_isolates_retries(self):
+        first = MODULE._run_namespace(Path("/tmp/run-a"), "a" * 64)
+        self.assertEqual(first, MODULE._run_namespace(Path("/tmp/run-a"), "a" * 64))
+        self.assertNotEqual(
+            first,
+            MODULE._run_namespace(Path("/tmp/run-b"), "a" * 64),
+        )
+
     def test_history_selection_keeps_future_outcomes_out(self):
         manifest = {
             "cases": [

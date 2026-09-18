@@ -92,6 +92,17 @@ def _text_sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _run_namespace(output: Path, manifest_sha256: str) -> str:
+    """Isolate ephemeral work roots across immutable campaign attempts."""
+
+    return _canonical_sha256(
+        {
+            "output_root": str(output.expanduser().resolve()),
+            "manifest_sha256": manifest_sha256,
+        }
+    )[:12]
+
+
 def _load_json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -601,6 +612,7 @@ def acquire_history(
     usage = {"provider_calls": 0, "vitis_launches": 0}
     positives: list[dict[str, Any]] = []
     attempts: list[dict[str, Any]] = []
+    run_namespace = _run_namespace(output, str(manifest["manifest_sha256"]))
     for case in contracts["cases"]:
         case_id = str(case["case_id"])
         success = False
@@ -626,7 +638,9 @@ def acquire_history(
                     case=case,
                     runtime=runtime_value,
                     output=product_root,
-                    run_id=f"r5-history-{case_id}-{attempt:02d}",
+                    run_id=(
+                        f"r5-history-{case_id}-{run_namespace}-{attempt:02d}"
+                    ),
                 )
                 execution = run_source_command_with_r5_capture(args)
                 capture = execution.r5_common_baseline
