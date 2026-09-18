@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "stage": "V2.3-R2-R4-real-calibration-certificate",
+  "implementation_base_head": "ff68e4df0eb9daffe9129d67040e5197d9d15bda",
+  "product_entrypoints_unchanged": [
+    "refactor",
+    "optimize",
+    "full"
+  ],
+  "contracts": {
+    "prompt_contract_version": "r2-shadow-output-v4",
+    "strict_parser": "r2-v1",
+    "input_contract_version": "r2-agent-safe-diagnostic-evidence-v2"
+  },
+  "environment": {
+    "target_profile": "vitis-2023.2-default",
+    "toolchain": "vitis_hls",
+    "toolchain_version": "2023.2",
+    "public_only": true,
+    "cosim_policy": "off"
+  },
+  "hard_budgets": {
+    "provider_calls": 200,
+    "vitis_launches": 200
+  },
+  "selection": {
+    "ordered_generator_families": [
+      "recursion",
+      "function_pointer",
+      "exception",
+      "virtual_dispatch",
+      "runtime_stack_allocation",
+      "variable_length_array",
+      "rtti",
+      "thread_local_storage"
+    ],
+    "variants_per_family": 4,
+    "minimum_eligible_records": 8,
+    "maximum_selected_records": 16,
+    "required_stage": "csynth",
+    "required_deterministic_owner": [
+      "unknown",
+      "mixed"
+    ],
+    "required_route_actions": [
+      "review_unknown",
+      "review_mixed"
+    ],
+    "required_parser_rule": "unknown_fallback",
+    "aggregate_only_is_ineligible": true,
+    "selection_occurs_before_provider_calls": true
+  },
+  "truth": {
+    "owner": "candidate",
+    "failure_class": "unsupported_construct",
+    "source": "pre_registered_injected_candidate_construct"
+  },
+  "acceptance_policy": {
+    "schema_version": 1,
+    "policy_id": "v23-r2-real-vitis-unsupported-construct-calibration-v1",
+    "minimum_total": 8,
+    "minimum_covered": 6,
+    "minimum_high_confidence": 4,
+    "minimum_coverage": 0.75,
+    "minimum_citation_validity_lower_95": 0.5,
+    "maximum_selective_risk": 0.2,
+    "maximum_high_confidence_error_rate": 0.0,
+    "maximum_high_confidence_error_upper_95": 0.55,
+    "maximum_unsafe_scope_rate": 0.0,
+    "maximum_unsafe_scope_upper_95": 0.45
+  },
+  "held_out_boundary": {
+    "package_d_case_prefix": "v23-r4-heldout-",
+    "calibration_case_prefix": "v23-r2-calibration-",
+    "case_id_reuse_forbidden": true,
+    "candidate_source_hash_reuse_forbidden": true,
+    "provider_result_reuse_forbidden": true,
+    "calibration_selection_cannot_observe_package_d_results": true
+  },
+  "authority": {
+    "r2_shadow_only": true,
+    "candidate_mutation_allowed": false,
+    "testbench_mutation_allowed": false,
+    "model_success_authority": false,
+    "independent_audit_required": true,
+    "r4_acceptance_requires_manual_checkpoint": true
+  }
+}
