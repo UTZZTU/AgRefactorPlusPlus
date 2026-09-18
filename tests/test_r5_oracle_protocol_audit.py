@@ -173,9 +173,9 @@ class R5OracleProtocolAuditTests(unittest.TestCase):
             "ready_for_history_acquisition",
         )
         self.assertFalse(result["protocol_audit"]["real_campaign_allowed"])
-        self.assertEqual(result["budget_plan"]["pilot_provider_upper_bound"], 36)
+        self.assertEqual(result["budget_plan"]["pilot_provider_upper_bound"], 60)
         self.assertEqual(result["budget_plan"]["pilot_vitis_upper_bound"], 54)
-        self.assertEqual(result["budget_plan"]["formal_provider_upper_bound"], 72)
+        self.assertEqual(result["budget_plan"]["formal_provider_upper_bound"], 120)
         self.assertEqual(result["budget_plan"]["formal_vitis_upper_bound"], 108)
 
     def test_manifest_signature_mismatch_is_rejected(self) -> None:
@@ -209,21 +209,21 @@ class R5OracleProtocolAuditTests(unittest.TestCase):
                     plan_relative_path="plan.json",
                 )
 
-    def test_nonzero_r5_usage_must_be_reconciled_before_audit(self) -> None:
+    def test_nonzero_reconciled_r5_usage_is_carried_into_budget_plan(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             repo, plan, manifest, manifest_bytes = _fixture(Path(raw))
             state = _state()
-            state["R5_CONSUMED_PROVIDER_CALLS"] = 1
-            with self.assertRaisesRegex(ValueError, "state or budget"):
-                AUDIT.build_audit(
-                    repo,
-                    manifest,
-                    plan,
-                    state,
-                    _certificate(),
-                    manifest_file_sha256=_sha_bytes(manifest_bytes),
-                    plan_relative_path="plan.json",
-                )
+            state["R5_CONSUMED_PROVIDER_CALLS"] = 12
+            result = AUDIT.build_audit(
+                repo,
+                manifest,
+                plan,
+                state,
+                _certificate(),
+                manifest_file_sha256=_sha_bytes(manifest_bytes),
+                plan_relative_path="plan.json",
+            )
+        self.assertEqual(result["budget_plan"]["ledger"]["provider_used"], 12)
 
     def test_failure_class_outside_certificate_scope_blocks_history(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

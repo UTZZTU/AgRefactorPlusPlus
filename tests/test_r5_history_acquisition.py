@@ -71,6 +71,12 @@ class R5HistoryAcquisitionTests(unittest.TestCase):
     def test_history_manifest_freezes_bounded_a2_only_acquisition(self):
         contracts = {
             "repository": {"head": "a" * 40},
+            "state": {
+                "R5_CONSUMED_PROVIDER_CALLS": 12,
+                "R5_CONSUMED_VITIS_LAUNCHES": 0,
+                "R5_PROVIDER_CALL_HARD_CAP": 500,
+                "R5_VITIS_LAUNCH_HARD_CAP": 500,
+            },
             "file_hashes": {
                 "adapter_manifest": "a" * 64,
                 "protocol_audit": "b" * 64,
@@ -88,12 +94,31 @@ class R5HistoryAcquisitionTests(unittest.TestCase):
         )
         self.assertEqual(manifest["arm"], "A2")
         self.assertEqual(manifest["entrypoint"], "refactor")
-        self.assertEqual(manifest["provider_call_upper_bound"], 18)
+        self.assertEqual(manifest["provider_call_upper_bound"], 66)
         self.assertEqual(manifest["vitis_launch_upper_bound"], 36)
+        self.assertEqual(manifest["provider_calls_before"], 12)
         self.assertFalse(manifest["future_outcomes_observed"])
         unsigned = dict(manifest)
         digest = unsigned.pop("manifest_sha256")
         self.assertEqual(digest, MODULE._canonical_sha256(unsigned))
+
+    def test_partial_product_usage_is_read_from_authoritative_result(self):
+        with tempfile.TemporaryDirectory() as root:
+            product = Path(root)
+            (product / "run_result.json").write_text(
+                json.dumps(
+                    {
+                        "budget_usage": {
+                            "llm_calls": 4,
+                            "csim_calls": 0,
+                            "csynth_calls": 0,
+                            "cosim_calls": 0,
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(MODULE._read_product_budget_usage(product), (4, 0))
 
     def test_positive_episode_is_read_back_from_file(self):
         with tempfile.TemporaryDirectory() as root:

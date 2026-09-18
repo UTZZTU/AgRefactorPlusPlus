@@ -335,18 +335,27 @@ def build_audit(
         "R6_STARTED": False,
         "R5_PROVIDER_CALL_HARD_CAP": 500,
         "R5_VITIS_LAUNCH_HARD_CAP": 500,
-        "R5_CONSUMED_PROVIDER_CALLS": 0,
-        "R5_CONSUMED_VITIS_LAUNCHES": 0,
         "R5_REAL_CAMPAIGN_ALLOWED": False,
     }
     if any(state.get(key) != expected for key, expected in required_state.items()):
         raise ValueError("authoritative R5 state or budget is incompatible")
 
+    consumed_provider = state.get("R5_CONSUMED_PROVIDER_CALLS")
+    consumed_vitis = state.get("R5_CONSUMED_VITIS_LAUNCHES")
+    if (
+        isinstance(consumed_provider, bool)
+        or not isinstance(consumed_provider, int)
+        or consumed_provider < 0
+        or isinstance(consumed_vitis, bool)
+        or not isinstance(consumed_vitis, int)
+        or consumed_vitis < 0
+    ):
+        raise ValueError("authoritative R5 usage ledger is invalid")
     budget = R5BudgetLedger(
         provider_cap=500,
         vitis_cap=500,
-        provider_used=0,
-        vitis_used=0,
+        provider_used=consumed_provider,
+        vitis_used=consumed_vitis,
     )
     pilot_provider, pilot_vitis = estimate_upper_bound(case_count=1)
     formal_provider, formal_vitis = estimate_upper_bound(case_count=len(future))

@@ -127,6 +127,20 @@ The history driver calls the ordinary `refactor` entrypoint internally, then
 uses the real Provider-backed R2 advisor and existing R4 controller in A2. It
 does not add a product CLI or a second Vitis path. Runtime context signatures
 are bound only after the real baseline produces its deterministic diagnostic;
-they are not guessed from the benchmark. The predeclared history sub-budget is
-18 Provider calls and 36 Vitis launches, including up to three fail-closed
-attempts for each of the two independent sources.
+they are not guessed from the benchmark.
+
+The provided-Testbench baseline contains six identifier calls, one
+deduplicator, one planner, and one refactoring call. Therefore its frozen
+Provider upper bound is 9, not 1. An A2 history attempt adds at most one R2
+advisory and one R4 mutation, for 11 Provider calls and 6 Vitis launches per
+attempt. The predeclared acquisition upper bound is consequently 66 Provider
+calls and 36 Vitis launches for up to three fail-closed attempts on each of two
+sources.
+
+The first real history run at
+`/data/agrefactor_runs/r5_p3_history_real_0a2865e_run1` exposed the old budget
+error before any Vitis launch. Three attempts each consumed four Provider calls
+and then failed closed at the fifth logical launch. The authoritative R5 ledger
+therefore records 12 Provider calls and 0 Vitis launches. The old zero-call
+protocol audit is retained as immutable evidence but is superseded for budget
+authorization; a corrected zero-call audit is required before retrying history.

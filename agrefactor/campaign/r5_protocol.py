@@ -37,6 +37,14 @@ ARM_SEMANTICS: dict[R5Arm, dict[str, str]] = {
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _GIT_COMMIT = re.compile(r"^[0-9a-f]{40,64}$")
 
+# The existing provided-Testbench ``refactor`` generation prefix launches six
+# identifier agents, one deduplicator, one planner, and one refactoring worker.
+# These are logical Provider calls enforced by the shared BudgetManager.
+COMMON_BASELINE_PROVIDER_CAP = 9
+COMMON_BASELINE_VITIS_CAP = 3
+ADVISOR_ARM_COUNT = 6
+MUTATION_ARM_COUNT = 5
+
 
 @dataclass(frozen=True, slots=True)
 class R5CampaignManifest:
@@ -105,15 +113,19 @@ class R5CampaignManifest:
 def estimate_upper_bound(*, case_count: int, repeats: int = 3) -> tuple[int, int]:
     """Return conservative Provider/Vitis upper bounds for A0-A6.
 
-    Each case/repeat has one initial generation. Advisor arms A1-A6 call once;
-    repair arms A2-A6 may call once more. The common baseline is one formal
-    prefix with three Vitis stages; mutation arms may launch one fresh full
+    Each case/repeat has one nine-call initial generation prefix. Advisor arms
+    A1-A6 call once; repair arms A2-A6 may call once more. The common baseline
+    has at most three Vitis stages; mutation arms may launch one fresh full
     validation (three stages).
     """
     if case_count < 1 or repeats != 3:
         raise R5ProtocolError("invalid case_count or repeats")
-    provider = case_count * repeats * (1 + 6 + 5)
-    vitis = case_count * repeats * (3 + 5 * 3)
+    provider = case_count * repeats * (
+        COMMON_BASELINE_PROVIDER_CAP + ADVISOR_ARM_COUNT + MUTATION_ARM_COUNT
+    )
+    vitis = case_count * repeats * (
+        COMMON_BASELINE_VITIS_CAP + MUTATION_ARM_COUNT * 3
+    )
     return provider, vitis
 
 
@@ -127,4 +139,15 @@ def validate_arm_diff(manifest: R5CampaignManifest, observed: Mapping[str, Mappi
                 raise R5ProtocolError(f"arm {arm.value} changed frozen semantics for {key}")
 
 
-__all__ = ["ARM_SEMANTICS", "R5Arm", "R5CampaignManifest", "R5ProtocolError", "estimate_upper_bound", "validate_arm_diff"]
+__all__ = [
+    "ADVISOR_ARM_COUNT",
+    "ARM_SEMANTICS",
+    "COMMON_BASELINE_PROVIDER_CAP",
+    "COMMON_BASELINE_VITIS_CAP",
+    "MUTATION_ARM_COUNT",
+    "R5Arm",
+    "R5CampaignManifest",
+    "R5ProtocolError",
+    "estimate_upper_bound",
+    "validate_arm_diff",
+]

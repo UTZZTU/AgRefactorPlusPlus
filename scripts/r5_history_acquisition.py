@@ -20,6 +20,10 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from agrefactor.campaign import ExistingRefactorR5CampaignExecutor, R5Arm
+from agrefactor.campaign.r5_protocol import (
+    COMMON_BASELINE_PROVIDER_CAP,
+    COMMON_BASELINE_VITIS_CAP,
+)
 from agrefactor.cli import build_parser
 from agrefactor.models import resolve_model_runtime
 from agrefactor.product import R5CommonBaselineCapture, run_source_command_with_r5_capture
@@ -52,10 +56,10 @@ DEFAULT_CALIBRATION_BUNDLE = Path(
     "calibration_bundle.json"
 )
 STATE_PATH = Path("docs/roadmap/V2_3_STATE.json")
-HISTORY_PROVIDER_CAP = 18
+HISTORY_PROVIDER_CAP = 66
 HISTORY_VITIS_CAP = 36
-PER_ATTEMPT_PROVIDER_CAP = 3
-PER_ATTEMPT_VITIS_CAP = 6
+PER_ATTEMPT_PROVIDER_CAP = COMMON_BASELINE_PROVIDER_CAP + 2
+PER_ATTEMPT_VITIS_CAP = COMMON_BASELINE_VITIS_CAP + 3
 
 
 class HistoryAcquisitionError(RuntimeError):
@@ -181,10 +185,21 @@ def _validate_repository(repo: Path, state: Mapping[str, Any]) -> dict[str, Any]
     if (
         state.get("R5_PROVIDER_CALL_HARD_CAP") != 500
         or state.get("R5_VITIS_LAUNCH_HARD_CAP") != 500
-        or state.get("R5_CONSUMED_PROVIDER_CALLS") != 0
-        or state.get("R5_CONSUMED_VITIS_LAUNCHES") != 0
     ):
-        raise HistoryAcquisitionError("R5 global budget ledger is not at frozen zero")
+        raise HistoryAcquisitionError("R5 global budget contract is incompatible")
+    for field, cap_field in (
+        ("R5_CONSUMED_PROVIDER_CALLS", "R5_PROVIDER_CALL_HARD_CAP"),
+        ("R5_CONSUMED_VITIS_LAUNCHES", "R5_VITIS_LAUNCH_HARD_CAP"),
+    ):
+        used = state.get(field)
+        cap = state.get(cap_field)
+        if (
+            isinstance(used, bool)
+            or not isinstance(used, int)
+            or used < 0
+            or used > cap
+        ):
+            raise HistoryAcquisitionError("R5 global budget ledger is invalid")
     return {"head": head, "branch": branch, "clean": True}
 
 
@@ -277,6 +292,15 @@ def build_history_manifest(
     vitis_bound = len(cases) * max_attempts_per_case * PER_ATTEMPT_VITIS_CAP
     if provider_bound > HISTORY_PROVIDER_CAP or vitis_bound > HISTORY_VITIS_CAP:
         raise HistoryAcquisitionError("history acquisition exceeds its frozen sub-budget")
+    prior_provider = int(contracts["state"]["R5_CONSUMED_PROVIDER_CALLS"])
+    prior_vitis = int(contracts["state"]["R5_CONSUMED_VITIS_LAUNCHES"])
+    if (
+        prior_provider + provider_bound
+        > int(contracts["state"]["R5_PROVIDER_CALL_HARD_CAP"])
+        or prior_vitis + vitis_bound
+        > int(contracts["state"]["R5_VITIS_LAUNCH_HARD_CAP"])
+    ):
+        raise HistoryAcquisitionError("history acquisition exceeds the global R5 budget")
     payload = {
         "schema_version": 1,
         "manifest_id": "v2.3-r5-history-acquisition-v1",
@@ -295,6 +319,8 @@ def build_history_manifest(
         "vitis_launch_upper_bound": vitis_bound,
         "history_provider_cap": HISTORY_PROVIDER_CAP,
         "history_vitis_cap": HISTORY_VITIS_CAP,
+        "provider_calls_before": prior_provider,
+        "vitis_launches_before": prior_vitis,
         "future_outcomes_observed": False,
         "future_files_executed": False,
         "trusted_revision_creation_allowed": False,
@@ -335,7 +361,7 @@ def _baseline_args(
         "--max-candidate-repairs",
         "1",
         "--max-llm-calls",
-        "4",
+        str(COMMON_BASELINE_PROVIDER_CAP),
         "--max-tool-calls",
         "40",
         "--max-compile-calls",
@@ -531,6 +557,28 @@ def _write_attempt(
     )
 
 
+def _read_product_budget_usage(product_root: Path) -> tuple[int, int] | None:
+    """Read authoritative partial usage written by the existing entrypoint."""
+
+    path = product_root / "run_result.json"
+    if not path.is_file():
+        return None
+    try:
+        raw = _load_json(path).get("budget_usage")
+        if not isinstance(raw, Mapping):
+            return None
+        provider = int(raw["llm_calls"])
+        vitis = sum(
+            int(raw[name])
+            for name in ("csim_calls", "csynth_calls", "cosim_calls")
+        )
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if provider < 0 or vitis < 0:
+        return None
+    return provider, vitis
+
+
 def acquire_history(
     *,
     repo: Path,
@@ -567,6 +615,9 @@ def acquire_history(
             baseline_manifest = None
             observation = None
             charged = False
+            attempt_provider: int | None = None
+            attempt_vitis: int | None = None
+            arm_started = False
             try:
                 args = _baseline_args(
                     repo=repo,
@@ -595,6 +646,9 @@ def acquire_history(
                     repeat=attempt,
                     capture=capture,
                 )
+                attempt_provider = int(baseline_manifest["provider_calls"])
+                attempt_vitis = int(baseline_manifest["vitis_launches"])
+                arm_started = True
                 observation = executor.run_arm(
                     case=case_spec,
                     repeat=attempt,
@@ -602,14 +656,10 @@ def acquire_history(
                     baseline=baseline_manifest,
                     arm_index=0,
                 )
-                provider_calls = int(baseline_manifest["provider_calls"]) + int(
-                    observation["provider_calls"]
-                )
-                vitis_launches = int(baseline_manifest["vitis_launches"]) + int(
-                    observation["vitis_launches"]
-                )
-                usage["provider_calls"] += provider_calls
-                usage["vitis_launches"] += vitis_launches
+                attempt_provider += int(observation["provider_calls"])
+                attempt_vitis += int(observation["vitis_launches"])
+                usage["provider_calls"] += attempt_provider
+                usage["vitis_launches"] += attempt_vitis
                 charged = True
                 episode = verify_positive_observation(
                     observation,
@@ -640,8 +690,22 @@ def acquire_history(
                 break
             except Exception as exc:
                 if not charged:
-                    usage["provider_calls"] += PER_ATTEMPT_PROVIDER_CAP
-                    usage["vitis_launches"] += PER_ATTEMPT_VITIS_CAP
+                    if attempt_provider is not None and attempt_vitis is not None:
+                        usage["provider_calls"] += attempt_provider + (
+                            2 if arm_started else 0
+                        )
+                        usage["vitis_launches"] += attempt_vitis + (
+                            3 if arm_started else 0
+                        )
+                    else:
+                        observed = _read_product_budget_usage(product_root)
+                        if observed is None:
+                            observed = (
+                                COMMON_BASELINE_PROVIDER_CAP,
+                                COMMON_BASELINE_VITIS_CAP,
+                            )
+                        usage["provider_calls"] += observed[0]
+                        usage["vitis_launches"] += observed[1]
                 reason = type(exc).__name__ + ":" + str(exc)
                 _write_attempt(
                     attempt_root / "attempt_result.json",

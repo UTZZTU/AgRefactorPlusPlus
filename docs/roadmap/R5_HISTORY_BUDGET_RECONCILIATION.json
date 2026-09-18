@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "status": "reconciled_from_authoritative_per_run_results",
+  "failed_run_root": "/data/agrefactor_runs/r5_p3_history_real_0a2865e_run1",
+  "repository_head_at_execution": "0a2865ec95e305bb14113b6b6b6ed9241229ceb0",
+  "failure_reason": "baseline_provider_upper_bound_was_incorrectly_frozen_at_four",
+  "attempts": [
+    {
+      "attempt": 1,
+      "case_id": "Exception_E2_Filter",
+      "run_result_sha256": "74913baca66d12112c3e0d1e600dc28aad027a51a94a3d794e8afe955f0baaa1",
+      "provider_calls": 4,
+      "vitis_launches": 0,
+      "terminal_summary": "Budget exceeded for llm_calls: attempted 5, limit 4"
+    },
+    {
+      "attempt": 2,
+      "case_id": "Exception_E2_Filter",
+      "run_result_sha256": "afac9b5fbda2745e522a2d45faeca89e08938cb948232f9c8cd539c3c30fa2ec",
+      "provider_calls": 4,
+      "vitis_launches": 0,
+      "terminal_summary": "Budget exceeded for llm_calls: attempted 5, limit 4"
+    },
+    {
+      "attempt": 3,
+      "case_id": "Exception_E2_Filter",
+      "run_result_sha256": "6d03062d7f5e619ef817c6984464ceae38ba99a0f43094658aa617d4f6e672d0",
+      "provider_calls": 4,
+      "vitis_launches": 0,
+      "terminal_summary": "Budget exceeded for llm_calls: attempted 5, limit 4"
+    }
+  ],
+  "reconciled_provider_calls": 12,
+  "reconciled_vitis_launches": 0,
+  "superseded_summary": {
+    "path": "/data/agrefactor_runs/r5_p3_history_real_0a2865e_run1/budget_ledger.json",
+    "sha256": "c70744d4610c7ea29d731cd0aa871dd45278ae4bf5060030ea776401962bf9d2",
+    "provider_calls": 9,
+    "vitis_launches": 18,
+    "reason": "old_fallback_charged_each_failed_attempt_as_3_provider_and_6_vitis_without_reading_run_result"
+  },
+  "history_manifest": {
+    "path": "/data/agrefactor_runs/r5_p3_history_real_0a2865e_run1/history_acquisition_manifest.json",
+    "sha256": "dc1da0c651ac2701b9f3402d8b48d28615d41840cd74125fda618e60828caf2d",
+    "status": "superseded_budget_model"
+  },
+  "future_outcomes_observed": false,
+  "future_files_executed": false,
+  "r5_accepted": false,
+  "r6_started": false
+}

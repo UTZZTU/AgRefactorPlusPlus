@@ -18,7 +18,13 @@ from typing import Any, Protocol
 
 from agrefactor.recovery.r5_budget import R5BudgetLedger
 
-from .r5_protocol import R5Arm, R5CampaignManifest, estimate_upper_bound
+from .r5_protocol import (
+    COMMON_BASELINE_PROVIDER_CAP,
+    COMMON_BASELINE_VITIS_CAP,
+    R5Arm,
+    R5CampaignManifest,
+    estimate_upper_bound,
+)
 from .r5_reducer import R5ArmObservation, R5CampaignReduction, reduce_observations
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -272,7 +278,10 @@ class R5CampaignRunner:
                     baseline.get("vitis_launches"),
                     "baseline vitis_launches",
                 )
-                if baseline_provider_calls > 1 or baseline_vitis_launches > 3:
+                if (
+                    baseline_provider_calls > COMMON_BASELINE_PROVIDER_CAP
+                    or baseline_vitis_launches > COMMON_BASELINE_VITIS_CAP
+                ):
                     raise R5CampaignError(
                         "common baseline exceeded frozen Provider/Vitis upper bound"
                     )

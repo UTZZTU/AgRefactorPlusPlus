@@ -18,7 +18,11 @@ from agrefactor.runtime.candidate_repair_integration import (
     LocalCandidateValidationHandlerFactory,
 )
 
-from .r5_protocol import R5Arm
+from .r5_protocol import (
+    COMMON_BASELINE_PROVIDER_CAP,
+    COMMON_BASELINE_VITIS_CAP,
+    R5Arm,
+)
 from .r5_runner import R5CampaignError, R5CaseSpec
 
 
@@ -220,7 +224,10 @@ class ExistingRefactorR5CampaignExecutor:
             raise R5CampaignError("captured product baseline identity mismatch")
         if capture.baseline_id in self._captures:
             raise R5CampaignError("captured baseline_id is not unique")
-        if capture.provider_calls > 1 or capture.vitis_launches > 3:
+        if (
+            capture.provider_calls > COMMON_BASELINE_PROVIDER_CAP
+            or capture.vitis_launches > COMMON_BASELINE_VITIS_CAP
+        ):
             raise R5CampaignError("captured baseline exceeded frozen usage bound")
         event_signatures = {
             item.get("context_signature")
