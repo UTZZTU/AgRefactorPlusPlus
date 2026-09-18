@@ -21,9 +21,9 @@ class R5EvidenceInventoryTests(unittest.TestCase):
         ledger = inventory["r5_budget_ledger"]
         self.assertEqual(ledger["provider_cap"], 500)
         self.assertEqual(ledger["vitis_cap"], 500)
-        self.assertEqual(ledger["consumed_provider_calls"], 1)
+        self.assertEqual(ledger["consumed_provider_calls"], 0)
         self.assertEqual(ledger["consumed_vitis_launches"], 0)
-        self.assertEqual(ledger["remaining_provider_calls"], 499)
+        self.assertEqual(ledger["remaining_provider_calls"], 500)
         self.assertEqual(ledger["remaining_vitis_launches"], 500)
 
 
