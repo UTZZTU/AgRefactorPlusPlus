@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from agrefactor.campaign import (
     R5Arm,
@@ -40,21 +43,35 @@ def _manifest() -> R5CampaignManifest:
 
 
 class _Executor:
+    def __init__(self, *, arm_usage=None):
+        self.baseline_calls = []
+        self.arm_usage = arm_usage or {}
+
     def prepare_common_baseline(self, case, repeat):
+        self.baseline_calls.append((case.case_id, repeat))
         return {
             "baseline_id": f"{case.case_id}-{repeat}",
             "source_sha256": case.source_sha256,
             "context_signature": case.context_signature,
+            "provider_calls": 1,
+            "vitis_launches": 3,
+            "artifact_sha256": _sha(f"baseline-{case.case_id}-{repeat}"),
+            "hidden_input_count": 0,
+            "cross_arm_cache_used": False,
         }
 
     def run_arm(self, *, case, repeat, arm, baseline, arm_index):
+        provider_calls, vitis_launches = self.arm_usage.get(
+            arm,
+            (0, 0),
+        )
         return {
             "baseline_id": baseline["baseline_id"],
             "source_sha256": case.source_sha256,
             "context_signature": case.context_signature,
             "status": "abstained" if arm in {R5Arm.A0, R5Arm.A1} else "inconclusive",
-            "provider_calls": 0,
-            "vitis_launches": 0,
+            "provider_calls": provider_calls,
+            "vitis_launches": vitis_launches,
             "artifact_sha256": _sha(f"{case.case_id}-{repeat}-{arm.value}"),
             "hidden_input_count": 0,
             "cross_arm_cache_used": False,
@@ -73,15 +90,40 @@ class R5RuntimeIntegrationTests(unittest.TestCase):
             R5CaseSpec("history-01", _sha("source-history"), _sha("context-history"), "history"),
             R5CaseSpec("future-01", _sha("source-future"), _sha("context-future"), "future"),
         )
-        result = R5CampaignRunner(
-            manifest=_manifest(),
-            cases=cases,
-            executor=_Executor(),
-        ).run()
+        executor = _Executor()
+        with tempfile.TemporaryDirectory() as root:
+            result = R5CampaignRunner(
+                manifest=_manifest(),
+                cases=cases,
+                executor=executor,
+                output_root=root,
+            ).run()
+            baseline_artifact = Path(root) / "baseline_observations.json"
+            self.assertTrue(baseline_artifact.is_file())
+            self.assertEqual(
+                len(json.loads(baseline_artifact.read_text())["baselines"]),
+                6,
+            )
+        self.assertEqual(len(executor.baseline_calls), 6)
+        self.assertEqual(len(set(executor.baseline_calls)), 6)
+        self.assertEqual(len(result.baselines), 6)
         self.assertEqual(len(result.observations), 42)
         self.assertEqual(result.reduction.pair_count, 6)
-        self.assertEqual(result.budget.provider_used, 0)
-        self.assertEqual(result.budget.vitis_used, 0)
+        self.assertEqual(result.budget.provider_used, 6)
+        self.assertEqual(result.budget.vitis_used, 18)
+
+    def test_runner_rejects_work_in_observation_only_arms(self):
+        cases = (
+            R5CaseSpec("history-01", _sha("source-history"), _sha("context-history"), "history"),
+            R5CaseSpec("future-01", _sha("source-future"), _sha("context-future"), "future"),
+        )
+        executor = _Executor(arm_usage={R5Arm.A0: (1, 0)})
+        with self.assertRaisesRegex(Exception, "A0 exceeded"):
+            R5CampaignRunner(
+                manifest=_manifest(),
+                cases=cases,
+                executor=executor,
+            ).run()
 
     def test_source_holdout_crossing_is_rejected(self):
         source = _sha("same")

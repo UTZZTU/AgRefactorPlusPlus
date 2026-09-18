@@ -101,12 +101,13 @@ def estimate_upper_bound(*, case_count: int, repeats: int = 3) -> tuple[int, int
 
     Each case/repeat has one initial generation. Advisor arms A1-A6 call once;
     repair arms A2-A6 may call once more. The common baseline is one formal
-    prefix; mutation arms may launch one fresh full validation (three stages).
+    prefix with three Vitis stages; mutation arms may launch one fresh full
+    validation (three stages).
     """
     if case_count < 1 or repeats != 3:
         raise R5ProtocolError("invalid case_count or repeats")
     provider = case_count * repeats * (1 + 6 + 5)
-    vitis = case_count * repeats * (1 + 5 * 3)
+    vitis = case_count * repeats * (3 + 5 * 3)
     return provider, vitis
 
 

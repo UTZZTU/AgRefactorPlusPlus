@@ -59,8 +59,21 @@ class R5CampaignExecutor(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class R5BaselineObservation:
+    case_id: str
+    repeat: int
+    baseline_id: str
+    source_sha256: str
+    context_signature: str
+    provider_calls: int
+    vitis_launches: int
+    artifact_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
 class R5CampaignRun:
     manifest: Mapping[str, Any]
+    baselines: tuple[R5BaselineObservation, ...]
     observations: tuple[R5ArmObservation, ...]
     reduction: R5CampaignReduction
     budget: R5BudgetLedger
@@ -70,6 +83,7 @@ class R5CampaignRun:
         return {
             "schema_version": 1,
             "manifest": dict(self.manifest),
+            "baselines": [asdict(item) for item in self.baselines],
             "observations": [asdict(item) for item in self.observations],
             "reduction": self.reduction.to_dict(),
             "budget": self.budget.to_dict(),
@@ -85,6 +99,33 @@ def _required_sha(value: Any, name: str) -> str:
     if not isinstance(value, str) or len(value) != 64:
         raise R5CampaignError(f"{name} must be SHA-256")
     return value
+
+
+def _usage_count(value: Any, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise R5CampaignError(f"{name} must be a non-negative integer")
+    return value
+
+
+def _validate_arm_usage(
+    arm: R5Arm,
+    *,
+    provider_calls: int,
+    vitis_launches: int,
+) -> None:
+    provider_cap, vitis_cap = {
+        R5Arm.A0: (0, 0),
+        R5Arm.A1: (1, 0),
+        R5Arm.A2: (2, 3),
+        R5Arm.A3: (2, 3),
+        R5Arm.A4: (2, 3),
+        R5Arm.A5: (2, 3),
+        R5Arm.A6: (2, 3),
+    }[arm]
+    if provider_calls > provider_cap or vitis_launches > vitis_cap:
+        raise R5CampaignError(
+            f"arm {arm.value} exceeded frozen Provider/Vitis upper bound"
+        )
 
 
 class R5CampaignRunner:
@@ -152,6 +193,7 @@ class R5CampaignRunner:
         }
 
     def run(self) -> R5CampaignRun:
+        baselines: list[R5BaselineObservation] = []
         observations: list[R5ArmObservation] = []
         for case in sorted(self.cases, key=lambda item: item.case_id):
             for repeat in range(1, self.manifest.repeats + 1):
@@ -161,6 +203,38 @@ class R5CampaignRunner:
                     raise R5CampaignError("common baseline must have an immutable baseline_id")
                 if baseline.get("source_sha256") != case.source_sha256 or baseline.get("context_signature") != case.context_signature:
                     raise R5CampaignError("baseline identity does not match case inventory")
+                if baseline.get("cross_arm_cache_used") is True or baseline.get("hidden_input_count", 0) != 0:
+                    raise R5CampaignError("cross-arm cache or Hidden input reached the common baseline")
+                baseline_provider_calls = _usage_count(
+                    baseline.get("provider_calls"),
+                    "baseline provider_calls",
+                )
+                baseline_vitis_launches = _usage_count(
+                    baseline.get("vitis_launches"),
+                    "baseline vitis_launches",
+                )
+                if baseline_provider_calls > 1 or baseline_vitis_launches > 3:
+                    raise R5CampaignError(
+                        "common baseline exceeded frozen Provider/Vitis upper bound"
+                    )
+                baseline_artifact_sha256 = _required_sha(
+                    baseline.get("artifact_sha256"),
+                    "baseline artifact_sha256",
+                )
+                self.budget = self.budget.reserve(
+                    provider_calls=baseline_provider_calls,
+                    vitis_launches=baseline_vitis_launches,
+                )
+                baselines.append(R5BaselineObservation(
+                    case_id=case.case_id,
+                    repeat=repeat,
+                    baseline_id=baseline_id,
+                    source_sha256=case.source_sha256,
+                    context_signature=case.context_signature,
+                    provider_calls=baseline_provider_calls,
+                    vitis_launches=baseline_vitis_launches,
+                    artifact_sha256=baseline_artifact_sha256,
+                ))
                 for arm_index, arm in enumerate(self._arm_schedule(case, repeat)):
                     value = dict(self.executor.run_arm(case=case, repeat=repeat, arm=arm, baseline=baseline, arm_index=arm_index))
                     if value.get("baseline_id") != baseline_id:
@@ -169,8 +243,19 @@ class R5CampaignRunner:
                         raise R5CampaignError("arm identity mismatch")
                     if value.get("cross_arm_cache_used") is True or value.get("hidden_input_count", 0) != 0:
                         raise R5CampaignError("cross-arm cache or Hidden input reached an arm")
-                    provider_calls = int(value.get("provider_calls", 0))
-                    vitis_launches = int(value.get("vitis_launches", 0))
+                    provider_calls = _usage_count(
+                        value.get("provider_calls"),
+                        f"{arm.value} provider_calls",
+                    )
+                    vitis_launches = _usage_count(
+                        value.get("vitis_launches"),
+                        f"{arm.value} vitis_launches",
+                    )
+                    _validate_arm_usage(
+                        arm,
+                        provider_calls=provider_calls,
+                        vitis_launches=vitis_launches,
+                    )
                     self.budget = self.budget.reserve(provider_calls=provider_calls, vitis_launches=vitis_launches)
                     observations.append(R5ArmObservation(
                         case_id=case.case_id,
@@ -191,12 +276,37 @@ class R5CampaignRunner:
                         artifact_sha256=_required_sha(value.get("artifact_sha256"), "artifact_sha256"),
                     ))
         reduction = reduce_observations(observations)
-        result = R5CampaignRun(self.manifest.to_dict(), tuple(observations), reduction, self.budget, None if self.output_root is None else str(self.output_root))
+        result = R5CampaignRun(
+            self.manifest.to_dict(),
+            tuple(baselines),
+            tuple(observations),
+            reduction,
+            self.budget,
+            None if self.output_root is None else str(self.output_root),
+        )
         if self.output_root is not None:
             self.output_root.mkdir(parents=True, exist_ok=True)
             (self.output_root / "campaign_plan.json").write_text(json.dumps(self.plan(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            (self.output_root / "baseline_observations.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "baselines": [asdict(item) for item in baselines],
+                    },
+                    indent=2,
+                    sort_keys=True,
+                ) + "\n",
+                encoding="utf-8",
+            )
             (self.output_root / "campaign_result.json").write_text(json.dumps(result.to_dict(), indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
         return result
 
 
-__all__ = ["R5CampaignError", "R5CaseSpec", "R5CampaignExecutor", "R5CampaignRun", "R5CampaignRunner"]
+__all__ = [
+    "R5BaselineObservation",
+    "R5CampaignError",
+    "R5CaseSpec",
+    "R5CampaignExecutor",
+    "R5CampaignRun",
+    "R5CampaignRunner",
+]
