@@ -23,19 +23,31 @@ authoritative.
 - R5 arms bypass the ordinary post-diagnostic Candidate loop. A0/A1 are
   observation-only; A2-A6 hand the unchanged main result to the existing R4
   controller, preserving the one-mutation and formal-validation boundary.
+- Added a private typed capture of one existing `refactor` baseline and a
+  product campaign executor that forks A0-A6 from that exact Candidate,
+  diagnostic context, task, and formal result. Baseline usage is charged once;
+  every arm receives an isolated BudgetManager, TraceRecorder, model adapter,
+  validation workspace, and append-only artifact root.
+- Corrected the conservative Vitis upper bound to count the common baseline's
+  complete csim/csynth/cosim prefix. The runner now rejects work in A0, Vitis
+  work in A1, and any arm that crosses its frozen Provider/Vitis upper bound.
 
 ## Verification
 
 - Deterministic R5 and adjacent boundary tests: passed.
-- Full repository regression: `2450` tests passed.
-- Deterministic implementation work consumed `0` Provider calls and `0`
-  Vitis launches.
+- Full repository regression: `2494` tests passed at implementation commit
+  `75a4b49c4e5256f5a7ff36c2adc455d47851dba6`.
+- This deterministic checkpoint consumed `0` new Provider calls and `0` new
+  Vitis launches. The credential was removed from the test environment.
 
 ## Current Data Boundary
 
 The immutable predecessor inventory reports `64` historical Provider calls and
 `180` historical Vitis launches. They are predecessor evidence, not R5 budget
-consumption. The R5 ledger remains `0/500` and `0/500`.
+consumption. One earlier full-regression invocation unintentionally reached a
+legacy conditional network smoke after the R5 authorization started. It is
+therefore charged to R5 even though it was not an efficacy experiment. The
+reconciled R5 ledger is `1/500` Provider calls and `0/500` Vitis launches.
 
 The current inventory is not a campaign dataset: it has no frozen history/
 future partition and no paired positive/inapplicable controls. The generated
@@ -46,8 +58,10 @@ as an R5 future set.
 
 ## Next Authorized Step
 
-Supply or identify a verifiable case manifest with complete source, Public /
-Hidden provenance, Target, toolchain, parser, model/prompt identity, temporal
-partition, source-level holdout, and positive/inapplicable controls. Re-run the
-inventory and dataset contract, then perform a zero-call protocol audit before
-the bounded real pilot. R6 remains stopped.
+Audit the 20 candidate benchmark roots under `src/hlsrewritter` and create an
+immutable eligibility manifest with explicit acceptance/rejection reasons.
+Only cases with enforceable Public/Hidden oracles, complete Target/toolchain/
+parser/model identity, temporal provenance, source-level holdout, and paired
+controls may enter the dataset. Re-run the inventory and dataset contract,
+then perform a zero-call protocol audit before the bounded real pilot. R6
+remains stopped.
