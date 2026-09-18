@@ -1,0 +1,154 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+from pathlib import Path
+import tempfile
+import unittest
+
+from agrefactor.recovery import (
+    CalibrationCertificate,
+    R5EpisodeEnvelope,
+    R5EpisodeOutcome,
+)
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location(
+    "r5_history_acquisition",
+    ROOT / "scripts" / "r5_history_acquisition.py",
+)
+assert SPEC is not None and SPEC.loader is not None
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
+
+
+def _certificate() -> CalibrationCertificate:
+    return CalibrationCertificate(
+        split_id="split",
+        split_sha256="1" * 64,
+        report_sha256="2" * 64,
+        policy_sha256="3" * 64,
+        provider_identity_sha256="4" * 64,
+        prompt_contract_version="r2-shadow-output-v4",
+        strict_parser="r2-v1",
+        input_contract_version="r2-agent-safe-diagnostic-evidence-v2",
+        eligible_confidence_labels=("high",),
+        accepted=True,
+        reasons=(),
+    )
+
+
+def _history(case_id: str, source: str) -> dict:
+    return {
+        "case_id": case_id,
+        "period": "history",
+        "control_role": "positive",
+        "expected_r2_failure_class": "unsupported_construct",
+        "expected_r2_entry_boundary": "unknown_or_mixed_review",
+        "deterministic_repair_expected": False,
+        "outcome_observed": False,
+        "hashes": {"source": source},
+    }
+
+
+class R5HistoryAcquisitionTests(unittest.TestCase):
+    def test_history_selection_keeps_future_outcomes_out(self):
+        manifest = {
+            "cases": [
+                _history("h2", "2" * 64),
+                {
+                    "case_id": "future",
+                    "period": "future",
+                    "outcome_observed": False,
+                },
+                _history("h1", "1" * 64),
+            ]
+        }
+        selected = MODULE._history_cases(manifest)
+        self.assertEqual([item["case_id"] for item in selected], ["h1", "h2"])
+
+    def test_history_manifest_freezes_bounded_a2_only_acquisition(self):
+        contracts = {
+            "repository": {"head": "a" * 40},
+            "file_hashes": {
+                "adapter_manifest": "a" * 64,
+                "protocol_audit": "b" * 64,
+                "calibration_bundle": "c" * 64,
+            },
+            "certificate": _certificate(),
+            "cases": (
+                _history("h1", "1" * 64),
+                _history("h2", "2" * 64),
+            ),
+        }
+        manifest = MODULE.build_history_manifest(
+            contracts,
+            max_attempts_per_case=3,
+        )
+        self.assertEqual(manifest["arm"], "A2")
+        self.assertEqual(manifest["entrypoint"], "refactor")
+        self.assertEqual(manifest["provider_call_upper_bound"], 18)
+        self.assertEqual(manifest["vitis_launch_upper_bound"], 36)
+        self.assertFalse(manifest["future_outcomes_observed"])
+        unsigned = dict(manifest)
+        digest = unsigned.pop("manifest_sha256")
+        self.assertEqual(digest, MODULE._canonical_sha256(unsigned))
+
+    def test_positive_episode_is_read_back_from_file(self):
+        with tempfile.TemporaryDirectory() as root:
+            episode = R5EpisodeEnvelope(
+                episode_kind="r4_repair",
+                episode_id="episode-1",
+                payload_schema_version="r5-repair-episode-v1",
+                payload={"outcome_reason": "accepted"},
+                execution_identity_sha256="1" * 64,
+                source_sha256="2" * 64,
+                context_signature="3" * 64,
+                created_at="2026-09-19T00:00:00Z",
+                observed_at="2026-09-19T00:00:00Z",
+                lineage=("diagnostic-1",),
+                agent_safe_summary={
+                    "failure_family": "unsupported_construct",
+                    "stage": "csynth",
+                    "owner": "candidate",
+                    "false_repair": False,
+                    "unsafe_scope": False,
+                    "critical_safety_violation": False,
+                },
+                outcome=R5EpisodeOutcome.VERIFIED_POSITIVE,
+                manifest_sha256="4" * 64,
+            )
+            path = Path(root) / "episode.json"
+            path.write_text(
+                json.dumps(episode.to_dict(), sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            observation = {
+                "status": "verified_positive",
+                "integration": {
+                    "episode_path": str(path),
+                    "main_result_unchanged": True,
+                },
+            }
+            loaded = MODULE.verify_positive_observation(
+                observation,
+                source_sha256="2" * 64,
+                manifest_sha256="4" * 64,
+            )
+            self.assertEqual(loaded.envelope_sha256, episode.envelope_sha256)
+
+    def test_non_positive_history_fails_closed(self):
+        with self.assertRaisesRegex(
+            MODULE.HistoryAcquisitionError,
+            "did not produce verified_positive",
+        ):
+            MODULE.verify_positive_observation(
+                {"status": "abstained"},
+                source_sha256="2" * 64,
+                manifest_sha256="4" * 64,
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

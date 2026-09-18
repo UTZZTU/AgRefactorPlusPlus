@@ -108,3 +108,25 @@ preflight. The superseding audit status is `blocked_history_acquisition` at
 `3a0b3eff7c515e4f372c01424ce613912189fc810e172597f87c57f366f9aae6`.
 The old audit remains immutable but no longer authorizes the next step. This
 correction consumed zero Provider calls and zero Vitis launches.
+
+## Calibration-Compatible V2 Dataset Boundary
+
+The v2 plan freezes two real history positives (`Exception_E2_Filter` and
+`Recursive_E2_DFS`) and a disjoint future set containing one positive and one
+inapplicable-or-confusable control. All positive cases are inside the accepted
+legacy certificate's narrow `unsupported_construct` scope. Public and Hidden
+adapters compare the generated Candidate against the checked-in reference
+source; no expected result was invented.
+
+The adapter freeze and independent protocol audit passed without Provider or
+Vitis calls. The authoritative file hashes are recorded in
+`V2_3_STATE.json`. The audit status is `ready_for_history_acquisition`, while
+`R5_REAL_CAMPAIGN_ALLOWED` remains false.
+
+The history driver calls the ordinary `refactor` entrypoint internally, then
+uses the real Provider-backed R2 advisor and existing R4 controller in A2. It
+does not add a product CLI or a second Vitis path. Runtime context signatures
+are bound only after the real baseline produces its deterministic diagnostic;
+they are not guessed from the benchmark. The predeclared history sub-budget is
+18 Provider calls and 36 Vitis launches, including up to three fail-closed
+attempts for each of the two independent sources.

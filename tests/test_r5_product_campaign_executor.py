@@ -162,6 +162,42 @@ class R5ProductCampaignExecutorTests(unittest.TestCase):
             self.assertEqual(forked.responses, ())
             self.assertEqual(forked.results, ())
 
+    def test_history_capture_binds_observed_context_before_arm_execution(self):
+        with tempfile.TemporaryDirectory() as root:
+            capture = self._capture(root)
+            executor = ExistingRefactorR5CampaignExecutor(
+                artifact_root=Path(root) / "history",
+                baseline_runner=lambda *args: self.fail(
+                    "history adoption must not launch a second baseline"
+                ),
+                advisor_factory=lambda captured, arm, context: _BudgetedAdvisor(
+                    context
+                ),
+                integration_factory=lambda captured, arm, context, episodes, model_adapter: _Integration(
+                    arm, context
+                ),
+            )
+
+            case, baseline = executor.adopt_history_common_baseline(
+                case_id="history-case",
+                source_sha256=capture.source_sha256,
+                repeat=1,
+                capture=capture,
+            )
+
+            self.assertEqual(case.period, "history")
+            self.assertEqual(case.context_signature, capture.context_signature)
+            self.assertEqual(baseline["baseline_id"], capture.baseline_id)
+            observation = executor.run_arm(
+                case=case,
+                repeat=1,
+                arm=R5Arm.A2,
+                baseline=baseline,
+                arm_index=0,
+            )
+            self.assertEqual(observation["status"], "verified_positive")
+            self.assertEqual(observation["source_sha256"], capture.source_sha256)
+
     def test_all_arms_consume_one_capture_with_isolated_usage(self):
         with tempfile.TemporaryDirectory() as root:
             capture = self._capture(root)

@@ -174,6 +174,43 @@ class ExistingRefactorR5CampaignExecutor:
         if common_root.exists():
             raise R5CampaignError("common baseline root already exists")
         capture = self._baseline_runner(case, repeat, common_root)
+        return self._register_common_baseline(case, repeat, capture)
+
+    def adopt_history_common_baseline(
+        self,
+        *,
+        case_id: str,
+        source_sha256: str,
+        repeat: int,
+        capture: R5CommonBaselineCapture,
+    ) -> tuple[R5CaseSpec, Mapping[str, Any]]:
+        """Register a real history capture whose context is observed at runtime.
+
+        Future campaign contexts are frozen before execution.  A history
+        acquisition context cannot be known until the ordinary ``refactor``
+        baseline has produced its deterministic diagnostic event, so this
+        method binds the observed context without weakening the source hash or
+        common-baseline checks used by the paired executor.
+        """
+
+        if not isinstance(capture, R5CommonBaselineCapture):
+            raise TypeError("capture must be R5CommonBaselineCapture")
+        case = R5CaseSpec(
+            case_id=case_id,
+            source_sha256=source_sha256,
+            context_signature=capture.context_signature,
+            period="history",
+        )
+        return case, self._register_common_baseline(case, repeat, capture)
+
+    def _register_common_baseline(
+        self,
+        case: R5CaseSpec,
+        repeat: int,
+        capture: R5CommonBaselineCapture,
+    ) -> Mapping[str, Any]:
+        pair_root = self._pair_root(case, repeat)
+        common_root = pair_root / "common"
         if not isinstance(capture, R5CommonBaselineCapture):
             raise TypeError("baseline_runner must return R5CommonBaselineCapture")
         if (
