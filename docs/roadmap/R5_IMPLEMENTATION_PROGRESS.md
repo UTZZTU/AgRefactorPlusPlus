@@ -192,3 +192,22 @@ so that a data-insufficient case is preserved without aborting discovery of
 the remaining pre-frozen history case. This revision may not inject a defect,
 forge an episode, read future outcomes, or treat a checked-in legacy Candidate
 as valid R5 evidence without an explicit provenance and product-path design.
+
+The continuation implementation now classifies an accepted baseline with no
+Diagnostic Event as `accepted_without_diagnostic`, charges only authoritative
+actual usage, and preserves it as data-insufficient rather than invoking R2 or
+R4. It continues across frozen history cases and emits
+`insufficient_history_evidence` unless two independent verified-positive R4
+episodes actually exist.
+
+A zero-call continuation audit passed at
+`/data/agrefactor_runs/r5_p3_history_continuation_audit_v1_5e9eca9`. It
+authorizes only the still-unobserved `Recursive_E2_DFS` history case, with a
+maximum of `33` Provider calls and `24` Vitis launches. The audit reserves the
+complete `60/72` future pilot, `120/144` future formal campaign, and 10% of
+the then-remaining global budget for recovery. Its file SHA-256 is
+`5ca2752b0950f84e0766ca96c8fb072e359c26e1203341fd4e7c9e47f6b8aa81`;
+its internal canonical hash is
+`7bca0ab9e5b9bf14c648293434e1c75bd28245d9586f5871a4d972313be52cf4`.
+It made zero Provider calls and zero Vitis launches and does not authorize a
+Trusted revision, future execution, R5 acceptance, or R6.
