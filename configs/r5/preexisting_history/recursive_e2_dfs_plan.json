@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "plan_id": "v2.3-r5-preexisting-history-recursive-e2-dfs-v1",
+  "status": "frozen_before_preexisting_candidate_outcome_observation",
+  "case_id": "Recursive_E2_DFS_preexisting_candidate",
+  "period": "history",
+  "control_role": "positive",
+  "failure_family": "unsupported_construct",
+  "reference_top": "process_top",
+  "candidate_top": "process_top_hls",
+  "paths": {
+    "reference": "src/hlsrewritter/Recursive_E2_DFS/kernel.cpp",
+    "legacy_candidate": "src/hlsrewritter/Recursive_E2_DFS/main.cpp",
+    "public_test": "configs/r5/preexisting_history/Recursive_E2_DFS/public.cpp",
+    "hidden_test": "configs/r5/preexisting_history/Recursive_E2_DFS/hidden.cpp"
+  },
+  "file_sha256s": {
+    "reference": "234a22a69143190b02fe8b65c55782539e26a09465fbb53be535fed796741da3",
+    "legacy_candidate": "33c011232a88496e9809a119d514beb20b3c5c979a10f35cd536f9479cb9c328",
+    "public_test": "c02bd5ce488785fd0bfcfcccbd557f7e2bf24f1742d0a808022ccb10585e3e38",
+    "hidden_test": "efe2ab773611ae5264c675f45007de5bb0695f0f3b495216605d5d53fcfd5b53"
+  },
+  "source_sha256": "234a22a69143190b02fe8b65c55782539e26a09465fbb53be535fed796741da3",
+  "legacy_candidate_sha256": "33c011232a88496e9809a119d514beb20b3c5c979a10f35cd536f9479cb9c328",
+  "symbol_isolation_version": "r5-historical-candidate-symbol-isolation-v1",
+  "symbol_isolation_map": [
+    {"source": "_NULL", "target": "r5_candidate_NULL"},
+    {"source": "Allocator", "target": "R5CandidateAllocator"},
+    {"source": "btnode", "target": "r5_candidate_btnode"},
+    {"source": "node", "target": "r5_candidate_node"},
+    {"source": "tree", "target": "r5_candidate_tree"},
+    {"source": "insert", "target": "r5_candidate_insert"},
+    {"source": "dfs_traverse", "target": "r5_candidate_dfs_traverse"},
+    {"source": "root", "target": "r5_candidate_root"},
+    {"source": "front", "target": "r5_candidate_front"},
+    {"source": "rear", "target": "r5_candidate_rear"},
+    {"source": "queue", "target": "r5_candidate_queue"},
+    {"source": "g_fallback", "target": "r5_candidate_fallback"},
+    {"source": "process_top", "target": "process_top_hls"}
+  ],
+  "isolated_candidate_sha256": "f0a309fcd3d1f51fe6f4f14be759f5232c8629952364eb7a6cdda16c0a5f7081",
+  "predecessor_import_result": "/data/agrefactor_runs/r5_p3_r4_predecessor_import_d617860/predecessor_import_result.json",
+  "predecessor_import_result_file_sha256": "7162230e3f342052d1ef2a0a583658643ae64001e28fbe913a09b497f5cd58d4",
+  "predecessor_source_sha256s": [
+    "ab13af723ba6d4ee3ff26cd61935720936eec3722b54893c267344081c3d5ecc"
+  ],
+  "calibration_bundle": "/data/agrefactor_runs/v23_r2_real_calibration_identity_v2_20260918/calibration_bundle.json",
+  "calibration_bundle_file_sha256": "d14947a09c4c4310017e53731eeafae184598d6612928eceebb01c5ce83ff516",
+  "calibration_certificate_id": "r2-calibration-87bc3a17b85a03ae7c323d7c4cf9bdbc",
+  "calibration_failure_class_scope": ["unsupported_construct"],
+  "legacy_candidate_provenance": {
+    "repository_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+    "authored_at": "2026-06-29T11:00:18-07:00",
+    "pre_r5": true
+  },
+  "execution_boundary": {
+    "product_entrypoints_unchanged": ["refactor", "optimize", "full"],
+    "research_script_only": true,
+    "validation_backend": "existing_candidate_repair_validation_orchestrator",
+    "r2_backend": "provider_backed_shadow_diagnostic_advisor",
+    "r4_backend": "existing_orchestrator_r5_integration_A2",
+    "second_vitis_flow_created": false,
+    "maximum_candidate_mutations": 1
+  },
+  "budget": {
+    "provider_calls_before": 93,
+    "vitis_launches_before": 33,
+    "provider_call_upper_bound": 2,
+    "vitis_launch_upper_bound": 6,
+    "provider_hard_cap": 500,
+    "vitis_hard_cap": 500
+  },
+  "future_holdout_case_ids": [
+    "Exception_E3_Turbo_Encoder",
+    "Pointer_E3_double_pointer"
+  ],
+  "legacy_candidate_outcome_observed": false,
+  "future_outcomes_observed": false,
+  "future_files_read_by_protocol": false,
+  "expected_outputs_invented": false,
+  "reference_top_is_oracle": true,
+  "symbol_isolation_is_not_a_repair": true,
+  "original_benchmark_files_mutated": false,
+  "trusted_revision_creation_allowed": false,
+  "r5_real_campaign_allowed": false,
+  "r5_accepted": false,
+  "r6_started": false
+}
