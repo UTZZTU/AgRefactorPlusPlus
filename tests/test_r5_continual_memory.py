@@ -50,7 +50,7 @@ def envelope(*, episode_id: str, outcome: R5EpisodeOutcome, observed_at: str = "
         context_signature=digest(context),
         created_at=observed_at,
         observed_at=observed_at,
-        lineage=(episode_id,),
+        lineage=(),
         agent_safe_summary={"failure_family": family, "stage": "csynth", "owner": "candidate"},
         outcome=outcome,
         manifest_sha256=digest("manifest"),
@@ -67,6 +67,60 @@ class R5LedgerTests(unittest.TestCase):
             self.assertEqual(store.get("e1").envelope_sha256, record.envelope_sha256)
             manifest = json.loads((Path(root) / "ledger_manifest.json").read_text())
             self.assertTrue(manifest["append_only"])
+
+    def test_restart_rejects_manifest_hash_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            store = AppendOnlyEpisodeLedger(root)
+            store.append(envelope(episode_id="e1", outcome=R5EpisodeOutcome.VERIFIED_POSITIVE))
+            manifest_path = Path(root) / "ledger_manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["record_ids"] = []
+            manifest_path.write_text(json.dumps(manifest))
+            with self.assertRaises(EpisodeLedgerError):
+                AppendOnlyEpisodeLedger(root)
+
+    def test_restart_accepts_external_lineage(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            value = envelope(episode_id="e1", outcome=R5EpisodeOutcome.VERIFIED_POSITIVE).to_dict()
+            value["lineage"] = ["missing-parent"]
+            value.pop("envelope_sha256", None)
+            value["envelope_sha256"] = R5EpisodeEnvelope.from_dict(value).envelope_sha256
+            (Path(root) / "e1.json").write_text(json.dumps(value))
+            restored = AppendOnlyEpisodeLedger(root)
+            self.assertEqual(restored.get("e1").lineage, ("missing-parent",))
+
+    def test_append_accepts_external_lineage_before_publish(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            store = AppendOnlyEpisodeLedger(root)
+            value = envelope(episode_id="e1", outcome=R5EpisodeOutcome.VERIFIED_POSITIVE).to_dict()
+            value["lineage"] = ["missing-parent"]
+            value.pop("envelope_sha256", None)
+            dangling = R5EpisodeEnvelope.from_dict(value)
+            store.append(dangling)
+            self.assertTrue((Path(root) / "e1.json").exists())
+
+    def test_append_rejects_self_lineage_before_publish(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            store = AppendOnlyEpisodeLedger(root)
+            value = envelope(episode_id="e1", outcome=R5EpisodeOutcome.VERIFIED_POSITIVE).to_dict()
+            value["lineage"] = ["e1"]
+            value.pop("envelope_sha256", None)
+            self_lineage = R5EpisodeEnvelope.from_dict(value)
+            with self.assertRaises(EpisodeLedgerError):
+                store.append(self_lineage)
+            self.assertFalse((Path(root) / "e1.json").exists())
+
+    def test_restart_accepts_shared_lineage_ancestor_dag(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            store = AppendOnlyEpisodeLedger(root)
+            store.append(envelope(episode_id="root", outcome=R5EpisodeOutcome.INCONCLUSIVE))
+            for episode_id, parents in (("left", ("root",)), ("right", ("root",))):
+                value = envelope(episode_id=episode_id, outcome=R5EpisodeOutcome.INCONCLUSIVE).to_dict()
+                value["lineage"] = list(parents)
+                value.pop("envelope_sha256", None)
+                store.append(R5EpisodeEnvelope.from_dict(value))
+            restored = AppendOnlyEpisodeLedger(root)
+            self.assertEqual(len(restored.records()), 3)
 
     def test_duplicate_changed_payload_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as root:

@@ -14,8 +14,10 @@ from datetime import datetime, timezone
 from enum import Enum
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import tempfile
 from typing import Any, Iterator
 
 
@@ -200,10 +202,14 @@ class AppendOnlyEpisodeLedger:
             if envelope.episode_id in self._index and self._index[envelope.episode_id] != envelope.envelope_sha256:
                 raise EpisodeLedgerError("duplicate episode id with changed payload")
             self._index[envelope.episode_id] = envelope.envelope_sha256
+        self._validate_manifest()
+        self._validate_lineage()
 
     def append(self, envelope: R5EpisodeEnvelope) -> Path:
         if not isinstance(envelope, R5EpisodeEnvelope):
             raise TypeError("envelope must be R5EpisodeEnvelope")
+        if envelope.episode_id in envelope.lineage:
+            raise EpisodeLedgerError("episode lineage contains itself")
         existing = self._index.get(envelope.episode_id)
         if existing is not None:
             if existing != envelope.envelope_sha256:
@@ -212,7 +218,7 @@ class AppendOnlyEpisodeLedger:
         path = self.root / f"{envelope.episode_id}.json"
         if path.exists():
             raise EpisodeLedgerError("episode path already exists")
-        path.write_text(json.dumps(envelope.to_dict(), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        self._write_exclusive(path, envelope.to_dict())
         self._index[envelope.episode_id] = envelope.envelope_sha256
         self._write_manifest()
         return path
@@ -246,7 +252,91 @@ class AppendOnlyEpisodeLedger:
             "append_only": True,
         }
         payload["manifest_sha256"] = canonical_sha256(payload)
-        (self.root / "ledger_manifest.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        self._write_atomic(self.root / "ledger_manifest.json", payload)
+
+    @staticmethod
+    def _write_exclusive(path: Path, value: Mapping[str, Any]) -> None:
+        """Create one record without allowing a concurrent append to replace it."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        encoded = (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
+        try:
+            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        except FileExistsError as exc:
+            raise EpisodeLedgerError("episode path already exists") from exc
+        try:
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except Exception:
+            path.unlink(missing_ok=True)
+            raise
+
+    @staticmethod
+    def _write_atomic(path: Path, value: Mapping[str, Any]) -> None:
+        """Publish a derived manifest only after a complete fsync'd write."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent,
+            prefix=f".{path.name}.", suffix=".tmp", delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            json.dump(value, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.replace(temporary, path)
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise
+
+    def _validate_manifest(self) -> None:
+        path = self.root / "ledger_manifest.json"
+        if not path.exists():
+            if self._index:
+                self._write_manifest()
+            return
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            raise EpisodeLedgerError("invalid ledger manifest") from exc
+        if not isinstance(value, Mapping):
+            raise EpisodeLedgerError("ledger manifest must be an object")
+        stored = value.get("manifest_sha256")
+        unsigned = {key: item for key, item in value.items() if key != "manifest_sha256"}
+        if stored != canonical_sha256(unsigned):
+            raise EpisodeLedgerError("ledger manifest hash mismatch")
+        if value.get("append_only") is not True:
+            raise EpisodeLedgerError("ledger manifest is not append-only")
+        ids = value.get("record_ids")
+        hashes = value.get("record_hashes")
+        if ids != sorted(self._index) or hashes != [self._index[item] for item in sorted(self._index)]:
+            raise EpisodeLedgerError("ledger manifest does not match records")
+
+    def _validate_lineage(self) -> None:
+        records = {record.episode_id: record for record in self.records()}
+        for record in records.values():
+            if record.episode_id in record.lineage:
+                raise EpisodeLedgerError("episode lineage contains itself")
+        state: dict[str, int] = {}
+
+        def visit(episode_id: str) -> None:
+            marker = state.get(episode_id, 0)
+            if marker == 1:
+                raise EpisodeLedgerError("episode lineage contains a cycle")
+            if marker == 2:
+                return
+            state[episode_id] = 1
+            for parent in records[episode_id].lineage:
+                # Lineage may include agent-safe evidence from another ledger;
+                # only traverse records owned by this ledger for cycle checks.
+                if parent in records:
+                    visit(parent)
+            state[episode_id] = 2
+
+        for episode_id in records:
+            visit(episode_id)
 
 
 __all__ = [
