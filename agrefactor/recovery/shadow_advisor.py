@@ -143,9 +143,31 @@ def _canonical_sha256(value: Any) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-_SHADOW_OUTPUT_CONTRACT_VERSION = "r2-shadow-output-v3"
+_SHADOW_OUTPUT_CONTRACT_VERSION = "r2-shadow-output-v4"
 _SHADOW_INPUT_CONTRACT_VERSION = "r2-agent-safe-diagnostic-evidence-v2"
 _SHADOW_STRICT_PARSER = "r2-v1"
+_ADVISORY_FAILURE_CLASSES = (
+    "invalid_input",
+    "invalid_configuration",
+    "forbidden_dependency",
+    "undeclared_type",
+    "undeclared_symbol",
+    "syntax_error",
+    "link_error",
+    "linkage_mismatch",
+    "functional_mismatch",
+    "runtime_crash",
+    "timeout",
+    "unsupported_construct",
+    "unknown_bound",
+    "pipeline_dependency",
+    "memory_port_contention",
+    "timing_violation",
+    "resource_limit",
+    "toolchain_failure",
+    "budget_exhausted",
+    "unknown",
+)
 
 
 def _shadow_output_contract(
@@ -165,8 +187,7 @@ def _shadow_output_contract(
             },
             "suspected_failure_class": {
                 "type": "string",
-                "pattern": _FAILURE_CLASS.pattern,
-                "maxLength": 160,
+                "enum": list(_ADVISORY_FAILURE_CLASSES),
             },
             "evidence_refs": {
                 "type": "array",
@@ -547,6 +568,7 @@ def _strict_result(
     if (
         not isinstance(failure_class, str)
         or _FAILURE_CLASS.fullmatch(failure_class.strip().casefold()) is None
+        or failure_class.strip().casefold() not in _ADVISORY_FAILURE_CLASSES
     ):
         raise ShadowOutputRejected("failure_class_invalid")
     try:

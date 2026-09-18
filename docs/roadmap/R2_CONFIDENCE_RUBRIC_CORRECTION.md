@@ -34,12 +34,17 @@ eligibility. Evidence completeness alone does not imply `high`.
 
 ## Contract and authority boundary
 
-The prompt/output contract version advances from `r2-shadow-output-v2` to
-`r2-shadow-output-v3`. Any calibration certificate or advisory bound to v2
-must fail verification after this correction. The JSON output schema and
-strict parser remain otherwise unchanged.
+The confidence-rubric correction originally advanced the contract from
+`r2-shadow-output-v2` to v3. Before real calibration, the adjacent
+failure-class audit found that an unconstrained free-form class string made
+exact macro-F1 depend on synonyms rather than diagnostic quality. The contract
+therefore advances once more to `r2-shadow-output-v4` and constrains the class
+to the repository's existing generic `FeedbackCategory` taxonomy. This is a
+category-level vocabulary, not a list of Vitis message IDs; unseen diagnostics
+can still map to a generic class or safely abstain. Any certificate bound to
+v3 or earlier must fail verification.
 
-R2 remains shadow-only and default-off. A v3 `high` remains an untrusted model
+R2 remains shadow-only and default-off. A v4 `high` remains an untrusted model
 label until a frozen real calibration split and acceptance policy produce an
 accepted content-addressed certificate. R3 Gate, RecoveryPolicy, budget,
 ledger, full revalidation, and independent audit remain required after that

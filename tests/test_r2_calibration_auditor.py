@@ -50,7 +50,7 @@ def calibration_bundle():
             "bounded_repair_intent": "repair candidate only",
             "metadata": {
                 "strict_parser": "r2-v1",
-                "prompt_contract_version": "r2-shadow-output-v3",
+                "prompt_contract_version": "r2-shadow-output-v4",
                 "bounded_repair_intent_executed": False,
             },
         }

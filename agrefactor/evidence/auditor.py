@@ -140,7 +140,7 @@ _STAGE_EQUIVALENTS = {
 }
 
 _R2_CALIBRATION_CONTRACTS = {
-    "prompt_contract_version": "r2-shadow-output-v3",
+    "prompt_contract_version": "r2-shadow-output-v4",
     "strict_parser": "r2-v1",
     "input_contract_version": "r2-agent-safe-diagnostic-evidence-v2",
 }

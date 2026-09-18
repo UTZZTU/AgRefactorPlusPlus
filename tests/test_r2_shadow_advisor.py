@@ -58,7 +58,7 @@ def event(**overrides) -> DiagnosticEvent:
         "validation_id": "validation-r2",
         "stage": "public_evaluation",
         "owner": "unknown",
-        "failure_classes": ("runtime_mismatch",),
+        "failure_classes": ("functional_mismatch",),
         "severities": ("error",),
         "route_action": "review_unknown",
         "repair_scope": "none_abstain",
@@ -85,7 +85,7 @@ def event(**overrides) -> DiagnosticEvent:
             {
                 "evidence_ref": "feedback-r2",
                 "stage": "public_evaluation",
-                "category": "runtime_mismatch",
+                "category": "functional_mismatch",
                 "severity": "error",
                 "owner": "unknown",
                 "summary": "Public output differs from the reference",
@@ -102,7 +102,7 @@ def event(**overrides) -> DiagnosticEvent:
 def valid_output(**overrides) -> str:
     values = {
         "suspected_owner": "candidate",
-        "suspected_failure_class": "runtime_mismatch",
+        "suspected_failure_class": "functional_mismatch",
         "evidence_refs": ["report-r2"],
         "repair_scope": "candidate_only",
         "confidence": "medium",
@@ -145,7 +145,7 @@ class StaticAdvisor:
         self.calls += 1
         return DiagnosticAdvisory(
             suspected_owner=AdvisoryOwner.CANDIDATE,
-            suspected_failure_class="runtime_mismatch",
+            suspected_failure_class="functional_mismatch",
             evidence_refs=(request.evidence_ids[0],),
             repair_scope=AdvisoryRepairScope.CANDIDATE_ONLY,
             confidence=AdvisoryConfidence.MEDIUM,
@@ -455,6 +455,14 @@ class R2ShadowAdvisorTests(unittest.TestCase):
             contract["properties"]["evidence_refs"]["items"]["enum"],
             ["report-r2", "feedback-r2"],
         )
+        self.assertIn(
+            "functional_mismatch",
+            contract["properties"]["suspected_failure_class"]["enum"],
+        )
+        self.assertIn(
+            "unsupported_construct",
+            contract["properties"]["suspected_failure_class"]["enum"],
+        )
         self.assertEqual(envelope["evidence"]["event_id"], "diagnostic-r2-test")
         self.assertEqual(
             envelope["evidence"]["diagnostic_items"][0]["evidence_ref"],
@@ -477,11 +485,11 @@ class R2ShadowAdvisorTests(unittest.TestCase):
         self.assertEqual(result.metadata["prompt_contract_sha256"], digest)
         self.assertEqual(
             model_request.metadata["prompt_contract_version"],
-            "r2-shadow-output-v3",
+            "r2-shadow-output-v4",
         )
         self.assertEqual(
             result.metadata["prompt_contract_version"],
-            "r2-shadow-output-v3",
+            "r2-shadow-output-v4",
         )
 
         rubric = contract["confidence_rubric"]
@@ -531,6 +539,9 @@ class R2ShadowAdvisorTests(unittest.TestCase):
                 suspected_owner="testbench", repair_scope="testbench_only"
             ),
             "invalid_enum": valid_output(confidence="certain"),
+            "unregistered_failure_class": valid_output(
+                suspected_failure_class="invented_recursion_label"
+            ),
         }
         for name, response in cases.items():
             with self.subTest(name=name):
@@ -703,7 +714,7 @@ class R2ShadowAdvisorTests(unittest.TestCase):
         advisory = dict(records[0]["advisory"])
         advisory["metadata"] = {
             "strict_parser": "r2-v1",
-            "prompt_contract_version": "r2-shadow-output-v3",
+            "prompt_contract_version": "r2-shadow-output-v4",
         }
         verification = verify_calibrated_advisory(
             certificate,

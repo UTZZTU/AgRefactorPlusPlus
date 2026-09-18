@@ -45,7 +45,7 @@ def calibration_certificate() -> CalibrationCertificate:
         report_sha256=h("report"),
         policy_sha256=h("policy"),
         provider_identity_sha256=canonical_h(PROVIDER_IDENTITY),
-        prompt_contract_version="r2-shadow-output-v3",
+        prompt_contract_version="r2-shadow-output-v4",
         strict_parser="r2-v1",
         input_contract_version="r2-agent-safe-diagnostic-evidence-v2",
         eligible_confidence_labels=("high",),
@@ -70,7 +70,7 @@ class StaticAdvisor:
     def diagnose(self, request):
         from agrefactor.recovery import AdvisoryConfidence, AdvisoryOwner, AdvisoryRepairScope, DiagnosticAdvisory
         self.calls += 1
-        return DiagnosticAdvisory(suspected_owner=AdvisoryOwner.CANDIDATE, suspected_failure_class="unknown_candidate_failure", evidence_refs=(request.evidence_ids[0],), repair_scope=AdvisoryRepairScope.CANDIDATE_ONLY, confidence=AdvisoryConfidence.HIGH, metadata={"strict_parser": "r2-v1", "prompt_contract_version": "r2-shadow-output-v3"})
+        return DiagnosticAdvisory(suspected_owner=AdvisoryOwner.CANDIDATE, suspected_failure_class="unsupported_construct", evidence_refs=(request.evidence_ids[0],), repair_scope=AdvisoryRepairScope.CANDIDATE_ONLY, confidence=AdvisoryConfidence.HIGH, metadata={"strict_parser": "r2-v1", "prompt_contract_version": "r2-shadow-output-v4"})
 
 
 class Mutation:
