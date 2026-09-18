@@ -95,5 +95,41 @@
     "model_success_authority": false,
     "independent_audit_required": true,
     "r4_acceptance_requires_manual_checkpoint": true
+  },
+  "accepted_certificate": {
+    "accepted": true,
+    "certificate_id": "r2-calibration-87bc3a17b85a03ae7c323d7c4cf9bdbc",
+    "evidence_root": "/data/agrefactor_runs/v23_r2_real_calibration_identity_v2_20260918",
+    "calibration_bundle_sha256": "d14947a09c4c4310017e53731eeafae184598d6612928eceebb01c5ce83ff516",
+    "independent_audit_sha256": "1469d7c37b0d5f46601f295cc7bb19a9985517d4a6c0211613cd13497e2ab69c",
+    "independent_audit_status": "clean",
+    "provider_identity": {
+      "provider": "openai-compatible",
+      "model": "deepseek-flash",
+      "family": "deepseek",
+      "base_url": "https://api.deepseek.com",
+      "request_parameters": {
+        "max_tokens": 4096,
+        "response_format": {
+          "type": "json_object"
+        },
+        "seed": 23,
+        "temperature": 0.0
+      }
+    },
+    "provider_calls": 16,
+    "vitis_launches": 0,
+    "qualification_records_reused_read_only": 32,
+    "provider_results_reused": false,
+    "metrics": {
+      "total": 16,
+      "covered": 14,
+      "coverage": 0.875,
+      "high_confidence_total": 6,
+      "high_confidence_errors": 0,
+      "selective_risk": 0.0,
+      "unsafe_scope_rate": 0.0,
+      "citation_validity": 1.0
+    }
   }
 }

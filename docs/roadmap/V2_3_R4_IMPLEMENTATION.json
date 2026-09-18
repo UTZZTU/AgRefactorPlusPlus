@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "stage": "V2.3-R4-implementation",
-  "implementation_status": "implemented_pending_external_validation",
-  "acceptance": false,
+  "implementation_status": "accepted_real_canary_independent_audit_and_manual_checkpoint",
+  "acceptance": true,
   "product_code_changes": true,
   "package_self_acceptance": false,
   "r4_controller": "agrefactor/recovery/gated_candidate_repair.py",
@@ -14,7 +14,25 @@
   "independent_auditor_required": true,
   "provider_calls_by_apply_package": 0,
   "vitis_launches_by_apply_package": 0,
-  "next_step": "V2.3-R4-external-validation",
+  "external_acceptance": {
+    "decision_record": "docs/roadmap/R4_REAL_CANARY_ACCEPTANCE.md",
+    "implementation_base_head": "2e5971b0b74f7557870fc46b23f8ed5389d1685b",
+    "package_version": "1.6",
+    "evidence_root": "/data/package_d_v1_6_r4_evidence_run1",
+    "evidence_archive_sha256": "41f24168856b18683ee47c6285bf925cc48ddea97e369a440af38fd780d26703",
+    "independent_audit_status": "ready_for_manual_checkpoint",
+    "manual_checkpoint": "accepted",
+    "critical_finding_count": 0,
+    "environmental_finding_count": 0,
+    "baseline_run_count": 3,
+    "canary_run_count": 3,
+    "verified_positive_canary_count": 2,
+    "safe_selective_abstention_count": 1,
+    "provider_calls": 5,
+    "vitis_launches": 20,
+    "git_history_mutations": 0
+  },
+  "next_step": "V2.3-R5-campaign-design",
   "r3_temporal_memory_efficacy_established": false,
   "r3_temporal_efficacy_evidence_owner": "V2.3-R5 paired time-ordered evaluation"
 }
