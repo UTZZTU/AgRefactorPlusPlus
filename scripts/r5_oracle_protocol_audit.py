@@ -264,8 +264,14 @@ def build_audit(
         failure_class = raw.get("expected_r2_failure_class")
         entry_boundary = raw.get("expected_r2_entry_boundary")
         deterministic_expected = raw.get("deterministic_repair_expected")
-        syntax_check = _host_syntax_check(repository, paths["legacy_candidate"])
-        if not isinstance(failure_class, str) or failure_class not in calibration_scope:
+        syntax_check = _host_syntax_check(repository, paths["source"])
+        if (
+            raw.get("control_role") == "positive"
+            and (
+                not isinstance(failure_class, str)
+                or failure_class not in calibration_scope
+            )
+        ):
             admission_issues.append({
                 "case_id": str(case_id),
                 "code": "failure_class_outside_calibration_scope",
@@ -302,7 +308,7 @@ def build_audit(
                 "expected_r2_failure_class": failure_class,
                 "expected_r2_entry_boundary": entry_boundary,
                 "deterministic_repair_expected": deterministic_expected,
-                "host_syntax_preflight": syntax_check,
+                "reference_source_host_syntax_preflight": syntax_check,
             }
         )
 

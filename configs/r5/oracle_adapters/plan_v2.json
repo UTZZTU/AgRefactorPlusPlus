@@ -1,0 +1,81 @@
+{
+  "schema_version": 2,
+  "plan_id": "v2.3-r5-reference-oracle-adapters-v2",
+  "frozen_at": "2026-09-19T08:30:00Z",
+  "status": "predeclared_before_outcome_observation",
+  "primary_failure_family": "unsupported_construct",
+  "candidate_top_suffix": "_hls",
+  "cases": [
+    {
+      "case_id": "Exception_E2_Filter",
+      "period": "history",
+      "control_role": "positive",
+      "source": "src/hlsrewritter/Exception_E2_Filter/kernel.cpp",
+      "legacy_candidate": "src/hlsrewritter/Exception_E2_Filter/main.cpp",
+      "legacy_testbench": "src/hlsrewritter/Exception_E2_Filter/tb.cpp",
+      "top": "run",
+      "public_test": "configs/r5/oracle_adapters/Exception_E2_Filter/public.cpp",
+      "hidden_test": "configs/r5/oracle_adapters/Exception_E2_Filter/hidden.cpp",
+      "prior_evidence": "pre-R5 Catapult-specific candidate and compile defect; reference source is host-syntax clean",
+      "expected_r2_failure_class": "unsupported_construct",
+      "expected_r2_entry_boundary": "unknown_or_mixed_review",
+      "deterministic_repair_expected": false
+    },
+    {
+      "case_id": "Recursive_E2_DFS",
+      "period": "history",
+      "control_role": "positive",
+      "source": "src/hlsrewritter/Recursive_E2_DFS/kernel.cpp",
+      "legacy_candidate": "src/hlsrewritter/Recursive_E2_DFS/main.cpp",
+      "legacy_testbench": "src/hlsrewritter/Recursive_E2_DFS/tb.cpp",
+      "top": "process_top",
+      "public_test": "configs/r5/oracle_adapters/Recursive_E2_DFS/public.cpp",
+      "hidden_test": "configs/r5/oracle_adapters/Recursive_E2_DFS/hidden.cpp",
+      "prior_evidence": "pre-R5 source contains recursive insert and traversal unsupported by the target synthesis flow",
+      "expected_r2_failure_class": "unsupported_construct",
+      "expected_r2_entry_boundary": "unknown_or_mixed_review",
+      "deterministic_repair_expected": false
+    },
+    {
+      "case_id": "Exception_E3_Turbo_Encoder",
+      "period": "future",
+      "control_role": "positive",
+      "source": "src/hlsrewritter/Exception_E3_Turbo_Encoder/kernel.cpp",
+      "legacy_candidate": "src/hlsrewritter/Exception_E3_Turbo_Encoder/main.cpp",
+      "legacy_testbench": "src/hlsrewritter/Exception_E3_Turbo_Encoder/tb.cpp",
+      "top": "regUpdate",
+      "public_test": "configs/r5/oracle_adapters/Exception_E3_Turbo_Encoder/public.cpp",
+      "hidden_test": "configs/r5/oracle_adapters/Exception_E3_Turbo_Encoder/hidden.cpp",
+      "prior_evidence": "pre-R5 candidate depends on unsupported Catapult types and has an unsafe register interface",
+      "expected_r2_failure_class": "unsupported_construct",
+      "expected_r2_entry_boundary": "unknown_or_mixed_review",
+      "deterministic_repair_expected": false
+    },
+    {
+      "case_id": "Pointer_E3_double_pointer",
+      "period": "future",
+      "control_role": "inapplicable_or_confusable",
+      "source": "src/hlsrewritter/Pointer_E3_double_pointer/kernel.cpp",
+      "legacy_candidate": "src/hlsrewritter/Pointer_E3_double_pointer/main.cpp",
+      "legacy_testbench": "src/hlsrewritter/Pointer_E3_double_pointer/tb.cpp",
+      "top": "trap",
+      "public_test": "configs/r5/oracle_adapters/Pointer_E3_double_pointer/public.cpp",
+      "hidden_test": "configs/r5/oracle_adapters/Pointer_E3_double_pointer/hidden.cpp",
+      "prior_evidence": "pre-R5 candidate is host-syntax clean and forms a confusable pointer control",
+      "expected_r2_failure_class": "not_applicable",
+      "expected_r2_entry_boundary": "inapplicable_or_confusable",
+      "deterministic_repair_expected": false
+    }
+  ],
+  "invariants": {
+    "expected_outputs_invented": false,
+    "reference_top_is_oracle": true,
+    "public_hidden_inputs_distinct": true,
+    "original_benchmark_files_mutated": false,
+    "history_future_roles_predeclared": true,
+    "outcomes_observed_at_freeze": false,
+    "hidden_model_visible": false,
+    "trusted_revision_creation_allowed": false,
+    "real_campaign_allowed": false
+  }
+}

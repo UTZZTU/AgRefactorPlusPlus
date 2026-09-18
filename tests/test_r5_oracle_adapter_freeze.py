@@ -130,6 +130,30 @@ class R5OracleAdapterFreezeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "expected R2 failure class"):
             MODULE.build_manifest(ROOT, plan)
 
+    def test_superseding_checked_plan_has_distinct_syntax_valid_adapters(self) -> None:
+        plan = json.loads(
+            (ROOT / "configs/r5/oracle_adapters/plan_v2.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        manifest = MODULE.build_manifest(ROOT, plan)
+        self.assertEqual(len(manifest["history_case_ids"]), 2)
+        self.assertEqual(len(manifest["future_case_ids"]), 2)
+        self.assertEqual(manifest["schema_version"], 2)
+        for record in manifest["cases"]:
+            for split in ("public_test", "hidden_test"):
+                subprocess.run(
+                    [
+                        "g++",
+                        "-std=c++17",
+                        "-fsyntax-only",
+                        str(ROOT / record["paths"][split]),
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
