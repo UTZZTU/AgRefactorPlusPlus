@@ -7,7 +7,7 @@
 `research-roadmap-v2.3`，实现基线为
 `2e5971b0b74f7557870fc46b23f8ed5389d1685b`。
 
-R0、R1-Safety/R1-Data、R2 和 R3 已有独立验收记录。R4 在 Package D v1.6 中取得两个真实 verified-positive canary 和一个经独立重算确认的安全拒答，并已于 2026-09-18 由项目负责人正式接受；R5/R6 尚未开始，Stage 4 未开放。下一步是冻结 R5 设计，旧状态和 acceptance block 只作为 historical/evidence-only 保留。
+R0、R1-Safety/R1-Data、R2 和 R3 已有独立验收记录。R4 在 Package D v1.6 中取得两个真实 verified-positive canary 和一个经独立重算确认的安全拒答，并已于 2026-09-18 由项目负责人正式接受。R5 已启动并冻结 continual-memory/A0-A6 设计，当前进入真实 evidence inventory；R5 尚未验收，R6 未开始，Stage 4 未开放。旧状态和 acceptance block 只作为 historical/evidence-only 保留。
 <!-- V2_3_CURRENT_AUTHORITY:END -->
 
 > **权威范围文档。** 后续开发、新对话、阶段验收与论文表述均以本文档为准。任何核心目标不得在没有明确决策记录、代码证据与文档更新的情况下被删除、弱化或偷换概念。

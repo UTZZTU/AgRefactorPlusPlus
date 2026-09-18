@@ -1,6 +1,6 @@
-## 当前 V2.3 权威状态（R4 implementation pending external validation）
+## 当前 V2.3 权威状态（R5 design frozen）
 
-R0-R3 已接受；R4 implementation 仍待真实外部验证。R5/R6 未开始，Stage 4 未开放。历史 acceptance 与真实 provider/Vitis 证据见下方 historical/evidence-only blocks。
+R0-R3 已接受；R4 已通过真实 canary、独立审计和项目负责人验收。R5 已启动并冻结设计，当前进入 evidence inventory；R5 尚未验收，R6 未开始，Stage 4 未开放。历史 acceptance 与真实 provider/Vitis 证据见下方 historical/evidence-only blocks。
 
 验收归档：`agrefactor_v23_r1_safety_data_comprehensive_v1_20260829T044722Z_2189779.tar.gz`；SHA256：`41337c668f049e533d2a12ad627cbb2fe5bbeeabb12e693992ccf155f3dd7732`。
 
@@ -9,15 +9,17 @@ R0-R3 已接受；R4 implementation 仍待真实外部验证。R5/R6 未开始�
 这里是仓库文档的统一入口。文档按“当前权威、未来实施、用户指南、验收证据、审计和历史”分类，避免把已经关闭的阶段计划误当成当前执行指针。
 
 <!-- V2_3_AUTHORITY:BEGIN -->
-## 当前 V2.3 权威入口（R4 implementation pending external validation）
+## 当前 V2.3 权威入口（R5 design frozen）
 
 1. [V2.3 独立研究路线](roadmap/RESEARCH_ROADMAP_V2_3.md)
 2. [V2.3 机器可读状态](roadmap/V2_3_STATE.json)
 3. [V2.3 权威索引](roadmap/V2_3_AUTHORITY_INDEX.json)
 4. [当前项目状态](roadmap/PROJECT_STATE.md)
 5. [开发路线入口](roadmap/ROADMAP.md)
+6. [R5 continual-memory campaign 设计](roadmap/R5_CONTINUAL_MEMORY_CAMPAIGN_DESIGN.md)
+7. [R5 机器可读设计合同](roadmap/V2_3_R5_DESIGN.json)
 
-当前实现基线为 `a7d1c46072e8bc6f7e8d6b368f6d472b50d790a7`。R0-R3 已接受；R4 implementation 仍待真实外部验证；R5/R6 未开始；Stage 4 不允许。下方旧 acceptance block 只保留为历史证据。
+当前 R4 已验收实现基线为 `2e5971b0b74f7557870fc46b23f8ed5389d1685b`，R5 设计基线为 `03313195dda0612e80f8b57213c267a3694ad7d1`。R5 已启动且设计已冻结，但尚未验收；R6 未开始；Stage 4 不允许。下方旧 acceptance block 只保留为历史证据。
 <!-- V2_3_AUTHORITY:END -->
 
 ## 当前权威阅读顺序

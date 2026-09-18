@@ -14,10 +14,13 @@ R3_ACCEPTED=true
 R2_REAL_CALIBRATION_STATUS=accepted_identity_complete_independent_audit
 R4_IMPLEMENTATION_STATUS=accepted_real_canary_independent_audit_and_project_owner_acceptance
 R4_ACCEPTED=true
-R5_STARTED=false
+R5_STARTED=true
+R5_DESIGN_STATUS=frozen_for_implementation_not_accepted
+R5_DEFAULT_ENABLED=false
+R5_ACCEPTED=false
 R6_STARTED=false
 STAGE4_ALLOWED=false
-NEXT_STEP=V2.3-R5-design-freeze
+NEXT_STEP=V2.3-R5-evidence-inventory
 PACKAGE_SELF_ACCEPTANCE=false
 ```
 <!-- V2_3_CURRENT_AUTHORITY_STATE:END -->

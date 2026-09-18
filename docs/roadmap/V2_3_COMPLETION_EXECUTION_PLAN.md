@@ -41,9 +41,11 @@ R2_ACCEPTED=true
 R3_ACCEPTED=true
 R4_ACCEPTED=true
 R4_IMPLEMENTATION_STATUS=accepted_real_canary_independent_audit_and_project_owner_acceptance
-R5_STARTED=false
+R5_STARTED=true
+R5_DESIGN_STATUS=frozen_for_implementation_not_accepted
+R5_DESIGN_BASE_HEAD=03313195dda0612e80f8b57213c267a3694ad7d1
 R6_STARTED=false
-NEXT_STEP=V2.3-R5-design-freeze
+NEXT_STEP=V2.3-R5-evidence-inventory
 ```
 
 ### 2.2 R4 可验收证据

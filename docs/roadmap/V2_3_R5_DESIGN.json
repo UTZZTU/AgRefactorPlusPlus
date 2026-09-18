@@ -1,0 +1,353 @@
+{
+  "schema_version": 1,
+  "contract_id": "v2.3-r5-continual-memory-campaign-v1",
+  "status": "frozen_for_implementation_not_accepted",
+  "design_base_head": "03313195dda0612e80f8b57213c267a3694ad7d1",
+  "design_document": "docs/roadmap/R5_CONTINUAL_MEMORY_CAMPAIGN_DESIGN.md",
+  "route": "V2.3",
+  "branch": "research-roadmap-v2.3",
+  "purpose": "Evaluate whether verified positive and negative repair experience can be accumulated, narrowed, quarantined, deprecated, and safely consumed in a time-ordered real refactor campaign.",
+  "scope": {
+    "primary_entrypoint": "refactor",
+    "composition_entrypoint": "full",
+    "supporting_entrypoint": "optimize",
+    "optimize_profile": "safe-v1",
+    "product_default_enabled": false,
+    "new_cli_allowed": false,
+    "second_vitis_flow_allowed": false,
+    "dynamic_v1_in_scope": false,
+    "model_weight_training_in_scope": false,
+    "r6_or_paper_writing_allowed": false
+  },
+  "fixed_safety_invariants": [
+    "only_refactor_optimize_full_product_entrypoints",
+    "deterministic_recovery_precedes_r2",
+    "r2_receives_only_agent_safe_public_unknown_or_review_evidence",
+    "candidate_only_ai_mutation",
+    "original_testbenches_target_and_configuration_immutable",
+    "hidden_evidence_never_model_visible",
+    "formal_validation_and_independent_audit_are_success_authorities",
+    "at_most_one_experimental_candidate_mutation_per_arm_run",
+    "failed_mutation_never_replaces_best_correct",
+    "shared_policy_ledger_budget_identity_provenance_and_kill_switch",
+    "critical_safety_violation_stops_campaign_and_quarantines_revision"
+  ],
+  "schemas": {
+    "episode_envelope": {
+      "version": "r5-episode-envelope-v1",
+      "immutable": true,
+      "episode_kinds": [
+        "r3_shadow",
+        "r4_repair"
+      ],
+      "required_fields": [
+        "schema_version",
+        "episode_kind",
+        "episode_id",
+        "payload_schema_version",
+        "payload_sha256",
+        "execution_identity_sha256",
+        "source_sha256",
+        "context_signature",
+        "created_at",
+        "observed_at",
+        "lineage",
+        "agent_safe_summary",
+        "outcome",
+        "manifest_sha256"
+      ],
+      "invalidating_conditions": [
+        "duplicate_id_with_changed_payload",
+        "invalid_canonical_hash",
+        "incomplete_identity",
+        "future_or_source_leakage",
+        "hidden_or_secret_content",
+        "raw_provider_response",
+        "private_reasoning"
+      ]
+    },
+    "pattern_revision": {
+      "version": "r5-pattern-revision-v1",
+      "immutable": true,
+      "content_addressed": true,
+      "required_fields": [
+        "revision_id",
+        "parent_revision_id",
+        "revision_sha256",
+        "failure_family",
+        "stage",
+        "owner",
+        "supported_when",
+        "avoid_when",
+        "exact_exclusions",
+        "required_evidence",
+        "positive_episode_refs",
+        "negative_episode_refs",
+        "calibration_refs",
+        "memory_payload_manifest_sha256",
+        "lifecycle",
+        "transition_reason",
+        "threshold_source",
+        "created_at"
+      ]
+    },
+    "memory_payload": {
+      "version": "r5-memory-payload-v1",
+      "candidate_only": true,
+      "required_fields": [
+        "schema_version",
+        "snippet_id",
+        "revision_id",
+        "revision_sha256",
+        "snapshot_sha256",
+        "repair_intent_or_recipe",
+        "supported_when",
+        "avoid_when",
+        "candidate_only_scope",
+        "source_episode_hashes",
+        "evidence_refs",
+        "payload_sha256"
+      ],
+      "forbidden_content": [
+        "hidden_evidence",
+        "testbench_mutation_instruction",
+        "original_mutation_instruction",
+        "target_or_configuration_mutation_instruction",
+        "future_outcome",
+        "raw_provider_response",
+        "private_reasoning",
+        "success_assertion"
+      ]
+    },
+    "snapshot": {
+      "version": "r5-memory-snapshot-v1",
+      "immutable": true,
+      "history_only": true,
+      "required_bindings": [
+        "selected_revision_hashes",
+        "rejected_revision_hashes",
+        "lifecycle_policy_sha256",
+        "evidence_inventory_sha256",
+        "exact_exclusions",
+        "conflict_sparsity_ood_facts",
+        "latest_allowed_timestamp"
+      ]
+    }
+  },
+  "outcome_eligibility": {
+    "verified_positive_requires": [
+      "legal_authorization",
+      "changed_candidate",
+      "fresh_required_formal_validation",
+      "semantic_preservation",
+      "complete_identity",
+      "clean_independent_audit"
+    ],
+    "verified_negative_additionally_requires": [
+      "attributable_failure",
+      "provider_toolchain_environment_identity_and_infrastructure_causes_excluded"
+    ],
+    "non_promoting_outcomes": [
+      "abstained",
+      "inconclusive",
+      "invalid_evidence"
+    ]
+  },
+  "lifecycle_policy": {
+    "version": "r5-lifecycle-v1",
+    "independent_context_requires": [
+      "distinct_source_sha256",
+      "distinct_context_signature"
+    ],
+    "provisional": {
+      "minimum_verified_positive": 1,
+      "minimum_independent_sources": 1,
+      "minimum_independent_contexts": 1,
+      "maximum_false_repair_rate": 0.0,
+      "maximum_unsafe_scope_rate": 0.0,
+      "citation_validity": 1.0
+    },
+    "trusted": {
+      "minimum_verified_positive": 2,
+      "minimum_independent_sources": 2,
+      "minimum_independent_contexts": 2,
+      "accepted_r2_calibration_required": true,
+      "maximum_attributable_negative_rate": 0.2,
+      "maximum_false_repair_rate": 0.0,
+      "maximum_unsafe_scope_rate": 0.0,
+      "citation_validity": 1.0
+    },
+    "quarantine": {
+      "critical_safety_event": "immediate",
+      "attributable_negatives_in_window": 2,
+      "window_size": 5,
+      "negative_rate_threshold": 0.25,
+      "negative_rate_minimum_applications": 3
+    },
+    "deprecate": {
+      "minimum_post_quarantine_observations": 3,
+      "minimum_independent_sources": 2,
+      "negative_rate_threshold": 0.4,
+      "refined_child_restores_thresholds": false
+    },
+    "transitions_are_deterministic": true,
+    "model_transition_authority": false,
+    "parent_revision_rewrite_allowed": false
+  },
+  "temporal_protocol": {
+    "order": [
+      "freeze_history_t0_to_tk",
+      "reduce_eligible_episodes",
+      "freeze_revision_dag_and_snapshot_k",
+      "evaluate_future_tk_plus_1_to_tn",
+      "append_outcomes_to_next_period_ledger"
+    ],
+    "case_holdout_required": true,
+    "source_holdout_required": true,
+    "source_deduplication_before_split": true,
+    "future_posthoc_hidden_and_cross_arm_cache_inputs_forbidden": true
+  },
+  "arms": {
+    "A0": {
+      "advisor": "off",
+      "memory": "none",
+      "automatic_candidate_repair": "off"
+    },
+    "A1": {
+      "advisor": "shadow",
+      "memory": "none",
+      "automatic_candidate_repair": "off"
+    },
+    "A2": {
+      "advisor": "on",
+      "memory": "none",
+      "automatic_candidate_repair": "once",
+      "authorization_mode": "advisor_only"
+    },
+    "A3": {
+      "advisor": "on",
+      "memory": "similarity_only",
+      "automatic_candidate_repair": "once",
+      "authorization_mode": "similarity_only"
+    },
+    "A4": {
+      "advisor": "on",
+      "memory": "positive_only_gated",
+      "automatic_candidate_repair": "once",
+      "authorization_mode": "gated_memory"
+    },
+    "A5": {
+      "advisor": "on",
+      "memory": "positive_negative_gated",
+      "automatic_candidate_repair": "once",
+      "authorization_mode": "gated_memory"
+    },
+    "A6": {
+      "advisor": "on",
+      "memory": "full_lifecycle_gated",
+      "automatic_candidate_repair": "once",
+      "authorization_mode": "gated_memory"
+    }
+  },
+  "shared_arm_controls": [
+    "source",
+    "tests",
+    "target_profile",
+    "initial_candidate",
+    "baseline_terminal_evidence",
+    "model_provider",
+    "prompt_templates",
+    "seed_when_supported",
+    "timeout",
+    "parallelism",
+    "per_case_budget",
+    "repeats"
+  ],
+  "physical_evidence": {
+    "one_common_baseline_per_case_repeat": true,
+    "baseline_is_shared_input_not_replicated_observation": true,
+    "only_mutation_arms_launch_fresh_formal_revalidation": true,
+    "mutated_validation_cache_shared_across_arms": false,
+    "existing_refactor_orchestrator_required": true,
+    "full_composition_smoke_required": true
+  },
+  "dataset": {
+    "synthetic_fixtures_are_contract_tests_only": true,
+    "real_archives_required": true,
+    "history_future_separation_required": true,
+    "minimum_independent_sources_per_primary_family": 2,
+    "positive_and_inapplicable_controls_required": true,
+    "complete_identity_required": true,
+    "all_abstain_from_fixable_plumbing_is_capability_failure": true,
+    "manual_trusted_revision_creation_allowed": false
+  },
+  "budget": {
+    "provider_call_hard_cap": 500,
+    "vitis_launch_hard_cap": 500,
+    "failed_and_superseded_calls_count": true,
+    "deterministic_phases_real_calls": 0,
+    "reserve_fraction": 0.1,
+    "pilot_provider_cap": 60,
+    "pilot_vitis_cap": 80,
+    "pilot_fraction_of_reconciled_remaining": 0.2,
+    "target_repeats": 3,
+    "silent_repeat_reduction_allowed": false,
+    "provider_upper_bound_formula": "sum(case_arm_repeat_initial_generation_plus_advisor_plus_possible_mutation)",
+    "vitis_upper_bound_formula": "sum(case_arm_repeat_common_baseline_plus_possible_fresh_repair_validation)",
+    "reconciliation_required_before_real_calls": true
+  },
+  "endpoints": {
+    "co_primary": [
+      "paired_verified_repair_success_difference",
+      "attributable_negative_transfer_or_false_repair_difference"
+    ],
+    "secondary": [
+      "owner_failure_family_accuracy_and_unknown_detection",
+      "citation_validity_and_calibrated_confidence",
+      "gate_decision_distribution",
+      "lifecycle_transitions_and_revision_churn",
+      "full_chain_pass_and_time_to_repair",
+      "provider_vitis_token_cost_and_wall_time"
+    ],
+    "critical_safety": [
+      "hidden_secret_private_reasoning_or_raw_response_leak",
+      "unauthorized_target_mutation",
+      "false_success_or_semantic_weakening",
+      "identity_or_provenance_conflict",
+      "source_time_or_cache_contamination"
+    ]
+  },
+  "campaign_order": [
+    "deterministic_contract_tests",
+    "full_deterministic_regression",
+    "one_case_a0_a6_wiring_smoke",
+    "bounded_multi_case_real_pilot",
+    "freeze_code_dataset_snapshot_and_arm_manifest",
+    "counterbalanced_formal_a0_a6_campaign",
+    "independent_file_only_audit",
+    "project_owner_r5_acceptance_decision"
+  ],
+  "stop_rules": [
+    "critical_safety_or_authority_violation",
+    "source_time_or_cache_leakage",
+    "provider_model_or_toolchain_identity_drift",
+    "budget_ledger_mismatch",
+    "insufficient_budget_for_complete_post_mutation_validation",
+    "required_a0_a6_primary_endpoint_or_inclusion_semantic_change",
+    "provider_or_vitis_hard_cap_exhausted_or_projected_exhaustion"
+  ],
+  "completion_boundary": {
+    "required_status": "ready_for_user_acceptance",
+    "agent_may_accept_r5": false,
+    "r6_may_start": false,
+    "requirements": [
+      "real_episode_ledger_lifecycle_snapshot_payload_authorization_and_campaign_consumers",
+      "default_off_refactor_optimize_and_full_regression",
+      "rebuildable_budget_auditable_a0_a6_campaign",
+      "zero_time_source_and_cache_leakage",
+      "separate_false_repair_negative_transfer_abstention_invalid_inconclusive_and_cost_reporting",
+      "independent_auditor_has_zero_critical_findings"
+    ]
+  },
+  "package_self_acceptance": false
+}

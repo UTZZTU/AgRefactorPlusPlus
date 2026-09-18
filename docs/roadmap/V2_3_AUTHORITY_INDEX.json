@@ -112,12 +112,22 @@
       "path": "docs/roadmap/R4_REAL_CANARY_ACCEPTANCE.md",
       "role": "R4 real-canary independent-audit and project-owner acceptance record",
       "status": "current"
+    },
+    {
+      "path": "docs/roadmap/R5_CONTINUAL_MEMORY_CAMPAIGN_DESIGN.md",
+      "role": "R5 continual-memory and A0-A6 campaign design contract",
+      "status": "current"
+    },
+    {
+      "path": "docs/roadmap/V2_3_R5_DESIGN.json",
+      "role": "R5 machine-readable design contract",
+      "status": "current"
     }
   ],
   "head": "2e5971b0b74f7557870fc46b23f8ed5389d1685b",
   "head_role": "R4-real-canary-accepted-evidence-base",
   "implementation_head": "2e5971b0b74f7557870fc46b23f8ed5389d1685b",
-  "next_step": "V2.3-R5-design-freeze",
+  "next_step": "V2.3-R5-evidence-inventory",
   "package_self_acceptance": false,
   "primary_empirical_environment": "Vitis HLS 2023.2",
   "r0_external_acceptance_archive": "agrefactor_v23_r0_correction_finalize_20260828T144812Z_2495321.tar.gz",
@@ -198,6 +208,13 @@
   "r4_user_acceptance_decision": "accepted",
   "r4_user_acceptance_scope": "enter_R5_without_establishing_temporal_memory_efficacy",
   "r4_started": true,
+  "r5_accepted": false,
+  "r5_design_base_head": "03313195dda0612e80f8b57213c267a3694ad7d1",
+  "r5_design_contract": "docs/roadmap/V2_3_R5_DESIGN.json",
+  "r5_design_document": "docs/roadmap/R5_CONTINUAL_MEMORY_CAMPAIGN_DESIGN.md",
+  "r5_design_sha256": "c96ef23cea9388b9d5ca0d1c6e1ea30de6e92d401e3d1e606a824beb3b603c89",
+  "r5_design_status": "frozen_for_implementation_not_accepted",
+  "r5_started": true,
   "repository": "UTZZTU/AgRefactorPlusPlus",
   "repository_head_prefix": "2e5971b",
   "repository_head_role": "R4-real-canary-accepted-evidence-base",
