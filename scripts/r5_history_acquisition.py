@@ -63,6 +63,8 @@ HISTORY_PROVIDER_CAP = 66
 HISTORY_VITIS_CAP = 48
 PER_ATTEMPT_PROVIDER_CAP = COMMON_BASELINE_PROVIDER_CAP + 2
 PER_ATTEMPT_VITIS_CAP = COMMON_BASELINE_VITIS_CAP + MUTATION_ARM_VITIS_CAP
+_INITIAL_AUDIT_STATUS = "ready_for_history_acquisition"
+_CONTINUATION_AUDIT_STATUS = "ready_for_history_continuation"
 
 
 class HistoryAcquisitionError(RuntimeError):
@@ -182,6 +184,37 @@ def _history_cases(manifest: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
     return tuple(sorted(cases, key=lambda item: str(item["case_id"])))
 
 
+def _authorized_history_cases(
+    cases: Sequence[Mapping[str, Any]],
+    audit: Mapping[str, Any],
+) -> tuple[dict[str, Any], ...]:
+    status = audit.get("status")
+    by_id = {str(item["case_id"]): dict(item) for item in cases}
+    if status == _INITIAL_AUDIT_STATUS:
+        selected_ids = tuple(sorted(by_id))
+    elif status == _CONTINUATION_AUDIT_STATUS:
+        raw_ids = audit.get("authorized_history_case_ids")
+        if (
+            not isinstance(raw_ids, list)
+            or not raw_ids
+            or any(not isinstance(item, str) or not item for item in raw_ids)
+            or len(raw_ids) != len(set(raw_ids))
+        ):
+            raise HistoryAcquisitionError(
+                "continuation audit lacks authorized history cases"
+            )
+        selected_ids = tuple(raw_ids)
+    else:
+        raise HistoryAcquisitionError(
+            "zero-call protocol audit does not admit history"
+        )
+    if any(case_id not in by_id for case_id in selected_ids):
+        raise HistoryAcquisitionError(
+            "protocol audit authorizes an unknown history case"
+        )
+    return tuple(by_id[case_id] for case_id in selected_ids)
+
+
 def _validate_repository(repo: Path, state: Mapping[str, Any]) -> dict[str, Any]:
     head = _git(repo, "rev-parse", "HEAD")
     branch = _git(repo, "branch", "--show-current")
@@ -231,9 +264,41 @@ def load_preflight_contracts(
     bundle = _load_json(calibration_bundle_path)
     certificate = _load_certificate(bundle)
 
-    if audit.get("status") != "ready_for_history_acquisition":
+    if audit.get("status") == _CONTINUATION_AUDIT_STATUS:
+        stored = audit.get("continuation_audit_sha256")
+        unsigned = {
+            key: value
+            for key, value in audit.items()
+            if key != "continuation_audit_sha256"
+        }
+        if not isinstance(stored, str) or stored != _canonical_sha256(unsigned):
+            raise HistoryAcquisitionError(
+                "continuation audit signature mismatch"
+            )
+        if (
+            state.get("R5_HISTORY_CONTINUATION_AUDIT_FILE_SHA256")
+            != _file_sha256(protocol_audit_path)
+        ):
+            raise HistoryAcquisitionError(
+                "continuation audit file hash differs from roadmap state"
+            )
+
+    if audit.get("status") not in {
+        _INITIAL_AUDIT_STATUS,
+        _CONTINUATION_AUDIT_STATUS,
+    }:
         raise HistoryAcquisitionError("zero-call protocol audit does not admit history")
-    if audit.get("next_step") != "history_acquisition_through_existing_refactor_r4_path":
+    if (
+        audit.get("status") == _INITIAL_AUDIT_STATUS
+        and state.get("R5_HISTORY_BASELINE_OUTCOME_RUN_ROOT")
+    ):
+        raise HistoryAcquisitionError(
+            "initial history audit was superseded by observed history evidence"
+        )
+    if audit.get("next_step") not in {
+        "history_acquisition_through_existing_refactor_r4_path",
+        "continue_unobserved_frozen_history_case_through_existing_refactor_r2_r4",
+    }:
         raise HistoryAcquisitionError("protocol audit authorizes a different next step")
     if audit.get("adapter_manifest_file_sha256") != _file_sha256(adapter_manifest_path):
         raise HistoryAcquisitionError("adapter manifest file hash mismatch")
@@ -259,7 +324,8 @@ def load_preflight_contracts(
     ):
         raise HistoryAcquisitionError("calibration bundle hash mismatch")
 
-    cases = _history_cases(adapter)
+    all_cases = _history_cases(adapter)
+    cases = _authorized_history_cases(all_cases, audit)
     for item in cases:
         paths = item.get("paths")
         hashes = item.get("hashes")
@@ -287,6 +353,7 @@ def load_preflight_contracts(
         "bundle": bundle,
         "certificate": certificate,
         "cases": cases,
+        "all_history_cases": all_cases,
         "model_runtime": dict(runtime),
         "file_hashes": {
             "adapter_manifest": _file_sha256(adapter_manifest_path),
@@ -304,7 +371,21 @@ def build_history_manifest(
     cases = contracts["cases"]
     provider_bound = len(cases) * max_attempts_per_case * PER_ATTEMPT_PROVIDER_CAP
     vitis_bound = len(cases) * max_attempts_per_case * PER_ATTEMPT_VITIS_CAP
-    if provider_bound > HISTORY_PROVIDER_CAP or vitis_bound > HISTORY_VITIS_CAP:
+    audit = contracts.get("audit", {"status": _INITIAL_AUDIT_STATUS})
+    if audit.get("status") == _CONTINUATION_AUDIT_STATUS:
+        history_provider_cap = int(audit.get("continuation_provider_upper_bound", -1))
+        history_vitis_cap = int(audit.get("continuation_vitis_upper_bound", -1))
+        manifest_id = "v2.3-r5-history-continuation-v1"
+    else:
+        history_provider_cap = HISTORY_PROVIDER_CAP
+        history_vitis_cap = HISTORY_VITIS_CAP
+        manifest_id = "v2.3-r5-history-acquisition-v1"
+    if (
+        history_provider_cap < 0
+        or history_vitis_cap < 0
+        or provider_bound > history_provider_cap
+        or vitis_bound > history_vitis_cap
+    ):
         raise HistoryAcquisitionError("history acquisition exceeds its frozen sub-budget")
     prior_provider = int(contracts["state"]["R5_CONSUMED_PROVIDER_CALLS"])
     prior_vitis = int(contracts["state"]["R5_CONSUMED_VITIS_LAUNCHES"])
@@ -317,7 +398,7 @@ def build_history_manifest(
         raise HistoryAcquisitionError("history acquisition exceeds the global R5 budget")
     payload = {
         "schema_version": 1,
-        "manifest_id": "v2.3-r5-history-acquisition-v1",
+        "manifest_id": manifest_id,
         "status": "frozen_before_history_outcome_observation",
         "repository_head": contracts["repository"]["head"],
         "adapter_manifest_sha256": contracts["file_hashes"]["adapter_manifest"],
@@ -331,8 +412,9 @@ def build_history_manifest(
         "max_attempts_per_case": max_attempts_per_case,
         "provider_call_upper_bound": provider_bound,
         "vitis_launch_upper_bound": vitis_bound,
-        "history_provider_cap": HISTORY_PROVIDER_CAP,
-        "history_vitis_cap": HISTORY_VITIS_CAP,
+        "history_provider_cap": history_provider_cap,
+        "history_vitis_cap": history_vitis_cap,
+        "protocol_audit_status": audit.get("status"),
         "provider_calls_before": prior_provider,
         "vitis_launches_before": prior_vitis,
         "future_outcomes_observed": False,
@@ -406,6 +488,23 @@ def _single_event(capture: R5CommonBaselineCapture) -> dict[str, Any]:
     if len(events) != 1:
         raise HistoryAcquisitionError("history baseline did not produce one diagnostic event")
     return events[0]
+
+
+def _baseline_diagnostic_state(
+    capture: R5CommonBaselineCapture,
+) -> tuple[str, int]:
+    events = tuple(
+        item
+        for item in capture.formal_result.metadata.get("diagnostic_events", ())
+        if isinstance(item, Mapping)
+    )
+    if capture.formal_result.accepted and not events:
+        return "accepted_without_diagnostic", 0
+    if len(events) == 1:
+        return "eligible_single_diagnostic", 1
+    if not events:
+        return "invalid_missing_diagnostic", 0
+    return "invalid_multiple_diagnostics", len(events)
 
 
 def build_execution_identity_and_canary(
@@ -554,6 +653,7 @@ def _write_attempt(
     baseline: Mapping[str, Any] | None,
     observation: Mapping[str, Any] | None,
     error: str | None,
+    classification: str | None = None,
 ) -> None:
     _atomic_json(
         path,
@@ -564,6 +664,7 @@ def _write_attempt(
             "baseline": None if baseline is None else dict(baseline),
             "observation": None if observation is None else dict(observation),
             "error": error,
+            "classification": classification,
             "raw_provider_response_persisted": False,
             "private_reasoning_persisted": False,
             "future_outcome_observed": False,
@@ -613,6 +714,7 @@ def acquire_history(
     usage = {"provider_calls": 0, "vitis_launches": 0}
     positives: list[dict[str, Any]] = []
     attempts: list[dict[str, Any]] = []
+    case_outcomes: list[dict[str, Any]] = []
     run_namespace = _run_namespace(output, str(manifest["manifest_sha256"]))
     for case in contracts["cases"]:
         case_id = str(case["case_id"])
@@ -665,6 +767,38 @@ def acquire_history(
                 )
                 attempt_provider = int(baseline_manifest["provider_calls"])
                 attempt_vitis = int(baseline_manifest["vitis_launches"])
+                diagnostic_state, diagnostic_count = _baseline_diagnostic_state(
+                    capture
+                )
+                if diagnostic_state != "eligible_single_diagnostic":
+                    usage["provider_calls"] += attempt_provider
+                    usage["vitis_launches"] += attempt_vitis
+                    charged = True
+                    _write_attempt(
+                        attempt_root / "attempt_result.json",
+                        case_id=case_id,
+                        attempt=attempt,
+                        baseline=baseline_manifest,
+                        observation=None,
+                        error=None,
+                        classification=diagnostic_state,
+                    )
+                    attempts.append(
+                        {
+                            "case_id": case_id,
+                            "attempt": attempt,
+                            "status": diagnostic_state,
+                            "diagnostic_event_count": diagnostic_count,
+                        }
+                    )
+                    _atomic_json(
+                        output / "budget_ledger.json",
+                        {
+                            **usage,
+                            "accounting": "authoritative_actual_usage",
+                        },
+                    )
+                    continue
                 arm_started = True
                 observation = executor.run_arm(
                     case=case_spec,
@@ -701,6 +835,7 @@ def acquire_history(
                     baseline=baseline_manifest,
                     observation=observation,
                     error=None,
+                    classification="verified_positive",
                 )
                 attempts.append({"case_id": case_id, "attempt": attempt, "status": "verified_positive"})
                 success = True
@@ -731,28 +866,45 @@ def acquire_history(
                     baseline=baseline_manifest,
                     observation=observation,
                     error=reason,
+                    classification="failed_closed",
                 )
                 attempts.append({"case_id": case_id, "attempt": attempt, "status": "failed_closed", "reason": reason})
                 _atomic_json(output / "budget_ledger.json", {**usage, "accounting": "actual_or_conservative_upper_bound"})
             _atomic_json(output / "budget_ledger.json", {**usage, "accounting": "actual_or_conservative_upper_bound"})
-        if not success:
-            raise HistoryAcquisitionError(f"history case did not yield verified evidence: {case_id}")
+        case_outcomes.append(
+            {
+                "case_id": case_id,
+                "status": (
+                    "verified_positive"
+                    if success
+                    else "insufficient_history_evidence"
+                ),
+                "attempt_count": sum(
+                    1 for item in attempts if item["case_id"] == case_id
+                ),
+            }
+        )
 
-    if (
-        len(positives) != 2
-        or len({item["source_sha256"] for item in positives}) != 2
-        or len({item["context_signature"] for item in positives}) != 2
-    ):
-        raise HistoryAcquisitionError("history positives are not independent")
+    independent_positives = (
+        len(positives) == 2
+        and len({item["source_sha256"] for item in positives}) == 2
+        and len({item["context_signature"] for item in positives}) == 2
+    )
     result = {
         "schema_version": 1,
-        "status": "ready_for_independent_history_audit",
+        "status": (
+            "ready_for_independent_history_audit"
+            if independent_positives
+            else "insufficient_history_evidence"
+        ),
         "manifest_sha256": manifest["manifest_sha256"],
         "positives": positives,
         "attempts": attempts,
+        "case_outcomes": case_outcomes,
+        "independent_positive_requirement_met": independent_positives,
         "usage": usage,
-        "provider_calls_within_cap": usage["provider_calls"] <= HISTORY_PROVIDER_CAP,
-        "vitis_launches_within_cap": usage["vitis_launches"] <= HISTORY_VITIS_CAP,
+        "provider_calls_within_cap": usage["provider_calls"] <= int(manifest["history_provider_cap"]),
+        "vitis_launches_within_cap": usage["vitis_launches"] <= int(manifest["history_vitis_cap"]),
         "future_outcomes_observed": False,
         "future_files_executed": False,
         "r5_accepted": False,

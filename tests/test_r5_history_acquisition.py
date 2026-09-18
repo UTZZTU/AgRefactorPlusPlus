@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 
 from agrefactor.recovery import (
@@ -109,6 +110,82 @@ class R5HistoryAcquisitionTests(unittest.TestCase):
         unsigned = dict(manifest)
         digest = unsigned.pop("manifest_sha256")
         self.assertEqual(digest, MODULE._canonical_sha256(unsigned))
+
+    def test_continuation_manifest_authorizes_only_unobserved_case(self):
+        contracts = {
+            "repository": {"head": "a" * 40},
+            "state": {
+                "R5_CONSUMED_PROVIDER_CALLS": 66,
+                "R5_CONSUMED_VITIS_LAUNCHES": 24,
+                "R5_PROVIDER_CALL_HARD_CAP": 500,
+                "R5_VITIS_LAUNCH_HARD_CAP": 500,
+            },
+            "file_hashes": {
+                "adapter_manifest": "a" * 64,
+                "protocol_audit": "b" * 64,
+                "calibration_bundle": "c" * 64,
+            },
+            "certificate": _certificate(),
+            "audit": {
+                "status": "ready_for_history_continuation",
+                "continuation_provider_upper_bound": 33,
+                "continuation_vitis_upper_bound": 24,
+            },
+            "cases": (_history("h2", "2" * 64),),
+        }
+        manifest = MODULE.build_history_manifest(
+            contracts,
+            max_attempts_per_case=3,
+        )
+        self.assertEqual(manifest["history_case_ids"], ["h2"])
+        self.assertEqual(manifest["provider_call_upper_bound"], 33)
+        self.assertEqual(manifest["vitis_launch_upper_bound"], 24)
+        self.assertEqual(manifest["protocol_audit_status"], "ready_for_history_continuation")
+
+    def test_accepted_baseline_without_diagnostic_is_data_insufficient(self):
+        capture = SimpleNamespace(
+            formal_result=SimpleNamespace(
+                accepted=True,
+                metadata={"diagnostic_events": []},
+            )
+        )
+        self.assertEqual(
+            MODULE._baseline_diagnostic_state(capture),
+            ("accepted_without_diagnostic", 0),
+        )
+
+    def test_single_diagnostic_remains_eligible_for_r2_r4(self):
+        capture = SimpleNamespace(
+            formal_result=SimpleNamespace(
+                accepted=False,
+                metadata={"diagnostic_events": [{"event_id": "d1"}]},
+            )
+        )
+        self.assertEqual(
+            MODULE._baseline_diagnostic_state(capture),
+            ("eligible_single_diagnostic", 1),
+        )
+
+    def test_initial_audit_selection_does_not_hide_frozen_cases(self):
+        cases = (_history("h1", "1" * 64), _history("h2", "2" * 64))
+        selected = MODULE._authorized_history_cases(
+            cases,
+            {"status": "ready_for_history_acquisition"},
+        )
+        self.assertEqual([item["case_id"] for item in selected], ["h1", "h2"])
+
+    def test_continuation_audit_rejects_unknown_case(self):
+        with self.assertRaisesRegex(
+            MODULE.HistoryAcquisitionError,
+            "unknown history case",
+        ):
+            MODULE._authorized_history_cases(
+                (_history("h1", "1" * 64), _history("h2", "2" * 64)),
+                {
+                    "status": "ready_for_history_continuation",
+                    "authorized_history_case_ids": ["h3"],
+                },
+            )
 
     def test_partial_product_usage_is_read_from_authoritative_result(self):
         with tempfile.TemporaryDirectory() as root:
