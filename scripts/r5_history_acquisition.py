@@ -11,7 +11,13 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 from typing import Any, Mapping, Sequence
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from agrefactor.campaign import ExistingRefactorR5CampaignExecutor, R5Arm
 from agrefactor.cli import build_parser
