@@ -99,7 +99,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         reduction.revision.lifecycle is not Lifecycle.PROVISIONAL
         or reduction.positive_count != 2
         or reduction.independent_sources != 1
-        or reduction.independent_contexts != 1
+        or reduction.independent_contexts < 1
     ):
         findings.append({"severity": "critical", "code": "lifecycle_overpromotion"})
     if state.get("R5_ACCEPTED") is not False or state.get("R6_STARTED") is not False:

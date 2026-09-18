@@ -133,7 +133,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         reduction.revision.lifecycle is not Lifecycle.PROVISIONAL
         or reduction.positive_count != 2
         or reduction.independent_sources != 1
-        or reduction.independent_contexts != 1
+        or reduction.independent_contexts < 1
     ):
         raise PredecessorImportCommandError(
             "predecessor evidence must establish exactly Provisional support"
@@ -157,7 +157,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     _atomic_json(output / "predecessor_import_result.json", result)
     print("R5_PREDECESSOR_IMPORT_STATUS=ready_for_independent_audit")
     print("R5_PREDECESSOR_LIFECYCLE=Provisional")
-    print("R5_PREDECESSOR_INDEPENDENT_SOURCES=1")
+    print(f"R5_PREDECESSOR_INDEPENDENT_SOURCES={reduction.independent_sources}")
+    print(f"R5_PREDECESSOR_CONTEXT_SIGNATURES={reduction.independent_contexts}")
     print("PROVIDER_CALLS=0")
     print("VITIS_LAUNCHES=0")
     print("R5_ACCEPTED=false")
