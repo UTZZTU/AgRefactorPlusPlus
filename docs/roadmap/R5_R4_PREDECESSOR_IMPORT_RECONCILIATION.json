@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "record_id": "r5-r4-predecessor-import-reconciliation-v1",
+  "status": "clean_provisional_history_seed",
+  "repository_head": "d617860814342ed5e106a94d9537fc2810377dd7",
+  "evidence_root": "/data/agrefactor_runs/r5_p3_r4_predecessor_import_d617860",
+  "source_evidence_root": "/data/package_d_v1_6_r4_evidence_run1",
+  "source_archive_sha256": "41f24168856b18683ee47c6285bf925cc48ddea97e369a440af38fd780d26703",
+  "result": {
+    "path": "/data/agrefactor_runs/r5_p3_r4_predecessor_import_d617860/predecessor_import_result.json",
+    "file_sha256": "7162230e3f342052d1ef2a0a583658643ae64001e28fbe913a09b497f5cd58d4",
+    "canonical_result_sha256": "b2d2ff59074e37f13484a3283336a5e8b6398b70b8addbd5219ce78be0c811a5"
+  },
+  "independent_audit": {
+    "path": "/data/agrefactor_runs/r5_p3_r4_predecessor_import_d617860/independent_predecessor_import_audit.json",
+    "file_sha256": "35cb4f5732194e0ffa089b233e8160f85f8f13d3ef493f53e82a10a35bab28ce",
+    "canonical_audit_sha256": "8456875fcf025e0550524be4716c9052f9d75e25166aa46a3e3f928a61219d45",
+    "execution_boundary": "separate_python_process_file_only",
+    "critical_finding_count": 0
+  },
+  "ledger": {
+    "root": "/data/agrefactor_runs/r5_p3_r4_predecessor_import_d617860/ledger",
+    "manifest_file_sha256": "1a60fb01bfcc035f89be55442c8e4acbade65fc874181f5085a830993d4a364b",
+    "episode_ids": [
+      "r5-import-r4-5f6b4fc070588b547eb01c3e622ec98a",
+      "r5-import-r4-5f87e6beb8a77a1e1d008f974b7c1b15"
+    ],
+    "episode_file_sha256s": [
+      "6e58c5ea046af0b3c12f6d96654cfa01b2dda3aae3ad72213ee45bada7729180",
+      "1d2920364fd07193f1295409a9ed8edffc46ff121f88841ac10ea943b1416593"
+    ]
+  },
+  "verified_positive_count": 2,
+  "independent_source_count": 1,
+  "independent_context_count": 2,
+  "lifecycle": "Provisional",
+  "trusted_threshold_met": false,
+  "reason": "two accepted R4 episodes share one source_sha256; a second independent source is still required",
+  "provider_calls": 0,
+  "vitis_launches": 0,
+  "authoritative_cumulative_provider_calls": 93,
+  "authoritative_cumulative_vitis_launches": 33,
+  "future_holdout_observed": false,
+  "r5_accepted": false,
+  "r6_started": false,
+  "next_step": "zero-call audit and freeze one additional history-only independent source before any real acquisition"
+}

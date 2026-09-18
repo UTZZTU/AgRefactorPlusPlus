@@ -83,14 +83,13 @@ It consumed zero Provider and zero Vitis calls.
 
 ## Next Authorized Step
 
-Implement reference-backed adapters only where existing repository artifacts
-can produce distinct, enforceable Public/Hidden checks without inventing an
-expected outcome or weakening failure semantics. Rejected cases remain outside
-the dataset. Freeze history/future and paired control roles before observing
-new outcomes, and only after adapter identity, complete Target/toolchain/
-parser/model identity, temporal provenance, and source-level holdout are
-proven. Re-run the inventory and dataset contract, then perform a zero-call
-protocol audit before the bounded real pilot. R6 remains stopped.
+Audit and freeze one additional history-only source that is independent of the
+accepted Package D source and can lawfully produce a verified-positive R4
+episode. Implement a reference-backed Public/Hidden adapter only if checked-in
+repository artifacts support an enforceable oracle without inventing expected
+outcomes or weakening failure semantics. The existing future holdout remains
+unobserved. A zero-call protocol audit is required before any real acquisition;
+R6 remains stopped.
 
 ## Calibration-Scope Correction
 
@@ -232,3 +231,34 @@ SHA-256
 `5546893b0e66311c6c92d7f3d368336cb48a37bf05eb48d39bf72fed8dec825e`.
 R5 must return to P2 and freeze an expanded history-only pool before another
 real call.
+
+## Audited R4 Predecessor Import
+
+The accepted Package D v1.6 archive was subsequently imported through the
+strict R5 predecessor boundary at repository head `d617860`. The importer
+verified the authoritative archive hash, archive/content-manifest/extracted
+file equality, the separate file-only audit, R4 episode and provenance hashes,
+the accepted calibration certificate, changed Candidate, and fresh formal
+validation before appending two agent-safe envelopes.
+
+The immutable result is
+`/data/agrefactor_runs/r5_p3_r4_predecessor_import_d617860/predecessor_import_result.json`
+with file SHA-256
+`7162230e3f342052d1ef2a0a583658643ae64001e28fbe913a09b497f5cd58d4`.
+The independent audit is
+`/data/agrefactor_runs/r5_p3_r4_predecessor_import_d617860/independent_predecessor_import_audit.json`
+with file SHA-256
+`35cb4f5732194e0ffa089b233e8160f85f8f13d3ef493f53e82a10a35bab28ce`.
+It reports zero critical findings and used a separate Python process with
+file-only input. The ledger manifest file SHA-256 is
+`1a60fb01bfcc035f89be55442c8e4acbade65fc874181f5085a830993d4a364b`.
+
+Both verified-positive episodes share source SHA-256
+`ab13af723ba6d4ee3ff26cd61935720936eec3722b54893c267344081c3d5ecc`
+but have two context signatures. They therefore establish a real
+`Provisional` revision, not `Trusted`: R5 still needs one verified-positive
+episode from a second independent source. The import consumed zero Provider
+calls and zero Vitis launches, so the authoritative cumulative ledger remains
+`93/33`. The machine-readable reconciliation is
+`docs/roadmap/R5_R4_PREDECESSOR_IMPORT_RECONCILIATION.json`. R5 remains
+unaccepted, the real future campaign remains disabled, and R6 remains stopped.
