@@ -163,6 +163,18 @@ _LAZY_EXPORTS = {
         ".validation_orchestrator",
         "ValidationStepRecord",
     ),
+    "ExistingOrchestratorR5Integration": (
+        ".r5_integration",
+        "ExistingOrchestratorR5Integration",
+    ),
+    "R5CandidatePromptFactory": (
+        ".r5_integration",
+        "R5CandidatePromptFactory",
+    ),
+    "R5IntegrationConfig": (
+        ".r5_integration",
+        "R5IntegrationConfig",
+    ),
 }
 
 
@@ -226,6 +238,9 @@ __all__ = [
     "resolve_r5_profile",
     "R5RuntimeBinding",
     "R5RuntimeBindingError",
+    "ExistingOrchestratorR5Integration",
+    "R5CandidatePromptFactory",
+    "R5IntegrationConfig",
     "read_csim_invocation_summary",
     "read_csynth_invocation_summary",
     "read_preflight_invocation_summary",

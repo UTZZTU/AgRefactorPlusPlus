@@ -83,7 +83,7 @@ class MemorySnapshot:
 
     def context_for(self, *, event: Mapping[str, Any], advisory: Mapping[str, Any]) -> dict[str, Any]:
         context = dict(self.gate_context)
-        context.update({"snapshot_id": self.snapshot_id, "identity_complete": event.get("identity_complete", context.get("identity_complete")), "hidden_input_count": event.get("hidden_input_count", context.get("hidden_input_count", 0)), "secret_present": event.get("secret_present", context.get("secret_present", False)), "evidence_predicates": tuple(event.get("evidence_refs", ())), "advisory_id": advisory.get("advisory_id")})
+        context.update({"snapshot_id": self.snapshot_id, "identity_complete": event.get("identity_complete", context.get("identity_complete")), "hidden_input_count": event.get("hidden_input_count", context.get("hidden_input_count", 0)), "secret_present": event.get("secret_present", context.get("secret_present", False)), "evidence_predicates": tuple(event.get("evidence_refs", ())), "advisory_id": advisory.get("advisory_id"), "stage": event.get("stage"), "owner": advisory.get("suspected_owner"), "failure_family": advisory.get("failure_class")})
         return context
 
 

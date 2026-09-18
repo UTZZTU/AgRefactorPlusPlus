@@ -103,6 +103,24 @@ def _ids(values: Sequence[str], name: str) -> tuple[str, ...]:
     return result
 
 
+def _condition_matches(condition: Mapping[str, Any], context: Mapping[str, Any]) -> bool:
+    """Return whether every declared condition is present in the context."""
+
+    if not condition:
+        return False
+    for key, expected in condition.items():
+        actual = context.get(key)
+        if isinstance(expected, Mapping):
+            if not isinstance(actual, Mapping) or not _condition_matches(expected, actual):
+                return False
+        elif isinstance(expected, (list, tuple, set, frozenset)):
+            if actual not in expected:
+                return False
+        elif actual != expected:
+            return False
+    return True
+
+
 @dataclass(frozen=True, slots=True)
 class GateResult:
     decision: GateDecision
@@ -265,14 +283,28 @@ class ApplicabilityGate:
             decision, reasons = GateDecision.REJECT, ["revision_not_active"]
         elif revision.lifecycle is PatternLifecycle.QUARANTINED:
             decision, reasons = GateDecision.ABSTAIN, ["revision_quarantined"]
+        elif revision.supported_when and not _condition_matches(revision.supported_when, context):
+            decision, reasons = GateDecision.ABSTAIN, ["role_stage_scope_mismatch"]
+        elif revision.exclusions and _condition_matches(revision.exclusions, context):
+            decision, reasons = GateDecision.REJECT, ["exact_exclusion"]
         elif not refs or any(req not in context.get("evidence_predicates", ()) for req in revision.required_evidence):
             decision, reasons = GateDecision.ABSTAIN, ["evidence_incomplete"]
-        elif context.get("avoid_when_match") is True:
+        elif context.get("avoid_when_match") is True or (
+            revision.avoid_when and _condition_matches(revision.avoid_when, context)
+        ):
             decision, reasons = GateDecision.REJECT, ["avoid_when"]
         elif context.get("conflict") is True or context.get("ood") is True or context.get("sparse") is True:
             decision, reasons = GateDecision.ABSTAIN, ["conflict_sparsity_or_ood"]
         elif context.get("calibrated_risk_ok") is not True:
             decision, reasons = GateDecision.ABSTAIN, ["calibration_threshold_unmet"]
         result_payload = {"decision": decision.value, "reasons": reasons, "evidence_refs": list(refs), "checked_order": list(self.ORDER)}
-        contract_hash = hashlib.sha256(_canonical(result_payload)).hexdigest()
+        contract_hash = hashlib.sha256(
+            _canonical(
+                {
+                    **result_payload,
+                    "revision_hash": revision.revision_hash,
+                    "context_sha256": hashlib.sha256(_canonical(context)).hexdigest(),
+                }
+            )
+        ).hexdigest()
         return GateResult(decision, tuple(reasons), refs, self.ORDER, contract_hash)

@@ -29,6 +29,7 @@ from .policy import (
 )
 from agrefactor.runtime.budget import BudgetManager
 from .r4_budget import R4ReservePlan
+from .r5_authorization import R5ResearchAuthorization
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _STAGES = frozenset({"preflight", "public_evaluation", "csynth", "public_cosim"})
@@ -85,6 +86,22 @@ def _copy(value: Mapping[str, Any], name: str) -> dict[str, Any]:
     if not isinstance(result, dict):
         raise R4ContractError(name + " must be an object")
     return result
+
+
+R4_CONTROLLER_CONTRACT_SHA256 = hashlib.sha256(
+    _canonical(
+        {
+            "schema_version": "candidate-repair-safety-controller-v1",
+            "candidate_only": True,
+            "maximum_provider_calls": 1,
+            "maximum_mutations": 1,
+            "fresh_terminal_validation_required": True,
+            "independent_auditor_required": True,
+            "testbench_identity_immutable": True,
+            "canary_and_kill_switch_required": True,
+        }
+    )
+).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,6 +276,74 @@ class R4CandidateRepairAuthorization:
             value["authorization_id"] = self.authorization_id
         return value
 
+    @property
+    def safety_subject_sha256(self) -> str:
+        return self.revision_sha256
+
+
+@dataclass(frozen=True, slots=True)
+class R5CandidateRepairAuthorization:
+    """Runtime envelope around one discriminated R5 authorization.
+
+    The inner authorization binds the R5 arm and its producer artifacts.  The
+    envelope adds the run-local Candidate, canary, event, and deterministic
+    terminal identities required by the accepted repair controller.  A2/A3
+    deliberately carry no memory revision.
+    """
+
+    research_authorization: R5ResearchAuthorization
+    run_id: str
+    event_ref: str
+    before_candidate_sha256: str
+    canary_manifest_sha256: str
+    deterministic_terminal_ref: str
+    revision_sha256: str | None = None
+    authorization_id: str = ""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.research_authorization, R5ResearchAuthorization):
+            raise TypeError("research_authorization must be R5ResearchAuthorization")
+        for name in ("run_id", "event_ref"):
+            _text(getattr(self, name), name)
+        for name in (
+            "before_candidate_sha256",
+            "canary_manifest_sha256",
+            "deterministic_terminal_ref",
+        ):
+            _hash(getattr(self, name), name)
+        gated = self.research_authorization.mode.value == "gated_memory"
+        if gated:
+            if self.revision_sha256 != self.research_authorization.revision_sha256:
+                raise R4ContractError("R5 gated revision binding mismatch")
+            _hash(self.revision_sha256, "revision_sha256")
+        elif self.revision_sha256 is not None:
+            raise R4ContractError("R5 advisor/similarity authorization cannot claim a revision")
+        expected = hashlib.sha256(
+            _canonical(self.to_dict(include_id=False))
+        ).hexdigest()
+        if self.authorization_id and self.authorization_id != expected:
+            raise R4ContractError("R5 authorization_id mismatch")
+        object.__setattr__(self, "authorization_id", expected)
+
+    @property
+    def safety_subject_sha256(self) -> str:
+        return self.revision_sha256 or self.research_authorization.authorization_sha256
+
+    def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
+        value: dict[str, Any] = {
+            "schema_version": "r5-candidate-repair-authorization-v1",
+            "research_authorization": self.research_authorization.to_dict(),
+            "run_id": self.run_id,
+            "event_ref": self.event_ref,
+            "before_candidate_sha256": self.before_candidate_sha256,
+            "canary_manifest_sha256": self.canary_manifest_sha256,
+            "deterministic_terminal_ref": self.deterministic_terminal_ref,
+            "revision_sha256": self.revision_sha256,
+        }
+        if include_id:
+            value["authorization_id"] = self.authorization_id
+        return value
+
 
 @dataclass(frozen=True, slots=True)
 class R4ExecutionInput:
@@ -317,6 +402,80 @@ class R4ExecutionInput:
 
 
 @dataclass(frozen=True, slots=True)
+class R5ExecutionInput:
+    """R5 producer evidence admitted to the unchanged repair controller."""
+
+    authorization: R5CandidateRepairAuthorization
+    canary: R4CanaryManifest
+    kill_switch: R4KillSwitchState
+    execution_identity: Mapping[str, Any]
+    advisory: Mapping[str, Any]
+    calibration_certificate: Mapping[str, Any]
+    candidate: str
+    original: str
+    testbench_hashes: Mapping[str, str]
+    route_fingerprint: str
+    policy_decision: Mapping[str, Any]
+    ledger_event: Mapping[str, Any]
+    budget_reservation: Mapping[str, Any]
+    agent_safe: bool = True
+    physical_tool_launched: bool = True
+    evidence_complete: bool = True
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.authorization, R5CandidateRepairAuthorization):
+            raise TypeError("authorization must be R5CandidateRepairAuthorization")
+        if not isinstance(self.canary, R4CanaryManifest) or not isinstance(
+            self.kill_switch, R4KillSwitchState
+        ):
+            raise TypeError("R5 execution contracts have invalid types")
+        identity = _copy(self.execution_identity, "execution_identity")
+        advisory = _copy(self.advisory, "advisory")
+        certificate = _copy(self.calibration_certificate, "calibration_certificate")
+        policy = _copy(self.policy_decision, "policy_decision")
+        ledger = _copy(self.ledger_event, "ledger_event")
+        reservation = _copy(self.budget_reservation, "budget_reservation")
+        research = self.authorization.research_authorization
+        if advisory.get("accepted") is not False or advisory.get("owner_authority") != "llm_advisory":
+            raise R4ContractError("advisory is not non-authoritative")
+        _text(self.candidate, "candidate")
+        _text(self.original, "original")
+        if identity.get("identity_complete") is not True or identity.get("hidden_input_count", 0) != 0 or identity.get("secret_present") is True or identity.get("private_reasoning_present") is True:
+            raise R4ContractError("execution identity is incomplete or not agent-safe")
+        source_sha = hashlib.sha256(self.original.encode("utf-8")).hexdigest()
+        if identity.get("source_sha256") != source_sha:
+            raise R4ContractError("original source identity mismatch")
+        before_sha = hashlib.sha256(self.candidate.encode("utf-8")).hexdigest()
+        if before_sha != self.authorization.before_candidate_sha256:
+            raise R4ContractError("before Candidate hash mismatch")
+        if not isinstance(self.testbench_hashes, Mapping) or not self.testbench_hashes:
+            raise R4ContractError("testbench hashes are required")
+        for name, value in self.testbench_hashes.items():
+            _text(name, "testbench identity")
+            _hash(value, "testbench hash")
+        _hash(self.route_fingerprint, "route_fingerprint")
+        producer_hashes = {
+            "calibration_certificate_sha256": hashlib.sha256(_canonical(certificate)).hexdigest(),
+            "advisory_sha256": hashlib.sha256(_canonical(advisory)).hexdigest(),
+            "policy_sha256": hashlib.sha256(_canonical(policy)).hexdigest(),
+            "ledger_sha256": hashlib.sha256(_canonical(ledger)).hexdigest(),
+            "budget_reservation_sha256": hashlib.sha256(_canonical(reservation)).hexdigest(),
+        }
+        for name, actual in producer_hashes.items():
+            if getattr(research, name) != actual:
+                raise R4ContractError(f"R5 {name} producer hash mismatch")
+        if research.r4_controller_contract_sha256 != R4_CONTROLLER_CONTRACT_SHA256:
+            raise R4ContractError("R5 controller contract hash mismatch")
+        if policy.get("status") != "allowed" or ledger.get("accepted") is not True or reservation.get("admitted") is not True:
+            raise R4ContractError("R5 producer evidence does not authorize execution")
+        if not all(
+            isinstance(value, bool)
+            for value in (self.agent_safe, self.physical_tool_launched, self.evidence_complete)
+        ):
+            raise TypeError("R5 execution flags must be boolean")
+
+
+@dataclass(frozen=True, slots=True)
 class R4RunResult:
     outcome: R4Outcome
     authorization_id: str
@@ -372,8 +531,8 @@ class R4CandidateRepairController:
     def ledger(self) -> RecoveryLedger | None:
         return self._ledger
 
-    def run(self, request: R4ExecutionInput, *, mutate_candidate: Callable[[str], str], validate_candidate: Callable[[str], Mapping[str, Any]], audit: Callable[[Mapping[str, Any]], Mapping[str, Any]], kill_switch_reader: Callable[[], R4KillSwitchState] | None = None) -> R4RunResult:
-        if not isinstance(request, R4ExecutionInput) or not callable(mutate_candidate) or not callable(validate_candidate) or not callable(audit):
+    def run(self, request: R4ExecutionInput | R5ExecutionInput, *, mutate_candidate: Callable[[str], str], validate_candidate: Callable[[str], Mapping[str, Any]], audit: Callable[[Mapping[str, Any]], Mapping[str, Any]], kill_switch_reader: Callable[[], R4KillSwitchState] | None = None) -> R4RunResult:
+        if not isinstance(request, (R4ExecutionInput, R5ExecutionInput)) or not callable(mutate_candidate) or not callable(validate_candidate) or not callable(audit):
             raise TypeError("invalid R4 execution request or callback")
         if not request.canary.enabled or request.canary.expired or not request.canary.matches(request.execution_identity):
             return self._result(request, R4Outcome.ABSTAINED, "canary_disabled_or_identity_mismatch")
@@ -448,11 +607,11 @@ class R4CandidateRepairController:
             return self._result(request, R4Outcome.VERIFIED_NEGATIVE, "independently_attributed_candidate_failure", after_hash=after_hash, formal_validation_id=str(validation.get("validation_id", "validation")))
         return self._result(request, R4Outcome.INCONCLUSIVE, "negative_attribution_incomplete", after_hash=after_hash, formal_validation_id=str(validation.get("validation_id", "validation")))
 
-    def _result(self, request: R4ExecutionInput, outcome: R4Outcome, reason: str, *, after_hash: str | None = None, formal_validation_id: str | None = None, quarantine: bool = False) -> R4RunResult:
+    def _result(self, request: R4ExecutionInput | R5ExecutionInput, outcome: R4Outcome, reason: str, *, after_hash: str | None = None, formal_validation_id: str | None = None, quarantine: bool = False) -> R4RunResult:
         record = None
         if quarantine:
-            record = R4RevisionSafetyRecord(request.authorization.revision_sha256, request.authorization.authorization_id, reason, datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+            record = R4RevisionSafetyRecord(request.authorization.safety_subject_sha256, request.authorization.authorization_id, reason, datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
         return R4RunResult(outcome, request.authorization.authorization_id, request.authorization.before_candidate_sha256, after_hash, formal_validation_id, self._provider_call_count, self._mutation_count, (reason,), record)
 
 
-__all__ = ["R4CanaryManifest", "R4CandidateRepairAuthorization", "R4CandidateRepairController", "R4ContractError", "R4ExecutionInput", "R4KillSwitchState", "R4MutationFailure", "R4Outcome", "R4RevisionSafetyRecord", "R4RunResult"]
+__all__ = ["R4CanaryManifest", "R4CandidateRepairAuthorization", "R4CandidateRepairController", "R4ContractError", "R4ExecutionInput", "R4KillSwitchState", "R4MutationFailure", "R4Outcome", "R4RevisionSafetyRecord", "R4RunResult", "R4_CONTROLLER_CONTRACT_SHA256", "R5CandidateRepairAuthorization", "R5ExecutionInput"]

@@ -21,6 +21,17 @@ class MemoryPayloadError(ValueError):
     """Raised when a memory payload violates the candidate-only boundary."""
 
 
+R5_MEMORY_PAYLOAD_POLICY_SHA256 = canonical_sha256(
+    {
+        "schema_version": "r5-memory-payload-policy-v1",
+        "candidate_only_scope": True,
+        "agent_safe_only": True,
+        "snapshot_instance_bound_by_authorization": True,
+        "final_payload_manifest_bound_by_authorization": True,
+    }
+)
+
+
 def _text(value: Any, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise MemoryPayloadError(f"{field} must be non-empty text")
@@ -153,4 +164,20 @@ def render_candidate_memory_snippets(payloads: Sequence[R5MemoryPayload]) -> tup
     return tuple(snippets)
 
 
-__all__ = ["MemoryPayloadError", "R5MemoryPayload", "render_candidate_memory_snippets"]
+def memory_payload_manifest_sha256(payloads: Sequence[R5MemoryPayload]) -> str:
+    """Return the canonical order-independent manifest for prompt payloads."""
+
+    values = []
+    for payload in payloads:
+        if not isinstance(payload, R5MemoryPayload):
+            raise TypeError("payloads must contain R5MemoryPayload")
+        values.append(payload.payload_sha256)
+    return canonical_sha256(
+        {
+            "schema_version": "r5-payload-manifest-v1",
+            "payloads": sorted(values),
+        }
+    )
+
+
+__all__ = ["MemoryPayloadError", "R5MemoryPayload", "R5_MEMORY_PAYLOAD_POLICY_SHA256", "memory_payload_manifest_sha256", "render_candidate_memory_snippets"]

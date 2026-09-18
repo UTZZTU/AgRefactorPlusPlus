@@ -18,6 +18,7 @@ from agrefactor.recovery.r5_authorization import (
 )
 from agrefactor.recovery.r5_memory_payload import (
     R5MemoryPayload,
+    memory_payload_manifest_sha256,
     render_candidate_memory_snippets,
 )
 
@@ -194,16 +195,7 @@ class R5RuntimeBinding:
 def _payload_manifest_sha256(
     payloads: Sequence[R5MemoryPayload],
 ) -> str:
-    values = sorted(item.payload_sha256 for item in payloads)
-    import hashlib
-    import json
-
-    encoded = json.dumps(
-        {"schema_version": "r5-payload-manifest-v1", "payloads": values},
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    return memory_payload_manifest_sha256(payloads)
 
 
 __all__ = ["R5RuntimeBinding", "R5RuntimeBindingError"]
