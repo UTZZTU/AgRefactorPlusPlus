@@ -666,3 +666,28 @@ Public COSIM launch. The exact Candidate, authorization, oracles, runtime
 contract, and acceptance threshold remain unchanged. A new clean zero-call
 protocol audit is mandatory before the content-addressed revalidation is
 retried. R5 remains unaccepted and R6 remains stopped.
+
+## Authorized Revalidation Lifecycle Admission
+
+The corrected zero-Provider revalidation completed the full required prefix:
+Public csim, csynth, Public RTL COSIM, and the existing Hidden host
+differential. Its independent file audit is
+`clean_verified_positive_revalidation` with zero critical or blocking
+findings. The exact Candidate remains bound to the original A2 authorization
+and inconclusive episode; no original record was edited.
+
+The supplemental positive is appended to a new derived ledger partition with
+the two immutable R4 predecessor positives. The deterministic reducer now
+has three positive episodes, two independent sources, and three independent
+contexts, and emits a `Trusted` revision under the existing R5 policy. A
+frozen memory snapshot and candidate-only payload are bound to that revision;
+they contain no hidden inputs, raw provider output, private reasoning, or
+future holdout outcomes. The admission and its independent audit are stored
+under `/data/agrefactor_runs/r5_p3_authorized_revalidation_admission_a55a9bb`
+and `/data/agrefactor_runs/r5_p3_authorized_revalidation_admission_audit_a55a9bb`.
+
+This is a derived R5 research artifact, not product-level R5 acceptance. The
+next phase is the A0-A6 wiring smoke against the existing `refactor` path,
+then the bounded campaign and paired regression. `optimize` remains `safe-v1`,
+there is no new CLI or Vitis flow, R5 remains unaccepted, and R6 remains
+stopped.
