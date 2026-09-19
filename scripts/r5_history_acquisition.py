@@ -433,6 +433,7 @@ def _baseline_args(
     runtime: Mapping[str, Any],
     output: Path,
     run_id: str,
+    public_test_contract: str | Path | None = None,
 ) -> argparse.Namespace:
     paths = case["paths"]
     argv = [
@@ -476,6 +477,11 @@ def _baseline_args(
         run_id,
         "--json",
     ]
+    if public_test_contract is not None:
+        contract = Path(public_test_contract)
+        if not contract.is_absolute():
+            contract = repo / contract
+        argv.extend(("--public-test-contract", str(contract.resolve())))
     return build_parser().parse_args(argv)
 
 

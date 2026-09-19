@@ -1,0 +1,8 @@
+{
+  "schema_version": 2,
+  "kind": "public_differential_self_check_v1",
+  "candidate_mismatch_returncodes": [1],
+  "cosim_interface_depths": {
+    "height": 12
+  }
+}

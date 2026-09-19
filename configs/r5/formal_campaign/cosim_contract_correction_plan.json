@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "plan_id": "v2.3-r5-formal-cosim-contract-correction-v1",
+  "status": "predeclared_before_corrective_replication",
+  "purpose": "Correct the missing Public COSIM interface-depth contract without changing A0-A6 semantics, sources, tests, model, prompt, or acceptance authority.",
+  "parent_evidence": {
+    "frozen_manifest": "/data/agrefactor_runs/r5_p6_formal_future_freeze_preflight/formal_future_manifest.json",
+    "formal_campaign_result": "/data/agrefactor_runs/r5_p6_formal_campaign_real/formal_campaign_result.json",
+    "independent_audit": "/data/agrefactor_runs/r5_p6_formal_campaign_real/independent_audit.json",
+    "formal_campaign_result_file_sha256": "5b10225bbd88d0eb11e3d7b5d78422520e66f205580d1b33dd630490ae7b58e2",
+    "independent_audit_file_sha256": "b5c00ee4abfccf11e7892d8ba480f49665e31c99a535cc62556aa7ce486ca8f3"
+  },
+  "defect": {
+    "class": "public_runtime_contract_not_forwarded",
+    "observed_terminal_reason": "cosim_failed_without_typed_owner",
+    "root_cause": "Vitis MAXI COSIM required a deterministic interface depth, but the formal runner omitted the supported Public runtime contract.",
+    "sample_specific_error_rule_added": false,
+    "r2_or_r4_threshold_changed": false
+  },
+  "case_contracts": {
+    "Pointer_E2_hash_table": "configs/r5/formal_campaign/cosim_contracts/Pointer_E2_hash_table.public.json",
+    "Pointer_E3_double_pointer": "configs/r5/formal_campaign/cosim_contracts/Pointer_E3_double_pointer.public.json"
+  },
+  "budget": {
+    "provider_calls_before_parent": 140,
+    "vitis_launches_before_parent": 67,
+    "parent_provider_calls": 54,
+    "parent_vitis_launches": 20,
+    "provider_upper_bound": 120,
+    "vitis_upper_bound": 144,
+    "provider_hard_cap": 500,
+    "vitis_hard_cap": 500
+  },
+  "claim_limits": {
+    "parent_campaign_is_preserved": true,
+    "parent_outcome_is_not_overwritten": true,
+    "corrective_replication_is_posthoc": true,
+    "corrective_replication_is_not_a_new_future_holdout": true,
+    "efficacy_claim_requires_separate_interpretation": true
+  },
+  "invariants": {
+    "arms_changed": false,
+    "sources_changed": false,
+    "tests_changed": false,
+    "model_or_prompt_changed": false,
+    "new_cli_added": false,
+    "second_vitis_flow_added": false,
+    "hidden_model_visible": false,
+    "r5_accepted": false,
+    "r6_started": false
+  }
+}
