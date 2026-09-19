@@ -274,6 +274,56 @@ class R5ProductCampaignExecutorTests(unittest.TestCase):
             self.assertEqual(len(arm_files), 7)
             self.assertEqual(len({path.parent for path in arm_files}), 7)
 
+    def test_mutation_arm_abstains_before_factory_when_baseline_has_no_event(self):
+        with tempfile.TemporaryDirectory() as root:
+            capture = self._capture(root)
+            capture = replace(
+                capture,
+                formal_result=replace(
+                    capture.formal_result,
+                    status=capture.formal_result.status.__class__.ACCEPTED,
+                    last_validation_state=(
+                        capture.formal_result.last_validation_state.__class__.ACCEPTED
+                    ),
+                    metadata={
+                        **dict(capture.formal_result.metadata),
+                        "diagnostic_events": [],
+                    },
+                ),
+            )
+            executor = ExistingRefactorR5CampaignExecutor(
+                artifact_root=Path(root) / "campaign",
+                baseline_runner=lambda *args: capture,
+                advisor_factory=lambda *args: self.fail(
+                    "R2 must not run without one diagnostic event"
+                ),
+                integration_factory=lambda *args: self.fail(
+                    "R4/R5 integration must not be built without one diagnostic event"
+                ),
+            )
+            case = R5CaseSpec(
+                "accepted-case",
+                capture.source_sha256,
+                capture.context_signature,
+                "future",
+            )
+            baseline = executor.prepare_common_baseline(case, 1)
+            observation = executor.run_arm(
+                case=case,
+                repeat=1,
+                arm=R5Arm.A4,
+                baseline=baseline,
+                arm_index=0,
+            )
+
+            self.assertEqual(observation["status"], "abstained")
+            self.assertEqual(
+                observation["integration"]["reason"],
+                "accepted_without_diagnostic",
+            )
+            self.assertEqual(observation["provider_calls"], 0)
+            self.assertEqual(observation["vitis_launches"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -323,37 +323,51 @@ class ExistingRefactorR5CampaignExecutor:
 
         outcome: Mapping[str, Any] | None = None
         if arm in {R5Arm.A2, R5Arm.A3, R5Arm.A4, R5Arm.A5, R5Arm.A6}:
-            integration = self._integration_factory(
-                capture,
-                arm,
-                context,
-                arm_root / "episodes",
-                capture.model_adapter.fork(),
-            )
-            integration_arm = getattr(
-                getattr(integration, "profile", None),
-                "arm",
-                None,
-            )
-            if getattr(integration_arm, "value", None) != arm.value:
-                raise R5CampaignError("integration factory returned the wrong arm")
-            approved_snippets = tuple(
-                getattr(integration, "approved_memory_snippets", ())
-            )
-            arm_request = replace(
-                capture.formal_request,
-                r5_arm=arm.value,
-                llm_advisory_mode="candidate-only",
-                approved_memory_snippets=approved_snippets,
-            )
-            outcome = integration.run_from_existing_orchestrator(
-                context=context,
-                request=arm_request,
-                main_result=main_result,
-                handler_factory=handler_factory,
-            )
-            if not isinstance(outcome, Mapping):
-                raise TypeError("R5 integration must return a mapping")
+            if len(diagnostic_events) != 1:
+                reason = (
+                    "accepted_without_diagnostic"
+                    if main_result.accepted and not diagnostic_events
+                    else "eligible_r2_event_not_unique"
+                )
+                outcome = {
+                    "schema_version": "r5-existing-orchestrator-integration-v1",
+                    "status": "abstained",
+                    "reason": reason,
+                    "main_result_unchanged": True,
+                    "accepted_by_integration": False,
+                }
+            else:
+                integration = self._integration_factory(
+                    capture,
+                    arm,
+                    context,
+                    arm_root / "episodes",
+                    capture.model_adapter.fork(),
+                )
+                integration_arm = getattr(
+                    getattr(integration, "profile", None),
+                    "arm",
+                    None,
+                )
+                if getattr(integration_arm, "value", None) != arm.value:
+                    raise R5CampaignError("integration factory returned the wrong arm")
+                approved_snippets = tuple(
+                    getattr(integration, "approved_memory_snippets", ())
+                )
+                arm_request = replace(
+                    capture.formal_request,
+                    r5_arm=arm.value,
+                    llm_advisory_mode="candidate-only",
+                    approved_memory_snippets=approved_snippets,
+                )
+                outcome = integration.run_from_existing_orchestrator(
+                    context=context,
+                    request=arm_request,
+                    main_result=main_result,
+                    handler_factory=handler_factory,
+                )
+                if not isinstance(outcome, Mapping):
+                    raise TypeError("R5 integration must return a mapping")
 
         after = budget.snapshot().to_dict()
         provider_calls, vitis_launches = _budget_delta(before, after)

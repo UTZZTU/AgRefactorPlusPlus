@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
@@ -156,6 +158,98 @@ class R5BoundedPilotTests(unittest.TestCase):
         )
         self.assertIs(value, fake_config)
         self.assertEqual(config.call_args.kwargs["memory_payloads"], (config.call_args.kwargs["memory_payloads"][0],))
+
+    def test_partial_audit_reconciles_completed_and_interrupted_repeats(self):
+        audit_spec = importlib.util.spec_from_file_location(
+            "r5_audit_bounded_pilot_partial",
+            ROOT / "scripts" / "r5_audit_bounded_pilot.py",
+        )
+        assert audit_spec is not None and audit_spec.loader is not None
+        audit_module = importlib.util.module_from_spec(audit_spec)
+        audit_spec.loader.exec_module(audit_module)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = {
+                "schema_version": 1,
+                "status": "frozen_before_pilot_outcome_observation",
+                "repository_head": "a" * 40,
+                "r5_accepted": False,
+                "r6_started": False,
+                "repeats": 3,
+                "provider_used_before": 104,
+                "vitis_used_before": 59,
+                "provider_upper_bound": 60,
+                "vitis_upper_bound": 72,
+            }
+            manifest["pilot_manifest_sha256"] = hashlib.sha256(
+                audit_module.canonical(manifest).encode()
+            ).hexdigest()
+            (root / "pilot_manifest.json").write_text(
+                json.dumps(manifest), encoding="utf-8"
+            )
+            for repeat in range(1, 4):
+                repeat_root = root / "pairs" / ("repeat-%02d" % repeat)
+                common = repeat_root / "common-product"
+                paired = repeat_root / "paired" / "case-test" / ("repeat-%02d" % repeat)
+                common.mkdir(parents=True)
+                paired.mkdir(parents=True)
+                provider = 9
+                vitis = 4 if repeat == 3 else 0
+                (common / "run_result.json").write_text(
+                    json.dumps(
+                        {
+                            "budget_usage": {
+                                "llm_calls": provider,
+                                "csim_calls": 2 if repeat == 3 else 0,
+                                "csynth_calls": 1 if repeat == 3 else 0,
+                                "cosim_calls": 1 if repeat == 3 else 0,
+                            }
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                baseline_id = "baseline-%d" % repeat
+                (paired / "common_baseline.json").write_text(
+                    json.dumps(
+                        {
+                            "baseline_id": baseline_id,
+                            "provider_calls": provider,
+                            "vitis_launches": vitis,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                if repeat < 3:
+                    for index, arm in enumerate(("A0", "A1", "A2", "A3", "A4", "A5", "A6")):
+                        arm_root = paired / "arms" / ("%02d-%s" % (index, arm))
+                        arm_root.mkdir(parents=True)
+                        (arm_root / "arm_result.json").write_text(
+                            json.dumps(
+                                {
+                                    "arm": arm,
+                                    "baseline_id": baseline_id,
+                                    "status": "abstained",
+                                    "provider_calls": 0,
+                                    "vitis_launches": 0,
+                                    "hidden_input_count": 0,
+                                    "cross_arm_cache_used": False,
+                                }
+                            ),
+                            encoding="utf-8",
+                        )
+
+            audit = audit_module.audit_partial(
+                root,
+                state={"head": "a" * 40},
+                manifest=manifest,
+            )
+            self.assertEqual(audit["status"], "clean_partial")
+            self.assertEqual(audit["complete_repeats"], [1, 2])
+            self.assertEqual(audit["resume_repeats"], [3])
+            self.assertEqual(audit["provider_calls"], 27)
+            self.assertEqual(audit["vitis_launches"], 4)
+            self.assertEqual(audit["provider_calls_after"], 131)
+            self.assertEqual(audit["vitis_launches_after"], 63)
 
 
 if __name__ == "__main__":
