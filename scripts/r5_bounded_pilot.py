@@ -39,7 +39,7 @@ from agrefactor.runtime.r5_profile import resolve_r5_profile
 from scripts.r5_history_acquisition import _baseline_args, build_execution_identity_and_canary
 
 ADAPTER_MANIFEST = Path("/data/agrefactor_runs/r5_p2_adapter_freeze_v2/oracle_adapter_manifest.json")
-PROTOCOL_AUDIT = Path("/data/agrefactor_runs/r5_p5_bounded_pilot_protocol_audit_/protocol_audit.json")
+PROTOCOL_AUDIT = Path("/data/agrefactor_runs/r5_p5_bounded_pilot_protocol_audit_732852d/protocol_audit.json")
 CALIBRATION_BUNDLE = Path("/data/agrefactor_runs/v23_r2_real_calibration_identity_v2_20260918/calibration_bundle.json")
 ADMISSION_ROOT = Path("/data/agrefactor_runs/r5_p3_authorized_revalidation_admission_a55a9bb")
 ADMISSION_AUDIT = Path("/data/agrefactor_runs/r5_p3_authorized_revalidation_admission_audit_a55a9bb/independent_audit.json")
