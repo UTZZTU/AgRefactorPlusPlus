@@ -431,3 +431,39 @@ reconciliation is
 with file SHA-256
 `88c9749ef13cd5f3322097e7636e4bbf1dd0656ea906314942b23eacd4e7e9de`.
 Exactly one attempt remains for this source and requires a new zero-call audit.
+
+## Expanded History Final Attempt And Next Source Freeze
+
+The final pre-authorized `Recursive_E1_linked_list` attempt ran at repository
+head `b871aa4`. It consumed one Provider call and two Vitis launches. R2 again
+reported `medium` confidence for the Candidate-owned `unsupported_construct`
+diagnosis, so the accepted calibration certificate correctly prevented a
+mutation. No repair episode was created and the confidence threshold was not
+weakened.
+
+The sealed archive SHA-256 is
+`a2ed0905d51877920b14fac7eadbbd81e7a112bf051a7093c22329ef6c59f75f`.
+A separate file-only process reproduced
+`clean_safe_calibration_abstention`, with zero critical and zero blocking
+findings, at
+`/data/agrefactor_runs/r5_p3_expanded_history_final_result_audit_b871aa4/independent_audit.json`.
+Its file SHA-256 is
+`20af0fc5944e06ff9c2c408bc6b215c2fc7635e4e127d65c13413527b612cab1`
+and canonical audit SHA-256 is
+`e03068e400085a86abcf91fdc330da5a6bc7c8c8c5aac2ac0162ee70a0786734`.
+The source is exhausted after three bounded attempts. The cumulative ledger is
+now `99/500` Provider calls and `45/500` Vitis launches. The machine-readable
+reconciliation is
+`docs/roadmap/R5_EXPANDED_HISTORY_FINAL_ABSTENTION_RECONCILIATION.json`.
+
+Before any further real outcome was observed, `Pointer_E1_DNN` was frozen as
+the next independent history-only source. It existed in the initial repository
+commit and contains direct Candidate-side dynamic-allocation constructs, while
+its source SHA-256
+`68aa374f623fd2509c68eb8cf92d08b542fce998a4517336a30b8bb98ec033b4`
+is distinct from every observed history source. The adapter uses materialized
+symbol isolation only; it does not change Candidate logic, invent expected
+outputs, read either future holdout, or authorize a Trusted revision. Its
+plan is
+`configs/r5/preexisting_history/pointer_e1_dnn_expanded_plan.json`. A clean
+zero-call protocol audit remains mandatory before one bounded acquisition.

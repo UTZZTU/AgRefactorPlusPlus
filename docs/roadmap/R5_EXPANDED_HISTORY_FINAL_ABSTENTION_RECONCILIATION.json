@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "status": "clean_exhausted_safe_calibration_abstention",
+  "case_id": "Recursive_E1_linked_list_preexisting_candidate",
+  "source_sha256": "673c644da2e7b718b0ba50763d185cd599a69acc223927b1d730bbc51022b489",
+  "repository_head_at_execution": "b871aa4fd45905e63c2b836e3b2b1b527c08936b",
+  "plan_path": "configs/r5/preexisting_history/recursive_e1_linked_list_final_attempt_plan.json",
+  "protocol_audit_path": "/data/agrefactor_runs/r5_p3_expanded_history_final_audit_b871aa4/protocol_audit.json",
+  "protocol_audit_file_sha256": "dababd6259d1c1dd154297296cd54898736b671e8ddf3bc737968f4174ebaabb",
+  "run_root": "/data/agrefactor_runs/r5_p3_expanded_history_final_real_b871aa4",
+  "evidence_archive_sha256": "a2ed0905d51877920b14fac7eadbbd81e7a112bf051a7093c22329ef6c59f75f",
+  "evidence_content_manifest_file_sha256": "470a00084e068ff4aed06b83b92a25d1777b7e796c7df72c4db44abb174f0f11",
+  "independent_audit_path": "/data/agrefactor_runs/r5_p3_expanded_history_final_result_audit_b871aa4/independent_audit.json",
+  "independent_audit_file_sha256": "20af0fc5944e06ff9c2c408bc6b215c2fc7635e4e127d65c13413527b612cab1",
+  "independent_audit_sha256": "e03068e400085a86abcf91fdc330da5a6bc7c8c8c5aac2ac0162ee70a0786734",
+  "outcome": "abstained",
+  "reason": "r2_calibration_unverified",
+  "confidence": "medium",
+  "provider_calls": 1,
+  "vitis_launches": 2,
+  "mutation_provider_calls": 0,
+  "mutation_count": 0,
+  "verified_positive_episode_count": 0,
+  "budget_before": {
+    "provider_calls": 98,
+    "vitis_launches": 43
+  },
+  "budget_after": {
+    "provider_calls": 99,
+    "vitis_launches": 45
+  },
+  "attempts_authorized_for_source": 3,
+  "attempts_consumed": 3,
+  "remaining_attempts": 0,
+  "confidence_threshold_weakened": false,
+  "future_files_read": false,
+  "future_outcomes_observed": false,
+  "trusted_revision_created": false,
+  "r5_real_campaign_allowed": false,
+  "r5_accepted": false,
+  "r6_started": false,
+  "next_step": "freeze_and_audit_an_additional_independent_history_only_source"
+}
