@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "plan_id": "v2.3-r5-formal-future-only-v1",
+  "frozen_at": "2026-09-19T10:00:00Z",
+  "status": "predeclared_before_future_outcome_observation",
+  "history_binding": "accepted_r5_authorized_revalidation_admission",
+  "candidate_top_suffix": "_hls",
+  "pilot_exclusions": [
+    "Exception_E3_Turbo_Encoder"
+  ],
+  "future_cases": [
+    {
+      "case_id": "Pointer_E2_hash_table",
+      "control_role": "positive",
+      "source": "src/hlsrewritter/Pointer_E2_hash_table/kernel.cpp",
+      "legacy_candidate": "src/hlsrewritter/Pointer_E2_hash_table/main.cpp",
+      "legacy_testbench": "src/hlsrewritter/Pointer_E2_hash_table/tb.cpp",
+      "top": "length",
+      "public_test": "configs/r5/oracle_adapters/Pointer_E2_hash_table/public.cpp",
+      "hidden_test": "configs/r5/oracle_adapters/Pointer_E2_hash_table/hidden.cpp",
+      "expected_r2_failure_class": "unsupported_construct",
+      "expected_r2_entry_boundary": "unknown_or_mixed_review",
+      "deterministic_repair_expected": false,
+      "prior_evidence": "unobserved legacy candidate has an invalid stray token while the checked-in reference is host-syntax clean"
+    },
+    {
+      "case_id": "Pointer_E3_double_pointer",
+      "control_role": "inapplicable_or_confusable",
+      "source": "src/hlsrewritter/Pointer_E3_double_pointer/kernel.cpp",
+      "legacy_candidate": "src/hlsrewritter/Pointer_E3_double_pointer/main.cpp",
+      "legacy_testbench": "src/hlsrewritter/Pointer_E3_double_pointer/tb.cpp",
+      "top": "trap",
+      "public_test": "configs/r5/oracle_adapters/Pointer_E3_double_pointer/public.cpp",
+      "hidden_test": "configs/r5/oracle_adapters/Pointer_E3_double_pointer/hidden.cpp",
+      "expected_r2_failure_class": "not_applicable",
+      "expected_r2_entry_boundary": "inapplicable_or_confusable",
+      "deterministic_repair_expected": false,
+      "prior_evidence": "unobserved host-syntax-clean pointer case retained as the confusable control"
+    }
+  ],
+  "budget": {
+    "provider_calls_before": 140,
+    "vitis_launches_before": 67,
+    "provider_upper_bound": 120,
+    "vitis_upper_bound": 144,
+    "provider_hard_cap": 500,
+    "vitis_hard_cap": 500,
+    "reserve_fraction": 0.1
+  },
+  "invariants": {
+    "history_outcomes_reclassified_as_unobserved": false,
+    "future_outcomes_observed_at_freeze": false,
+    "pilot_case_reused": false,
+    "expected_outputs_invented": false,
+    "reference_top_is_oracle": true,
+    "public_hidden_inputs_distinct": true,
+    "original_benchmark_files_mutated": false,
+    "hidden_model_visible": false,
+    "trusted_revision_creation_allowed": false,
+    "new_cli_allowed": false,
+    "second_vitis_flow_allowed": false,
+    "r5_accepted": false,
+    "r6_started": false
+  }
+}
