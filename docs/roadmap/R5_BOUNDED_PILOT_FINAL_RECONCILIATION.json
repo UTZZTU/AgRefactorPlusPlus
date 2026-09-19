@@ -1,0 +1,64 @@
+{
+  "schema_version": 2,
+  "status": "complete_structurally_clean_no_verified_repair",
+  "repository_head_at_resume_execution": "7cfa900e80b30f6e5784f8664f79c169351b0b90",
+  "original_run_root": "/data/agrefactor_runs/r5_p5_bounded_real_pilot_99420db_run1",
+  "resume_run_root": "/data/agrefactor_runs/r5_p5_bounded_pilot_resume_7cfa900_run1",
+  "evidence": {
+    "resume_result_path": "/data/agrefactor_runs/r5_p5_bounded_pilot_resume_7cfa900_run1/resume_result.json",
+    "resume_result_file_sha256": "ca5f97835336ff4da78972c0a2d3543fcc08c64512613076b6ee300045b143b1",
+    "resume_result_sha256": "8ebfb9d254f228e5fea2cd3ebb51bf06363f89602b3a6c07a2feb424d663ea3e",
+    "combined_result_v2_path": "/data/agrefactor_runs/r5_p5_bounded_pilot_resume_7cfa900_run1/combined_pilot_result_v2.json",
+    "combined_result_v2_file_sha256": "cdaa3f38af394aef7665c34e75aec45e829606f02474d78098918e5f2df0681c",
+    "combined_result_sha256": "638b15d88bb0dca5798860dc8c779ed901c013815ee8a962e44ba98044f06e52",
+    "independent_audit_v2_path": "/data/agrefactor_runs/r5_p5_bounded_pilot_resume_7cfa900_run1/independent_audit_v2.json",
+    "independent_audit_v2_file_sha256": "c5e20f3d0a2a5f07f664733741e0fb971b251a660235e6b98ddbfcaccbf384e2",
+    "independent_audit_sha256": "624858dc3e85936d66c7310401e29f7eacdd9f3ff2d5635790d55183eaf72f7d",
+    "independent_audit_status": "clean",
+    "critical_finding_count": 0
+  },
+  "execution_observation": {
+    "case_id": "Exception_E3_Turbo_Encoder",
+    "future_outcomes_observed": true,
+    "complete_repeats": [1, 2, 3],
+    "arm_observation_count": 21,
+    "provider_calls_original": 27,
+    "vitis_launches_original": 4,
+    "provider_calls_resume": 9,
+    "vitis_launches_resume": 4,
+    "provider_calls_total": 36,
+    "vitis_launches_total": 8,
+    "baseline_accepted_count": 2,
+    "verified_repair_count": 0,
+    "invalid_evidence_observed": false
+  },
+  "metric_reconciliation": {
+    "legacy_issue": "A0/A1 baseline acceptance was encoded as verified_positive in repeat 03",
+    "implementation_fix_head": "7e89f88c2ae27662fcc866387024ecd5381df5fd",
+    "authoritative_baseline_rule": "A0/A1 acceptance is observation-only and is never a verified repair",
+    "authoritative_repair_rule": "only A2-A6 with verified_positive integration status and accepted_by_integration=true count as verified repair",
+    "pilot_repairs_verified": false,
+    "pilot_structural_and_safety_audit_clean": true
+  },
+  "authoritative_global_budget": {
+    "provider_calls_before_pilot": 104,
+    "vitis_launches_before_pilot": 59,
+    "provider_calls_added": 36,
+    "vitis_launches_added": 8,
+    "provider_calls_after": 140,
+    "vitis_launches_after": 67,
+    "provider_hard_cap": 500,
+    "vitis_hard_cap": 500
+  },
+  "formal_campaign_boundary": {
+    "pilot_case_may_remain_primary_future_positive": false,
+    "reason": "Exception_E3_Turbo_Encoder outcomes were observed during pilot and implementation was subsequently corrected",
+    "formal_dataset_refreeze_required": true,
+    "formal_campaign_allowed": false
+  },
+  "provider_calls_during_v2_file_only_audit": 0,
+  "vitis_launches_during_v2_file_only_audit": 0,
+  "git_history_mutations_during_v2_file_only_audit": 0,
+  "r5_accepted": false,
+  "r6_started": false
+}
