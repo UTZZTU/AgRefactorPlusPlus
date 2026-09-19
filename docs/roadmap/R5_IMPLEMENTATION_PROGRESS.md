@@ -645,3 +645,24 @@ the full fresh prefix, Candidate identity, semantic preservation, original
 episode immutability, and zero critical findings. The executor cannot declare
 itself positive, create a Trusted revision, authorize the future campaign,
 accept R5, or start R6.
+
+## Authorized Candidate Revalidation Budget Reconciliation
+
+The first sealed revalidation at repository head `0f3467e` completed Public
+native Vitis csim, csynth, and Public RTL COSIM successfully, using zero
+Provider calls and three physical Vitis launches. Hidden host differential
+validation did not start because the executor assigned `max_csim_calls=1` to
+a validation prefix in which Public native Vitis csim and Hidden host csim
+share the generic csim counter. This is a runner budget configuration failure,
+not a Candidate or semantic-preservation failure.
+
+The sealed result and a separate file-only audit remain non-promoting and are
+bound by
+`docs/roadmap/R5_AUTHORIZED_CANDIDATE_REVALIDATION_BUDGET_RECONCILIATION.json`.
+The cumulative R5 ledger is now `104/500` Provider calls and `59/500` Vitis
+launches. The generic csim budget is corrected to two while physical Vitis
+accounting remains bounded to the one Public native csim, one csynth, and one
+Public COSIM launch. The exact Candidate, authorization, oracles, runtime
+contract, and acceptance threshold remain unchanged. A new clean zero-call
+protocol audit is mandatory before the content-addressed revalidation is
+retried. R5 remains unaccepted and R6 remains stopped.

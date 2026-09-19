@@ -24,6 +24,14 @@ assert SPEC is not None and SPEC.loader is not None
 RUNNER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RUNNER)
 
+AUDITOR_SPEC = importlib.util.spec_from_file_location(
+    "r5_audit_authorized_candidate_revalidation_result",
+    ROOT / "scripts" / "r5_audit_authorized_candidate_revalidation_result.py",
+)
+assert AUDITOR_SPEC is not None and AUDITOR_SPEC.loader is not None
+AUDITOR = importlib.util.module_from_spec(AUDITOR_SPEC)
+AUDITOR_SPEC.loader.exec_module(AUDITOR)
+
 
 class R5AuthorizedCandidateRevalidationTests(unittest.TestCase):
     def _archive(self, root: Path, *, bad_hash: bool = False) -> tuple[Path, str, str]:
@@ -119,6 +127,17 @@ class R5AuthorizedCandidateRevalidationTests(unittest.TestCase):
         )
         self.assertEqual(public.runtime_contract["cosim_interface_depths"], {"arr": 9})
         self.assertEqual(task.mode.value, "refactor")
+
+    def test_physical_vitis_count_excludes_hidden_host_csim(self) -> None:
+        usage = {"csim_calls": 2, "csynth_calls": 1, "cosim_calls": 1}
+        self.assertEqual(RUNNER._physical_vitis_launches(usage), 3)
+
+    def test_result_auditor_reads_orchestrator_metadata_acceptance(self) -> None:
+        self.assertTrue(AUDITOR._serialized_acceptance({"metadata": {"accepted": True}}))
+        self.assertFalse(
+            AUDITOR._serialized_acceptance({"metadata": {"accepted": False}})
+        )
+        self.assertIsNone(AUDITOR._serialized_acceptance({}))
 
 
 if __name__ == "__main__":

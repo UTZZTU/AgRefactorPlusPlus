@@ -183,6 +183,7 @@ def audit(
         "original_authorization_verified": True,
         "sealed_candidate_verified": True,
         "prior_configuration_failure_verified": True,
+        "prior_revalidation_budget_failure_verified": True,
         "fresh_validation_required": True,
         "provider_calls_before": budget["provider_calls_before"],
         "vitis_launches_before": budget["vitis_launches_before"],

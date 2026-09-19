@@ -44,9 +44,19 @@
     "reconciliation_path": "docs/roadmap/R5_C2HLSC_QUICKSORT_COSIM_INTERFACE_RECONCILIATION.json",
     "reconciliation_file_sha256": "a74a0d9a218088e50be2fa28c4a588bfe1bad15be634b1ef10bca9e655c4187f"
   },
+  "prior_revalidation_budget_failure": {
+    "result_path": "/data/agrefactor_runs/r5_p3_quicksort_authorized_revalidation_real_0f3467e/revalidation_result.json",
+    "result_file_sha256": "7f055d1f642246814ec181f787de9a5760624583e603165b2960174a31777d4c",
+    "evidence_archive_sha256": "cf2e1f2bc30956a721a09d8d118c884397fbba56e7781c9af3b32cfb9c10e673",
+    "independent_audit_path": "/data/agrefactor_runs/r5_p3_quicksort_authorized_revalidation_result_audit_0f3467e/independent_audit.json",
+    "independent_audit_file_sha256": "c6cd85050c98aa43f7242b2a4f7896dcfd7a3958a5da2c33e87163b392dc5e90",
+    "independent_audit_sha256": "9a5c68345c0c675bc38c87ec8b31721c5c1431bf497d98947482e08ba253b224",
+    "reconciliation_path": "docs/roadmap/R5_AUTHORIZED_CANDIDATE_REVALIDATION_BUDGET_RECONCILIATION.json",
+    "reconciliation_file_sha256": "c68ca792ab8d6f568e9b271613344bc82d652902c1966d2b1f3c0299d4ae646f"
+  },
   "budget": {
     "provider_calls_before": 104,
-    "vitis_launches_before": 56,
+    "vitis_launches_before": 59,
     "provider_call_upper_bound": 0,
     "vitis_launch_upper_bound": 3,
     "provider_hard_cap": 500,

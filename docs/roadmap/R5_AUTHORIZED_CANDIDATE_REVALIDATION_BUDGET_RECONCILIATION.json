@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "status": "audited_hidden_host_budget_configuration_fixed",
+  "repository_head": "0f3467ef1d8125eeacbc462cb01e2621ab8fe532",
+  "run_id": "r5-c2hlsc-quicksort-authorized-revalidation-01",
+  "case_id": "C2HLSC_quicksort_preexisting_candidate",
+  "candidate_after_sha256": "ffee44eba1bd9896f061ccb14d049a9569d82bd9daa98fce061b0aec0958c3c7",
+  "authorization_id": "fca3a857992c4fd76326590f135cbb6e03ba082fbe3748fd992bc677f4c76dda",
+  "source_episode_id": "r5-467840816422f25956b2115952d491b4d3723da7",
+  "evidence_root": "/data/agrefactor_runs/r5_p3_quicksort_authorized_revalidation_real_0f3467e",
+  "evidence_archive_sha256": "cf2e1f2bc30956a721a09d8d118c884397fbba56e7781c9af3b32cfb9c10e673",
+  "revalidation_result_file_sha256": "7f055d1f642246814ec181f787de9a5760624583e603165b2960174a31777d4c",
+  "independent_audit_path": "/data/agrefactor_runs/r5_p3_quicksort_authorized_revalidation_result_audit_0f3467e/independent_audit.json",
+  "independent_audit_file_sha256": "c6cd85050c98aa43f7242b2a4f7896dcfd7a3958a5da2c33e87163b392dc5e90",
+  "independent_audit_sha256": "9a5c68345c0c675bc38c87ec8b31721c5c1431bf497d98947482e08ba253b224",
+  "observed_prefix": {
+    "public_csim": "passed",
+    "csynth": "passed",
+    "public_cosim": "passed",
+    "hidden_host_differential": "blocked_before_launch"
+  },
+  "root_cause": "public_native_vitis_csim_and_hidden_host_csim_shared_max_csim_calls_1",
+  "correction": {
+    "max_csim_calls": 2,
+    "physical_vitis_accounting": "one_public_native_csim_plus_csynth_plus_public_cosim",
+    "hidden_host_csim_counted_as_vitis": false,
+    "candidate_changed": false,
+    "oracle_changed": false,
+    "runtime_contract_changed": false,
+    "threshold_weakened": false
+  },
+  "budget_accounting": {
+    "provider_calls": 0,
+    "vitis_launches": 3,
+    "cumulative_provider_calls_before": 104,
+    "cumulative_vitis_launches_before": 56,
+    "cumulative_provider_calls_after": 104,
+    "cumulative_vitis_launches_after": 59
+  },
+  "eligible_for_lifecycle_reduction": false,
+  "trusted_revision_created": false,
+  "r5_accepted": false,
+  "r6_started": false
+}

@@ -341,11 +341,66 @@ def verify_authorized_revalidation_plan(
     ):
         raise R5AuthorizedRevalidationError("prior configuration evidence is invalid")
 
+    retry = plan.get("prior_revalidation_budget_failure")
+    if not isinstance(retry, Mapping):
+        raise R5AuthorizedRevalidationError("prior revalidation failure is missing")
+    retry_paths = {
+        "result": Path(str(retry.get("result_path", ""))).resolve(),
+        "audit": Path(str(retry.get("independent_audit_path", ""))).resolve(),
+        "reconciliation": (
+            root / str(retry.get("reconciliation_path", ""))
+        ).resolve(),
+    }
+    retry_hashes = {
+        "result": retry.get("result_file_sha256"),
+        "audit": retry.get("independent_audit_file_sha256"),
+        "reconciliation": retry.get("reconciliation_file_sha256"),
+    }
+    for role, path in retry_paths.items():
+        if path.is_symlink() or not path.is_file():
+            raise R5AuthorizedRevalidationError("prior revalidation evidence is missing")
+        if file_sha256(path) != _require_hash(retry_hashes[role], "retry " + role):
+            raise R5AuthorizedRevalidationError(
+                "prior revalidation evidence hash mismatch"
+            )
+    retry_result = _load_json_file(retry_paths["result"], "retry result")
+    retry_audit = _load_json_file(retry_paths["audit"], "retry audit")
+    retry_reconciliation = _load_json_file(
+        retry_paths["reconciliation"], "retry reconciliation"
+    )
+    retry_serialized = retry_result.get("validation", {}).get("result", {})
+    retry_steps = retry_serialized.get("steps", [])
+    retry_terminal = retry_steps[-1] if isinstance(retry_steps, list) and retry_steps else {}
+    if (
+        retry_result.get("status") != "ready_for_independent_audit"
+        or retry_result.get("validation_accepted") is not False
+        or retry_result.get("candidate_after_sha256") != candidate_after
+        or retry_result.get("provider_calls") != 0
+        or retry_result.get("vitis_launches") != 3
+        or retry_serialized.get("final_state") != "blocked"
+        or retry_terminal.get("state") != "hidden_evaluation"
+        or retry_terminal.get("route_action") != "stop_budget_exhausted"
+        or retry_audit.get("status") != "clean_non_promoting_revalidation"
+        or retry_audit.get("evidence_archive_sha256")
+        != retry.get("evidence_archive_sha256")
+        or retry_audit.get("audit_sha256") != retry.get("independent_audit_sha256")
+        or retry_audit.get("critical_finding_count") != 0
+        or retry_audit.get("eligible_for_lifecycle_reduction") is not False
+        or retry_reconciliation.get("status")
+        != "audited_hidden_host_budget_configuration_fixed"
+        or retry_reconciliation.get("candidate_after_sha256") != candidate_after
+        or retry_reconciliation.get("budget_accounting", {}).get(
+            "cumulative_vitis_launches_after"
+        )
+        != 59
+    ):
+        raise R5AuthorizedRevalidationError("prior revalidation failure is invalid")
+
     budget = plan.get("budget")
     if (
         not isinstance(budget, Mapping)
         or budget.get("provider_calls_before") != 104
-        or budget.get("vitis_launches_before") != 56
+        or budget.get("vitis_launches_before") != 59
         or budget.get("provider_call_upper_bound") != 0
         or budget.get("vitis_launch_upper_bound") != 3
         or budget.get("provider_hard_cap") != 500

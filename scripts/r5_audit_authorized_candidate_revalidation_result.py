@@ -109,6 +109,11 @@ def _invocation(
     return _load_bytes(payloads.get(name), name)
 
 
+def _serialized_acceptance(serialized: Mapping[str, Any]) -> Any:
+    metadata = serialized.get("metadata")
+    return metadata.get("accepted") if isinstance(metadata, Mapping) else None
+
+
 def audit(root: Path) -> dict[str, Any]:
     root = root.expanduser().resolve()
     payloads, archive_sha, content_sha = _verify_archive(root)
@@ -167,10 +172,11 @@ def audit(root: Path) -> dict[str, Any]:
             "revalidation result boundary is invalid"
         )
     accepted = result.get("validation_accepted") is True
+    serialized_accepted = _serialized_acceptance(serialized)
     states = [step.get("state") for step in steps if isinstance(step, Mapping)]
     if accepted:
         if (
-            serialized.get("accepted") is not True
+            serialized_accepted is not True
             or serialized.get("final_state") != "accepted"
             or states != expected_states
             or result.get("vitis_launches") != 3
@@ -178,7 +184,7 @@ def audit(root: Path) -> dict[str, Any]:
             raise R5AuthorizedRevalidationResultAuditError(
                 "accepted revalidation lacks the complete fresh prefix"
             )
-    elif serialized.get("accepted") is not False:
+    elif serialized_accepted is not False:
         raise R5AuthorizedRevalidationResultAuditError(
             "non-accepted revalidation is inconsistent"
         )

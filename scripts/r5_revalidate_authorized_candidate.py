@@ -160,6 +160,17 @@ def _suite_ids(bundle: R5AuthorizedRevalidationBundle) -> tuple[str, str]:
     return (f"public-{stem}-revalidation", f"hidden-{stem}-revalidation")
 
 
+def _physical_vitis_launches(usage: Mapping[str, Any]) -> int:
+    """Count physical Vitis processes, excluding the Hidden host csim."""
+
+    public_native_csim = min(int(usage.get("csim_calls", 0)), 1)
+    return (
+        public_native_csim
+        + int(usage.get("csynth_calls", 0))
+        + int(usage.get("cosim_calls", 0))
+    )
+
+
 def _task(repository: Path, bundle: R5AuthorizedRevalidationBundle, run_id: str) -> TaskSpec:
     public_id, hidden_id = _suite_ids(bundle)
     public_path = repository / bundle.paths["public_test"]
@@ -213,6 +224,7 @@ def _validate_audit(
         or audit.get("original_authorization_verified") is not True
         or audit.get("sealed_candidate_verified") is not True
         or audit.get("prior_configuration_failure_verified") is not True
+        or audit.get("prior_revalidation_budget_failure_verified") is not True
         or audit.get("future_files_read") is not False
         or audit.get("future_outcomes_observed") is not False
         or audit.get("critical_finding_count") != 0
@@ -258,7 +270,7 @@ def execute(
     )
     if (
         state.get("R5_CONSUMED_PROVIDER_CALLS") != 104
-        or state.get("R5_CONSUMED_VITIS_LAUNCHES") != 56
+        or state.get("R5_CONSUMED_VITIS_LAUNCHES") != 59
         or state.get("R5_ACCEPTED") is not False
         or state.get("R6_STARTED") is not False
     ):
@@ -293,7 +305,9 @@ def execute(
             max_llm_calls=0,
             max_tool_calls=24,
             max_compile_calls=16,
-            max_csim_calls=1,
+            # Public native Vitis csim and Hidden host differential csim share
+            # the generic csim counter even though only the former launches Vitis.
+            max_csim_calls=2,
             max_csynth_calls=1,
             max_cosim_calls=1,
             max_tokens=0,
@@ -336,9 +350,7 @@ def execute(
     )
     completed = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     usage = budget.snapshot().to_dict()
-    vitis_launches = sum(
-        int(usage[name]) for name in ("csim_calls", "csynth_calls", "cosim_calls")
-    )
+    vitis_launches = _physical_vitis_launches(usage)
     result = {
         "schema_version": 1,
         "status": "ready_for_independent_audit",
