@@ -29,7 +29,6 @@ authoritative.
   every arm receives an isolated BudgetManager, TraceRecorder, model adapter,
   validation workspace, and append-only artifact root.
 - Corrected the conservative Vitis upper bound to count the common baseline's
-## A0-A6 Existing-Orchestrator Wiring Checkpoint
   complete csim/csynth/cosim prefix. The runner now rejects work in A0, Vitis
   work in A1, and any arm that crosses its frozen Provider/Vitis upper bound.
 
@@ -91,6 +90,39 @@ repository artifacts support an enforceable oracle without inventing expected
 outcomes or weakening failure semantics. The existing future holdout remains
 unobserved. A zero-call protocol audit is required before any real acquisition;
 R6 remains stopped.
+
+## A0-A6 Existing-Orchestrator Wiring Checkpoint
+
+The first implementation wiring pass is now complete at the existing
+`refactor` orchestration seam. The R5 integration does not create a second
+CLI or Vitis path: A0/A1 remain observation-only, A2/A3 invoke the existing
+R4 controller without memory, and A4-A6 pass the frozen Trusted snapshot,
+candidate-only payload, calibration certificate, and lifecycle reduction
+through the existing R4 gate and mutation boundary.
+
+Two gate-contract defects found in this pass were corrected. Snapshot policy
+actions such as `"abstain"` are no longer treated as current conflict,
+sparsity, or OOD facts through Python truthiness. Also, lifecycle promotion
+evidence (`fresh_full_validation` and `independent_audit`) is not fabricated
+as pre-mutation input; the current gate consumes only current
+`agent_safe_diagnostic` and `accepted_calibration` evidence while retaining
+unknown requirements as fail-closed. Calibration and advisor confidence are
+now explicit gate context fields.
+
+The zero-call wiring smoke was executed with the derived Trusted admission
+artifacts and passed all seven arms. Its machine-readable evidence is
+`/data/agrefactor_runs/r5_p4_a0_a6_wiring_smoke/wiring_smoke.json`, with
+protocol audit
+`/data/agrefactor_runs/r5_p4_a0_a6_wiring_smoke/protocol_audit.json` and
+independent file-only audit
+`/data/agrefactor_runs/r5_p4_a0_a6_wiring_smoke/independent_audit.json`.
+The audits reported zero critical findings, zero Provider calls, zero Vitis
+launches, zero git mutations, and no future-holdout reads. This is a wiring
+checkpoint only; it is not R5 acceptance or a real campaign result.
+
+The smoke was generated before the implementation commit that records this
+checkpoint. It must be regenerated after commit so its repository-head
+binding and independent audit refer to the committed tree.
 
 ## Calibration-Scope Correction
 
