@@ -79,7 +79,7 @@ class R5ExistingOrchestratorIntegrationTests(unittest.TestCase):
         )
         return identity, canary
 
-    def _trusted_memory(self, certificate, *, facts=None):
+    def _trusted_memory(self, certificate, *, facts=None, required_evidence=()):
         episodes = (
             envelope(
                 episode_id="history-positive-1",
@@ -103,7 +103,7 @@ class R5ExistingOrchestratorIntegrationTests(unittest.TestCase):
             supported_when={"stage": "csynth", "owner": "candidate"},
             avoid_when={},
             exact_exclusions={},
-            required_evidence=(),
+            required_evidence=tuple(required_evidence),
             calibration_refs=(certificate.certificate_id,),
             memory_payload_manifest_sha256=R5_MEMORY_PAYLOAD_POLICY_SHA256,
             created_at="2026-09-18T01:00:00Z",
@@ -291,11 +291,73 @@ class R5ExistingOrchestratorIntegrationTests(unittest.TestCase):
         self.assertEqual(episode["payload"]["arm"], "A4")
         self.assertTrue((root / "ledger_manifest.json").is_file())
 
+    def test_lifecycle_evidence_is_not_falsely_required_before_current_mutation(self):
+        m, result, request, event = self._baseline()
+        mutation = Mutation(m.P1)
+        root = tempfile.TemporaryDirectory()
+        self.addCleanup(root.cleanup)
+        certificate = calibration_certificate()
+        identity, canary = self._identity_and_canary(event, request)
+        reduction, snapshot, payload = self._trusted_memory(
+            certificate,
+            required_evidence=(
+                "agent_safe_diagnostic",
+                "accepted_calibration",
+                "fresh_full_validation",
+                "independent_audit",
+            ),
+        )
+        integration = ExistingOrchestratorR5Integration(
+            R5IntegrationConfig(
+                profile=resolve_r5_profile("A4"),
+                canary=canary,
+                execution_identity=identity,
+                calibration_certificate=certificate,
+                episode_ledger_root=root.name,
+                campaign_manifest_sha256=h("campaign"),
+                mutation_adapter=mutation,
+                memory_snapshot=snapshot,
+                revision=reduction.revision,
+                lifecycle_reduction=reduction,
+                memory_payloads=(payload,),
+                validation_wall_time_s=100,
+            )
+        )
+        outcome = integration.run_from_existing_orchestrator(
+            context=m.make_context(
+                limits=BudgetLimits(
+                    max_llm_calls=4,
+                    max_tool_calls=20,
+                    max_compile_calls=20,
+                    max_csim_calls=10,
+                    max_csynth_calls=10,
+                    max_cosim_calls=10,
+                    max_wall_time_s=5000,
+                )
+            ),
+            request=replace(request, r5_arm="A4"),
+            main_result=result,
+            handler_factory=m.ScenarioFactory(m.pass_scenario),
+        )
+        self.assertEqual(outcome["status"], "verified_positive")
+        self.assertEqual(outcome["gate"]["decision"], "accept")
+        self.assertEqual(mutation.calls, 1)
+
     def test_gated_conflict_abstains_before_mutation(self):
         outcome, mutation, _ = self._run("A4", facts={"conflict": True})
         self.assertEqual(outcome["status"], "abstained")
         self.assertEqual(outcome["reason"], "gate_abstain")
         self.assertEqual(mutation.calls, 0)
+
+
+    def test_snapshot_policy_action_is_not_current_conflict(self):
+        outcome, mutation, _ = self._run(
+            "A4",
+            facts={"conflict": "abstain", "sparse": "abstain", "ood": "abstain"},
+        )
+        self.assertEqual(outcome["status"], "verified_positive")
+        self.assertEqual(outcome["gate"]["decision"], "accept")
+        self.assertEqual(mutation.calls, 1)
 
 
 if __name__ == "__main__":

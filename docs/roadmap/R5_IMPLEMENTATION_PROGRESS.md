@@ -29,6 +29,7 @@ authoritative.
   every arm receives an isolated BudgetManager, TraceRecorder, model adapter,
   validation workspace, and append-only artifact root.
 - Corrected the conservative Vitis upper bound to count the common baseline's
+## A0-A6 Existing-Orchestrator Wiring Checkpoint
   complete csim/csynth/cosim prefix. The runner now rejects work in A0, Vitis
   work in A1, and any arm that crosses its frozen Provider/Vitis upper bound.
 

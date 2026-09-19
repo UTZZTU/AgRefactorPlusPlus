@@ -145,6 +145,26 @@ def _advisory_failure_class(advisory: Mapping[str, Any]) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def _snapshot_fact_flag(facts: Mapping[str, Any], key: str) -> bool:
+    """Read an observed gate fact without confusing a policy action with a fact.
+
+    Snapshot facts may carry the action "abstain" for a future conflict,
+    sparsity, or OOD observation. A non-empty string must not become true via
+    Python truthiness, otherwise every clean gated application is rejected.
+    Only explicit boolean/numeric truth or an explicit affirmative token marks
+    the current context as having the fact.
+    """
+
+    value = facts.get(key, False)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().casefold() in {"1", "true", "yes", "present", "match", "matched"}
+    return False
+
+
 class R5CandidatePromptFactory:
     """Build the existing Candidate repair prompt from agent-safe evidence."""
 
@@ -729,6 +749,40 @@ class ExistingOrchestratorR5Integration:
                 pairs.append((dict(event), shadow, advisory))
         return pairs[0] if len(pairs) == 1 else None
 
+    @staticmethod
+    def _current_gate_evidence(
+        *,
+        event: Mapping[str, Any],
+        advisory: Mapping[str, Any],
+    ) -> set[str]:
+        predicates: set[str] = set()
+        if (
+            event.get("evidence_view") == "agent_safe"
+            and event.get("evidence_complete") is True
+            and event.get("evidence_refs")
+        ):
+            predicates.add("agent_safe_diagnostic")
+        if advisory.get("calibration_verified") is True:
+            predicates.add("accepted_calibration")
+        return predicates
+
+    @staticmethod
+    def _gate_terminal(reason: str) -> GateResult:
+        return GateResult(
+            GateDecision.ABSTAIN,
+            (reason,),
+            (),
+            ApplicabilityGate.ORDER,
+            canonical_artifact_sha256(
+                {
+                    "decision": GateDecision.ABSTAIN.value,
+                    "reasons": [reason],
+                    "evidence_refs": [],
+                    "checked_order": list(ApplicabilityGate.ORDER),
+                }
+            ),
+        )
+
     def _evaluate_gate(
         self,
         *,
@@ -738,13 +792,32 @@ class ExistingOrchestratorR5Integration:
         assert self._config.memory_snapshot is not None
         assert self._config.revision is not None
         revision = self._config.revision
+        current_evidence = self._current_gate_evidence(
+            event=event,
+            advisory=advisory,
+        )
+        lifecycle_only_evidence = {
+            "fresh_full_validation",
+            "independent_audit",
+        }
+        unknown_evidence = set(revision.required_evidence) - {
+            *current_evidence,
+            *lifecycle_only_evidence,
+        }
+        if unknown_evidence:
+            return self._gate_terminal(
+                "unsupported_required_evidence:" + ",".join(sorted(unknown_evidence))
+            )
         adapted = RepairPatternRevision(
             revision_id=revision.revision_id + ":" + revision.revision_sha256,
             parent_revision_id=revision.parent_revision_id,
             supported_when=revision.supported_when,
             avoid_when=revision.avoid_when,
             exclusions=revision.exact_exclusions,
-            required_evidence=revision.required_evidence,
+            required_evidence=tuple(
+                item for item in revision.required_evidence
+                if item in current_evidence
+            ),
             positive_episode_refs=revision.positive_episode_refs,
             negative_episode_refs=revision.negative_episode_refs,
             calibration_refs=revision.calibration_refs,
@@ -764,15 +837,21 @@ class ExistingOrchestratorR5Integration:
             "secret_present": event.get(
                 "secret_present", identity.get("secret_present", False)
             ),
-            "evidence_predicates": tuple(event.get("evidence_refs", ())),
+            "evidence_predicates": tuple(
+                sorted(set(event.get("evidence_refs", ())) | current_evidence)
+            ),
             "stage": event.get("stage"),
             "owner": advisory.get("suspected_owner"),
             "failure_family": _advisory_failure_class(advisory),
+            "calibration": (
+                "accepted" if advisory.get("calibration_verified") is True else "unverified"
+            ),
+            "confidence": advisory.get("confidence"),
             "calibrated_risk_ok": True,
-            "avoid_when_match": bool(facts.get("avoid_when_match", False)),
-            "conflict": bool(facts.get("conflict", False)),
-            "sparse": bool(facts.get("sparse", False)),
-            "ood": bool(facts.get("ood", False)),
+            "avoid_when_match": _snapshot_fact_flag(facts, "avoid_when_match"),
+            "conflict": _snapshot_fact_flag(facts, "conflict"),
+            "sparse": _snapshot_fact_flag(facts, "sparse"),
+            "ood": _snapshot_fact_flag(facts, "ood"),
         }
         return self._gate.evaluate(
             context=context,
