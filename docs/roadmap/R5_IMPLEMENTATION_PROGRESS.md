@@ -410,3 +410,24 @@ with file SHA-256
 `89db1fa9ccd893253114c5829cd1259e41f47fef472afd25c312cc04842181e4`.
 The corrected source retains two bounded attempts, subject to a new zero-call
 audit; no Trusted revision or future campaign has been authorized.
+
+The first materialized-isolation attempt at repository head `451d7c1`
+eliminated the adapter failure. Its Public and csynth stages were physically
+executed and R2 again identified Candidate-owned `unsupported_construct`, but
+reported `medium` confidence. R4 therefore safely abstained before mutation.
+The file-only audit at
+`/data/agrefactor_runs/r5_p3_expanded_history_materialized_result_audit_451d7c1/independent_audit.json`
+reports `clean_safe_calibration_abstention`, zero critical findings, and zero
+blocking findings. Its file SHA-256 is
+`8d5ac56b5d3b13738033684093957d4d83f39669fd95b092d9e111381e70dda3`
+and canonical audit SHA-256 is
+`aafeb46594a3fd936b61ee0ab97dc5c7ccdce90d8a24aa2fb73464b7b5d51e7a`.
+
+This attempt consumed one Provider call and two Vitis launches, bringing the
+cumulative R5 ledger to `98/500` and `43/500`. It produced no positive episode
+and does not promote the predecessor revision. The machine-readable
+reconciliation is
+`docs/roadmap/R5_EXPANDED_HISTORY_MATERIALIZED_ABSTENTION_RECONCILIATION.json`
+with file SHA-256
+`88c9749ef13cd5f3322097e7636e4bbf1dd0656ea906314942b23eacd4e7e9de`.
+Exactly one attempt remains for this source and requires a new zero-call audit.

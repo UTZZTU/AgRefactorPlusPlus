@@ -1,0 +1,103 @@
+{
+  "schema_version": 4,
+  "plan_id": "v2.3-r5-expanded-history-recursive-e1-linked-list-final-attempt-v1",
+  "status": "frozen_before_final_expanded_history_attempt",
+  "case_id": "Recursive_E1_linked_list_preexisting_candidate",
+  "period": "history",
+  "control_role": "positive",
+  "failure_family": "unsupported_construct",
+  "reference_top": "reverseKGroup",
+  "candidate_top": "reverseKGroup_hls",
+  "paths": {
+    "reference": "src/hlsrewritter/Recursive_E1_linked_list/kernel.cpp",
+    "legacy_candidate": "src/hlsrewritter/Recursive_E1_linked_list/main.cpp",
+    "public_test": "configs/r5/preexisting_history/Recursive_E1_linked_list/public.cpp",
+    "hidden_test": "configs/r5/preexisting_history/Recursive_E1_linked_list/hidden.cpp"
+  },
+  "file_sha256s": {
+    "reference": "673c644da2e7b718b0ba50763d185cd599a69acc223927b1d730bbc51022b489",
+    "legacy_candidate": "864fdcb5a51b800b398bda24d721dac03c11ec9437ba7c88cc86496fe768f494",
+    "public_test": "e7087cf8dbc86fdf817cddec809ba864fe6fa97cbeef014541c8d4fc86c1a616",
+    "hidden_test": "1c58f645840f22995cb9212febeadd9268b9c8c9bb81b0793e21ceb9768509c2"
+  },
+  "source_sha256": "673c644da2e7b718b0ba50763d185cd599a69acc223927b1d730bbc51022b489",
+  "legacy_candidate_sha256": "864fdcb5a51b800b398bda24d721dac03c11ec9437ba7c88cc86496fe768f494",
+  "symbol_isolation_version": "r5-historical-candidate-symbol-isolation-v2",
+  "symbol_isolation_map": [
+    {"source": "arr", "target": "r5_candidate_arr"},
+    {"source": "myReverse", "target": "r5_candidate_myReverse"},
+    {"source": "reverseKGroup", "target": "reverseKGroup_hls"}
+  ],
+  "isolated_candidate_sha256": "f0c19d5a11ee759ff7e90a5218f8c995576ac85431eba3e0b51542417fded2b6",
+  "required_legacy_markers": [
+    "void myReverse(int start, int end)",
+    "myReverse(start + 1, end - 1)",
+    "myReverse(i, end)"
+  ],
+  "predecessor_import_result": "/data/agrefactor_runs/r5_p3_r4_predecessor_import_d617860/predecessor_import_result.json",
+  "predecessor_import_result_file_sha256": "7162230e3f342052d1ef2a0a583658643ae64001e28fbe913a09b497f5cd58d4",
+  "predecessor_source_sha256s": [
+    "ab13af723ba6d4ee3ff26cd61935720936eec3722b54893c267344081c3d5ecc"
+  ],
+  "prior_observed_source_sha256s": [
+    "ab13af723ba6d4ee3ff26cd61935720936eec3722b54893c267344081c3d5ecc",
+    "bdaf6c21bf5aa4b9c3de2ef844fa1e02e8f53483e5282c51fbf56a53a9abded2",
+    "234a22a69143190b02fe8b65c55782539e26a09465fbb53be535fed796741da3"
+  ],
+  "calibration_bundle": "/data/agrefactor_runs/v23_r2_real_calibration_identity_v2_20260918/calibration_bundle.json",
+  "calibration_bundle_file_sha256": "d14947a09c4c4310017e53731eeafae184598d6612928eceebb01c5ce83ff516",
+  "calibration_certificate_id": "r2-calibration-87bc3a17b85a03ae7c323d7c4cf9bdbc",
+  "calibration_failure_class_scope": ["unsupported_construct"],
+  "legacy_candidate_provenance": {
+    "repository_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+    "authored_at": "2026-06-29T11:00:18-07:00",
+    "pre_r5": true
+  },
+  "prior_attempt": {
+    "status": "clean_safe_calibration_abstention",
+    "parent_plan_path": "configs/r5/preexisting_history/recursive_e1_linked_list_materialized_resume_plan.json",
+    "parent_plan_file_sha256": "431836656b32b55e76cf74e3de9b1d3a3a32a8913185add644d84fdc818676b1",
+    "acquisition_result_path": "/data/agrefactor_runs/r5_p3_expanded_history_materialized_real_451d7c1/acquisition_result.json",
+    "acquisition_result_file_sha256": "d72714b75cbdfb6d861d26f16f50f484741065fc93afdbd3fece2b0ec62182ed",
+    "independent_audit_path": "/data/agrefactor_runs/r5_p3_expanded_history_materialized_result_audit_451d7c1/independent_audit.json",
+    "independent_audit_file_sha256": "8d5ac56b5d3b13738033684093957d4d83f39669fd95b092d9e111381e70dda3",
+    "independent_audit_sha256": "aafeb46594a3fd936b61ee0ab97dc5c7ccdce90d8a24aa2fb73464b7b5d51e7a",
+    "reconciliation_path": "docs/roadmap/R5_EXPANDED_HISTORY_MATERIALIZED_ABSTENTION_RECONCILIATION.json",
+    "reconciliation_file_sha256": "88c9749ef13cd5f3322097e7636e4bbf1dd0656ea906314942b23eacd4e7e9de",
+    "attempts_consumed": 2,
+    "maximum_remaining_attempts": 1
+  },
+  "execution_boundary": {
+    "product_entrypoints_unchanged": ["refactor", "optimize", "full"],
+    "research_script_only": true,
+    "validation_backend": "existing_candidate_repair_validation_orchestrator",
+    "r2_backend": "provider_backed_shadow_diagnostic_advisor",
+    "r4_backend": "existing_orchestrator_r5_integration_A2",
+    "second_vitis_flow_created": false,
+    "maximum_candidate_mutations": 1
+  },
+  "budget": {
+    "provider_calls_before": 98,
+    "vitis_launches_before": 43,
+    "provider_call_upper_bound": 2,
+    "vitis_launch_upper_bound": 6,
+    "provider_hard_cap": 500,
+    "vitis_hard_cap": 500
+  },
+  "future_holdout_case_ids": [
+    "Exception_E3_Turbo_Encoder",
+    "Pointer_E3_double_pointer"
+  ],
+  "legacy_candidate_outcome_observed": true,
+  "future_outcomes_observed": false,
+  "future_files_read_by_protocol": false,
+  "expected_outputs_invented": false,
+  "reference_top_is_oracle": true,
+  "symbol_isolation_is_not_a_repair": true,
+  "original_benchmark_files_mutated": false,
+  "confidence_threshold_weakened": false,
+  "trusted_revision_creation_allowed": false,
+  "r5_real_campaign_allowed": false,
+  "r5_accepted": false,
+  "r6_started": false
+}

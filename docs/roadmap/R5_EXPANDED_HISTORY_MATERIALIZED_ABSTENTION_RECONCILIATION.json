@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "status": "clean_safe_calibration_abstention_one_attempt_remaining",
+  "case_id": "Recursive_E1_linked_list_preexisting_candidate",
+  "source_sha256": "673c644da2e7b718b0ba50763d185cd599a69acc223927b1d730bbc51022b489",
+  "repository_head_at_execution": "451d7c12fb06fe4267b8c5fcc18dc2a125555b69",
+  "plan_file_sha256": "431836656b32b55e76cf74e3de9b1d3a3a32a8913185add644d84fdc818676b1",
+  "protocol_audit_path": "/data/agrefactor_runs/r5_p3_expanded_history_materialized_audit_451d7c1/protocol_audit.json",
+  "protocol_audit_file_sha256": "9a4e1b13dde0138c1baa4534822bcc85d1f3eb4795e5249f0919b4f9bbbda927",
+  "run_root": "/data/agrefactor_runs/r5_p3_expanded_history_materialized_real_451d7c1",
+  "acquisition_manifest_file_sha256": "a354b9d61a0b2a791470e0e956c80cf1aef8ee3203f9f7536f4d3bae42dbbe84",
+  "acquisition_result_file_sha256": "d72714b75cbdfb6d861d26f16f50f484741065fc93afdbd3fece2b0ec62182ed",
+  "evidence_archive_sha256": "ec95d2dbf1c88f7797cde041afd234ee7a79f1a32a108a816ccdc0a935fd3ea4",
+  "independent_audit_path": "/data/agrefactor_runs/r5_p3_expanded_history_materialized_result_audit_451d7c1/independent_audit.json",
+  "independent_audit_file_sha256": "8d5ac56b5d3b13738033684093957d4d83f39669fd95b092d9e111381e70dda3",
+  "independent_audit_sha256": "aafeb46594a3fd936b61ee0ab97dc5c7ccdce90d8a24aa2fb73464b7b5d51e7a",
+  "outcome": "abstained",
+  "reason": "r2_calibration_unverified",
+  "confidence": "medium",
+  "provider_calls": 1,
+  "vitis_launches": 2,
+  "mutation_provider_calls": 0,
+  "mutation_count": 0,
+  "verified_positive_episode_count": 0,
+  "budget_before": {
+    "provider_calls": 97,
+    "vitis_launches": 41
+  },
+  "budget_after": {
+    "provider_calls": 98,
+    "vitis_launches": 43
+  },
+  "attempts_authorized_for_source": 3,
+  "attempts_consumed": 2,
+  "remaining_attempts": 1,
+  "confidence_threshold_weakened": false,
+  "future_files_read": false,
+  "future_outcomes_observed": false,
+  "trusted_revision_created": false,
+  "r5_real_campaign_allowed": false,
+  "r5_accepted": false,
+  "r6_started": false
+}

@@ -224,6 +224,42 @@ class R5HistoricalCandidateTests(unittest.TestCase):
         ):
             verify_historical_candidate_plan(self.root, plan)
 
+    def test_final_attempt_boundary_is_explicit(self) -> None:
+        plan = copy.deepcopy(self.plan)
+        plan.update(
+            {
+                "schema_version": 4,
+                "status": "frozen_before_final_expanded_history_attempt",
+                "legacy_candidate_outcome_observed": True,
+                "symbol_isolation_version": (
+                    "r5-historical-candidate-symbol-isolation-v2"
+                ),
+                "prior_observed_source_sha256s": ["a" * 64],
+                "required_legacy_markers": ["helper(n - 1)"],
+                "prior_attempt": {
+                    "status": "clean_safe_calibration_abstention",
+                    "attempts_consumed": 2,
+                    "maximum_remaining_attempts": 1,
+                },
+                "confidence_threshold_weakened": False,
+            }
+        )
+        plan["isolated_candidate_sha256"] = text_sha256(
+            materialize_candidate_symbols(self.legacy, self.symbol_map)
+        )
+        plan["budget"]["provider_calls_before"] = 98
+        plan["budget"]["vitis_launches_before"] = 43
+        self.assertEqual(
+            verify_historical_candidate_plan(self.root, plan).case_id,
+            "history-case",
+        )
+        plan["prior_attempt"]["maximum_remaining_attempts"] = 2
+        with self.assertRaisesRegex(
+            R5HistoricalCandidateError,
+            "final historical attempt boundary",
+        ):
+            verify_historical_candidate_plan(self.root, plan)
+
 
 if __name__ == "__main__":
     unittest.main()

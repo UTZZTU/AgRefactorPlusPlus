@@ -183,8 +183,9 @@ def verify_historical_candidate_plan(
     schema_version = plan.get("schema_version")
     is_initial_freeze = schema_version in {1, 2}
     is_fixed_resume = schema_version == 3
+    is_final_resume = schema_version == 4
     if (
-        schema_version not in {1, 2, 3}
+        schema_version not in {1, 2, 3, 4}
         or (
             is_initial_freeze
             and plan.get("status")
@@ -195,6 +196,11 @@ def verify_historical_candidate_plan(
             and plan.get("status")
             != "frozen_after_audited_pre_provider_isolation_fix"
         )
+        or (
+            is_final_resume
+            and plan.get("status")
+            != "frozen_before_final_expanded_history_attempt"
+        )
         or plan.get("period") != "history"
         or plan.get("control_role") != "positive"
         or plan.get("failure_family") != "unsupported_construct"
@@ -203,7 +209,7 @@ def verify_historical_candidate_plan(
             and plan.get("legacy_candidate_outcome_observed") is not False
         )
         or (
-            is_fixed_resume
+            (is_fixed_resume or is_final_resume)
             and plan.get("legacy_candidate_outcome_observed") is not True
         )
         or plan.get("future_outcomes_observed") is not False
@@ -287,7 +293,7 @@ def verify_historical_candidate_plan(
         or source_sha in predecessor_sources
     ):
         raise R5HistoricalCandidateError("historical source is not predecessor-independent")
-    if schema_version in {2, 3}:
+    if schema_version in {2, 3, 4}:
         prior_sources = plan.get("prior_observed_source_sha256s")
         required_markers = plan.get("required_legacy_markers")
         if (
@@ -326,6 +332,20 @@ def verify_historical_candidate_plan(
         ):
             raise R5HistoricalCandidateError(
                 "post-fix historical resume boundary is invalid"
+            )
+    if is_final_resume:
+        prior_attempt = plan.get("prior_attempt")
+        if (
+            isolation_version != MATERIALIZED_ISOLATION_VERSION
+            or not isinstance(prior_attempt, Mapping)
+            or prior_attempt.get("status")
+            != "clean_safe_calibration_abstention"
+            or prior_attempt.get("attempts_consumed") != 2
+            or prior_attempt.get("maximum_remaining_attempts") != 1
+            or plan.get("confidence_threshold_weakened") is not False
+        ):
+            raise R5HistoricalCandidateError(
+                "final historical attempt boundary is invalid"
             )
     future_ids = plan.get("future_holdout_case_ids")
     if (

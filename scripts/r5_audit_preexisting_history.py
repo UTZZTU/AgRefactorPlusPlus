@@ -130,6 +130,65 @@ def _verify_fixed_prior_attempt(
     }
 
 
+def _verify_final_prior_attempt(
+    *, repository: Path, plan: Mapping[str, Any], bundle: Any
+) -> dict[str, Any]:
+    prior = plan.get("prior_attempt")
+    if not isinstance(prior, Mapping):
+        raise PreexistingHistoryAuditError("final resume lacks prior attempt binding")
+    parent_relative = Path(str(prior.get("parent_plan_path", "")))
+    parent_path = (repository / parent_relative).resolve()
+    result_path = Path(str(prior.get("acquisition_result_path", ""))).resolve()
+    audit_path = Path(str(prior.get("independent_audit_path", ""))).resolve()
+    reconciliation_relative = Path(str(prior.get("reconciliation_path", "")))
+    reconciliation_path = (repository / reconciliation_relative).resolve()
+    for path in (parent_path, reconciliation_path):
+        try:
+            path.relative_to(repository)
+        except ValueError as exc:
+            raise PreexistingHistoryAuditError("final resume repo evidence is unsafe") from exc
+    expected_hashes = {
+        parent_path: prior.get("parent_plan_file_sha256"),
+        result_path: prior.get("acquisition_result_file_sha256"),
+        audit_path: prior.get("independent_audit_file_sha256"),
+        reconciliation_path: prior.get("reconciliation_file_sha256"),
+    }
+    if any(path.is_symlink() or not path.is_file() for path in expected_hashes):
+        raise PreexistingHistoryAuditError("final resume evidence is missing")
+    if any(file_sha256(path) != expected for path, expected in expected_hashes.items()):
+        raise PreexistingHistoryAuditError("final resume evidence hash mismatch")
+    parent = verify_historical_candidate_plan(repository, _load(parent_path))
+    result = _load(result_path)
+    audit = _load(audit_path)
+    reconciliation = _load(reconciliation_path)
+    if (
+        parent.source_sha256 != bundle.source_sha256
+        or parent.isolated_candidate_sha256 != bundle.isolated_candidate_sha256
+        or result.get("status") != "abstained"
+        or result.get("provider_calls") != 1
+        or result.get("vitis_launches") != 2
+        or audit.get("status") != "clean_safe_calibration_abstention"
+        or audit.get("source_sha256") != bundle.source_sha256
+        or audit.get("critical_finding_count") != 0
+        or audit.get("blocking_finding_count") != 0
+        or reconciliation.get("status")
+        != "clean_safe_calibration_abstention_one_attempt_remaining"
+        or reconciliation.get("source_sha256") != bundle.source_sha256
+        or reconciliation.get("remaining_attempts") != 1
+        or reconciliation.get("budget_after")
+        != {"provider_calls": 98, "vitis_launches": 43}
+    ):
+        raise PreexistingHistoryAuditError("final prior attempt is incompatible")
+    return {
+        "status": audit["status"],
+        "parent_plan_file_sha256": file_sha256(parent_path),
+        "acquisition_result_file_sha256": file_sha256(result_path),
+        "independent_audit_file_sha256": file_sha256(audit_path),
+        "independent_audit_sha256": audit.get("audit_sha256"),
+        "reconciliation_file_sha256": file_sha256(reconciliation_path),
+    }
+
+
 def _compile_and_run(
     *,
     compiler: str,
@@ -234,7 +293,15 @@ def audit(
             head=head,
         )
         if plan.get("schema_version") == 3
-        else None
+        else (
+            _verify_final_prior_attempt(
+                repository=repository,
+                plan=plan,
+                bundle=bundle,
+            )
+            if plan.get("schema_version") == 4
+            else None
+        )
     )
 
     predecessor_path = Path(str(plan["predecessor_import_result"]))
