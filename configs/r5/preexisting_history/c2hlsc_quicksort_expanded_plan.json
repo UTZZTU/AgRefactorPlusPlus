@@ -1,0 +1,97 @@
+{
+  "schema_version": 2,
+  "plan_id": "v2.3-r5-expanded-history-c2hlsc-quicksort-v1",
+  "status": "frozen_before_preexisting_candidate_outcome_observation",
+  "case_id": "C2HLSC_quicksort_preexisting_candidate",
+  "period": "history",
+  "control_role": "positive",
+  "failure_family": "unsupported_construct",
+  "reference_top": "quickSort",
+  "candidate_top": "r5_candidate_quickSort",
+  "paths": {
+    "reference": "src/c2hlsc/quicksort/qs.cpp",
+    "legacy_candidate": "src/c2hlsc/quicksort/kernel.cpp",
+    "public_test": "configs/r5/preexisting_history/C2HLSC_quicksort/public.cpp",
+    "hidden_test": "configs/r5/preexisting_history/C2HLSC_quicksort/hidden.cpp"
+  },
+  "file_sha256s": {
+    "reference": "d8f2d14c19fc0559e118a6addf1f04f1eb1143ee9cb62b94453fea2eac156072",
+    "legacy_candidate": "e89b487e89e877d2b3d2344c53b3e7cc8010e21b7adc6f029da2f8e9a0bfd179",
+    "public_test": "459ddbe4cab584834aacd6bd7d7fe85fee5637c794817fb97186861eafc6e02d",
+    "hidden_test": "0a981c3235182876ef4a7ba6ac6781c1bdefc22ca545aadb4943b1793f846be6"
+  },
+  "source_sha256": "d8f2d14c19fc0559e118a6addf1f04f1eb1143ee9cb62b94453fea2eac156072",
+  "legacy_candidate_sha256": "e89b487e89e877d2b3d2344c53b3e7cc8010e21b7adc6f029da2f8e9a0bfd179",
+  "symbol_isolation_version": "r5-historical-candidate-symbol-isolation-v2",
+  "symbol_isolation_map": [
+    {"source": "swap", "target": "r5_candidate_swap"},
+    {"source": "partition", "target": "r5_candidate_partition"},
+    {"source": "quickSort", "target": "r5_candidate_quickSort"}
+  ],
+  "isolated_candidate_sha256": "d800536717beacc3751fd56f5a179897f4f3e9e9d5c682cb269a9e404c1bb415",
+  "required_legacy_markers": [
+    "quickSort(arr, low, partitionIndex - 1);",
+    "quickSort(arr, partitionIndex + 1, high);"
+  ],
+  "historical_selection_basis": {
+    "repository_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+    "authored_at": "2026-06-29T11:00:18-07:00",
+    "selected_before_vitis_or_provider_outcome": true,
+    "selected_by_family_and_pre_r5_identity": true,
+    "selected_by_observed_repair_success": false
+  },
+  "predecessor_import_result": "/data/agrefactor_runs/r5_p3_r4_predecessor_import_d617860/predecessor_import_result.json",
+  "predecessor_import_result_file_sha256": "7162230e3f342052d1ef2a0a583658643ae64001e28fbe913a09b497f5cd58d4",
+  "predecessor_source_sha256s": [
+    "ab13af723ba6d4ee3ff26cd61935720936eec3722b54893c267344081c3d5ecc"
+  ],
+  "prior_observed_source_sha256s": [
+    "ab13af723ba6d4ee3ff26cd61935720936eec3722b54893c267344081c3d5ecc",
+    "bdaf6c21bf5aa4b9c3de2ef844fa1e02e8f53483e5282c51fbf56a53a9abded2",
+    "234a22a69143190b02fe8b65c55782539e26a09465fbb53be535fed796741da3",
+    "673c644da2e7b718b0ba50763d185cd599a69acc223927b1d730bbc51022b489",
+    "68aa374f623fd2509c68eb8cf92d08b542fce998a4517336a30b8bb98ec033b4"
+  ],
+  "calibration_bundle": "/data/agrefactor_runs/v23_r2_real_calibration_identity_v2_20260918/calibration_bundle.json",
+  "calibration_bundle_file_sha256": "d14947a09c4c4310017e53731eeafae184598d6612928eceebb01c5ce83ff516",
+  "calibration_certificate_id": "r2-calibration-87bc3a17b85a03ae7c323d7c4cf9bdbc",
+  "calibration_failure_class_scope": ["unsupported_construct"],
+  "legacy_candidate_provenance": {
+    "repository_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+    "authored_at": "2026-06-29T11:00:18-07:00",
+    "pre_r5": true
+  },
+  "execution_boundary": {
+    "product_entrypoints_unchanged": ["refactor", "optimize", "full"],
+    "research_script_only": true,
+    "validation_backend": "existing_candidate_repair_validation_orchestrator",
+    "r2_backend": "provider_backed_shadow_diagnostic_advisor",
+    "r4_backend": "existing_orchestrator_r5_integration_A2",
+    "second_vitis_flow_created": false,
+    "maximum_candidate_mutations": 1
+  },
+  "budget": {
+    "provider_calls_before": 99,
+    "vitis_launches_before": 47,
+    "provider_call_upper_bound": 2,
+    "vitis_launch_upper_bound": 6,
+    "provider_hard_cap": 500,
+    "vitis_hard_cap": 500
+  },
+  "future_holdout_case_ids": [
+    "Exception_E3_Turbo_Encoder",
+    "Pointer_E3_double_pointer"
+  ],
+  "legacy_candidate_outcome_observed": false,
+  "future_outcomes_observed": false,
+  "future_files_read_by_protocol": false,
+  "expected_outputs_invented": false,
+  "reference_top_is_oracle": true,
+  "symbol_isolation_is_not_a_repair": true,
+  "original_benchmark_files_mutated": false,
+  "confidence_threshold_weakened": false,
+  "trusted_revision_creation_allowed": false,
+  "r5_real_campaign_allowed": false,
+  "r5_accepted": false,
+  "r6_started": false
+}

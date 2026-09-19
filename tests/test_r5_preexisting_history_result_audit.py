@@ -138,6 +138,63 @@ class R5PreexistingHistoryResultAuditTests(unittest.TestCase):
                 {"advisory": {"confidence": "high"}},
             )
 
+    def test_deterministic_candidate_owner_stays_outside_r2(self) -> None:
+        result = {
+            "status": "abstained",
+            "provider_calls": 0,
+            "vitis_launches": 2,
+            "diagnostic_events": [
+                {
+                    "event_id": "diagnostic-1",
+                    "stage": "csynth",
+                    "owner": "candidate",
+                    "repair_scope": "candidate_only",
+                    "failure_classes": ["unsupported_construct"],
+                    "physical_tool_launched": True,
+                    "evidence_complete": True,
+                    "hidden_input_count": 0,
+                    "diagnostic_items": [
+                        {
+                            "stage": "csynth",
+                            "severity": "error",
+                            "owner": "candidate",
+                            "category": "unsupported_construct",
+                            "classification_confidence": "high",
+                            "detail": "Unsupported dynamic allocation",
+                        }
+                    ],
+                }
+            ],
+            "r2_shadow_diagnostics": [
+                {
+                    "event_id": "diagnostic-1",
+                    "input_status": "rejected:owner_not_unknown_or_review",
+                    "request_sha256": None,
+                    "provider_identity": {},
+                    "accounting": {},
+                    "critical_safety_violation": False,
+                    "equivalence": {"equivalent": True},
+                    "advisory": {
+                        "suspected_owner": "unknown",
+                        "suspected_failure_class": "unknown",
+                        "repair_scope": "none",
+                        "confidence": "low",
+                        "evidence_refs": [],
+                        "abstain_reason": "owner_not_unknown_or_review",
+                    },
+                }
+            ],
+            "r5_integration": {
+                "status": "abstained",
+                "reason": "eligible_r2_event_not_unique",
+                "main_result_unchanged": True,
+                "accepted_by_integration": False,
+            },
+        }
+        value = AUDIT._verify_pre_r2_deterministic_boundary(result)
+        self.assertEqual(value["status"], "clean_pre_r2_deterministic_boundary")
+        self.assertEqual(value["r2_provider_calls"], 0)
+
     def test_model_adapter_failure_is_auditable_without_call_or_mutation(self) -> None:
         result = {
             "status": "inconclusive",

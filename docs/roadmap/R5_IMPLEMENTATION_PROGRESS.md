@@ -467,3 +467,46 @@ outputs, read either future holdout, or authorize a Trusted revision. Its
 plan is
 `configs/r5/preexisting_history/pointer_e1_dnn_expanded_plan.json`. A clean
 zero-call protocol audit remains mandatory before one bounded acquisition.
+
+## Pointer Deterministic Boundary And Quicksort Freeze
+
+The frozen `Pointer_E1_DNN` source passed its zero-call protocol audit at
+repository head `7a379c4`. The audit is
+`/data/agrefactor_runs/r5_p3_pointer_e1_dnn_protocol_audit_7a379c4/protocol_audit.json`;
+its file SHA-256 is
+`d11e6b136f21101a1b2861cde2455d2b37a86d8e27ad6e040cf9591cd5cd6a59`
+and its canonical audit SHA-256 is
+`87ca49ff825b220a10e0fbfeaf759e0d5971bd0f9b3dd0b88939ffdf4501f750`.
+
+The real run at
+`/data/agrefactor_runs/r5_p3_pointer_e1_dnn_real_7a379c4` consumed zero
+Provider calls and two Vitis launches. Vitis emitted two exact `HLS 214-194`
+dynamic-allocation errors. The deterministic parser established Candidate
+ownership, `unsupported_construct`, `candidate_only`, and `high` confidence
+before R2. R2 therefore correctly rejected the event as
+`owner_not_unknown_or_review`; R4 did not mutate and no episode was created.
+
+The separate file-only audit reports
+`clean_pre_r2_deterministic_boundary`, zero critical findings, and one
+blocking boundary finding at
+`/data/agrefactor_runs/r5_p3_pointer_e1_dnn_result_audit_7a379c4/independent_audit.json`.
+Its file SHA-256 is
+`0dd47bb0e8d9bb0654971b3833ad8f8f1b8f058f847749e99a0edb10cddfb012`
+and canonical audit SHA-256 is
+`ba29150983628c68a81cf7e5753eb5315a6d13d93275ef369ee207fa4202a7a5`.
+This is a valid pre-R2 recovery boundary result, not an R2/R4 history
+positive. The cumulative R5 ledger is now `99/500` Provider calls and
+`47/500` Vitis launches.
+
+Before observing another real outcome, `C2HLSC_quicksort` was frozen as the
+next independent history-only source. It existed in the initial repository,
+contains bounded-array recursion without dynamic allocation, and is distinct
+from every observed history source. Its checked-in `qs.cpp` is the executable
+reference oracle and `kernel.cpp` is the pre-R5 Candidate. Public and Hidden
+tests compare their output arrays; materialized symbol isolation changes only
+linkage identifiers. This source is ordered ahead of `mergesort`, whose
+dynamic allocation is already likely to belong to the deterministic pre-R2
+boundary. The quicksort plan is
+`configs/r5/preexisting_history/c2hlsc_quicksort_expanded_plan.json`. A clean
+zero-call protocol audit is mandatory before one bounded real attempt. Future
+holdouts remain unread, R5 remains unaccepted, and R6 remains stopped.

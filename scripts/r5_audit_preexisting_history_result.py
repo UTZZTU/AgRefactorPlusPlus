@@ -321,6 +321,84 @@ def _verify_abstention(result: Mapping[str, Any], shadow: Mapping[str, Any]) -> 
     }
 
 
+def _verify_pre_r2_deterministic_boundary(
+    result: Mapping[str, Any],
+) -> dict[str, Any]:
+    events = result.get("diagnostic_events")
+    shadows = result.get("r2_shadow_diagnostics")
+    integration = result.get("r5_integration")
+    if (
+        result.get("status") != "abstained"
+        or result.get("provider_calls") != 0
+        or result.get("vitis_launches") != 2
+        or not isinstance(events, list)
+        or len(events) != 1
+        or not isinstance(events[0], Mapping)
+        or not isinstance(shadows, list)
+        or len(shadows) != 1
+        or not isinstance(shadows[0], Mapping)
+        or not isinstance(integration, Mapping)
+        or integration.get("status") != "abstained"
+        or integration.get("reason") != "eligible_r2_event_not_unique"
+        or integration.get("main_result_unchanged") is not True
+        or integration.get("accepted_by_integration") is not False
+    ):
+        raise PreexistingHistoryResultAuditError(
+            "pre-R2 deterministic-boundary invariants failed"
+        )
+    event = events[0]
+    shadow = shadows[0]
+    advisory = shadow.get("advisory")
+    items = event.get("diagnostic_items")
+    if (
+        event.get("stage") != "csynth"
+        or event.get("owner") != "candidate"
+        or event.get("repair_scope") != "candidate_only"
+        or event.get("failure_classes") != ["unsupported_construct"]
+        or event.get("physical_tool_launched") is not True
+        or event.get("evidence_complete") is not True
+        or event.get("hidden_input_count") != 0
+        or not isinstance(items, list)
+        or not items
+        or any(
+            not isinstance(item, Mapping)
+            or item.get("stage") != "csynth"
+            or item.get("severity") != "error"
+            or item.get("owner") != "candidate"
+            or item.get("category") != "unsupported_construct"
+            or item.get("classification_confidence") != "high"
+            or not isinstance(item.get("detail"), str)
+            or not item.get("detail")
+            for item in items
+        )
+        or shadow.get("event_id") != event.get("event_id")
+        or shadow.get("input_status")
+        != "rejected:owner_not_unknown_or_review"
+        or shadow.get("request_sha256") is not None
+        or shadow.get("provider_identity") != {}
+        or shadow.get("accounting") != {}
+        or shadow.get("critical_safety_violation") is not False
+        or shadow.get("equivalence", {}).get("equivalent") is not True
+        or not isinstance(advisory, Mapping)
+        or advisory.get("suspected_owner") != "unknown"
+        or advisory.get("suspected_failure_class") != "unknown"
+        or advisory.get("repair_scope") != "none"
+        or advisory.get("confidence") != "low"
+        or advisory.get("evidence_refs") != []
+        or advisory.get("abstain_reason") != "owner_not_unknown_or_review"
+    ):
+        raise PreexistingHistoryResultAuditError(
+            "pre-R2 deterministic diagnostic invariants failed"
+        )
+    return {
+        "status": "clean_pre_r2_deterministic_boundary",
+        "reason": "deterministic_candidate_owner_precedes_r2",
+        "diagnostic_item_count": len(items),
+        "r2_provider_calls": 0,
+        "mutation_count": 0,
+    }
+
+
 def _verify_pre_provider_contract_failure(
     *,
     payloads: Mapping[str, bytes],
@@ -413,8 +491,16 @@ def audit(root: Path) -> dict[str, Any]:
     root = root.expanduser().resolve()
     payloads, archive_sha, content_sha = _verify_archive(root)
     manifest, result = _verify_common(payloads)
-    _, shadow = _verify_diagnostic(result)
-    if result.get("status") == "verified_positive":
+    pre_r2_boundary = (
+        result.get("status") == "abstained"
+        and result.get("provider_calls") == 0
+    )
+    shadow: Mapping[str, Any] = {}
+    if not pre_r2_boundary:
+        _, shadow = _verify_diagnostic(result)
+    if pre_r2_boundary:
+        outcome = _verify_pre_r2_deterministic_boundary(result)
+    elif result.get("status") == "verified_positive":
         outcome = _verify_positive(
             payloads=payloads,
             manifest=manifest,
@@ -453,6 +539,7 @@ def audit(root: Path) -> dict[str, Any]:
         "critical_finding_count": 0,
         "blocking_finding_count": int(
             str(outcome["status"]).startswith("clean_pre_provider_")
+            or str(outcome["status"]).startswith("clean_pre_r2_")
         ),
         "findings": (
             [
@@ -463,7 +550,20 @@ def audit(root: Path) -> dict[str, Any]:
                 }
             ]
             if str(outcome["status"]).startswith("clean_pre_provider_")
-            else []
+            else (
+                [
+                    {
+                        "code": "history_source_outside_r2_boundary",
+                        "severity": "blocking",
+                        "message": (
+                            "Deterministic Candidate ownership was already "
+                            "proven, so this source belongs to pre-R2 recovery."
+                        ),
+                    }
+                ]
+                if str(outcome["status"]).startswith("clean_pre_r2_")
+                else []
+            )
         ),
         "r5_accepted": False,
         "r6_started": False,
