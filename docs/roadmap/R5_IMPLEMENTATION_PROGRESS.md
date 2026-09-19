@@ -592,3 +592,36 @@ with `arr: 9`, derived from the fixed Public array contract. A clean zero-call
 protocol audit is mandatory before that attempt. R5 remains unaccepted, no
 Trusted revision has been created, future holdouts remain unread, and R6
 remains stopped.
+
+## Quicksort Final Safe Abstention
+
+The third and final bounded quicksort Provider attempt ran at repository head
+`da58b45`. Its zero-call protocol audit first passed with Public and Hidden
+host oracle checks, the frozen schema-2 runtime contract, the accepted
+calibration certificate, and the full parent evidence chain intact. The real
+attempt then consumed one Provider call and two Vitis launches. R2 identified
+Candidate-only `unsupported_construct` with a bounded iterative-rewrite intent,
+but reported `medium` confidence. The accepted calibration gate therefore
+stopped before mutation. The threshold was not weakened.
+
+A separate file-only audit reports `clean_safe_calibration_abstention`, zero
+critical findings, and zero blocking findings at
+`/data/agrefactor_runs/r5_p3_c2hlsc_quicksort_final_result_audit_da58b45/independent_audit.json`.
+Its file SHA-256 is
+`6b26fcac656297e754ff1e584377d236dcdf9681659d834f5c173428c543b574`
+and canonical audit SHA-256 is
+`589cb6588381257978ab8de9acd623c1381e8f7afeda5d29be4b89ed9a629cd9`.
+The quicksort source has now consumed all three bounded Provider attempts. Its
+total is five Provider calls and nine Vitis launches; the cumulative R5 ledger
+is `104/500` and `56/500`.
+
+The second attempt's changed Candidate remains sealed and content-addressed.
+It was legally authorized and passed Public csim and csynth, but it is not a
+verified positive because its required COSIM never started. R5 may next design
+a zero-Provider, fresh formal revalidation protocol for that exact Candidate.
+Such a protocol must bind the original authorization and Candidate hash, rerun
+the complete required prefix with the corrected runtime contract, receive a
+separate clean audit, and leave the original episode immutable. Until those
+conditions are implemented and independently verified, no new positive
+episode or lifecycle promotion is permitted. Future holdouts remain unread,
+R5 remains unaccepted, and R6 remains stopped.
