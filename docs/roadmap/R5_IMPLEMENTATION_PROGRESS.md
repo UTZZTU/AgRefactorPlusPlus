@@ -557,3 +557,38 @@ The plan binds the failed archive, independent audit, reconciliation, general
 fix commit `2b66276`, unchanged Candidate and oracle identities, and the
 `101/49` cumulative ledger. It authorizes at most two more attempts and retains
 the first-positive stop. A new zero-call protocol audit remains mandatory.
+
+## Quicksort COSIM Interface Contract Reconciliation
+
+The second bounded quicksort attempt ran at repository head `ef0fa9d`. R2
+again produced a calibrated `high`, Candidate-only `unsupported_construct`
+advisory, and R4 performed exactly one mutation. The resulting Candidate hash
+is `ffee44eba1bd9896f061ccb14d049a9569d82bd9daa98fce061b0aec0958c3c7`.
+It passed the Public csim and csynth stages. Public RTL COSIM did not start,
+because Vitis required an explicit depth for the `gmem` MAXI interface and the
+research acquisition adapter had supplied only the legacy schema-1 runtime
+contract. This is a validation configuration failure, not a Candidate failure
+or a verified-positive episode.
+
+A separate file-only audit reports
+`clean_cosim_interface_depth_configuration_failure`, zero critical findings,
+and one blocking configuration finding. Its output is
+`/data/agrefactor_runs/r5_p3_c2hlsc_quicksort_post_fix_result_audit_1fe1206`,
+with file SHA-256
+`8b6df6976b753ec4f858fa7ef51b5b0fdd0e8e08430df8084de8e91092c56228`
+and canonical audit SHA-256
+`b0599bac6100207518b8d1e74dc895c6948b41d6a4bdec7c00b2cc4b7fbba1ea`.
+The attempt consumed two Provider calls and five Vitis launches, bringing the
+cumulative R5 ledger to `103/500` and `54/500`.
+
+The general acquisition boundary now accepts a frozen schema-2 Public runtime
+contract and passes its validated `cosim_interface_depths` to the existing
+Candidate validation orchestrator. The fix neither changes Candidate logic nor
+adds a second Vitis flow. The machine-readable reconciliation is
+`docs/roadmap/R5_C2HLSC_QUICKSORT_COSIM_INTERFACE_RECONCILIATION.json`.
+Exactly one quicksort attempt remains. It is frozen in
+`configs/r5/preexisting_history/c2hlsc_quicksort_post_cosim_fix_resume_plan.json`
+with `arr: 9`, derived from the fixed Public array contract. A clean zero-call
+protocol audit is mandatory before that attempt. R5 remains unaccepted, no
+Trusted revision has been created, future holdouts remain unread, and R6
+remains stopped.

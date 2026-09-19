@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "status": "audited_cosim_interface_depth_contract_fixed",
+  "case_id": "C2HLSC_quicksort_preexisting_candidate",
+  "source_sha256": "d8f2d14c19fc0559e118a6addf1f04f1eb1143ee9cb62b94453fea2eac156072",
+  "repository_head_at_execution": "ef0fa9dfb2bbe946128c1019101af5e54cdb7a43",
+  "parent_plan_path": "configs/r5/preexisting_history/c2hlsc_quicksort_post_fix_resume_plan.json",
+  "parent_plan_file_sha256": "4f6cdbd842bcec0b0ba1c7d246355d09f68688fa167712e506d35d30f30605e1",
+  "run_root": "/data/agrefactor_runs/r5_p3_c2hlsc_quicksort_post_fix_real_ef0fa9d",
+  "acquisition_result_path": "/data/agrefactor_runs/r5_p3_c2hlsc_quicksort_post_fix_real_ef0fa9d/acquisition_result.json",
+  "acquisition_result_file_sha256": "c7b53daaec7b8c451adb9038d5ea08aa358b06c8d603d007901cd9b3cf659cea",
+  "evidence_archive_sha256": "7008c2a415ec29cc92c28e12a1ea0b1aef6d411ce14cf561f6a036022a131d6b",
+  "evidence_content_manifest_file_sha256": "f388fb6d4e10c1c9240230b12eb715ceaac9a85c38fbe3e2fd9726586b108af7",
+  "independent_audit_path": "/data/agrefactor_runs/r5_p3_c2hlsc_quicksort_post_fix_result_audit_1fe1206",
+  "independent_audit_file_sha256": "8b6df6976b753ec4f858fa7ef51b5b0fdd0e8e08430df8084de8e91092c56228",
+  "independent_audit_sha256": "b0599bac6100207518b8d1e74dc895c6948b41d6a4bdec7c00b2cc4b7fbba1ea",
+  "outcome": "inconclusive",
+  "reason": "cosim_interface_depth_not_declared",
+  "candidate_after_sha256": "ffee44eba1bd9896f061ccb14d049a9569d82bd9daa98fce061b0aec0958c3c7",
+  "public_csim_passed": true,
+  "csynth_passed": true,
+  "rtl_cosim_started": false,
+  "missing_maxi_interface_bundle": "gmem",
+  "provider_calls": 2,
+  "vitis_launches": 5,
+  "mutation_provider_calls": 1,
+  "mutation_count": 1,
+  "verified_positive_episode_count": 0,
+  "budget_before": {
+    "provider_calls": 101,
+    "vitis_launches": 49
+  },
+  "budget_after": {
+    "provider_calls": 103,
+    "vitis_launches": 54
+  },
+  "attempts_authorized_for_source": 3,
+  "attempts_consumed": 2,
+  "remaining_attempts": 1,
+  "fix_scope": [
+    "carry_a_frozen_public_runtime_contract_into_existing_validation",
+    "declare_public_cosim_interface_depths_without_changing_candidate_logic"
+  ],
+  "fix_commit": "1fe12067a5e0f5cae73f476c69f623c7da34af29",
+  "public_runtime_contract": {
+    "schema_version": 2,
+    "kind": "public_differential_self_check_v1",
+    "candidate_mismatch_returncodes": [1],
+    "cosim_interface_depths": {
+      "arr": 9
+    }
+  },
+  "raw_provider_response_persisted": false,
+  "private_reasoning_persisted": false,
+  "confidence_threshold_weakened": false,
+  "future_files_read": false,
+  "future_outcomes_observed": false,
+  "trusted_revision_created": false,
+  "r5_real_campaign_allowed": false,
+  "r5_accepted": false,
+  "r6_started": false,
+  "next_step": "freeze_and_zero_call_audit_final_quicksort_attempt"
+}
