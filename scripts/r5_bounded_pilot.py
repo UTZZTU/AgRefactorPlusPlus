@@ -250,6 +250,78 @@ def arm_schedule(case_id: str, repeat: int) -> tuple[R5Arm, ...]:
     return arms[offset:] + arms[:offset]
 
 
+def run_repeat(
+    *,
+    output: Path,
+    pilot: Mapping[str, Any],
+    case: Mapping[str, Any],
+    runtime_value: Mapping[str, Any],
+    runtime: Any,
+    certificate_value: CalibrationCertificate,
+    revision: Any,
+    snapshot: Any,
+    payload: Any,
+    reduction: Any,
+    repeat: int,
+    run_id_suffix: str = "",
+) -> tuple[dict[str, Any], list[dict[str, Any]], int, int]:
+    """Execute exactly one paired repeat under an already-frozen manifest."""
+
+    if repeat not in range(1, REPEATS + 1):
+        raise ValueError("repeat must be in the frozen range 1..3")
+    pair_root = output / "pairs" / ("repeat-%02d" % repeat)
+    product_root = pair_root / "common-product"
+    args = _baseline_args(
+        repo=ROOT,
+        case=case,
+        runtime=runtime_value,
+        output=product_root,
+        run_id="%s-baseline-%02d%s"
+        % (pilot["pilot_id"], repeat, run_id_suffix),
+    )
+    execution = run_source_command_with_r5_capture(args)
+    capture = execution.r5_common_baseline
+    if capture is None:
+        raise RuntimeError("ordinary refactor did not expose common baseline")
+    case_spec = R5CaseSpec(
+        case_id=PILOT_CASE_ID,
+        source_sha256=capture.source_sha256,
+        context_signature=capture.context_signature,
+        period="future",
+    )
+    executor = ExistingRefactorR5CampaignExecutor(
+        artifact_root=pair_root / "paired",
+        baseline_runner=lambda case_value, repeat_value, artifact_root: capture,
+        advisor_factory=advisor_factory(runtime),
+        integration_factory=integration_factory(
+            certificate_value=certificate_value,
+            revision=revision,
+            snapshot=snapshot,
+            payload=payload,
+            reduction=reduction,
+            pilot_hash=str(pilot["pilot_manifest_sha256"]),
+        ),
+    )
+    baseline = dict(executor.prepare_common_baseline(case_spec, repeat))
+    observations: list[dict[str, Any]] = []
+    provider_calls = int(baseline["provider_calls"])
+    vitis_launches = int(baseline["vitis_launches"])
+    for arm_index, arm in enumerate(arm_schedule(PILOT_CASE_ID, repeat)):
+        observation = dict(
+            executor.run_arm(
+                case=case_spec,
+                repeat=repeat,
+                arm=arm,
+                baseline=baseline,
+                arm_index=arm_index,
+            )
+        )
+        observations.append(observation)
+        provider_calls += int(observation["provider_calls"])
+        vitis_launches += int(observation["vitis_launches"])
+    return baseline, observations, provider_calls, vitis_launches
+
+
 def run(output: Path, *, preflight: bool) -> dict[str, Any]:
     state, revision, snapshot, payload, reduction = objects()
     protocol = load_protocol()
@@ -279,55 +351,25 @@ def run(output: Path, *, preflight: bool) -> dict[str, Any]:
     usage_provider = 0
     usage_vitis = 0
     for repeat in range(1, REPEATS + 1):
-        pair_root = output / "pairs" / ("repeat-%02d" % repeat)
-        product_root = pair_root / "common-product"
-        args = _baseline_args(
-            repo=ROOT,
+        baseline, repeat_observations, repeat_provider, repeat_vitis = run_repeat(
+            output=output,
+            pilot=pilot,
             case=case,
-            runtime=runtime_value,
-            output=product_root,
-            run_id="%s-baseline-%02d" % (pilot["pilot_id"], repeat),
+            runtime_value=runtime_value,
+            runtime=runtime,
+            certificate_value=cert,
+            revision=revision,
+            snapshot=snapshot,
+            payload=payload,
+            reduction=reduction,
+            repeat=repeat,
         )
-        execution = run_source_command_with_r5_capture(args)
-        capture = execution.r5_common_baseline
-        if capture is None:
-            raise RuntimeError("ordinary refactor did not expose common baseline")
-        case_spec = R5CaseSpec(
-            case_id=PILOT_CASE_ID,
-            source_sha256=capture.source_sha256,
-            context_signature=capture.context_signature,
-            period="future",
-        )
-        executor = ExistingRefactorR5CampaignExecutor(
-            artifact_root=pair_root / "paired",
-            baseline_runner=lambda case_value, repeat_value, artifact_root: capture,
-            advisor_factory=advisor_factory(runtime),
-            integration_factory=integration_factory(
-                certificate_value=cert,
-                revision=revision,
-                snapshot=snapshot,
-                payload=payload,
-                reduction=reduction,
-                pilot_hash=pilot["pilot_manifest_sha256"],
-            ),
-        )
-        baseline = executor.prepare_common_baseline(case_spec, repeat)
-        baselines.append(dict(baseline))
-        usage_provider += int(baseline["provider_calls"])
-        usage_vitis += int(baseline["vitis_launches"])
-        for arm_index, arm in enumerate(arm_schedule(PILOT_CASE_ID, repeat)):
-            observation = executor.run_arm(
-                case=case_spec,
-                repeat=repeat,
-                arm=arm,
-                baseline=baseline,
-                arm_index=arm_index,
-            )
-            observations.append(dict(observation))
-            usage_provider += int(observation["provider_calls"])
-            usage_vitis += int(observation["vitis_launches"])
-            if usage_provider > PILOT_PROVIDER_CAP or usage_vitis > PILOT_VITIS_CAP:
-                raise RuntimeError("pilot exceeded frozen upper bound")
+        baselines.append(baseline)
+        observations.extend(repeat_observations)
+        usage_provider += repeat_provider
+        usage_vitis += repeat_vitis
+        if usage_provider > PILOT_PROVIDER_CAP or usage_vitis > PILOT_VITIS_CAP:
+            raise RuntimeError("pilot exceeded frozen upper bound")
     result = {
         "schema_version": 1,
         "status": "ready_for_independent_audit",

@@ -33,6 +33,22 @@ class R5BoundedPilotTests(unittest.TestCase):
             self.assertEqual(len(schedule), 7)
         self.assertGreater(len(set(schedules)), 1)
 
+    def test_run_repeat_rejects_repeat_outside_frozen_range_before_work(self):
+        with self.assertRaisesRegex(ValueError, "frozen range"):
+            MODULE.run_repeat(
+                output=Path("/unused"),
+                pilot={},
+                case={},
+                runtime_value={},
+                runtime=None,
+                certificate_value=None,
+                revision=None,
+                snapshot=None,
+                payload=None,
+                reduction=None,
+                repeat=4,
+            )
+
     def test_manifest_binds_budget_reserve_and_runtime_context_mode(self):
         state = {
             "R4_ACCEPTED": True,
