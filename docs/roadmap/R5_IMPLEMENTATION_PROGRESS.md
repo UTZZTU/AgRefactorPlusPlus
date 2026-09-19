@@ -302,3 +302,37 @@ continuation for this same source. It may run at most two additional attempts,
 must stop after the first verified-positive episode, may add at most four
 Provider calls and twelve Vitis launches, and may not weaken the accepted R2
 confidence/calibration boundary.
+
+## First Bounded Continuation Attempt
+
+The bounded continuation was zero-call audited at repository head `bd1c894`
+and authorized at most two additional attempts with a first-positive stop. The
+first continuation attempt consumed one Provider call and two Vitis launches.
+R2 returned a calibrated `high` advisory for Candidate-owned
+`unsupported_construct`, so R4 correctly crossed the calibration gate. The
+mutation Provider was never called: the real `R5CandidatePromptFactory`
+failed its local evidence-view contract before the Provider boundary.
+
+The runner stopped immediately with `stopped_inconclusive`; it did not consume
+the second authorized attempt. The sealed attempt archive SHA-256 is
+`94f4db44837dffce36b1d7b255b1e4570c74d0431e96bf0cb58d0e7f7cc24101`.
+The committed file-only auditor reports `clean_stopped_inconclusive`, zero
+critical findings, and one blocking finding at
+`/data/agrefactor_runs/r5_p3_preexisting_history_continuation_result_audit_5cd2c17/independent_audit.json`.
+Its file SHA-256 is
+`b832706762e6f3e6968c8a276da275b1e6eaaad52d23439e0df2d60fa260eb6d`
+and canonical audit SHA-256 is
+`999b40b9a1b119e1dbf0c5547ab1d860e7b7322a3da80771b5c04f60f5164987`.
+
+The product-path defect was fixed at `5cd2c17`: R5 prompt reconstruction now
+preserves the agent-safe evidence metadata; a Candidate owner can be projected
+from R2 only when the advisory is calibration-verified and the deterministic
+owner is still unknown; and R5/R3 now consume the formal
+`suspected_failure_class` field with a legacy fallback. The relevant R3/R5
+regression set passed (`7 + 135` tests).
+
+The cumulative R5 ledger is now `95/500` Provider calls and `37/500` Vitis
+launches. The imported revision remains `Provisional`, no new positive episode
+was created, the future holdout remains unobserved, and the real campaign stays
+disabled. A new zero-call resume protocol must bind this audited failure and
+the fix before the one remaining attempt is used.

@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "route": "V2.3",
+  "phase": "R5",
+  "status": "audited_pre_provider_contract_failure_fixed",
+  "continuation_repository_head": "bd1c8945a928795971af14d77d816a7c9b873875",
+  "fix_repository_head": "5cd2c1781261f6339f73bb7819e3af29e7b654f1",
+  "run_root": "/data/agrefactor_runs/r5_p3_preexisting_history_continuation_real_bd1c894",
+  "continuation_manifest_file_sha256": "a6fa1cc08a839b08ef2c92512866322dde0143132c8749534760425ca474f10c",
+  "continuation_result_file_sha256": "d1329061c9fe3ca8d72221a8dcf05ec179fa547faf48083fd93dbedcc3fb3048",
+  "attempt": {
+    "attempt_ordinal": 2,
+    "run_id": "r5-preexisting-history-recursive-e2-dfs-02",
+    "status": "inconclusive",
+    "reason": "pre_provider_mutation_contract_failure",
+    "acquisition_manifest_file_sha256": "b81d09a202f4b8c8a4b131cef9502f1ed1e93fa92656639ff872af9048be1946",
+    "acquisition_result_file_sha256": "34d6b69b5d14d25bf64841a52cd2b51f44415668d6cea91f05df6da37d6c71c9",
+    "evidence_archive_sha256": "94f4db44837dffce36b1d7b255b1e4570c74d0431e96bf0cb58d0e7f7cc24101",
+    "r2_confidence": "high",
+    "r2_provider_calls": 1,
+    "mutation_provider_calls": 0,
+    "mutation_count": 0,
+    "vitis_launches": 2,
+    "candidate_unchanged": true
+  },
+  "independent_audit_root": "/data/agrefactor_runs/r5_p3_preexisting_history_continuation_result_audit_5cd2c17",
+  "attempt_independent_audit_file_sha256": "6dffd2852c08f0175dcb829f8549115db689051e726162bed094824d6407ef45",
+  "attempt_independent_audit_sha256": "5d54487bbbd611678f49531616ad7d3f4ba0974e9f91a22d3d72d42650f8664d",
+  "continuation_independent_audit_file_sha256": "b832706762e6f3e6968c8a276da275b1e6eaaad52d23439e0df2d60fa260eb6d",
+  "continuation_independent_audit_sha256": "999b40b9a1b119e1dbf0c5547ab1d860e7b7322a3da80771b5c04f60f5164987",
+  "independent_audit_status": "clean_stopped_inconclusive",
+  "critical_finding_count": 0,
+  "blocking_finding_count": 1,
+  "root_causes": [
+    "r5_prompt_feedback_missing_agent_safe_metadata",
+    "r5_prompt_unknown_owner_not_projected_from_calibrated_advisory",
+    "r5_failure_family_read_legacy_key_instead_of_suspected_failure_class"
+  ],
+  "fixes": [
+    "preserve_agent_safe_prompt_metadata",
+    "project_candidate_owner_only_from_calibration_verified_advisory_when_deterministic_owner_is_unknown",
+    "prefer_suspected_failure_class_with_legacy_fallback"
+  ],
+  "relevant_regression_tests_passed": 142,
+  "budget_before": {
+    "provider_calls": 94,
+    "vitis_launches": 35
+  },
+  "budget_added": {
+    "provider_calls": 1,
+    "vitis_launches": 2
+  },
+  "budget_after": {
+    "provider_calls": 95,
+    "vitis_launches": 37
+  },
+  "remaining_attempts_under_original_continuation": 1,
+  "future_files_read": false,
+  "future_outcomes_observed": false,
+  "confidence_threshold_weakened": false,
+  "real_campaign_allowed": false,
+  "r5_accepted": false,
+  "r6_started": false,
+  "next_step": "freeze_and_zero_call_audit_one_remaining_post_fix_attempt"
+}
