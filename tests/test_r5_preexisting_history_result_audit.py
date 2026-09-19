@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import unittest
 
@@ -136,6 +137,62 @@ class R5PreexistingHistoryResultAuditTests(unittest.TestCase):
                 result,
                 {"advisory": {"confidence": "high"}},
             )
+
+    def test_model_adapter_failure_is_auditable_without_call_or_mutation(self) -> None:
+        result = {
+            "status": "inconclusive",
+            "provider_calls": 1,
+            "vitis_launches": 2,
+            "initial_candidate_sha256": "a" * 64,
+            "r5_integration": {
+                "status": "inconclusive",
+                "main_result_unchanged": True,
+                "accepted_by_integration": False,
+                "episode_path": "/evidence/episode.json",
+                "r4_controller_result": {
+                    "outcome": "inconclusive",
+                    "reasons": ["pre_provider_model_adapter_failure"],
+                    "provider_call_count": 0,
+                    "mutation_count": 0,
+                    "after_candidate_sha256": None,
+                    "formal_validation_id": None,
+                },
+            },
+        }
+        episode = {
+            "outcome": "inconclusive",
+            "source_sha256": "b" * 64,
+            "manifest_sha256": "c" * 64,
+            "episode_id": "episode-1",
+            "payload": {
+                "outcome_reason": "pre_provider_model_adapter_failure",
+                "candidate_before_sha256": "a" * 64,
+                "candidate_after_sha256": None,
+                "formal_validation_id": None,
+                "provider_call_count": 0,
+                "budget_actual": {
+                    "provider_calls": 0,
+                    "mutation_calls": 0,
+                    "budget_delta": {"llm_calls": 0},
+                },
+            },
+            "agent_safe_summary": {
+                "reason": "pre_provider_model_adapter_failure",
+                "false_repair": False,
+                "unsafe_scope": False,
+                "critical_safety_violation": False,
+            },
+        }
+        value = AUDIT._verify_pre_provider_contract_failure(
+            payloads={"ledger/episode.json": json.dumps(episode).encode("utf-8")},
+            manifest={
+                "manifest_sha256": "c" * 64,
+                "case_identity": {"source_sha256": "b" * 64},
+            },
+            result=result,
+            shadow={"advisory": {"confidence": "high"}},
+        )
+        self.assertEqual(value["status"], "clean_pre_provider_model_adapter_failure")
 
 
 if __name__ == "__main__":

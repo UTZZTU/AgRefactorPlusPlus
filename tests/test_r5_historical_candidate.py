@@ -11,6 +11,7 @@ from agrefactor.recovery.r5_historical_candidate import (
     R5HistoricalCandidateError,
     file_sha256,
     isolate_candidate_symbols,
+    materialize_candidate_symbols,
     text_sha256,
     verify_historical_candidate_plan,
 )
@@ -172,6 +173,13 @@ class R5HistoricalCandidateTests(unittest.TestCase):
             "budget is invalid",
         ):
             verify_historical_candidate_plan(self.root, plan)
+
+    def test_materialized_isolation_exposes_renamed_top_to_parsers(self) -> None:
+        isolated = materialize_candidate_symbols(self.legacy, self.symbol_map)
+        self.assertIn("void top_hls(int *out)", isolated)
+        self.assertIn("helper_hls(n - 1)", isolated)
+        self.assertNotIn("#define top top_hls", isolated)
+        self.assertNotIn("void top(int *out)", isolated)
 
 
 if __name__ == "__main__":

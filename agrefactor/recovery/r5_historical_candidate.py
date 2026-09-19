@@ -15,6 +15,7 @@ _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _SAFE_RELATIVE = re.compile(r"^[A-Za-z0-9_./-]+$")
 ISOLATION_VERSION = "r5-historical-candidate-symbol-isolation-v1"
+MATERIALIZED_ISOLATION_VERSION = "r5-historical-candidate-symbol-isolation-v2"
 
 
 class R5HistoricalCandidateError(ValueError):
@@ -93,6 +94,30 @@ def isolate_candidate_symbols(
         *(f"#define {source} {target}" for source, target in pairs),
     ]
     return "\n".join(preamble) + "\n" + candidate.rstrip() + "\n"
+
+
+def materialize_candidate_symbols(
+    candidate: str,
+    symbol_map: Sequence[Mapping[str, Any]],
+) -> str:
+    """Rename complete identifier tokens so deterministic parsers see the ABI."""
+
+    isolate_candidate_symbols(candidate, symbol_map)
+    pairs = {
+        str(item["source"]): str(item["target"])
+        for item in symbol_map
+        if isinstance(item, Mapping)
+    }
+    matcher = re.compile(
+        r"\b(?:" + "|".join(re.escape(name) for name in pairs) + r")\b"
+    )
+    renamed = matcher.sub(lambda match: pairs[match.group(0)], candidate)
+    return (
+        f"// {MATERIALIZED_ISOLATION_VERSION}\n"
+        "// Mechanical identifier isolation only; Candidate logic is unchanged.\n"
+        + renamed.rstrip()
+        + "\n"
+    )
 
 
 def _resolve(repository: Path, value: Any, label: str) -> tuple[str, Path]:
@@ -212,7 +237,13 @@ def verify_historical_candidate_plan(
             raise R5HistoricalCandidateError(f"{split} test lacks a failure return")
 
     symbol_map = plan.get("symbol_isolation_map")
-    isolated = isolate_candidate_symbols(legacy, symbol_map)  # type: ignore[arg-type]
+    isolation_version = plan.get("symbol_isolation_version", ISOLATION_VERSION)
+    if isolation_version == ISOLATION_VERSION:
+        isolated = isolate_candidate_symbols(legacy, symbol_map)  # type: ignore[arg-type]
+    elif isolation_version == MATERIALIZED_ISOLATION_VERSION:
+        isolated = materialize_candidate_symbols(legacy, symbol_map)  # type: ignore[arg-type]
+    else:
+        raise R5HistoricalCandidateError("symbol isolation version is unsupported")
     expected_isolated = _require_sha256(
         plan.get("isolated_candidate_sha256"),
         "isolated Candidate hash",
@@ -319,11 +350,13 @@ def verify_historical_candidate_plan(
 
 __all__ = [
     "ISOLATION_VERSION",
+    "MATERIALIZED_ISOLATION_VERSION",
     "R5HistoricalCandidateBundle",
     "R5HistoricalCandidateError",
     "canonical_sha256",
     "file_sha256",
     "isolate_candidate_symbols",
+    "materialize_candidate_symbols",
     "text_sha256",
     "verify_historical_candidate_plan",
 ]

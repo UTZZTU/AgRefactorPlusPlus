@@ -335,6 +335,12 @@ def _verify_pre_provider_contract_failure(
         if isinstance(integration, Mapping)
         else {}
     )
+    reasons = controller.get("reasons") if isinstance(controller, Mapping) else None
+    allowed_reasons = {
+        "pre_provider_mutation_contract_failure",
+        "pre_provider_model_adapter_failure",
+    }
+    reason = reasons[0] if isinstance(reasons, list) and len(reasons) == 1 else None
     if (
         result.get("status") != "inconclusive"
         or result.get("provider_calls") != 1
@@ -346,7 +352,7 @@ def _verify_pre_provider_contract_failure(
         or integration.get("accepted_by_integration") is not False
         or not isinstance(controller, Mapping)
         or controller.get("outcome") != "inconclusive"
-        or controller.get("reasons") != ["pre_provider_mutation_contract_failure"]
+        or reason not in allowed_reasons
         or controller.get("provider_call_count") != 0
         or controller.get("mutation_count") != 0
         or controller.get("after_candidate_sha256") is not None
@@ -372,8 +378,7 @@ def _verify_pre_provider_contract_failure(
         != manifest.get("case_identity", {}).get("source_sha256")
         or episode.get("manifest_sha256") != manifest.get("manifest_sha256")
         or not isinstance(payload, Mapping)
-        or payload.get("outcome_reason")
-        != "pre_provider_mutation_contract_failure"
+        or payload.get("outcome_reason") != reason
         or payload.get("candidate_before_sha256")
         != result.get("initial_candidate_sha256")
         or payload.get("candidate_after_sha256") is not None
@@ -385,7 +390,7 @@ def _verify_pre_provider_contract_failure(
         or not isinstance(delta, Mapping)
         or delta.get("llm_calls") != 0
         or not isinstance(summary, Mapping)
-        or summary.get("reason") != "pre_provider_mutation_contract_failure"
+        or summary.get("reason") != reason
         or summary.get("false_repair") is not False
         or summary.get("unsafe_scope") is not False
         or summary.get("critical_safety_violation") is not False
@@ -394,9 +399,9 @@ def _verify_pre_provider_contract_failure(
             "pre-provider contract-failure episode invariants failed"
         )
     return {
-        "status": "clean_pre_provider_mutation_contract_failure",
+        "status": "clean_" + str(reason),
         "confidence": advisory.get("confidence"),
-        "reason": "pre_provider_mutation_contract_failure",
+        "reason": reason,
         "episode_id": episode.get("episode_id"),
         "episode_sha256": hashlib.sha256(payloads[relative]).hexdigest(),
         "mutation_provider_calls": 0,
@@ -446,22 +451,18 @@ def audit(root: Path) -> dict[str, Any]:
         "future_files_read": False,
         "future_outcomes_observed": False,
         "critical_finding_count": 0,
-        "blocking_finding_count": (
-            1
-            if outcome["status"]
-            == "clean_pre_provider_mutation_contract_failure"
-            else 0
+        "blocking_finding_count": int(
+            str(outcome["status"]).startswith("clean_pre_provider_")
         ),
         "findings": (
             [
                 {
-                    "code": "pre_provider_mutation_contract_failure",
+                    "code": str(outcome.get("reason")),
                     "severity": "blocking",
-                    "message": "R5 mutation prompt construction failed before its Provider call.",
+                    "message": "R5 mutation preparation failed before its Provider call.",
                 }
             ]
-            if outcome["status"]
-            == "clean_pre_provider_mutation_contract_failure"
+            if str(outcome["status"]).startswith("clean_pre_provider_")
             else []
         ),
         "r5_accepted": False,
