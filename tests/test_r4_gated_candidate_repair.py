@@ -309,6 +309,7 @@ class R4GateContractTests(unittest.TestCase):
             raise R4MutationFailure(
                 "provider_or_response_contract_failure",
                 provider_call_observed=True,
+                detail_codes=("top_interface_changed",),
             )
 
         result = controller.run(
@@ -320,6 +321,21 @@ class R4GateContractTests(unittest.TestCase):
         self.assertEqual(result.outcome, R4Outcome.INCONCLUSIVE)
         self.assertEqual(result.provider_call_count, 1)
         self.assertEqual(result.mutation_count, 0)
+        self.assertEqual(
+            result.reasons,
+            (
+                "provider_or_response_contract_failure",
+                "response_contract_top_interface_changed",
+            ),
+        )
+
+    def test_mutation_failure_rejects_unsafe_detail_code(self):
+        with self.assertRaises(TypeError):
+            R4MutationFailure(
+                "provider_or_response_contract_failure",
+                provider_call_observed=True,
+                detail_codes=("raw provider output",),
+            )
 
 
 if __name__ == "__main__":

@@ -93,22 +93,46 @@ def _verify_fixed_prior_attempt(
     result = _load(result_path)
     audit = _load(audit_path)
     reconciliation = _load(reconciliation_path)
+    prior_status = str(prior.get("status", ""))
+    expected_provider_calls = (
+        2
+        if prior_status == "clean_provider_or_response_contract_failure"
+        else 1
+    )
+    expected_reconciliation_status = prior.get(
+        "reconciliation_status",
+        (
+            "audited_pre_provider_model_adapter_failure_fixed"
+            if prior_status == "clean_pre_provider_model_adapter_failure"
+            else None
+        ),
+    )
+    budget = plan.get("budget")
     if (
-        result.get("status") != "inconclusive"
-        or result.get("provider_calls") != 1
+        prior_status
+        not in {
+            "clean_pre_provider_model_adapter_failure",
+            "clean_provider_or_response_contract_failure",
+        }
+        or not isinstance(budget, Mapping)
+        or not isinstance(expected_reconciliation_status, str)
+        or result.get("status") != "inconclusive"
+        or result.get("provider_calls") != expected_provider_calls
         or result.get("vitis_launches") != 2
-        or audit.get("status") != "clean_pre_provider_model_adapter_failure"
+        or audit.get("status") != prior_status
         or audit.get("source_sha256") != bundle.source_sha256
         or audit.get("critical_finding_count") != 0
         or audit.get("blocking_finding_count") != 1
-        or audit.get("provider_calls") != 1
+        or audit.get("provider_calls") != expected_provider_calls
         or audit.get("vitis_launches") != 2
-        or reconciliation.get("status")
-        != "audited_pre_provider_model_adapter_failure_fixed"
+        or reconciliation.get("status") != expected_reconciliation_status
         or reconciliation.get("source_sha256") != bundle.source_sha256
         or reconciliation.get("remaining_attempts") != 2
         or reconciliation.get("budget_after")
-        != {"provider_calls": 97, "vitis_launches": 41}
+        != {
+            "provider_calls": budget.get("provider_calls_before"),
+            "vitis_launches": budget.get("vitis_launches_before"),
+        }
     ):
         raise PreexistingHistoryAuditError("prior attempt boundary is incompatible")
     fix_commit = str(prior.get("fix_commit", ""))

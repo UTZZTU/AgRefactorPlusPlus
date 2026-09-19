@@ -510,3 +510,43 @@ boundary. The quicksort plan is
 `configs/r5/preexisting_history/c2hlsc_quicksort_expanded_plan.json`. A clean
 zero-call protocol audit is mandatory before one bounded real attempt. Future
 holdouts remain unread, R5 remains unaccepted, and R6 remains stopped.
+
+## Quicksort Response-Contract Failure And General Fix
+
+The quicksort zero-call audit passed at
+`/data/agrefactor_runs/r5_p3_c2hlsc_quicksort_protocol_audit_98a72cc/protocol_audit.json`.
+Its file SHA-256 is
+`fbaf2a46068ec9872e0bcfc1b7c9814c4e25e1e4a0fbd2e97ca2be121b2fb599`
+and canonical audit SHA-256 is
+`9d92af0dd18ac63f2fba962ac4a436350de4f364d1d024fc000704a6a564c0fe`.
+Both Public and Hidden host differential checks passed without a Provider or
+Vitis call.
+
+The first real quicksort attempt at
+`/data/agrefactor_runs/r5_p3_c2hlsc_quicksort_real_98a72cc` entered the full
+R2-to-R4 path. The real `HLS 214-139` recursion diagnostic was initially
+unknown/review evidence; R2 returned a calibrated `high`, Candidate-only
+`unsupported_construct` advisory. R4 authorized one mutation Provider call,
+but the returned Candidate failed the deterministic response contract before
+mutation or formal validation. The attempt consumed two Provider calls and
+two Vitis launches and produced an inconclusive episode with an unchanged
+Candidate.
+
+A separate file-only audit reports
+`clean_provider_or_response_contract_failure`, zero critical findings, and
+one blocking finding at
+`/data/agrefactor_runs/r5_p3_c2hlsc_quicksort_result_audit_98a72cc/independent_audit.json`.
+Its file SHA-256 is
+`513d31499086b77328f260efcdfc9e2e1874a712283b02722faae1a8e65d9d06`
+and canonical audit SHA-256 is
+`b627d3542464c31061f09a663deaf0aaf0d06a0f8de67953164f73be697d0f7e`.
+
+The general mutation boundary now carries only stable, agent-safe response
+reason codes when a Candidate response fails; raw output and private reasoning
+remain absent. R5 prompts also bind the exact current Candidate top-level name
+and declaration text that the deterministic response contract enforces. This
+aligns the prompt with the existing validator without weakening the validator
+or adding a quicksort-specific rule. The source retains two bounded attempts,
+but a new post-fix plan and zero-call audit are required before either is used.
+The cumulative R5 ledger is `101/500` Provider calls and `49/500` Vitis
+launches. R5 remains unaccepted and R6 remains stopped.

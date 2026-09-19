@@ -235,6 +235,23 @@ class R5ExistingOrchestratorIntegrationTests(unittest.TestCase):
             prompt.manifest["feedback_projection"],
             "agent_safe_items_only",
         )
+        requirements = prompt.manifest["output_contract"][
+            "additional_requirements"
+        ]
+        self.assertIn(
+            "Define exactly one candidate top-level function named "
+            + m.make_context().task.kernel_name
+            + ".",
+            requirements,
+        )
+        self.assertTrue(
+            any(
+                item.startswith(
+                    "Preserve this exact top-level declaration text: "
+                )
+                for item in requirements
+            )
+        )
         with self.assertRaisesRegex(ValueError, "owner does not match"):
             R5CandidatePromptFactory(
                 request=request,

@@ -19,6 +19,7 @@ from agrefactor.recovery.r4_episode import R4RepairEpisodeReader
 from agrefactor.recovery.shadow_advisor import CalibrationCertificate
 from agrefactor.runtime.budget import BudgetLimits
 from agrefactor.runtime.r4_integration import CandidateModelR4MutationAdapter, ExistingOrchestratorR4Integration, R4IntegrationConfig
+from agrefactor.runtime.r5_integration import R5CandidatePromptFactory
 
 
 def h(value: str) -> str:
@@ -212,6 +213,45 @@ class R4ExistingOrchestratorIntegrationTests(unittest.TestCase):
         self.assertFalse(raised.exception.provider_call_observed)
         self.assertEqual(provider.calls, [])
         self.assertEqual(context.budget.snapshot().llm_calls, 0)
+
+    def test_real_candidate_adapter_preserves_safe_response_reason_codes(self):
+        m = helpers()
+        baseline, request, _, _ = self._run_main(m)
+        event = baseline.metadata["diagnostic_events"][0]
+        adapter, provider = m.make_adapter([m.P1])
+        context = m.make_context(
+            limits=BudgetLimits(max_llm_calls=2, max_wall_time_s=5000)
+        )
+        mutation = CandidateModelR4MutationAdapter(
+            model_adapter=adapter,
+            prompt_factory=R5CandidatePromptFactory(
+                request=request,
+                approved_memory_snippets=(),
+            ),
+            budget=context.budget,
+        )
+        with self.assertRaises(R4MutationFailure) as raised:
+            mutation.mutate(
+                candidate=m.P1,
+                event=event,
+                advisory={
+                    "suspected_owner": "candidate",
+                    "suspected_failure_class": "unsupported_construct",
+                    "calibration_verified": True,
+                },
+                task=context.task,
+            )
+        self.assertEqual(
+            raised.exception.reason,
+            "provider_or_response_contract_failure",
+        )
+        self.assertEqual(
+            raised.exception.detail_codes,
+            ("semantic_unchanged",),
+        )
+        self.assertTrue(raised.exception.provider_call_observed)
+        self.assertEqual(len(provider.calls), 1)
+        self.assertEqual(context.budget.snapshot().llm_calls, 1)
 
     def test_feature_off_full_serialized_result_is_equivalent(self):
         m = helpers()

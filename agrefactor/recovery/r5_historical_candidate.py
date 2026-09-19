@@ -325,7 +325,10 @@ def verify_historical_candidate_plan(
             isolation_version != MATERIALIZED_ISOLATION_VERSION
             or not isinstance(prior_attempt, Mapping)
             or prior_attempt.get("status")
-            != "clean_pre_provider_model_adapter_failure"
+            not in {
+                "clean_pre_provider_model_adapter_failure",
+                "clean_provider_or_response_contract_failure",
+            }
             or prior_attempt.get("attempts_consumed") != 1
             or prior_attempt.get("maximum_remaining_attempts") != 2
             or plan.get("confidence_threshold_weakened") is not False

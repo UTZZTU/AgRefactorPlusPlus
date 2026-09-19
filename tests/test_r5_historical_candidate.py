@@ -212,6 +212,12 @@ class R5HistoricalCandidateTests(unittest.TestCase):
             "r5-historical-candidate-symbol-isolation-v2",
         )
 
+        post_provider = copy.deepcopy(plan)
+        post_provider["prior_failed_attempt"]["status"] = (
+            "clean_provider_or_response_contract_failure"
+        )
+        verify_historical_candidate_plan(self.root, post_provider)
+
         plan["symbol_isolation_version"] = (
             "r5-historical-candidate-symbol-isolation-v1"
         )

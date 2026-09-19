@@ -11,6 +11,7 @@ from typing import Any, Protocol
 from agrefactor.config import EvaluationSplit
 from agrefactor.evidence import audit_product_evidence
 from agrefactor.models import CandidateModelAdapter, CandidateModelRequest
+from agrefactor.models.candidate_adapter import candidate_response_reason_codes
 from agrefactor.recovery.gated_candidate_repair import (
     R4CanaryManifest,
     R4CandidateRepairAuthorization,
@@ -177,6 +178,7 @@ class CandidateModelR4MutationAdapter:
                     else "pre_provider_model_adapter_failure"
                 ),
                 provider_call_observed=provider_call_observed,
+                detail_codes=candidate_response_reason_codes(exc),
             ) from exc
         return result.candidate_code
 

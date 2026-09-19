@@ -13,6 +13,7 @@ import zipfile
 
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_REASON_CODE = re.compile(r"^[a-z][a-z0-9_]*$")
 _PRIVATE_TAGS = ("<think", "</think", "<reasoning", "</reasoning")
 _RAW_FIELDS = frozenset(
     {
@@ -417,11 +418,26 @@ def _verify_pre_provider_contract_failure(
     allowed_reasons = {
         "pre_provider_mutation_contract_failure",
         "pre_provider_model_adapter_failure",
+        "provider_or_response_contract_failure",
     }
-    reason = reasons[0] if isinstance(reasons, list) and len(reasons) == 1 else None
+    reason = reasons[0] if isinstance(reasons, list) and reasons else None
+    detail_reasons = reasons[1:] if isinstance(reasons, list) else []
+    if any(
+        not isinstance(item, str)
+        or not _REASON_CODE.fullmatch(item)
+        or not item.startswith("response_contract_")
+        for item in detail_reasons
+    ):
+        raise PreexistingHistoryResultAuditError(
+            "response contract detail reasons are unsafe"
+        )
+    episode_reason = ";".join(reasons) if isinstance(reasons, list) else None
+    provider_call_observed = reason == "provider_or_response_contract_failure"
+    expected_total_provider_calls = 2 if provider_call_observed else 1
+    expected_mutation_provider_calls = 1 if provider_call_observed else 0
     if (
         result.get("status") != "inconclusive"
-        or result.get("provider_calls") != 1
+        or result.get("provider_calls") != expected_total_provider_calls
         or result.get("vitis_launches") != 2
         or advisory.get("confidence") != "high"
         or not isinstance(integration, Mapping)
@@ -431,7 +447,8 @@ def _verify_pre_provider_contract_failure(
         or not isinstance(controller, Mapping)
         or controller.get("outcome") != "inconclusive"
         or reason not in allowed_reasons
-        or controller.get("provider_call_count") != 0
+        or controller.get("provider_call_count")
+        != expected_mutation_provider_calls
         or controller.get("mutation_count") != 0
         or controller.get("after_candidate_sha256") is not None
         or controller.get("formal_validation_id") is not None
@@ -456,19 +473,22 @@ def _verify_pre_provider_contract_failure(
         != manifest.get("case_identity", {}).get("source_sha256")
         or episode.get("manifest_sha256") != manifest.get("manifest_sha256")
         or not isinstance(payload, Mapping)
-        or payload.get("outcome_reason") != reason
+        or payload.get("outcome_reason") != episode_reason
         or payload.get("candidate_before_sha256")
         != result.get("initial_candidate_sha256")
         or payload.get("candidate_after_sha256") is not None
         or payload.get("formal_validation_id") is not None
-        or payload.get("provider_call_count") != 0
+        or payload.get("provider_call_count")
+        != expected_mutation_provider_calls
         or not isinstance(actual, Mapping)
-        or actual.get("provider_calls") != 0
+        or actual.get("provider_calls")
+        != expected_mutation_provider_calls
         or actual.get("mutation_calls") != 0
         or not isinstance(delta, Mapping)
-        or delta.get("llm_calls") != 0
+        or delta.get("llm_calls")
+        != expected_mutation_provider_calls
         or not isinstance(summary, Mapping)
-        or summary.get("reason") != reason
+        or summary.get("reason") != episode_reason
         or summary.get("false_repair") is not False
         or summary.get("unsafe_scope") is not False
         or summary.get("critical_safety_violation") is not False
@@ -480,9 +500,10 @@ def _verify_pre_provider_contract_failure(
         "status": "clean_" + str(reason),
         "confidence": advisory.get("confidence"),
         "reason": reason,
+        "response_contract_reason_codes": detail_reasons,
         "episode_id": episode.get("episode_id"),
         "episode_sha256": hashlib.sha256(payloads[relative]).hexdigest(),
-        "mutation_provider_calls": 0,
+        "mutation_provider_calls": expected_mutation_provider_calls,
         "mutation_count": 0,
     }
 
@@ -539,17 +560,31 @@ def audit(root: Path) -> dict[str, Any]:
         "critical_finding_count": 0,
         "blocking_finding_count": int(
             str(outcome["status"]).startswith("clean_pre_provider_")
+            or str(outcome["status"]).startswith(
+                "clean_provider_or_response_"
+            )
             or str(outcome["status"]).startswith("clean_pre_r2_")
         ),
         "findings": (
             [
-                {
-                    "code": str(outcome.get("reason")),
-                    "severity": "blocking",
-                    "message": "R5 mutation preparation failed before its Provider call.",
-                }
+                    {
+                        "code": str(outcome.get("reason")),
+                        "severity": "blocking",
+                        "message": (
+                            "R5 mutation response failed its deterministic contract."
+                            if str(outcome["status"]).startswith(
+                                "clean_provider_or_response_"
+                            )
+                            else "R5 mutation preparation failed before its Provider call."
+                        ),
+                    }
             ]
-            if str(outcome["status"]).startswith("clean_pre_provider_")
+            if (
+                str(outcome["status"]).startswith("clean_pre_provider_")
+                or str(outcome["status"]).startswith(
+                    "clean_provider_or_response_"
+                )
+            )
             else (
                 [
                     {

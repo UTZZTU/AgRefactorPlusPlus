@@ -123,6 +123,8 @@ class CandidateRepairPromptInputs:
     family_profile: FamilyInstructionProfile | None = None
     prior_attempt_summaries: tuple[str, ...] = ()
     approved_memory_snippets: tuple[str, ...] = ()
+    required_top_function: str | None = None
+    required_top_interface: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.task, TaskSpec):
@@ -145,6 +147,25 @@ class CandidateRepairPromptInputs:
             self.family_instruction,
             "family_instruction",
         )
+        _validate_optional_text(
+            self.required_top_function,
+            "required_top_function",
+        )
+        _validate_optional_text(
+            self.required_top_interface,
+            "required_top_interface",
+        )
+        if (self.required_top_function is None) != (
+            self.required_top_interface is None
+        ):
+            raise ValueError(
+                "required top function and interface must be supplied together"
+            )
+        if (
+            self.required_top_function is not None
+            and self.required_top_function != self.task.kernel_name
+        ):
+            raise ValueError("required top function must match the TaskSpec")
         if (
             self.family_profile is not None
             and not isinstance(
@@ -346,7 +367,17 @@ def _build_candidate_repair_prompt(
             complete_replacement=True,
             fenced_code_block=True,
             commentary_allowed=False,
-            additional_requirements=_COMMON_OUTPUT_REQUIREMENTS,
+            additional_requirements=(
+                _COMMON_OUTPUT_REQUIREMENTS
+                if inputs.required_top_interface is None
+                else _COMMON_OUTPUT_REQUIREMENTS
+                + (
+                    "Define exactly one candidate top-level function named "
+                    f"{inputs.required_top_function}.",
+                    "Preserve this exact top-level declaration text: "
+                    f"{inputs.required_top_interface}",
+                )
+            ),
         ),
         attempt=inputs.attempt,
         max_attempts=inputs.max_attempts,

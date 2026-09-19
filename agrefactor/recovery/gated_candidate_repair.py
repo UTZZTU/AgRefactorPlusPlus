@@ -32,6 +32,7 @@ from .r4_budget import R4ReservePlan
 from .r5_authorization import R5ResearchAuthorization
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_REASON_CODE = re.compile(r"^[a-z][a-z0-9_]*$")
 _STAGES = frozenset({"preflight", "public_evaluation", "csynth", "public_cosim"})
 _OUTCOMES = frozenset({"verified_positive", "verified_negative", "abstained", "inconclusive", "invalid_evidence"})
 
@@ -43,11 +44,24 @@ class R4ContractError(ValueError):
 class R4MutationFailure(RuntimeError):
     """Typed mutation failure with an authoritative provider-call boundary."""
 
-    def __init__(self, reason: str, *, provider_call_observed: bool) -> None:
+    def __init__(
+        self,
+        reason: str,
+        *,
+        provider_call_observed: bool,
+        detail_codes: Sequence[str] = (),
+    ) -> None:
         self.reason = _text(reason, "reason")
         if not isinstance(provider_call_observed, bool):
             raise TypeError("provider_call_observed must be a boolean")
+        normalized = tuple(dict.fromkeys(detail_codes))
+        if not all(
+            isinstance(code, str) and _REASON_CODE.fullmatch(code)
+            for code in normalized
+        ):
+            raise TypeError("detail_codes must contain safe reason tokens")
         self.provider_call_observed = provider_call_observed
+        self.detail_codes = normalized
         super().__init__(self.reason)
 
 
@@ -562,7 +576,15 @@ class R4CandidateRepairController:
         except R4MutationFailure as exc:
             if exc.provider_call_observed:
                 self._provider_call_count += 1
-            return self._result(request, R4Outcome.INCONCLUSIVE, exc.reason)
+            return self._result(
+                request,
+                R4Outcome.INCONCLUSIVE,
+                exc.reason,
+                additional_reasons=tuple(
+                    "response_contract_" + code
+                    for code in exc.detail_codes
+                ),
+            )
         except Exception:
             return self._result(request, R4Outcome.INCONCLUSIVE, "provider_or_mutation_failure")
         self._provider_call_count += 1
@@ -607,11 +629,24 @@ class R4CandidateRepairController:
             return self._result(request, R4Outcome.VERIFIED_NEGATIVE, "independently_attributed_candidate_failure", after_hash=after_hash, formal_validation_id=str(validation.get("validation_id", "validation")))
         return self._result(request, R4Outcome.INCONCLUSIVE, "negative_attribution_incomplete", after_hash=after_hash, formal_validation_id=str(validation.get("validation_id", "validation")))
 
-    def _result(self, request: R4ExecutionInput | R5ExecutionInput, outcome: R4Outcome, reason: str, *, after_hash: str | None = None, formal_validation_id: str | None = None, quarantine: bool = False) -> R4RunResult:
+    def _result(
+        self,
+        request: R4ExecutionInput | R5ExecutionInput,
+        outcome: R4Outcome,
+        reason: str,
+        *,
+        after_hash: str | None = None,
+        formal_validation_id: str | None = None,
+        quarantine: bool = False,
+        additional_reasons: Sequence[str] = (),
+    ) -> R4RunResult:
         record = None
         if quarantine:
             record = R4RevisionSafetyRecord(request.authorization.safety_subject_sha256, request.authorization.authorization_id, reason, datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
-        return R4RunResult(outcome, request.authorization.authorization_id, request.authorization.before_candidate_sha256, after_hash, formal_validation_id, self._provider_call_count, self._mutation_count, (reason,), record)
+        reasons = (reason, *tuple(additional_reasons))
+        if not all(_REASON_CODE.fullmatch(item) for item in reasons):
+            raise R4ContractError("result reasons must be safe reason tokens")
+        return R4RunResult(outcome, request.authorization.authorization_id, request.authorization.before_candidate_sha256, after_hash, formal_validation_id, self._provider_call_count, self._mutation_count, reasons, record)
 
 
 __all__ = ["R4CanaryManifest", "R4CandidateRepairAuthorization", "R4CandidateRepairController", "R4ContractError", "R4ExecutionInput", "R4KillSwitchState", "R4MutationFailure", "R4Outcome", "R4RevisionSafetyRecord", "R4RunResult", "R4_CONTROLLER_CONTRACT_SHA256", "R5CandidateRepairAuthorization", "R5ExecutionInput"]

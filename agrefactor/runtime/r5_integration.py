@@ -26,6 +26,7 @@ from agrefactor.evidence import (
     FeedbackSeverity,
     FeedbackStage,
 )
+from agrefactor.models import CandidateResponseContract
 from agrefactor.prompts import (
     CandidateRepairPromptInputs,
     build_candidate_compile_repair_prompt,
@@ -249,6 +250,10 @@ class R5CandidatePromptFactory:
                 "feedback_visible_to_agent": True,
             },
         )
+        response_contract = CandidateResponseContract.from_candidate(
+            task,
+            candidate,
+        )
         inputs = CandidateRepairPromptInputs(
             task=task,
             feedback=feedback,
@@ -262,6 +267,8 @@ class R5CandidatePromptFactory:
             max_attempts=1,
             family_instruction=self._request.family_instruction,
             approved_memory_snippets=self._approved_memory_snippets,
+            required_top_function=response_contract.top_function_name,
+            required_top_interface=response_contract.interface_header,
         )
         stage = str(event.get("stage", "csynth"))
         if stage in {"preflight", "compile", "link", "static_check"}:

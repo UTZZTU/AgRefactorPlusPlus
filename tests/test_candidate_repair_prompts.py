@@ -170,6 +170,39 @@ class RecordingBuilder(SharedLayeredPromptBuilder):
 
 
 class CandidateRepairPromptPolicyTests(unittest.TestCase):
+    def test_exact_top_interface_can_be_bound_into_output_contract(self):
+        inputs = make_inputs(make_feedback(stage=FeedbackStage.CSYNTH))
+        inputs = __import__("dataclasses").replace(
+            inputs,
+            required_top_function=inputs.task.kernel_name,
+            required_top_interface=(
+                'extern "C" void candidate_top(const int input[4], int output[4])'
+            ),
+        )
+        result = build_candidate_csynth_repair_prompt(inputs)
+
+        requirements = result.manifest["output_contract"][
+            "additional_requirements"
+        ]
+        self.assertIn(
+            "Define exactly one candidate top-level function named candidate_top.",
+            requirements,
+        )
+        self.assertIn(
+            "Preserve this exact top-level declaration text: "
+            'extern "C" void candidate_top(const int input[4], int output[4])',
+            requirements,
+        )
+        self.assertIn("candidate_top", result.messages[0].content)
+
+    def test_exact_top_interface_requires_matching_pair(self):
+        inputs = make_inputs(make_feedback(stage=FeedbackStage.CSYNTH))
+        with self.assertRaises(ValueError):
+            __import__("dataclasses").replace(
+                inputs,
+                required_top_function=inputs.task.kernel_name,
+            )
+
     def test_compile_policy_purpose_scope_and_output_contract(self):
         builder = RecordingBuilder()
         result = build_candidate_compile_repair_prompt(
