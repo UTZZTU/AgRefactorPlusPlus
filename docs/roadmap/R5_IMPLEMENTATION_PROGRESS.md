@@ -336,3 +336,36 @@ launches. The imported revision remains `Provisional`, no new positive episode
 was created, the future holdout remains unobserved, and the real campaign stays
 disabled. A new zero-call resume protocol must bind this audited failure and
 the fix before the one remaining attempt is used.
+
+## Post-fix Resume Outcome
+
+The remaining `Recursive_E2_DFS` attempt was frozen and zero-call audited at
+repository head `4b2296a`. The protocol authorized exactly attempt 3, at most
+two Provider calls and six Vitis launches, one Candidate mutation, and no
+change to the accepted `high` calibration threshold. Public and Hidden host
+adapter checks passed, and the two future cases remained unread.
+
+The immutable run is
+`/data/agrefactor_runs/r5_p3_preexisting_history_resume_real_4b2296a`.
+It consumed one Provider call and two Vitis launches. R2 again returned
+`medium`, so R4 safely abstained with `r2_calibration_unverified`; no mutation
+or repair episode was created. A separate file-only auditor reports
+`clean_exhausted_safe_abstention`, zero critical findings, and zero blocking
+findings at
+`/data/agrefactor_runs/r5_p3_preexisting_history_resume_result_audit_4b2296a/independent_audit.json`.
+Its file SHA-256 is
+`8857638476959172f3872fa82cd5a5bf39047cfb306fe33559a405170d733622`
+and canonical audit SHA-256 is
+`3be59d597512cb9788a04e857752c4273c4774c36f1ed0114311952c0ccd955c`.
+
+The source is now exhausted under its frozen three-attempt boundary. This
+clean abstention is not positive support and cannot promote the imported
+revision. The cumulative R5 ledger is `96/500` Provider calls and `39/500`
+Vitis launches. The predecessor revision remains `Provisional`, the real
+future campaign remains disabled, R5 remains unaccepted, and R6 remains
+stopped. The machine-readable reconciliation is
+`docs/roadmap/R5_PREEXISTING_HISTORY_RESUME_OUTCOME_RECONCILIATION.json`
+with file SHA-256
+`527b35974ae85421e71bbebd1479e80878555a3240f59a8998b4ccd92bc8fed9`.
+The next real-call prerequisite is a zero-call freeze and audit of a new,
+independent history-only source; the existing future holdout cannot be reused.
