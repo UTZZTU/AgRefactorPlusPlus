@@ -332,7 +332,12 @@ class R5CampaignRunner:
                         arm=arm,
                         baseline_id=baseline_id,
                         status=str(value.get("status", "inconclusive")),
-                        verified_positive=value.get("status") == "verified_positive",
+                        verified_positive=bool(
+                            value.get(
+                                "verified_repair",
+                                value.get("status") == "verified_positive",
+                            )
+                        ),
                         attributable_negative=value.get("status") == "verified_negative",
                         false_repair=bool(value.get("false_repair", False)),
                         abstained=value.get("status") == "abstained",
@@ -343,6 +348,9 @@ class R5CampaignRunner:
                         source_sha256=case.source_sha256,
                         context_signature=case.context_signature,
                         artifact_sha256=_required_sha(value.get("artifact_sha256"), "artifact_sha256"),
+                        baseline_accepted=bool(
+                            value.get("baseline_accepted", False)
+                        ),
                     ))
         reduction = reduce_observations(observations)
         result = R5CampaignRun(

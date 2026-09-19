@@ -34,6 +34,7 @@ class R5ArmObservation:
     source_sha256: str
     context_signature: str
     artifact_sha256: str
+    baseline_accepted: bool = False
 
     def key(self) -> tuple[str, int, str]:
         return self.case_id, self.repeat, self.arm.value
@@ -84,6 +85,7 @@ def reduce_observations(observations: Iterable[R5ArmObservation]) -> R5CampaignR
         stats[arm.value] = {
             "count": len(group),
             "verified_positive": sum(item.verified_positive for item in group),
+            "baseline_accepted": sum(item.baseline_accepted for item in group),
             "attributable_negative": sum(item.attributable_negative for item in group),
             "false_repair": sum(item.false_repair for item in group),
             "abstained": sum(item.abstained for item in group),

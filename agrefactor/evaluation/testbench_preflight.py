@@ -472,7 +472,6 @@ class TestbenchPreflight:
         # authoritative preflight decision source.
         command = [
             self._compiler,
-            "-D__SYNTHESIS__",
             "-O2",
             "-Wno-unknown-pragmas",
         ]

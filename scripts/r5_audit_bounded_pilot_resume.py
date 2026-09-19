@@ -11,6 +11,10 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
+BASELINE_ARMS = frozenset({"A0", "A1"})
+MUTATION_ARMS = frozenset({"A2", "A3", "A4", "A5", "A6"})
+
+
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -59,6 +63,26 @@ def unsafe_persisted_content(value: Any) -> bool:
             for tag in ("<think", "</think", "<reasoning", "</reasoning")
         )
     return False
+
+
+def observation_outcomes(value: Mapping[str, Any]) -> tuple[bool, bool]:
+    """Derive baseline acceptance and verified repair without conflating them."""
+
+    arm = str(value.get("arm", ""))
+    status = str(value.get("status", ""))
+    baseline_accepted = arm in BASELINE_ARMS and status in {
+        "baseline_accepted",
+        "verified_positive",  # Legacy pilot encoding before the metric split.
+    }
+    integration = value.get("integration")
+    verified_repair = (
+        arm in MUTATION_ARMS
+        and status == "verified_positive"
+        and isinstance(integration, Mapping)
+        and integration.get("status") == "verified_positive"
+        and integration.get("accepted_by_integration") is True
+    )
+    return baseline_accepted, verified_repair
 
 
 def original_observations(root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -139,18 +163,29 @@ def audit(original: Path, resume: Path) -> tuple[dict[str, Any], dict[str, Any]]
             )
 
     status_counts = dict(sorted(Counter(str(item.get("status")) for item in observations).items()))
-    verified_positive = status_counts.get("verified_positive", 0)
-    if verified_positive == 0:
-        findings.append({"severity": "warning", "code": "pilot_no_verified_positive"})
+    outcome_flags = [observation_outcomes(item) for item in observations]
+    baseline_accepted = sum(flag[0] for flag in outcome_flags)
+    verified_repairs = sum(flag[1] for flag in outcome_flags)
+    if verified_repairs == 0:
+        findings.append({"severity": "warning", "code": "pilot_no_verified_repair"})
     critical = sum(item["severity"] == "critical" for item in findings)
     combined = {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "ready_for_independent_audit" if critical == 0 else "blocked",
         "original_run_root": str(original),
         "resume_run_root": str(resume),
         "baselines": baselines,
         "observations": observations,
         "status_counts": status_counts,
+        "baseline_accepted_count": baseline_accepted,
+        "verified_repair_count": verified_repairs,
+        "metric_semantics": {
+            "baseline_accepted": "A0/A1 accepted without an R4/R5 repair claim",
+            "verified_repair": (
+                "A2-A6 only, with both arm and existing-integration status "
+                "verified_positive and accepted_by_integration=true"
+            ),
+        },
         "provider_calls_original": partial.get("provider_calls"),
         "vitis_launches_original": partial.get("vitis_launches"),
         "provider_calls_resume": resume_result.get("provider_calls"),
@@ -162,12 +197,18 @@ def audit(original: Path, resume: Path) -> tuple[dict[str, Any], dict[str, Any]]
     }
     combined["combined_result_sha256"] = hashlib.sha256(canonical(combined).encode()).hexdigest()
     audit = {
-        "schema_version": 1,
-        "auditor": "r5-bounded-pilot-resume-file-only-v1",
+        "schema_version": 2,
+        "auditor": "r5-bounded-pilot-resume-file-only-v2",
         "status": "clean" if critical == 0 else "blocked",
-        "reason": "combined_three_repeat_pilot_verified" if critical == 0 else "critical_combined_pilot_finding",
+        "reason": (
+            "combined_three_repeat_pilot_structurally_clean"
+            if critical == 0
+            else "critical_combined_pilot_finding"
+        ),
         "critical_finding_count": critical,
         "findings": findings,
+        "baseline_accepted_count": baseline_accepted,
+        "verified_repair_count": verified_repairs,
         "combined_result_sha256": combined["combined_result_sha256"],
         "original_partial_audit_file_sha256": sha(original / "partial_independent_audit.json"),
         "resume_manifest_file_sha256": sha(resume / "resume_manifest.json"),
@@ -189,10 +230,10 @@ def main() -> int:
     args = parser.parse_args()
     combined, result = audit(args.original.resolve(), args.resume.resolve())
     resume = args.resume.resolve()
-    (resume / "combined_pilot_result.json").write_text(
+    (resume / "combined_pilot_result_v2.json").write_text(
         json.dumps(combined, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    (resume / "independent_audit.json").write_text(
+    (resume / "independent_audit_v2.json").write_text(
         json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     print("R5_COMBINED_PILOT_AUDIT_STATUS=" + result["status"])

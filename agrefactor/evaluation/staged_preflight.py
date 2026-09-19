@@ -89,7 +89,6 @@ def _base_flags(
 ) -> list[str]:
     command = [
         compiler,
-        "-D__SYNTHESIS__",
         "-O2",
         "-flto",
         "-Wno-unknown-pragmas",

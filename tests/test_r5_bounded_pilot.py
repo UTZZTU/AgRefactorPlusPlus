@@ -23,6 +23,47 @@ SPEC.loader.exec_module(MODULE)
 
 
 class R5BoundedPilotTests(unittest.TestCase):
+    def test_resume_auditor_separates_baseline_acceptance_from_verified_repair(self):
+        audit_spec = importlib.util.spec_from_file_location(
+            "r5_audit_bounded_pilot_resume",
+            ROOT / "scripts" / "r5_audit_bounded_pilot_resume.py",
+        )
+        assert audit_spec is not None and audit_spec.loader is not None
+        audit_module = importlib.util.module_from_spec(audit_spec)
+        audit_spec.loader.exec_module(audit_module)
+
+        legacy_baseline = {
+            "arm": "A0",
+            "status": "verified_positive",
+            "integration": None,
+        }
+        claimed_without_integration = {
+            "arm": "A4",
+            "status": "verified_positive",
+            "integration": {"status": "abstained", "accepted_by_integration": False},
+        }
+        verified_repair = {
+            "arm": "A4",
+            "status": "verified_positive",
+            "integration": {
+                "status": "verified_positive",
+                "accepted_by_integration": True,
+            },
+        }
+
+        self.assertEqual(
+            audit_module.observation_outcomes(legacy_baseline),
+            (True, False),
+        )
+        self.assertEqual(
+            audit_module.observation_outcomes(claimed_without_integration),
+            (False, False),
+        )
+        self.assertEqual(
+            audit_module.observation_outcomes(verified_repair),
+            (False, True),
+        )
+
     def test_arm_schedule_contains_every_arm_and_is_repeat_bound(self):
         schedules = [
             MODULE.arm_schedule("future-case", repeat)

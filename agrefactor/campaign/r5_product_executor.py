@@ -371,11 +371,15 @@ class ExistingRefactorR5CampaignExecutor:
 
         after = budget.snapshot().to_dict()
         provider_calls, vitis_launches = _budget_delta(before, after)
+        verified_repair = (
+            outcome is not None
+            and str(outcome.get("status", "")) == "verified_positive"
+        )
         status = (
             str(outcome.get("status", "inconclusive"))
             if outcome is not None
             else (
-                "verified_positive"
+                "baseline_accepted"
                 if main_result.accepted
                 else "abstained"
             )
@@ -387,6 +391,8 @@ class ExistingRefactorR5CampaignExecutor:
             "repeat": repeat,
             "arm": arm.value,
             "status": status,
+            "baseline_accepted": bool(capture.formal_result.accepted),
+            "verified_repair": verified_repair,
             "source_sha256": capture.source_sha256,
             "context_signature": capture.context_signature,
             "provider_calls": provider_calls,

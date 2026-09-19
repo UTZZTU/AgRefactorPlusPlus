@@ -12,6 +12,7 @@ from agrefactor.evidence import (
     TestbenchFailureOwner,
     TestbenchPreflightStatus,
 )
+from agrefactor.evaluation.staged_preflight import _base_flags
 
 ORIGINAL = r'''
 struct btnode { int value; btnode *left; btnode *right; };
@@ -74,6 +75,14 @@ int main() {
 
 
 class TestbenchPreflightTests(unittest.TestCase):
+    def test_host_preflight_does_not_define_synthesis_mode(self):
+        flags = _base_flags(
+            compiler="g++",
+            extra_flags=(),
+            include_dirs=(),
+        )
+        self.assertNotIn("-D__SYNTHESIS__", flags)
+
     def test_classifies_real_node_error(self) -> None:
         error = "testbench.cpp:16:8: error: ‘node’ does not name a type"
         self.assertEqual(

@@ -324,6 +324,17 @@ class R5ProductCampaignExecutorTests(unittest.TestCase):
             self.assertEqual(observation["provider_calls"], 0)
             self.assertEqual(observation["vitis_launches"], 0)
 
+            a0 = executor.run_arm(
+                case=case,
+                repeat=1,
+                arm=R5Arm.A0,
+                baseline=baseline,
+                arm_index=1,
+            )
+            self.assertEqual(a0["status"], "baseline_accepted")
+            self.assertTrue(a0["baseline_accepted"])
+            self.assertFalse(a0["verified_repair"])
+
 
 if __name__ == "__main__":
     unittest.main()
