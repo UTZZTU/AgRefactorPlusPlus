@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "status": "clean_partial_audit_resume_repeat_03_required",
+  "run_root": "/data/agrefactor_runs/r5_p5_bounded_real_pilot_99420db_run1",
+  "repository_head_at_execution": "99420dbc47515534d6f8d2bee743cbcff6f04974",
+  "pilot_manifest_file_sha256": "a424a379ac452c85a5b75c193c8e88a62345090fec469a91cbd1b7a0e17d00e9",
+  "partial_independent_audit": {
+    "path": "/data/agrefactor_runs/r5_p5_bounded_real_pilot_99420db_run1/partial_independent_audit.json",
+    "file_sha256": "0eb6aac2bfb0d92290b822dd37059e807a6695cbaeaba9b3be59f590f4ba2cb1",
+    "audit_sha256": "d54beb9b5f907482f5838a3d91449175c1dec7666e1274ee0b155342ebac6faa",
+    "status": "clean_partial",
+    "critical_finding_count": 0,
+    "external_provider_calls": 0,
+    "external_vitis_launches": 0
+  },
+  "execution_observation": {
+    "case_id": "Exception_E3_Turbo_Encoder",
+    "future_outcomes_observed": true,
+    "future_files_executed": true,
+    "complete_repeats": [
+      1,
+      2
+    ],
+    "incomplete_repeats": [
+      3
+    ],
+    "baseline_count": 3,
+    "arm_observation_count": 14,
+    "provider_calls": 27,
+    "vitis_launches": 4,
+    "invalid_evidence_observed": false
+  },
+  "authoritative_global_budget": {
+    "provider_calls_before": 104,
+    "vitis_launches_before": 59,
+    "provider_calls_added": 27,
+    "vitis_launches_added": 4,
+    "provider_calls_after": 131,
+    "vitis_launches_after": 63,
+    "provider_hard_cap": 500,
+    "vitis_hard_cap": 500
+  },
+  "failure_reconciliation": {
+    "failure_class": "product_campaign_orchestration_boundary",
+    "reason": "the mutation-arm factory required a unique Diagnostic Event before the existing integration could safely abstain",
+    "implementation_fix_head": "ec6dce13b368d026c46eb1982551168bac84b6d2",
+    "fix_scope": "all A2-A6 product campaign arms without exactly one Diagnostic Event",
+    "sample_specific_rule_added": false,
+    "provider_calls_during_fix_and_audit": 0,
+    "vitis_launches_during_fix_and_audit": 0
+  },
+  "resume_decision": {
+    "repeat_01_may_be_rerun": false,
+    "repeat_02_may_be_rerun": false,
+    "repeat_03_replacement_observation_required": true,
+    "old_repeat_03_usage_remains_in_global_ledger": true,
+    "zero_call_resume_protocol_audit_required": true,
+    "pilot_completion_claim_allowed": false,
+    "formal_campaign_allowed": false
+  },
+  "r5_accepted": false,
+  "r6_started": false
+}

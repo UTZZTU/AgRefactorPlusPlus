@@ -760,3 +760,26 @@ pilot runner and its file-only auditor are committed at
 `b16114c68b7cd7d0e812b3af4b25a658a206f7b6`. No future outcome has been
 observed at this checkpoint; real execution still requires the runner's
 zero-call preflight.
+
+## Bounded pilot run 1 partial reconciliation
+
+The first bounded future pilot at
+`/data/agrefactor_runs/r5_p5_bounded_real_pilot_99420db_run1` produced two
+complete paired repeats and the ordinary `refactor` baseline for repeat 3
+before stopping.  A file-only partial audit found no critical issue and
+reconciled actual usage as `27` Provider calls and `4` Vitis launches.  The
+authoritative cumulative R5 ledger is therefore `131/63`.
+
+The interruption exposed a product campaign orchestration defect: mutation
+arms constructed execution identity before checking whether the common
+baseline contained exactly one Diagnostic Event.  The shared executor now
+records a zero-call `accepted_without_diagnostic` or
+`eligible_r2_event_not_unique` abstention before constructing the R4/R5
+integration.  This is a general event-cardinality boundary; it adds no
+case-specific HLS error rule.  All `test_r5_*.py` tests pass (`167` tests).
+
+The original run remains incomplete evidence.  Repeats 1 and 2 may not be
+rerun or overwritten.  A zero-call resume protocol audit must authorize one
+replacement observation for repeat 3, while the original repeat-3 baseline
+usage remains charged.  R5 is not accepted, the formal campaign remains
+closed, and R6 is not started.
