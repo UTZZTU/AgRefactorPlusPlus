@@ -1,8 +1,8 @@
 {
-  "schema_version": 1,
-  "plan_id": "v2.3-r5-formal-cosim-contract-correction-v1",
+  "schema_version": 2,
+  "plan_id": "v2.3-r5-formal-public-contract-correction-v2",
   "status": "predeclared_before_corrective_replication",
-  "purpose": "Correct the missing Public COSIM interface-depth contract without changing A0-A6 semantics, sources, tests, model, prompt, or acceptance authority.",
+  "purpose": "Correct the missing Public COSIM interface-depth contract and bind the Public-declared Candidate ABI into initial generation without changing A0-A6 semantics, sources, tests, model, or acceptance authority.",
   "parent_evidence": {
     "frozen_manifest": "/data/agrefactor_runs/r5_p6_formal_future_freeze_preflight/formal_future_manifest.json",
     "formal_campaign_result": "/data/agrefactor_runs/r5_p6_formal_campaign_real/formal_campaign_result.json",
@@ -11,9 +11,18 @@
     "independent_audit_file_sha256": "b5c00ee4abfccf11e7892d8ba480f49665e31c99a535cc62556aa7ce486ca8f3"
   },
   "defect": {
-    "class": "public_runtime_contract_not_forwarded",
+    "classes": [
+      "public_runtime_contract_not_forwarded",
+      "external_public_candidate_abi_not_bound"
+    ],
     "observed_terminal_reason": "cosim_failed_without_typed_owner",
-    "root_cause": "Vitis MAXI COSIM required a deterministic interface depth, but the formal runner omitted the supported Public runtime contract.",
+    "root_causes": [
+      "Vitis MAXI COSIM required a deterministic interface depth, but the formal runner omitted the supported Public runtime contract.",
+      "The external-test path left tb_aligned_instruction empty, so initial Candidate generation could guess an ABI that contradicted the Public declaration."
+    ],
+    "public_abi_is_authoritative": true,
+    "runtime_depth_ports_must_match_public_abi": true,
+    "generic_public_declaration_extraction": true,
     "sample_specific_error_rule_added": false,
     "r2_or_r4_threshold_changed": false
   },
@@ -42,7 +51,8 @@
     "arms_changed": false,
     "sources_changed": false,
     "tests_changed": false,
-    "model_or_prompt_changed": false,
+    "model_changed": false,
+    "prompt_changed_only_to_bind_public_abi": true,
     "new_cli_added": false,
     "second_vitis_flow_added": false,
     "hidden_model_visible": false,

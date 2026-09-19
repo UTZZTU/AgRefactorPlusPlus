@@ -1,4 +1,4 @@
-import os, concurrent.futures, argparse, copy, hashlib  # type: ignore
+import os, concurrent.futures, argparse, copy, hashlib, re  # type: ignore
 from autogen.agentchat.group import ContextVariables  # type: ignore
 from typing import Optional, Dict, Any
 import flow.tools as tools
@@ -93,6 +93,52 @@ def debug_print(debug: int, msg: str):
 
 def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _build_external_candidate_abi_instruction(
+    *,
+    public_hls_decl: str,
+    candidate_name: str,
+    external_tb_instruction: Optional[str],
+) -> str:
+    """Bind external Public tests to initial Candidate generation."""
+
+    if not isinstance(public_hls_decl, str) or not public_hls_decl.strip():
+        raise ValueError("public_hls_decl must not be empty")
+    if not isinstance(candidate_name, str) or not candidate_name.strip():
+        raise ValueError("candidate_name must not be empty")
+    declaration = public_hls_decl.strip().rstrip(";") + ";"
+    if not re.search(
+        rf"\b{re.escape(candidate_name.strip())}\s*\(",
+        declaration,
+    ):
+        raise ValueError(
+            "Public Candidate declaration does not match candidate_name"
+        )
+    parts = [
+        "The external Public Testbench is the authoritative Candidate ABI.",
+        "Emit exactly one top-level Candidate definition matching this "
+        "declaration:",
+        declaration,
+        "Keep the function name, return type, parameter count, parameter "
+        "order, parameter types, qualifiers, and pointer/array forms fixed. "
+        "Do not add adapter parameters, wrappers, overloads, default "
+        "arguments, or an alternative top function. Only the function body "
+        "and Candidate-internal helpers may change.",
+    ]
+    if external_tb_instruction is not None:
+        if not isinstance(external_tb_instruction, str):
+            raise TypeError("external_tb_instruction must be a string or None")
+        explicit = external_tb_instruction.strip()
+        if explicit:
+            parts.extend(
+                [
+                    "Additional operator instruction (subject to the fixed "
+                    "Public ABI above):",
+                    explicit,
+                ]
+            )
+    return "\n".join(parts)
 
 
 def _build_model_data_boundary(
@@ -563,9 +609,26 @@ def hls_refactor_with_rag(
 
     if external_testbench:
         # Use provided testbench instead of generating one
+        external_candidate_name = external_kernel_name or kernel_name + "_hls"
+        external_public_hls_decl = (
+            tools.tb_optimizer.extract_hls_decl_from_testbench(
+                external_testbench,
+                external_candidate_name,
+            )
+        )
+        if not external_public_hls_decl:
+            raise RuntimeError(
+                "Public Testbench did not expose a valid Candidate ABI"
+            )
         cv["testbench"] = external_testbench
-        cv["tb_aligned_instruction"] = external_tb_instruction or ""
-        cv["new_kernel_name"] = external_kernel_name or kernel_name + "_hls"
+        cv["new_kernel_name"] = external_candidate_name
+        cv["tb_aligned_instruction"] = (
+            _build_external_candidate_abi_instruction(
+                public_hls_decl=external_public_hls_decl,
+                candidate_name=external_candidate_name,
+                external_tb_instruction=external_tb_instruction,
+            )
+        )
         debug_print(debug, "Using external testbench (skipping generation)")
         with concurrent.futures.ThreadPoolExecutor() as executor:
             debug_print(debug, "Identification")

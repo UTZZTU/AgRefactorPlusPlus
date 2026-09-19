@@ -3,6 +3,6 @@
   "kind": "public_differential_self_check_v1",
   "candidate_mismatch_returncodes": [1],
   "cosim_interface_depths": {
-    "s": 9
+    "value": 9
   }
 }

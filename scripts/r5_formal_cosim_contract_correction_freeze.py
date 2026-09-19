@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Any, Mapping
@@ -107,6 +108,7 @@ def run(output: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         path = (ROOT / str(relative)).resolve()
         value = load(path)
         depths = value.get("cosim_interface_depths")
+        case = case_by_id[case_id]
         if (
             value.get("schema_version") != 2
             or value.get("kind") != "public_differential_self_check_v1"
@@ -116,6 +118,29 @@ def run(output: Path) -> tuple[dict[str, Any], dict[str, Any]]:
             or any(not isinstance(name, str) or not isinstance(depth, int) or depth <= 0 for name, depth in depths.items())
         ):
             raise RuntimeError(f"invalid Public runtime contract: {case_id}")
+        public_test = ROOT / str(case["paths"]["public_test"])
+        public_text = public_test.read_text(encoding="utf-8")
+        candidate_top = str(case["candidate_top"])
+        declaration_match = re.search(
+            rf"^[^#\n]*\b{re.escape(candidate_top)}\s*\([^;{{}}]*\)\s*;",
+            public_text,
+            flags=re.MULTILINE,
+        )
+        if declaration_match is None:
+            raise RuntimeError(
+                f"Public test lacks Candidate declaration: {case_id}"
+            )
+        declaration = declaration_match.group(0)
+        missing_ports = [
+            name
+            for name in depths
+            if not re.search(rf"\b{re.escape(name)}\b", declaration)
+        ]
+        if missing_ports:
+            raise RuntimeError(
+                f"COSIM depth ports are absent from Public ABI for {case_id}: "
+                + ",".join(sorted(missing_ports))
+            )
         contracts.append(
             {
                 "case_id": case_id,
@@ -129,7 +154,7 @@ def run(output: Path) -> tuple[dict[str, Any], dict[str, Any]]:
 
     manifest: dict[str, Any] = {
         "schema_version": 1,
-        "manifest_id": "v2.3-r5-formal-cosim-contract-correction-v1",
+        "manifest_id": "v2.3-r5-formal-public-contract-correction-v2",
         "status": "frozen_ready_for_corrective_replication",
         "repository_commit": git("rev-parse", "HEAD"),
         "branch": "research-roadmap-v2.3",
@@ -161,12 +186,14 @@ def run(output: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     manifest["manifest_sha256"] = canonical_sha256(manifest)
     audit: dict[str, Any] = {
         "schema_version": 1,
-        "auditor": "r5-formal-cosim-correction-protocol-auditor-v1",
+        "auditor": "r5-formal-public-contract-correction-protocol-auditor-v2",
         "status": "clean_ready_for_corrective_replication",
-        "reason": "parent_preserved_typed_runtime_contracts_and_budget_verified",
+        "reason": "parent_preserved_public_abi_and_runtime_contracts_verified",
         "critical_finding_count": 0,
         "manifest_sha256": manifest["manifest_sha256"],
         "parent_campaign_preserved": True,
+        "public_candidate_abi_bound": True,
+        "runtime_depth_ports_bound_to_public_abi": True,
         "posthoc_corrective_replication": True,
         "new_future_holdout_claim": False,
         "sample_specific_error_rule_added": False,

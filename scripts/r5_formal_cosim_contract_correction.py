@@ -19,7 +19,9 @@ from agrefactor.product import run_source_command_with_r5_capture
 from scripts import r5_formal_campaign as parent
 from scripts.r5_history_acquisition import _baseline_args
 
-FREEZE_ROOT = Path("/data/agrefactor_runs/r5_p6_formal_cosim_correction_freeze")
+FREEZE_ROOT = Path(
+    "/data/agrefactor_runs/r5_p6_formal_public_contract_correction_v2_freeze"
+)
 
 
 def load_contract() -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:

@@ -315,9 +315,56 @@ def build_test_source_plan(
     )
 
 
+def _public_candidate_parameter_names(
+    testbench_code: str,
+    candidate_top_function: str,
+) -> tuple[str, ...]:
+    """Read named parameters from the Public Candidate declaration."""
+
+    if not isinstance(testbench_code, str):
+        raise TypeError("testbench_code must be a string")
+    candidate = _clean_required(
+        "candidate_top_function",
+        candidate_top_function,
+    )
+    match = re.search(
+        rf'^\s*(?:extern\s+"C"\s+)?[^#\n;{{}}]*'
+        rf'\b{re.escape(candidate)}\s*\('
+        rf'(?P<parameters>[^;{{}}]*)\)\s*;',
+        testbench_code,
+        flags=re.MULTILINE,
+    )
+    if match is None:
+        raise ValueError(
+            "Public test does not declare the Candidate top interface: "
+            + candidate
+        )
+    parameters = match.group("parameters").strip()
+    if not parameters or parameters == "void":
+        return ()
+    names: list[str] = []
+    for raw_parameter in parameters.split(","):
+        parameter = raw_parameter.split("=", 1)[0].strip()
+        name_match = re.search(
+            r"\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*$",
+            parameter,
+        )
+        if name_match is None:
+            raise ValueError(
+                "Public Candidate interface has an unnamed or unsupported "
+                "parameter"
+            )
+        names.append(name_match.group(1))
+    if len(names) != len(set(names)):
+        raise ValueError("Public Candidate interface repeats a parameter name")
+    return tuple(names)
+
+
 def _load_public_test_contracts(
     contract_paths: Sequence[str | os.PathLike[str]],
     public_paths: Sequence[str | os.PathLike[str]],
+    *,
+    candidate_top_function: str | None = None,
 ) -> tuple[Mapping[str, Any], ...]:
     contracts = tuple(Path(item).expanduser().resolve() for item in contract_paths)
     publics = tuple(Path(item).expanduser().resolve() for item in public_paths)
@@ -347,6 +394,31 @@ def _load_public_test_contracts(
             runtime_contract=raw,
         )
         assert suite.runtime_contract is not None
+        if (
+            candidate_top_function is not None
+            and suite.runtime_contract.get("schema_version") == 2
+        ):
+            public_path = publics[index - 1]
+            if not public_path.is_file():
+                raise FileNotFoundError(
+                    f"Public test not found: {public_path}"
+                )
+            parameter_names = set(
+                _public_candidate_parameter_names(
+                    public_path.read_text(encoding="utf-8"),
+                    candidate_top_function,
+                )
+            )
+            depth_ports = set(
+                suite.runtime_contract["cosim_interface_depths"]
+            )
+            missing_ports = sorted(depth_ports - parameter_names)
+            if missing_ports:
+                raise ValueError(
+                    "COSIM interface depth port(s) are absent from the "
+                    "Public Candidate ABI: "
+                    + ", ".join(missing_ports)
+                )
         result.append(suite.runtime_contract)
     return tuple(result)
 
@@ -3106,6 +3178,7 @@ def run_source_command(
     public_test_contracts = _load_public_test_contracts(
         getattr(args, "public_test_contracts_provided", ()),
         args.public_tests_provided,
+        candidate_top_function=f"{args.top}_hls",
     )
     target = _target_from_cli(args)
     public_trajectories, hidden_trajectories = (

@@ -137,6 +137,66 @@ class P40FPrR1CCosimDepthContractTests(unittest.TestCase):
             )
             self.assertEqual(suite.to_dict()["runtime_contract"], V2)
 
+    def test_contract_loader_binds_depth_ports_to_public_abi(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            public = root / "public.cpp"
+            public.write_text(
+                "int top_hls(const int* input, int* output);\n"
+                "int main(){return 0;}\n",
+                encoding="utf-8",
+            )
+            contract = root / "contract.json"
+            contract.write_text(
+                json.dumps(
+                    {
+                        **V2,
+                        "cosim_interface_depths": {
+                            "input": 32,
+                            "output": 32,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            loaded = _load_public_test_contracts(
+                (contract,),
+                (public,),
+                candidate_top_function="top_hls",
+            )
+            self.assertEqual(
+                loaded[0]["cosim_interface_depths"],
+                {"input": 32, "output": 32},
+            )
+
+    def test_contract_loader_rejects_depth_port_outside_public_abi(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            public = root / "public.cpp"
+            public.write_text(
+                "int top_hls(const int* input);\nint main(){return 0;}\n",
+                encoding="utf-8",
+            )
+            contract = root / "contract.json"
+            contract.write_text(
+                json.dumps(
+                    {
+                        **V2,
+                        "cosim_interface_depths": {"guessed_name": 32},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                ValueError,
+                "absent from the Public Candidate ABI",
+            ):
+                _load_public_test_contracts(
+                    (contract,),
+                    (public,),
+                    candidate_top_function="top_hls",
+                )
+
     def test_cli_accepts_public_test_contract(self):
         args = build_parser().parse_args(
             [
