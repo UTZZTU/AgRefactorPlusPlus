@@ -316,6 +316,89 @@ def _verify_abstention(result: Mapping[str, Any], shadow: Mapping[str, Any]) -> 
     }
 
 
+def _verify_pre_provider_contract_failure(
+    *,
+    payloads: Mapping[str, bytes],
+    manifest: Mapping[str, Any],
+    result: Mapping[str, Any],
+    shadow: Mapping[str, Any],
+) -> dict[str, Any]:
+    integration = result.get("r5_integration")
+    advisory = shadow.get("advisory", {})
+    controller = (
+        integration.get("r4_controller_result", {})
+        if isinstance(integration, Mapping)
+        else {}
+    )
+    if (
+        result.get("status") != "inconclusive"
+        or result.get("provider_calls") != 1
+        or result.get("vitis_launches") != 2
+        or advisory.get("confidence") != "high"
+        or not isinstance(integration, Mapping)
+        or integration.get("status") != "inconclusive"
+        or integration.get("main_result_unchanged") is not True
+        or integration.get("accepted_by_integration") is not False
+        or not isinstance(controller, Mapping)
+        or controller.get("outcome") != "inconclusive"
+        or controller.get("reasons") != ["pre_provider_mutation_contract_failure"]
+        or controller.get("provider_call_count") != 0
+        or controller.get("mutation_count") != 0
+        or controller.get("after_candidate_sha256") is not None
+        or controller.get("formal_validation_id") is not None
+    ):
+        raise PreexistingHistoryResultAuditError(
+            "pre-provider contract-failure invariants failed"
+        )
+    episode_path = integration.get("episode_path")
+    if not isinstance(episode_path, str):
+        raise PreexistingHistoryResultAuditError(
+            "pre-provider contract-failure episode is missing"
+        )
+    relative = "ledger/" + Path(episode_path).name
+    episode = _load_bytes(payloads.get(relative, b""), relative)
+    payload = episode.get("payload")
+    summary = episode.get("agent_safe_summary")
+    actual = payload.get("budget_actual", {}) if isinstance(payload, Mapping) else {}
+    delta = actual.get("budget_delta", {}) if isinstance(actual, Mapping) else {}
+    if (
+        episode.get("outcome") != "inconclusive"
+        or episode.get("source_sha256")
+        != manifest.get("case_identity", {}).get("source_sha256")
+        or episode.get("manifest_sha256") != manifest.get("manifest_sha256")
+        or not isinstance(payload, Mapping)
+        or payload.get("outcome_reason")
+        != "pre_provider_mutation_contract_failure"
+        or payload.get("candidate_before_sha256")
+        != result.get("initial_candidate_sha256")
+        or payload.get("candidate_after_sha256") is not None
+        or payload.get("formal_validation_id") is not None
+        or payload.get("provider_call_count") != 0
+        or not isinstance(actual, Mapping)
+        or actual.get("provider_calls") != 0
+        or actual.get("mutation_calls") != 0
+        or not isinstance(delta, Mapping)
+        or delta.get("llm_calls") != 0
+        or not isinstance(summary, Mapping)
+        or summary.get("reason") != "pre_provider_mutation_contract_failure"
+        or summary.get("false_repair") is not False
+        or summary.get("unsafe_scope") is not False
+        or summary.get("critical_safety_violation") is not False
+    ):
+        raise PreexistingHistoryResultAuditError(
+            "pre-provider contract-failure episode invariants failed"
+        )
+    return {
+        "status": "clean_pre_provider_mutation_contract_failure",
+        "confidence": advisory.get("confidence"),
+        "reason": "pre_provider_mutation_contract_failure",
+        "episode_id": episode.get("episode_id"),
+        "episode_sha256": hashlib.sha256(payloads[relative]).hexdigest(),
+        "mutation_provider_calls": 0,
+        "mutation_count": 0,
+    }
+
+
 def audit(root: Path) -> dict[str, Any]:
     root = root.expanduser().resolve()
     payloads, archive_sha, content_sha = _verify_archive(root)
@@ -329,6 +412,13 @@ def audit(root: Path) -> dict[str, Any]:
         )
     elif result.get("status") == "abstained":
         outcome = _verify_abstention(result, shadow)
+    elif result.get("status") == "inconclusive":
+        outcome = _verify_pre_provider_contract_failure(
+            payloads=payloads,
+            manifest=manifest,
+            result=result,
+            shadow=shadow,
+        )
     else:
         raise PreexistingHistoryResultAuditError(
             "result is neither verified-positive nor safe abstention"
@@ -351,7 +441,24 @@ def audit(root: Path) -> dict[str, Any]:
         "future_files_read": False,
         "future_outcomes_observed": False,
         "critical_finding_count": 0,
-        "findings": [],
+        "blocking_finding_count": (
+            1
+            if outcome["status"]
+            == "clean_pre_provider_mutation_contract_failure"
+            else 0
+        ),
+        "findings": (
+            [
+                {
+                    "code": "pre_provider_mutation_contract_failure",
+                    "severity": "blocking",
+                    "message": "R5 mutation prompt construction failed before its Provider call.",
+                }
+            ]
+            if outcome["status"]
+            == "clean_pre_provider_mutation_contract_failure"
+            else []
+        ),
         "r5_accepted": False,
         "r6_started": False,
     }

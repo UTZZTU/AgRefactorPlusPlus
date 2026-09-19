@@ -70,6 +70,31 @@ class R5PreexistingHistoryResultAuditTests(unittest.TestCase):
                 {"nested": {"reasoning_content": "must not persist"}}
             )
 
+    def test_high_confidence_pre_provider_failure_is_not_safe_abstention(self) -> None:
+        result = {
+            "status": "abstained",
+            "provider_calls": 1,
+            "vitis_launches": 2,
+            "r5_integration": {
+                "status": "abstained",
+                "reason": "r2_calibration_unverified",
+                "calibration": {
+                    "verified": False,
+                    "reasons": ["confidence_label_not_calibrated"],
+                },
+                "main_result_unchanged": True,
+                "accepted_by_integration": False,
+            },
+        }
+        with self.assertRaisesRegex(
+            AUDIT.PreexistingHistoryResultAuditError,
+            "abstention invariants failed",
+        ):
+            AUDIT._verify_abstention(
+                result,
+                {"advisory": {"confidence": "high"}},
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

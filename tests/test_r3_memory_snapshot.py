@@ -42,7 +42,15 @@ class MemorySnapshotTests(unittest.TestCase):
         source = SnapshotRevisionSource(snapshot)
         resolved = source.resolve(event={"stage": "csynth"}, advisory={"suspected_owner": "candidate"})
         self.assertEqual(resolved.revision_hash, self.revision.revision_hash)
-        self.assertEqual(snapshot.context_for(event={"evidence_refs": ["e1"]}, advisory={"advisory_id": "a1"})["snapshot_id"], snapshot.snapshot_id)
+        context = snapshot.context_for(
+            event={"evidence_refs": ["e1"]},
+            advisory={
+                "advisory_id": "a1",
+                "suspected_failure_class": "unsupported_construct",
+            },
+        )
+        self.assertEqual(context["snapshot_id"], snapshot.snapshot_id)
+        self.assertEqual(context["failure_family"], "unsupported_construct")
         with self.assertRaises(TypeError):
             snapshot.gate_context["identity_complete"] = False
 

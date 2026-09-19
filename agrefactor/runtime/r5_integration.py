@@ -136,6 +136,14 @@ def _enum(enum_type: Any, value: Any, fallback: Any) -> Any:
         return fallback
 
 
+def _advisory_failure_class(advisory: Mapping[str, Any]) -> str | None:
+    value = advisory.get(
+        "suspected_failure_class",
+        advisory.get("failure_class"),
+    )
+    return value if isinstance(value, str) and value else None
+
+
 class R5CandidatePromptFactory:
     """Build the existing Candidate repair prompt from agent-safe evidence."""
 
@@ -162,6 +170,15 @@ class R5CandidatePromptFactory:
         for index, raw in enumerate(iterable, start=1):
             if not isinstance(raw, Mapping):
                 continue
+            deterministic_owner = raw.get("owner")
+            advisory_owner = advisory.get("suspected_owner")
+            effective_owner = deterministic_owner
+            if (
+                deterministic_owner in {None, "unknown"}
+                and advisory.get("calibration_verified") is True
+                and advisory_owner == "candidate"
+            ):
+                effective_owner = advisory_owner
             evidence_ref = str(
                 raw.get("evidence_ref")
                 or f"{event.get('event_id', 'event')}.item.{index}"
@@ -186,14 +203,23 @@ class R5CandidatePromptFactory:
                     ),
                     owner=_enum(
                         FeedbackOwner,
-                        raw.get("owner"),
+                        effective_owner,
                         FeedbackOwner.UNKNOWN,
                     ),
                     summary=str(raw.get("summary") or "Agent-safe diagnostic"),
                     detail=str(raw.get("detail") or "") or None,
                     source="r5_agent_safe_event",
                     evidence_ref=evidence_ref,
-                    metadata={"diagnostic_code": raw.get("diagnostic_code")},
+                    metadata={
+                        "diagnostic_code": raw.get("diagnostic_code"),
+                        "deterministic_owner": deterministic_owner,
+                        "advisory_owner": advisory_owner,
+                        "owner_projection": (
+                            "calibrated_advisory"
+                            if effective_owner != deterministic_owner
+                            else "deterministic"
+                        ),
+                    },
                 )
             )
         if not items:
@@ -217,7 +243,11 @@ class R5CandidatePromptFactory:
             source="r5_agent_safe_event",
             items=tuple(items),
             source_evidence={"evidence_refs": list(event.get("evidence_refs", ()))},
-            metadata={"advisory_owner": advisory.get("suspected_owner")},
+            metadata={
+                "advisory_owner": advisory.get("suspected_owner"),
+                "evidence_view": "agent_safe",
+                "feedback_visible_to_agent": True,
+            },
         )
         inputs = CandidateRepairPromptInputs(
             task=task,
@@ -730,7 +760,7 @@ class ExistingOrchestratorR5Integration:
             "evidence_predicates": tuple(event.get("evidence_refs", ())),
             "stage": event.get("stage"),
             "owner": advisory.get("suspected_owner"),
-            "failure_family": advisory.get("failure_class"),
+            "failure_family": _advisory_failure_class(advisory),
             "calibrated_risk_ok": True,
             "avoid_when_match": bool(facts.get("avoid_when_match", False)),
             "conflict": bool(facts.get("conflict", False)),
@@ -969,7 +999,9 @@ class ExistingOrchestratorR5Integration:
             observed_at=timestamp,
             lineage=lineage,
             agent_safe_summary={
-                "failure_family": advisory.get("failure_class", "unknown"),
+                "failure_family": (
+                    _advisory_failure_class(advisory) or "unknown"
+                ),
                 "stage": event.get("stage", "unknown"),
                 "owner": advisory.get("suspected_owner", "unknown"),
                 "false_repair": False,

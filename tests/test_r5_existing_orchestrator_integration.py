@@ -19,6 +19,7 @@ from agrefactor.recovery.r4_provenance import canonical_artifact_sha256
 from agrefactor.runtime.budget import BudgetLimits
 from agrefactor.runtime.r5_integration import (
     ExistingOrchestratorR5Integration,
+    R5CandidatePromptFactory,
     R5IntegrationConfig,
 )
 from agrefactor.runtime.r5_profile import resolve_r5_profile
@@ -206,6 +207,48 @@ class R5ExistingOrchestratorIntegrationTests(unittest.TestCase):
         self.assertIsNone(research["gate_contract_sha256"])
         self.assertEqual(mutation.calls, 1)
         self.assertEqual(len(tuple(root.glob("*.json"))), 2)
+        episode_path = next(
+            path for path in root.glob("*.json") if path.name != "ledger_manifest.json"
+        )
+        episode = json.loads(episode_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            episode["agent_safe_summary"]["failure_family"],
+            "unsupported_construct",
+        )
+
+    def test_real_prompt_factory_preserves_agent_safe_evidence_contract(self):
+        m, _, request, event = self._baseline()
+        prompt = R5CandidatePromptFactory(
+            request=request,
+            approved_memory_snippets=(),
+        ).build(
+            event=event,
+            advisory={
+                "suspected_owner": "candidate",
+                "suspected_failure_class": "unsupported_construct",
+                "calibration_verified": True,
+            },
+            task=m.make_context().task,
+            candidate=request.initial_candidate,
+        )
+        self.assertEqual(
+            prompt.manifest["feedback_projection"],
+            "agent_safe_items_only",
+        )
+        with self.assertRaisesRegex(ValueError, "owner does not match"):
+            R5CandidatePromptFactory(
+                request=request,
+                approved_memory_snippets=(),
+            ).build(
+                event=event,
+                advisory={
+                    "suspected_owner": "candidate",
+                    "suspected_failure_class": "unsupported_construct",
+                    "calibration_verified": False,
+                },
+                task=m.make_context().task,
+                candidate=request.initial_candidate,
+            )
 
     def test_a3_binds_similarity_manifest_without_claiming_gate(self):
         outcome, mutation, _ = self._run("A3")

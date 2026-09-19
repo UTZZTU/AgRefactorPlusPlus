@@ -106,6 +106,8 @@ def _verify_aggregate(
         if status == "clean_verified_positive"
         else "abstained"
         if status == "clean_safe_calibration_abstention"
+        else "inconclusive"
+        if status == "clean_pre_provider_mutation_contract_failure"
         else "invalid"
         for status in normalized
     ]
@@ -136,6 +138,18 @@ def _verify_aggregate(
         ):
             raise PreexistingHistoryContinuationResultAuditError(
                 "safe-abstention exhaustion condition failed"
+            )
+    elif result.get("status") == "stopped_inconclusive":
+        if (
+            expected_record_statuses[-1] != "inconclusive"
+            or positive_count != 0
+            or result.get("stop_reason")
+            != "attempt_was_not_verified_positive_or_safe_abstention"
+            or result.get("stopped_after_first_verified_positive") is not False
+            or result.get("verified_positive_episode_count") != 0
+        ):
+            raise PreexistingHistoryContinuationResultAuditError(
+                "inconclusive stop condition failed"
             )
     else:
         raise PreexistingHistoryContinuationResultAuditError(
@@ -201,7 +215,15 @@ def audit(root: Path) -> dict[str, Any]:
         "future_files_read": False,
         "future_outcomes_observed": False,
         "critical_finding_count": 0,
-        "findings": [],
+        "blocking_finding_count": sum(
+            int(item.get("blocking_finding_count", 0))
+            for item in attempt_audits
+        ),
+        "findings": [
+            finding
+            for item in attempt_audits
+            for finding in item.get("findings", ())
+        ],
         "r5_accepted": False,
         "r6_started": False,
     }

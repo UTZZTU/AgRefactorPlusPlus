@@ -158,6 +158,59 @@ class R5PreexistingHistoryContinuationTests(unittest.TestCase):
                 attempt_audits=audits,
             )
 
+    def test_pre_provider_contract_failure_is_auditable_stop(self) -> None:
+        manifest = {
+            "status": "frozen_before_real_continuation",
+            "maximum_additional_attempts": 2,
+            "stop_after_first_verified_positive": True,
+            "provider_calls_before": 94,
+            "vitis_launches_before": 35,
+            "provider_call_upper_bound_total": 4,
+            "vitis_launch_upper_bound_total": 12,
+            "confidence_minimum_authorized_label": "high",
+            "confidence_threshold_weakened": False,
+            "future_files_read": False,
+            "future_outcomes_observed": False,
+            "r5_accepted": False,
+            "r6_started": False,
+        }
+        manifest["manifest_sha256"] = canonical_sha256(manifest)
+        result = {
+            "status": "stopped_inconclusive",
+            "stop_reason": "attempt_was_not_verified_positive_or_safe_abstention",
+            "manifest_sha256": manifest["manifest_sha256"],
+            "attempts": [
+                {
+                    "attempt_ordinal": 2,
+                    "status": "inconclusive",
+                    "provider_calls": 1,
+                    "vitis_launches": 2,
+                }
+            ],
+            "attempt_count": 1,
+            "provider_calls": 1,
+            "vitis_launches": 2,
+            "provider_calls_after": 95,
+            "vitis_launches_after": 37,
+            "verified_positive_episode_count": 0,
+            "stopped_after_first_verified_positive": False,
+            "confidence_threshold_weakened": False,
+            "future_files_read": False,
+            "future_outcomes_observed": False,
+            "trusted_revision_created": False,
+            "r5_real_campaign_allowed": False,
+            "r5_accepted": False,
+            "r6_started": False,
+        }
+        result["result_sha256"] = canonical_sha256(result)
+        RESULT_AUDITOR._verify_aggregate(
+            manifest=manifest,
+            result=result,
+            attempt_audits=[
+                {"status": "clean_pre_provider_mutation_contract_failure"}
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
