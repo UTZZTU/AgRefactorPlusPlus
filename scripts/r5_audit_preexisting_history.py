@@ -138,6 +138,9 @@ def audit(
     plan = _load(plan_path)
     state = _load(state_path)
     bundle = verify_historical_candidate_plan(repository, plan)
+    budget = plan.get("budget")
+    if not isinstance(budget, Mapping):
+        raise PreexistingHistoryAuditError("plan budget is missing")
 
     head = _git(repository, "rev-parse", "HEAD")
     branch = _git(repository, "branch", "--show-current")
@@ -150,8 +153,10 @@ def audit(
         or state.get("R5_ACCEPTED") is not False
         or state.get("R6_STARTED") is not False
         or state.get("R5_REAL_CAMPAIGN_ALLOWED") is not False
-        or state.get("R5_CONSUMED_PROVIDER_CALLS") != 93
-        or state.get("R5_CONSUMED_VITIS_LAUNCHES") != 33
+        or state.get("R5_CONSUMED_PROVIDER_CALLS")
+        != budget.get("provider_calls_before")
+        or state.get("R5_CONSUMED_VITIS_LAUNCHES")
+        != budget.get("vitis_launches_before")
         or state.get("R5_PROVIDER_CALL_HARD_CAP") != 500
         or state.get("R5_VITIS_LAUNCH_HARD_CAP") != 500
         or state.get("R5_PREDECESSOR_LIFECYCLE") != "Provisional"
@@ -209,14 +214,17 @@ def audit(
         raise PreexistingHistoryAuditError("calibration scope is incompatible")
 
     legacy = bundle.legacy_candidate_code
-    if not all(
-        marker in legacy
-        for marker in (
+    required_markers = plan.get("required_legacy_markers")
+    if required_markers is None:
+        required_markers = [
             "insert(newitem, tree.space[root].right)",
             "insert(newitem, tree.space[root].left)",
             "dfs_traverse(tree.space[root].left)",
             "dfs_traverse(tree.space[root].right)",
-        )
+        ]
+    if not isinstance(required_markers, list) or not all(
+        isinstance(marker, str) and marker and marker in legacy
+        for marker in required_markers
     ):
         raise PreexistingHistoryAuditError("recursive construct evidence is missing")
     host_checks = [
@@ -249,12 +257,17 @@ def audit(
         "host_adapter_checks": host_checks,
         "predecessor_import_result_file_sha256": file_sha256(predecessor_path),
         "predecessor_source_sha256s": predecessor_sources,
+        "prior_observed_source_sha256s": list(
+            plan.get("prior_observed_source_sha256s", predecessor_sources)
+        ),
         "source_independence_verified": True,
         "calibration_bundle_file_sha256": file_sha256(calibration_path),
         "calibration_certificate_id": certificate["certificate_id"],
         "calibration_failure_class_scope": certificate_scope,
-        "provider_call_upper_bound": 2,
-        "vitis_launch_upper_bound": 6,
+        "provider_calls_before": int(budget["provider_calls_before"]),
+        "vitis_launches_before": int(budget["vitis_launches_before"]),
+        "provider_call_upper_bound": int(budget["provider_call_upper_bound"]),
+        "vitis_launch_upper_bound": int(budget["vitis_launch_upper_bound"]),
         "provider_calls": 0,
         "vitis_launches": 0,
         "future_holdout_case_ids": list(plan["future_holdout_case_ids"]),

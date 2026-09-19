@@ -198,14 +198,20 @@ def load_preflight(
             "history acquisition requires the clean R5 branch"
         )
     state = _load(state_path)
+    plan = _load(plan_path)
+    plan_budget = plan.get("budget")
+    if not isinstance(plan_budget, Mapping):
+        raise PreexistingHistoryAcquisitionError("plan budget is missing")
     if (
         state.get("R4_ACCEPTED") is not True
         or state.get("R5_STARTED") is not True
         or state.get("R5_ACCEPTED") is not False
         or state.get("R6_STARTED") is not False
         or state.get("R5_REAL_CAMPAIGN_ALLOWED") is not False
-        or state.get("R5_CONSUMED_PROVIDER_CALLS") != 93
-        or state.get("R5_CONSUMED_VITIS_LAUNCHES") != 33
+        or state.get("R5_CONSUMED_PROVIDER_CALLS")
+        != plan_budget.get("provider_calls_before")
+        or state.get("R5_CONSUMED_VITIS_LAUNCHES")
+        != plan_budget.get("vitis_launches_before")
         or state.get("R5_PROVIDER_CALL_HARD_CAP") != 500
         or state.get("R5_VITIS_LAUNCH_HARD_CAP") != 500
         or state.get("R5_PREDECESSOR_LIFECYCLE") != "Provisional"
@@ -213,7 +219,6 @@ def load_preflight(
         raise PreexistingHistoryAcquisitionError(
             "roadmap state does not permit pre-existing history acquisition"
         )
-    plan = _load(plan_path)
     candidate = verify_historical_candidate_plan(repository, plan)
     audit = _load(audit_path)
     _validate_protocol_audit(
@@ -260,6 +265,15 @@ def load_preflight(
         "calibration_path": calibration_path,
         "certificate": certificate,
         "model_runtime": dict(runtime),
+        "budget": {
+            key: int(plan_budget[key])
+            for key in (
+                "provider_calls_before",
+                "vitis_launches_before",
+                "provider_call_upper_bound",
+                "vitis_launch_upper_bound",
+            )
+        },
     }
 
 
@@ -372,6 +386,7 @@ def _task(
 ) -> TaskSpec:
     public_path = repository / candidate.paths["public_test"]
     hidden_path = repository / candidate.paths["hidden_test"]
+    public_suite, hidden_suite = _suite_ids(candidate)
     return TaskSpec(
         task_id=run_id + ".formal",
         kernel_path=str(repository / candidate.paths["reference"]),
@@ -381,7 +396,7 @@ def _task(
         testbench_path=str(public_path),
         test_suites=(
             TestSuiteSpec(
-                suite_id="public-recursive-e2-dfs-history",
+                suite_id=public_suite,
                 split=EvaluationSplit.PUBLIC,
                 suite_version="r5-preexisting-history-v1",
                 case_count=1,
@@ -393,7 +408,7 @@ def _task(
                 },
             ),
             TestSuiteSpec(
-                suite_id="hidden-recursive-e2-dfs-history",
+                suite_id=hidden_suite,
                 split=EvaluationSplit.HIDDEN,
                 suite_version="r5-preexisting-history-v1",
                 case_count=3,
@@ -401,6 +416,13 @@ def _task(
             ),
         ),
     )
+
+
+def _suite_ids(candidate: R5HistoricalCandidateBundle) -> tuple[str, str]:
+    stem = re.sub(r"[^a-z0-9]+", "-", candidate.case_id.casefold()).strip("-")
+    if not stem:
+        raise PreexistingHistoryAcquisitionError("case ID cannot form suite IDs")
+    return (f"public-{stem}-history", f"hidden-{stem}-history")
 
 
 def _assert_safe(value: Any, *, secret: str | None) -> None:
@@ -586,13 +608,14 @@ def acquire(
         cosim_timelimit=1200,
         cosim_policy="required",
     )
+    public_suite, hidden_suite = _suite_ids(candidate)
     request = CandidateRepairOrchestrationRequest(
         initial_candidate=candidate.isolated_candidate_code,
         original_code=candidate.reference_code,
         preflight_testbench_code=candidate.public_test_code,
         suite_testbench_codes={
-            "public-recursive-e2-dfs-history": candidate.public_test_code,
-            "hidden-recursive-e2-dfs-history": candidate.hidden_test_code,
+            public_suite: candidate.public_test_code,
+            hidden_suite: candidate.hidden_test_code,
         },
         prompt_public_testbench_code=candidate.public_test_code,
         max_attempts=1,

@@ -140,6 +140,39 @@ class R5HistoricalCandidateTests(unittest.TestCase):
         ):
             verify_historical_candidate_plan(self.root, plan)
 
+    def test_v2_plan_binds_current_budget_and_all_observed_sources(self) -> None:
+        plan = copy.deepcopy(self.plan)
+        plan["schema_version"] = 2
+        plan["prior_observed_source_sha256s"] = ["a" * 64, "b" * 64]
+        plan["required_legacy_markers"] = [
+            "helper(n - 1)",
+            "void top(int *out)",
+        ]
+        plan["budget"]["provider_calls_before"] = 96
+        plan["budget"]["vitis_launches_before"] = 39
+        bundle = verify_historical_candidate_plan(self.root, plan)
+        self.assertEqual(bundle.case_id, "history-case")
+
+        plan["prior_observed_source_sha256s"].append(plan["source_sha256"])
+        with self.assertRaisesRegex(
+            R5HistoricalCandidateError,
+            "all observed sources",
+        ):
+            verify_historical_candidate_plan(self.root, plan)
+
+    def test_v2_plan_budget_must_retain_complete_attempt_reserve(self) -> None:
+        plan = copy.deepcopy(self.plan)
+        plan["schema_version"] = 2
+        plan["prior_observed_source_sha256s"] = ["a" * 64]
+        plan["required_legacy_markers"] = ["helper(n - 1)"]
+        plan["budget"]["provider_calls_before"] = 499
+        plan["budget"]["vitis_launches_before"] = 39
+        with self.assertRaisesRegex(
+            R5HistoricalCandidateError,
+            "budget is invalid",
+        ):
+            verify_historical_candidate_plan(self.root, plan)
+
 
 if __name__ == "__main__":
     unittest.main()

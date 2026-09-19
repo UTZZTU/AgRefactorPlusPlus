@@ -16,6 +16,48 @@ SPEC.loader.exec_module(AUDIT)
 
 
 class R5PreexistingHistoryResultAuditTests(unittest.TestCase):
+    def test_diagnostic_audit_uses_semantics_not_one_log_code(self) -> None:
+        event = {
+            "stage": "csynth",
+            "physical_tool_launched": True,
+            "evidence_complete": True,
+            "hidden_input_count": 0,
+            "evidence_refs": ["event", "item"],
+            "diagnostic_items": [
+                {
+                    "diagnostic_code": "HLS OTHER-CODE",
+                    "stage": "csynth",
+                    "severity": "error",
+                    "detail": "Unsupported recursive construct",
+                }
+            ],
+            "event_id": "diagnostic-1",
+        }
+        shadow = {
+            "event_id": "diagnostic-1",
+            "input_status": "eligible",
+            "critical_safety_violation": False,
+            "equivalence": {"equivalent": True},
+            "advisory": {
+                "suspected_failure_class": "unsupported_construct",
+                "suspected_owner": "candidate",
+                "repair_scope": "candidate_only",
+                "abstain_reason": None,
+                "evidence_refs": ["item"],
+            },
+        }
+        observed_event, observed_shadow = AUDIT._verify_diagnostic(
+            {
+                "diagnostic_events": [event],
+                "r2_shadow_diagnostics": [shadow],
+            }
+        )
+        self.assertEqual(observed_event["event_id"], "diagnostic-1")
+        self.assertEqual(
+            observed_shadow["advisory"]["suspected_failure_class"],
+            "unsupported_construct",
+        )
+
     def test_safe_calibration_abstention_is_distinct_from_positive(self) -> None:
         result = {
             "status": "abstained",

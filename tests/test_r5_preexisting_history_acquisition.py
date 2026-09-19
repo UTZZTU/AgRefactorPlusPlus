@@ -183,6 +183,13 @@ class R5PreexistingHistoryAcquisitionTests(unittest.TestCase):
                 secret="secret",
             )
 
+    def test_suite_ids_are_derived_from_case_identity(self) -> None:
+        candidate = self.preflight["candidate"]
+        public, hidden = ACQUIRE._suite_ids(candidate)
+        self.assertEqual(public, "public-history-case-history")
+        self.assertEqual(hidden, "hidden-history-case-history")
+        self.assertNotIn("recursive-e2-dfs", public)
+
 
 if __name__ == "__main__":
     unittest.main()

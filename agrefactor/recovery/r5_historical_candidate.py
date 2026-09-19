@@ -155,7 +155,7 @@ def verify_historical_candidate_plan(
     if not root.is_dir():
         raise R5HistoricalCandidateError("repository root is missing")
     if (
-        plan.get("schema_version") != 1
+        plan.get("schema_version") not in {1, 2}
         or plan.get("status")
         != "frozen_before_preexisting_candidate_outcome_observation"
         or plan.get("period") != "history"
@@ -237,6 +237,32 @@ def verify_historical_candidate_plan(
         or source_sha in predecessor_sources
     ):
         raise R5HistoricalCandidateError("historical source is not predecessor-independent")
+    if plan.get("schema_version") == 2:
+        prior_sources = plan.get("prior_observed_source_sha256s")
+        required_markers = plan.get("required_legacy_markers")
+        if (
+            not isinstance(prior_sources, list)
+            or not prior_sources
+            or any(
+                not isinstance(item, str) or not _SHA256.fullmatch(item)
+                for item in prior_sources
+            )
+            or not set(predecessor_sources).issubset(prior_sources)
+            or source_sha in prior_sources
+        ):
+            raise R5HistoricalCandidateError(
+                "historical source is not independent of all observed sources"
+            )
+        if (
+            not isinstance(required_markers, list)
+            or not required_markers
+            or len(required_markers) > 32
+            or any(not isinstance(item, str) or not item for item in required_markers)
+            or any(item not in legacy for item in required_markers)
+        ):
+            raise R5HistoricalCandidateError(
+                "required legacy construct evidence is missing"
+            )
     future_ids = plan.get("future_holdout_case_ids")
     if (
         not isinstance(future_ids, list)
@@ -246,16 +272,31 @@ def verify_historical_candidate_plan(
     ):
         raise R5HistoricalCandidateError("future holdout declaration is invalid")
     budget = plan.get("budget")
-    if not isinstance(budget, Mapping) or any(
-        budget.get(name) != expected
-        for name, expected in {
-            "provider_calls_before": 93,
-            "vitis_launches_before": 33,
-            "provider_call_upper_bound": 2,
-            "vitis_launch_upper_bound": 6,
-            "provider_hard_cap": 500,
-            "vitis_hard_cap": 500,
-        }.items()
+    if not isinstance(budget, Mapping):
+        raise R5HistoricalCandidateError("historical acquisition budget is invalid")
+    expected_budget = {
+        "provider_call_upper_bound": 2,
+        "vitis_launch_upper_bound": 6,
+        "provider_hard_cap": 500,
+        "vitis_hard_cap": 500,
+    }
+    if any(budget.get(name) != expected for name, expected in expected_budget.items()):
+        raise R5HistoricalCandidateError("historical acquisition budget is invalid")
+    provider_before = budget.get("provider_calls_before")
+    vitis_before = budget.get("vitis_launches_before")
+    if (
+        not isinstance(provider_before, int)
+        or isinstance(provider_before, bool)
+        or not isinstance(vitis_before, int)
+        or isinstance(vitis_before, bool)
+        or provider_before < 0
+        or vitis_before < 0
+        or provider_before + 2 > 500
+        or vitis_before + 6 > 500
+        or (
+            plan.get("schema_version") == 1
+            and (provider_before != 93 or vitis_before != 33)
+        )
     ):
         raise R5HistoricalCandidateError("historical acquisition budget is invalid")
     plan_sha = canonical_sha256(dict(plan))

@@ -220,7 +220,12 @@ def _verify_diagnostic(result: Mapping[str, Any]) -> tuple[dict[str, Any], dict[
         or event.get("hidden_input_count") != 0
         or not isinstance(items, list)
         or len(items) != 1
-        or items[0].get("diagnostic_code") != "HLS 214-139"
+        or not isinstance(items[0].get("diagnostic_code"), str)
+        or not items[0].get("diagnostic_code")
+        or items[0].get("stage") != "csynth"
+        or items[0].get("severity") != "error"
+        or not isinstance(items[0].get("detail"), str)
+        or not items[0].get("detail")
         or shadow.get("event_id") != event.get("event_id")
         or shadow.get("input_status") != "eligible"
         or shadow.get("critical_safety_violation") is not False
