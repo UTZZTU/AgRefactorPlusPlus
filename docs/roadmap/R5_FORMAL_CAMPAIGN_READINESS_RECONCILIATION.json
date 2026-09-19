@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "status": "ready_for_user_acceptance",
+  "date": "2026-09-19",
+  "route": "V2.3-R5",
+  "implementation_head": "6e3d357b2389d678bbd06daf3f089b19ce32f1e8",
+  "r5_accepted": false,
+  "r6_started": false,
+  "formal_campaign": {
+    "role": "frozen_formal_future_campaign",
+    "root": "/data/agrefactor_runs/r5_p6_formal_campaign_real",
+    "status": "clean_inconclusive_no_verified_future_repair",
+    "result_file_sha256": "5b10225bbd88d0eb11e3d7b5d78422520e66f205580d1b33dd630490ae7b58e2",
+    "audit_file_sha256": "b5c00ee4abfccf11e7892d8ba480f49665e31c99a535cc62556aa7ce486ca8f3",
+    "provider_calls": 54,
+    "vitis_launches": 20,
+    "critical_findings": 0,
+    "verified_repairs": 0,
+    "abstentions": 38,
+    "invalid_evidence": 0,
+    "negative_transfer_or_false_repair": 0
+  },
+  "corrective_replication": {
+    "role": "posthoc_corrective_replication",
+    "new_future_holdout_claim": false,
+    "root": "/data/agrefactor_runs/r5_p6_formal_public_contract_correction_v2_real",
+    "freeze_root": "/data/agrefactor_runs/r5_p6_formal_public_contract_correction_v2_freeze",
+    "status": "clean_negative_no_memory_effect",
+    "manifest_file_sha256": "cf237af279eb4cc7b6915908491cbb4025b643b395bbe5c50aad989a002cc573",
+    "protocol_audit_file_sha256": "cdaf4369fa0897222894352b10bc6a1c5f9ba9f456e23d8438e39678ccb1d350",
+    "result_file_sha256": "dc1c4213694cc7d0f95b7ffd97e3db39934ff3041d2f31efc6add1db0245f854",
+    "audit_file_sha256": "1a3d0fba2fad8c9e536cf330b10c904e28c50e5ee2f0f118886bd6d87b2a5ac4",
+    "provider_calls": 54,
+    "vitis_launches": 24,
+    "critical_findings": 0,
+    "accepted_baselines": 6,
+    "verified_repairs": 0,
+    "abstentions": 30,
+    "inconclusive": 0,
+    "invalid_evidence": 0,
+    "negative_transfer_or_false_repair": 0
+  },
+  "corrected_contract_defects": [
+    "Public COSIM runtime depth contract was not forwarded by the formal runner",
+    "external Public Candidate ABI was not bound into initial Candidate generation",
+    "Pointer_E2 COSIM depth used a model-guessed port rather than the Public ABI parameter"
+  ],
+  "completion_boundary": {
+    "episode_ledger_lifecycle_snapshot_payload_authorization_and_campaign_consumers_real": true,
+    "default_off_refactor_optimize_full_regression_passed": true,
+    "full_deterministic_regression_tests": 2628,
+    "frozen_a0_a6_campaign_rebuildable_and_budget_auditable": true,
+    "time_source_cache_leakage": 0,
+    "false_repair_negative_transfer_abstention_invalid_inconclusive_and_cost_separately_reported": true,
+    "independent_auditor_critical_findings": 0
+  },
+  "budget": {
+    "provider_hard_cap": 500,
+    "vitis_hard_cap": 500,
+    "provider_calls_consumed": 248,
+    "vitis_launches_consumed": 111,
+    "provider_calls_remaining": 252,
+    "vitis_launches_remaining": 389
+  },
+  "claims": {
+    "r5_mechanisms_and_safety_boundaries_operational": true,
+    "temporal_memory_efficacy_established": false,
+    "memory_repair_rate_improvement_established": false,
+    "universal_hls_repair_claim": false,
+    "bounded_vitis_2023_2_evidence_only": true
+  },
+  "warnings": [
+    "The original formal future campaign produced no verified future repair.",
+    "After Public contract correction all six common baselines were accepted, so no legal diagnostic entered the mutation arms.",
+    "R5 readiness therefore supports mechanism, safety, reproducibility, and negative-result claims, not temporal memory efficacy."
+  ],
+  "next_step": "project_owner_must_explicitly_accept_or_reject_R5_before_R6",
+  "package_self_acceptance": false
+}
