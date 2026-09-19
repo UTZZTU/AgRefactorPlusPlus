@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "route": "V2.3",
+  "phase": "R5",
+  "status": "clean_safe_calibration_abstention",
+  "repository_head": "c6e952155a8242d73d4d587fb74a067c35f27c7a",
+  "run_id": "r5-preexisting-history-recursive-e2-dfs-01",
+  "run_root": "/data/agrefactor_runs/r5_p3_preexisting_history_real_c6e9521",
+  "source_sha256": "234a22a69143190b02fe8b65c55782539e26a09465fbb53be535fed796741da3",
+  "acquisition_manifest_file_sha256": "9117c08ff379c42b54fabec8b333df5760c1c20fa1e60cf25b0d33ba69445ca6",
+  "acquisition_result_file_sha256": "212214cb53c62d6be8197b5e8ea81093d2a7e6039611070cbc4237659636d56a",
+  "evidence_archive_sha256": "768a305a60b7b94c3e52f5ab753f3d001efeb46bb119deafbdf98eb76cd7935f",
+  "content_manifest_file_sha256": "6a76d93a2799009fc719f20d8865b04e2c1e1601ac3819def699c895375ddf2c",
+  "independent_audit": "/data/agrefactor_runs/r5_p3_preexisting_history_result_audit_c6e9521/independent_audit.json",
+  "independent_audit_file_sha256": "d6bfc899a4e506502abaa05b7a6237b729712ec2099e9328c07396dcca88134f",
+  "independent_audit_sha256": "de161431d5fb0861bd8b2800a8d7b10ae7d998f998d06ab2929c6f325e3a256f",
+  "independent_audit_boundary": "separate_python_process_file_only",
+  "critical_finding_count": 0,
+  "diagnostic_code": "HLS 214-139",
+  "r2_failure_class": "unsupported_construct",
+  "r2_owner": "candidate",
+  "r2_repair_scope": "candidate_only",
+  "r2_confidence": "medium",
+  "r4_status": "abstained",
+  "r4_reason": "r2_calibration_unverified",
+  "r4_calibration_reason": "confidence_label_not_calibrated",
+  "r4_mutation_count": 0,
+  "verified_positive_episode_count": 0,
+  "budget_before": {
+    "provider_calls": 93,
+    "vitis_launches": 33
+  },
+  "budget_added": {
+    "provider_calls": 1,
+    "vitis_launches": 2
+  },
+  "budget_after": {
+    "provider_calls": 94,
+    "vitis_launches": 35
+  },
+  "future_files_read": false,
+  "future_outcomes_observed": false,
+  "confidence_threshold_weakened": false,
+  "real_campaign_allowed": false,
+  "r5_accepted": false,
+  "r6_started": false,
+  "next_step": "freeze_and_zero_call_audit_bounded_same_source_continuation"
+}

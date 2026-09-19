@@ -262,3 +262,43 @@ calls and zero Vitis launches, so the authoritative cumulative ledger remains
 `93/33`. The machine-readable reconciliation is
 `docs/roadmap/R5_R4_PREDECESSOR_IMPORT_RECONCILIATION.json`. R5 remains
 unaccepted, the real future campaign remains disabled, and R6 remains stopped.
+
+## Pre-existing History Second-Source Attempt
+
+A separately frozen pre-existing `Recursive_E2_DFS` Candidate was exercised
+through the existing Candidate validator, Provider-backed R2 advisor, R4
+controller, and Vitis backend at repository head `c6e9521`. Public host and
+Hidden host preflights passed before execution; future files and outcomes were
+not read. The immutable run is
+`/data/agrefactor_runs/r5_p3_preexisting_history_real_c6e9521`.
+
+The real csynth diagnostic was `HLS 214-139` recursion. R2 attributed it to
+the Candidate, selected `unsupported_construct` and `candidate_only`, but
+reported only `medium` confidence. The accepted calibration certificate does
+not authorize that confidence label, so R4 correctly abstained with
+`r2_calibration_unverified`, performed no mutation, and created no episode.
+The high-confidence gate was not relaxed.
+
+The sealed archive SHA-256 is
+`768a305a60b7b94c3e52f5ab753f3d001efeb46bb119deafbdf98eb76cd7935f`.
+A separate file-only process independently reproduced
+`clean_safe_calibration_abstention` with zero critical findings at
+`/data/agrefactor_runs/r5_p3_preexisting_history_result_audit_c6e9521/independent_audit.json`.
+Its file SHA-256 is
+`d6bfc899a4e506502abaa05b7a6237b729712ec2099e9328c07396dcca88134f`
+and canonical audit SHA-256 is
+`de161431d5fb0861bd8b2800a8d7b10ae7d998f998d06ab2929c6f325e3a256f`.
+
+The attempt consumed one Provider call and two Vitis launches. The cumulative
+R5 ledger is now `94/500` Provider calls and `35/500` Vitis launches. This
+source has not yet supplied a verified-positive episode; the imported
+predecessor revision remains `Provisional`, the real future campaign remains
+disabled, R5 remains unaccepted, and R6 remains stopped. The machine-readable
+reconciliation is
+`docs/roadmap/R5_PREEXISTING_HISTORY_SAFE_ABSTENTION_RECONCILIATION.json`.
+
+Before another real call, freeze and independently zero-call audit a bounded
+continuation for this same source. It may run at most two additional attempts,
+must stop after the first verified-positive episode, may add at most four
+Provider calls and twelve Vitis launches, and may not weaken the accepted R2
+confidence/calibration boundary.
