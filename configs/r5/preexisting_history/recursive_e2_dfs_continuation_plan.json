@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "plan_id": "v2.3-r5-preexisting-history-recursive-e2-dfs-continuation-v1",
+  "status": "frozen_after_first_safe_abstention_before_continuation",
+  "case_id": "Recursive_E2_DFS_preexisting_candidate",
+  "period": "history",
+  "control_role": "positive",
+  "failure_family": "unsupported_construct",
+  "base_plan_path": "configs/r5/preexisting_history/recursive_e2_dfs_plan.json",
+  "base_plan_file_sha256": "7bae585e3a4c76ecba7df7a135079ba9abec9c823632d54a63cbf73ef304642e",
+  "base_plan_sha256": "d0a00409ec8bbf5175f54210c5b511e8ac6147d552963f61b91e73606f4e1826",
+  "source_sha256": "234a22a69143190b02fe8b65c55782539e26a09465fbb53be535fed796741da3",
+  "isolated_candidate_sha256": "f0a309fcd3d1f51fe6f4f14be759f5232c8629952364eb7a6cdda16c0a5f7081",
+  "prior_attempt": {
+    "run_id": "r5-preexisting-history-recursive-e2-dfs-01",
+    "run_root": "/data/agrefactor_runs/r5_p3_preexisting_history_real_c6e9521",
+    "acquisition_manifest_file_sha256": "9117c08ff379c42b54fabec8b333df5760c1c20fa1e60cf25b0d33ba69445ca6",
+    "acquisition_result_file_sha256": "212214cb53c62d6be8197b5e8ea81093d2a7e6039611070cbc4237659636d56a",
+    "evidence_archive_sha256": "768a305a60b7b94c3e52f5ab753f3d001efeb46bb119deafbdf98eb76cd7935f",
+    "independent_audit_path": "/data/agrefactor_runs/r5_p3_preexisting_history_result_audit_c6e9521/independent_audit.json",
+    "independent_audit_file_sha256": "d6bfc899a4e506502abaa05b7a6237b729712ec2099e9328c07396dcca88134f",
+    "independent_audit_sha256": "de161431d5fb0861bd8b2800a8d7b10ae7d998f998d06ab2929c6f325e3a256f",
+    "status": "clean_safe_calibration_abstention",
+    "r2_confidence": "medium",
+    "provider_calls": 1,
+    "vitis_launches": 2,
+    "verified_positive_episode_count": 0
+  },
+  "reconciliation_path": "docs/roadmap/R5_PREEXISTING_HISTORY_SAFE_ABSTENTION_RECONCILIATION.json",
+  "reconciliation_file_sha256": "dc96f41406b5c12001328632b4d41c85791c0d68523cbc2960b79b1c286b1931",
+  "maximum_additional_attempts": 2,
+  "stop_after_first_verified_positive": true,
+  "maximum_candidate_mutations_per_attempt": 1,
+  "budget": {
+    "provider_calls_before": 94,
+    "vitis_launches_before": 35,
+    "provider_call_upper_bound_per_attempt": 2,
+    "vitis_launch_upper_bound_per_attempt": 6,
+    "provider_call_upper_bound_total": 4,
+    "vitis_launch_upper_bound_total": 12,
+    "provider_hard_cap": 500,
+    "vitis_hard_cap": 500
+  },
+  "confidence_boundary": {
+    "minimum_authorized_label": "high",
+    "accepted_calibration_certificate_unchanged": true,
+    "threshold_weakened": false,
+    "medium_may_mutate": false
+  },
+  "future_holdout_case_ids": [
+    "Exception_E3_Turbo_Encoder",
+    "Pointer_E3_double_pointer"
+  ],
+  "future_files_read_by_protocol": false,
+  "future_outcomes_observed": false,
+  "expected_outputs_invented": false,
+  "original_benchmark_files_mutated": false,
+  "trusted_revision_creation_allowed": false,
+  "r5_real_campaign_allowed": false,
+  "r5_accepted": false,
+  "r6_started": false
+}

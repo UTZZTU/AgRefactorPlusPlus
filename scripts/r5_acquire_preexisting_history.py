@@ -287,6 +287,14 @@ def build_acquisition_manifest(
 ) -> dict[str, Any]:
     candidate: R5HistoricalCandidateBundle = preflight["candidate"]
     runtime = preflight["model_runtime"]
+    budget = preflight.get("budget")
+    if not isinstance(budget, Mapping):
+        budget = {
+            "provider_calls_before": 93,
+            "vitis_launches_before": 33,
+            "provider_call_upper_bound": 2,
+            "vitis_launch_upper_bound": 6,
+        }
     target = resolve_target_profile("vitis-2023.2-default").to_dict()
     target_sha, toolchain_sha = _target_fingerprints(target)
     prompt_contract = {
@@ -298,7 +306,12 @@ def build_acquisition_manifest(
     }
     manifest: dict[str, Any] = {
         "schema_version": 1,
-        "manifest_id": "v2.3-r5-preexisting-history-acquisition-v1",
+        "manifest_id": str(
+            preflight.get(
+                "manifest_id",
+                "v2.3-r5-preexisting-history-acquisition-v1",
+            )
+        ),
         "status": "frozen_before_real_execution",
         "run_id": run_id,
         "repository_head": preflight["repository_head"],
@@ -332,10 +345,10 @@ def build_acquisition_manifest(
         "authorization_mode": "advisor_only",
         "memory_mode": "none",
         "maximum_candidate_mutations": 1,
-        "provider_calls_before": 93,
-        "vitis_launches_before": 33,
-        "provider_call_upper_bound": 2,
-        "vitis_launch_upper_bound": 6,
+        "provider_calls_before": int(budget["provider_calls_before"]),
+        "vitis_launches_before": int(budget["vitis_launches_before"]),
+        "provider_call_upper_bound": int(budget["provider_call_upper_bound"]),
+        "vitis_launch_upper_bound": int(budget["vitis_launch_upper_bound"]),
         "future_holdout_case_ids": list(
             preflight["plan"]["future_holdout_case_ids"]
         ),
@@ -344,6 +357,9 @@ def build_acquisition_manifest(
         "r5_accepted": False,
         "r6_started": False,
     }
+    continuation = preflight.get("continuation")
+    if isinstance(continuation, Mapping):
+        manifest["continuation"] = dict(continuation)
     manifest["manifest_sha256"] = canonical_sha256(manifest)
     return manifest
 
@@ -538,7 +554,7 @@ def acquire(
         run_id=run_id,
     )
     limits = BudgetLimits(
-        max_llm_calls=2,
+        max_llm_calls=int(manifest["provider_call_upper_bound"]),
         max_tool_calls=40,
         max_compile_calls=30,
         max_csim_calls=3,
@@ -613,7 +629,12 @@ def acquire(
         budget=budget,
     )
     provisional = R4CanaryManifest(
-        manifest_id="v2.3-r5-preexisting-history-recursive-e2-dfs-v1",
+        manifest_id=str(
+            preflight.get(
+                "canary_manifest_id",
+                "v2.3-r5-preexisting-history-recursive-e2-dfs-v1",
+            )
+        ),
         manifest_sha256="0" * 64,
         enabled=True,
         operator_enabled=True,

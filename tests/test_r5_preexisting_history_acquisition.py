@@ -101,6 +101,31 @@ class R5PreexistingHistoryAcquisitionTests(unittest.TestCase):
         self.assertEqual(first["vitis_launch_upper_bound"], 6)
         self.assertFalse(first["future_files_read"])
 
+    def test_manifest_uses_audited_continuation_budget(self) -> None:
+        preflight = dict(self.preflight)
+        preflight["budget"] = {
+            "provider_calls_before": 94,
+            "vitis_launches_before": 35,
+            "provider_call_upper_bound": 2,
+            "vitis_launch_upper_bound": 6,
+        }
+        preflight["continuation"] = {
+            "attempt_ordinal": 2,
+            "stop_after_first_verified_positive": True,
+        }
+        manifest = ACQUIRE.build_acquisition_manifest(
+            preflight,
+            run_id="history-continuation-02",
+        )
+        self.assertEqual(manifest["provider_calls_before"], 94)
+        self.assertEqual(manifest["vitis_launches_before"], 35)
+        self.assertEqual(manifest["provider_call_upper_bound"], 2)
+        self.assertEqual(manifest["vitis_launch_upper_bound"], 6)
+        self.assertEqual(manifest["continuation"]["attempt_ordinal"], 2)
+        unsigned = dict(manifest)
+        stored = unsigned.pop("manifest_sha256")
+        self.assertEqual(stored, canonical_sha256(unsigned))
+
     def test_protocol_audit_must_bind_current_head_and_files(self) -> None:
         state_path = self.root / "state.json"
         state_path.write_text("{}\n", encoding="utf-8")
