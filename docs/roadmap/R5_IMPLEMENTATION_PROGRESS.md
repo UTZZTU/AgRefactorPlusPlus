@@ -369,3 +369,44 @@ with file SHA-256
 `527b35974ae85421e71bbebd1479e80878555a3240f59a8998b4ccd92bc8fed9`.
 The next real-call prerequisite is a zero-call freeze and audit of a new,
 independent history-only source; the existing future holdout cannot be reused.
+
+## Expanded History Source And Isolation Fix
+
+`Recursive_E1_linked_list` was frozen as an additional pre-R5 history-only
+source based on its initial-repository identity and `unsupported_construct`
+family before any new Provider or Vitis outcome was observed. Its source
+SHA-256 is
+`673c644da2e7b718b0ba50763d185cd599a69acc223927b1d730bbc51022b489`,
+which is distinct from the imported predecessor source and all earlier
+pre-existing-history sources. The two existing future cases remained unread.
+
+The first expanded-history run at repository head `1190773` consumed one R2
+Provider call and two Vitis launches. R2 produced a calibrated `high`
+Candidate-only `unsupported_construct` advisory, but the mutation Provider was
+not called. The historical symbol-isolation adapter used preprocessor aliases;
+Vitis resolved the renamed top while the deterministic Candidate response
+contract, correctly operating without a C preprocessor, could not observe its
+definition. R4 stopped with `pre_provider_model_adapter_failure`, zero
+mutations, and an unchanged Candidate.
+
+A separate file-only auditor reports
+`clean_pre_provider_model_adapter_failure`, zero critical findings, and one
+blocking finding at
+`/data/agrefactor_runs/r5_p3_expanded_history_result_audit_1190773/independent_audit.json`.
+Its file SHA-256 is
+`669d431211330d17697d307e649b929a532f9823da0b8a6c0ff44a1b5c6ad75f`
+and canonical audit SHA-256 is
+`e5d25df4ad1f6498550585e99600433909f012c5746214a69229f9f0536c29f0`.
+
+The adapter was corrected at `39d8c56` by adding content-addressed materialized
+identifier isolation v2. It changes symbol names mechanically in the frozen
+Candidate text, so both the compiler and deterministic response contract see
+the same Candidate ABI; it does not change Candidate logic. Isolation v1
+remains available for reproducing prior evidence. The cumulative R5 ledger is
+now `97/500` Provider calls and `41/500` Vitis launches. The machine-readable
+reconciliation is
+`docs/roadmap/R5_EXPANDED_HISTORY_ISOLATION_FAILURE_RECONCILIATION.json`
+with file SHA-256
+`89db1fa9ccd893253114c5829cd1259e41f47fef472afd25c312cc04842181e4`.
+The corrected source retains two bounded attempts, subject to a new zero-call
+audit; no Trusted revision or future campaign has been authorized.

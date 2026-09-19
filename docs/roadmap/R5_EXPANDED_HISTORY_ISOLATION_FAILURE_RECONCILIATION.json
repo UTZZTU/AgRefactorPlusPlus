@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "status": "audited_pre_provider_model_adapter_failure_fixed",
+  "case_id": "Recursive_E1_linked_list_preexisting_candidate",
+  "source_sha256": "673c644da2e7b718b0ba50763d185cd599a69acc223927b1d730bbc51022b489",
+  "repository_head_at_execution": "11907732cffcc2e54b6eb5c3af63511f1de67326",
+  "failed_plan_file_sha256": "302476999fe625e425217bd445bc7dd3b4dd5e50f91d6441874be63c08e9d1cb",
+  "protocol_audit_path": "/data/agrefactor_runs/r5_p3_expanded_history_protocol_audit_1190773/protocol_audit.json",
+  "protocol_audit_file_sha256": "573a5352a12c9c014828ae611cfb0b822f4f9d2f1da5b279047c6c0cd363f481",
+  "failed_run_root": "/data/agrefactor_runs/r5_p3_expanded_history_real_1190773",
+  "acquisition_manifest_file_sha256": "9b39dcaaba3ff40f8c5be6fb21cdef7016075f220f76056e3acf7a127708ef0c",
+  "acquisition_result_file_sha256": "4e864b860ed5047a4452ddbb0aae0d06fd8a497d7c7caffb65997bc450abeeed",
+  "evidence_archive_sha256": "e61420dafb02f38573d927a98f34adb26da04bada4109a240f45743a9774e647",
+  "independent_audit_path": "/data/agrefactor_runs/r5_p3_expanded_history_result_audit_1190773/independent_audit.json",
+  "independent_audit_file_sha256": "669d431211330d17697d307e649b929a532f9823da0b8a6c0ff44a1b5c6ad75f",
+  "independent_audit_sha256": "e5d25df4ad1f6498550585e99600433909f012c5746214a69229f9f0536c29f0",
+  "failure_reason": "pre_provider_model_adapter_failure",
+  "mutation_provider_calls": 0,
+  "mutation_count": 0,
+  "verified_positive_episode_count": 0,
+  "root_cause": "macro_symbol_isolation_hidden_from_candidate_response_contract_parser",
+  "fix_repository_head": "39d8c56414482dae5a93da512bf85390d4fa07b5",
+  "fix": "materialized_identifier_isolation_v2",
+  "budget_before": {
+    "provider_calls": 96,
+    "vitis_launches": 39
+  },
+  "budget_after": {
+    "provider_calls": 97,
+    "vitis_launches": 41
+  },
+  "attempts_authorized_for_source": 3,
+  "attempts_consumed": 1,
+  "remaining_attempts": 2,
+  "confidence_threshold_weakened": false,
+  "future_files_read": false,
+  "future_outcomes_observed": false,
+  "trusted_revision_created": false,
+  "r5_real_campaign_allowed": false,
+  "r5_accepted": false,
+  "r6_started": false
+}

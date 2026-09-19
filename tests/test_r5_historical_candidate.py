@@ -181,6 +181,49 @@ class R5HistoricalCandidateTests(unittest.TestCase):
         self.assertNotIn("#define top top_hls", isolated)
         self.assertNotIn("void top(int *out)", isolated)
 
+    def test_post_fix_resume_requires_materialized_isolation(self) -> None:
+        plan = copy.deepcopy(self.plan)
+        plan.update(
+            {
+                "schema_version": 3,
+                "status": "frozen_after_audited_pre_provider_isolation_fix",
+                "legacy_candidate_outcome_observed": True,
+                "symbol_isolation_version": (
+                    "r5-historical-candidate-symbol-isolation-v2"
+                ),
+                "prior_observed_source_sha256s": ["a" * 64],
+                "required_legacy_markers": ["helper(n - 1)"],
+                "prior_failed_attempt": {
+                    "status": "clean_pre_provider_model_adapter_failure",
+                    "attempts_consumed": 1,
+                    "maximum_remaining_attempts": 2,
+                },
+                "confidence_threshold_weakened": False,
+            }
+        )
+        plan["isolated_candidate_sha256"] = text_sha256(
+            materialize_candidate_symbols(self.legacy, self.symbol_map)
+        )
+        plan["budget"]["provider_calls_before"] = 97
+        plan["budget"]["vitis_launches_before"] = 41
+        bundle = verify_historical_candidate_plan(self.root, plan)
+        self.assertEqual(
+            bundle.to_identity()["isolation_version"],
+            "r5-historical-candidate-symbol-isolation-v2",
+        )
+
+        plan["symbol_isolation_version"] = (
+            "r5-historical-candidate-symbol-isolation-v1"
+        )
+        plan["isolated_candidate_sha256"] = text_sha256(
+            isolate_candidate_symbols(self.legacy, self.symbol_map)
+        )
+        with self.assertRaisesRegex(
+            R5HistoricalCandidateError,
+            "post-fix historical resume boundary",
+        ):
+            verify_historical_candidate_plan(self.root, plan)
+
 
 if __name__ == "__main__":
     unittest.main()

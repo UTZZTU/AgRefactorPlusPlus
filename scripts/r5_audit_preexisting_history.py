@@ -66,6 +66,70 @@ def _git(repository: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
+def _verify_fixed_prior_attempt(
+    *, repository: Path, plan: Mapping[str, Any], bundle: Any, head: str
+) -> dict[str, Any]:
+    prior = plan.get("prior_failed_attempt")
+    if not isinstance(prior, Mapping):
+        raise PreexistingHistoryAuditError("fixed resume lacks prior attempt binding")
+    result_path = Path(str(prior.get("acquisition_result_path", ""))).resolve()
+    audit_path = Path(str(prior.get("independent_audit_path", ""))).resolve()
+    reconciliation_relative = Path(str(prior.get("reconciliation_path", "")))
+    reconciliation_path = (repository / reconciliation_relative).resolve()
+    try:
+        reconciliation_path.relative_to(repository)
+    except ValueError as exc:
+        raise PreexistingHistoryAuditError("failure reconciliation is unsafe") from exc
+    for path in (result_path, audit_path, reconciliation_path):
+        if path.is_symlink() or not path.is_file():
+            raise PreexistingHistoryAuditError("prior attempt evidence is missing")
+    expected_hashes = {
+        result_path: prior.get("acquisition_result_file_sha256"),
+        audit_path: prior.get("independent_audit_file_sha256"),
+        reconciliation_path: prior.get("reconciliation_file_sha256"),
+    }
+    if any(file_sha256(path) != expected for path, expected in expected_hashes.items()):
+        raise PreexistingHistoryAuditError("prior attempt evidence hash mismatch")
+    result = _load(result_path)
+    audit = _load(audit_path)
+    reconciliation = _load(reconciliation_path)
+    if (
+        result.get("status") != "inconclusive"
+        or result.get("provider_calls") != 1
+        or result.get("vitis_launches") != 2
+        or audit.get("status") != "clean_pre_provider_model_adapter_failure"
+        or audit.get("source_sha256") != bundle.source_sha256
+        or audit.get("critical_finding_count") != 0
+        or audit.get("blocking_finding_count") != 1
+        or audit.get("provider_calls") != 1
+        or audit.get("vitis_launches") != 2
+        or reconciliation.get("status")
+        != "audited_pre_provider_model_adapter_failure_fixed"
+        or reconciliation.get("source_sha256") != bundle.source_sha256
+        or reconciliation.get("remaining_attempts") != 2
+        or reconciliation.get("budget_after")
+        != {"provider_calls": 97, "vitis_launches": 41}
+    ):
+        raise PreexistingHistoryAuditError("prior attempt boundary is incompatible")
+    fix_commit = str(prior.get("fix_commit", ""))
+    ancestor = subprocess.run(
+        ["git", "-C", str(repository), "merge-base", "--is-ancestor", fix_commit, head],
+        check=False,
+        capture_output=True,
+    )
+    if ancestor.returncode != 0:
+        raise PreexistingHistoryAuditError("isolation fix is not an ancestor")
+    return {
+        "status": audit["status"],
+        "acquisition_result_file_sha256": file_sha256(result_path),
+        "independent_audit_file_sha256": file_sha256(audit_path),
+        "independent_audit_sha256": audit.get("audit_sha256"),
+        "reconciliation_file_sha256": file_sha256(reconciliation_path),
+        "fix_commit": fix_commit,
+        "fix_is_ancestor": True,
+    }
+
+
 def _compile_and_run(
     *,
     compiler: str,
@@ -162,6 +226,16 @@ def audit(
         or state.get("R5_PREDECESSOR_LIFECYCLE") != "Provisional"
     ):
         raise PreexistingHistoryAuditError("roadmap state does not permit acquisition")
+    prior_attempt_binding = (
+        _verify_fixed_prior_attempt(
+            repository=repository,
+            plan=plan,
+            bundle=bundle,
+            head=head,
+        )
+        if plan.get("schema_version") == 3
+        else None
+    )
 
     predecessor_path = Path(str(plan["predecessor_import_result"]))
     if (
@@ -261,6 +335,7 @@ def audit(
             plan.get("prior_observed_source_sha256s", predecessor_sources)
         ),
         "source_independence_verified": True,
+        "prior_failed_attempt": prior_attempt_binding,
         "calibration_bundle_file_sha256": file_sha256(calibration_path),
         "calibration_certificate_id": certificate["certificate_id"],
         "calibration_failure_class_scope": certificate_scope,

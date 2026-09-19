@@ -157,6 +157,7 @@ class R5HistoricalCandidateBundle:
     source_sha256: str
     isolated_candidate_sha256: str
     plan_sha256: str
+    isolation_version: str = ISOLATION_VERSION
 
     def to_identity(self) -> dict[str, Any]:
         return {
@@ -168,7 +169,7 @@ class R5HistoricalCandidateBundle:
             "source_sha256": self.source_sha256,
             "isolated_candidate_sha256": self.isolated_candidate_sha256,
             "plan_sha256": self.plan_sha256,
-            "isolation_version": ISOLATION_VERSION,
+            "isolation_version": self.isolation_version,
         }
 
 
@@ -179,14 +180,32 @@ def verify_historical_candidate_plan(
     root = Path(repository).expanduser().resolve()
     if not root.is_dir():
         raise R5HistoricalCandidateError("repository root is missing")
+    schema_version = plan.get("schema_version")
+    is_initial_freeze = schema_version in {1, 2}
+    is_fixed_resume = schema_version == 3
     if (
-        plan.get("schema_version") not in {1, 2}
-        or plan.get("status")
-        != "frozen_before_preexisting_candidate_outcome_observation"
+        schema_version not in {1, 2, 3}
+        or (
+            is_initial_freeze
+            and plan.get("status")
+            != "frozen_before_preexisting_candidate_outcome_observation"
+        )
+        or (
+            is_fixed_resume
+            and plan.get("status")
+            != "frozen_after_audited_pre_provider_isolation_fix"
+        )
         or plan.get("period") != "history"
         or plan.get("control_role") != "positive"
         or plan.get("failure_family") != "unsupported_construct"
-        or plan.get("legacy_candidate_outcome_observed") is not False
+        or (
+            is_initial_freeze
+            and plan.get("legacy_candidate_outcome_observed") is not False
+        )
+        or (
+            is_fixed_resume
+            and plan.get("legacy_candidate_outcome_observed") is not True
+        )
         or plan.get("future_outcomes_observed") is not False
         or plan.get("trusted_revision_creation_allowed") is not False
         or plan.get("r5_real_campaign_allowed") is not False
@@ -268,7 +287,7 @@ def verify_historical_candidate_plan(
         or source_sha in predecessor_sources
     ):
         raise R5HistoricalCandidateError("historical source is not predecessor-independent")
-    if plan.get("schema_version") == 2:
+    if schema_version in {2, 3}:
         prior_sources = plan.get("prior_observed_source_sha256s")
         required_markers = plan.get("required_legacy_markers")
         if (
@@ -293,6 +312,20 @@ def verify_historical_candidate_plan(
         ):
             raise R5HistoricalCandidateError(
                 "required legacy construct evidence is missing"
+            )
+    if is_fixed_resume:
+        prior_attempt = plan.get("prior_failed_attempt")
+        if (
+            isolation_version != MATERIALIZED_ISOLATION_VERSION
+            or not isinstance(prior_attempt, Mapping)
+            or prior_attempt.get("status")
+            != "clean_pre_provider_model_adapter_failure"
+            or prior_attempt.get("attempts_consumed") != 1
+            or prior_attempt.get("maximum_remaining_attempts") != 2
+            or plan.get("confidence_threshold_weakened") is not False
+        ):
+            raise R5HistoricalCandidateError(
+                "post-fix historical resume boundary is invalid"
             )
     future_ids = plan.get("future_holdout_case_ids")
     if (
@@ -345,6 +378,7 @@ def verify_historical_candidate_plan(
         source_sha256=source_sha,
         isolated_candidate_sha256=expected_isolated,
         plan_sha256=plan_sha,
+        isolation_version=str(isolation_version),
     )
 
 
