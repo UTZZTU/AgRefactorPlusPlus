@@ -68,6 +68,9 @@ class R5BoundedPilotTests(unittest.TestCase):
             MODULE, "sha_bytes", return_value="8" * 64
         ):
             manifest = MODULE.build_pilot_manifest(case, state, protocol)
+        self.assertTrue(manifest["r4_accepted"])
+        self.assertFalse(manifest["r5_accepted"])
+        self.assertFalse(manifest["r6_started"])
         self.assertEqual(manifest["provider_recovery_reserve"], 39)
         self.assertEqual(manifest["vitis_recovery_reserve"], 44)
         self.assertEqual(
