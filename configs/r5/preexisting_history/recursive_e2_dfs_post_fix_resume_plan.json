@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "plan_id": "v2.3-r5-preexisting-history-recursive-e2-dfs-post-fix-resume-v1",
+  "status": "frozen_after_audited_contract_fix_before_remaining_attempt",
+  "case_id": "Recursive_E2_DFS_preexisting_candidate",
+  "period": "history",
+  "control_role": "positive",
+  "failure_family": "unsupported_construct",
+  "continuation_plan_path": "configs/r5/preexisting_history/recursive_e2_dfs_continuation_plan.json",
+  "continuation_plan_file_sha256": "6f3605d747196190b79776b80e811c282880f08ae99e0b859eec50c23bc036fd",
+  "continuation_plan_sha256": "b917bf734311ca2a7a9b8a184fd27f633a0bef39c708c636e1c512309bcd5b9e",
+  "failed_continuation_run_root": "/data/agrefactor_runs/r5_p3_preexisting_history_continuation_real_bd1c894",
+  "failed_continuation_manifest_file_sha256": "a6fa1cc08a839b08ef2c92512866322dde0143132c8749534760425ca474f10c",
+  "failed_continuation_result_file_sha256": "d1329061c9fe3ca8d72221a8dcf05ec179fa547faf48083fd93dbedcc3fb3048",
+  "failed_continuation_independent_audit_path": "/data/agrefactor_runs/r5_p3_preexisting_history_continuation_result_audit_5cd2c17/independent_audit.json",
+  "failed_continuation_independent_audit_file_sha256": "b832706762e6f3e6968c8a276da275b1e6eaaad52d23439e0df2d60fa260eb6d",
+  "failed_continuation_independent_audit_sha256": "999b40b9a1b119e1dbf0c5547ab1d860e7b7322a3da80771b5c04f60f5164987",
+  "failure_reconciliation_path": "docs/roadmap/R5_PREEXISTING_HISTORY_CONTINUATION_FAILURE_RECONCILIATION.json",
+  "failure_reconciliation_file_sha256": "2c87298da419c29932223fff2c35ce7376555c972c8218e20f3463313e440c40",
+  "contract_fix_commit": "5cd2c1781261f6339f73bb7819e3af29e7b654f1",
+  "attempts_authorized_originally": 2,
+  "attempts_consumed": 1,
+  "attempt_ordinal": 3,
+  "maximum_remaining_attempts": 1,
+  "stop_after_first_verified_positive": true,
+  "maximum_candidate_mutations": 1,
+  "budget": {
+    "provider_calls_before": 95,
+    "vitis_launches_before": 37,
+    "provider_call_upper_bound": 2,
+    "vitis_launch_upper_bound": 6,
+    "provider_hard_cap": 500,
+    "vitis_hard_cap": 500
+  },
+  "confidence_boundary": {
+    "minimum_authorized_label": "high",
+    "accepted_calibration_certificate_unchanged": true,
+    "threshold_weakened": false,
+    "medium_may_mutate": false
+  },
+  "future_holdout_case_ids": [
+    "Exception_E3_Turbo_Encoder",
+    "Pointer_E3_double_pointer"
+  ],
+  "future_files_read_by_protocol": false,
+  "future_outcomes_observed": false,
+  "expected_outputs_invented": false,
+  "original_benchmark_files_mutated": false,
+  "trusted_revision_creation_allowed": false,
+  "r5_real_campaign_allowed": false,
+  "r5_accepted": false,
+  "r6_started": false
+}
