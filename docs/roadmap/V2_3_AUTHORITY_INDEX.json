@@ -257,6 +257,8 @@
   "r5_temporal_memory_efficacy_established": false,
   "r5_ready_for_user_acceptance": true,
   "r5_readiness_reconciliation": "docs/roadmap/R5_FORMAL_CAMPAIGN_READINESS_RECONCILIATION.json",
+  "r5_readiness_evidence_archive": "/data/agrefactor_runs/agrefactor_v23_r5_ready_for_user_acceptance_20260919.tar.gz",
+  "r5_readiness_evidence_archive_sha256": "af02181f4209c400f0303db2b62938b1e3c069ba008038ac039ba41dcb60e126",
   "r5_consumed_provider_calls": 248,
   "r5_consumed_vitis_launches": 111,
   "r5_real_campaign_allowed": false,

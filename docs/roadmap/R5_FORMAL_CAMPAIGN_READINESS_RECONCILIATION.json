@@ -62,6 +62,13 @@
     "provider_calls_remaining": 252,
     "vitis_launches_remaining": 389
   },
+  "evidence_archive": {
+    "path": "/data/agrefactor_runs/agrefactor_v23_r5_ready_for_user_acceptance_20260919.tar.gz",
+    "sha256": "af02181f4209c400f0303db2b62938b1e3c069ba008038ac039ba41dcb60e126",
+    "file_count": 687,
+    "sha256_sidecar": "/data/agrefactor_runs/agrefactor_v23_r5_ready_for_user_acceptance_20260919.tar.gz.sha256",
+    "verification": "passed"
+  },
   "claims": {
     "r5_mechanisms_and_safety_boundaries_operational": true,
     "temporal_memory_efficacy_established": false,
