@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+"""Independent file-only audit for the bounded R5 pilot."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+from pathlib import Path
+from typing import Any, Mapping
+
+ROOT = Path("/data/AgRefactor")
+STATE = ROOT / "docs/roadmap/V2_3_STATE.json"
+SHA256 = 64
+
+
+def load(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise RuntimeError("JSON object required: " + str(path))
+    return value
+
+
+def sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def canonical(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def unsafe_persisted_content(value: Any) -> bool:
+    forbidden = {
+        "private_reasoning",
+        "provider_response",
+        "raw_provider_response",
+        "reasoning_content",
+        "response_content",
+        "secret_value",
+    }
+    if isinstance(value, Mapping):
+        for raw_key, child in value.items():
+            key = str(raw_key).casefold()
+            if key in forbidden:
+                return True
+            if key.endswith("_persisted") and child not in (False, "false"):
+                return True
+            if unsafe_persisted_content(child):
+                return True
+    elif isinstance(value, (list, tuple)):
+        return any(unsafe_persisted_content(child) for child in value)
+    elif isinstance(value, str):
+        lowered = value.casefold()
+        return any(tag in lowered for tag in ("<think", "</think", "<reasoning", "</reasoning"))
+    return False
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("evidence_root", type=Path)
+    args = parser.parse_args()
+    root = args.evidence_root.resolve()
+    state = load(STATE)
+    manifest = load(root / "pilot_manifest.json")
+    result = load(root / "pilot_result.json")
+    findings: list[dict[str, str]] = []
+    if manifest.get("status") != "frozen_before_pilot_outcome_observation":
+        findings.append({"severity": "critical", "code": "pilot_manifest_not_frozen"})
+    if result.get("pilot_manifest_sha256") != manifest.get("pilot_manifest_sha256"):
+        findings.append({"severity": "critical", "code": "manifest_binding_mismatch"})
+    unsigned = dict(manifest); stored = unsigned.pop("pilot_manifest_sha256", None)
+    if not isinstance(stored, str) or hashlib.sha256(canonical(unsigned).encode()).hexdigest() != stored:
+        findings.append({"severity": "critical", "code": "pilot_manifest_hash_invalid"})
+    unsigned_result = dict(result); stored_result = unsigned_result.pop("result_sha256", None)
+    if not isinstance(stored_result, str) or hashlib.sha256(canonical(unsigned_result).encode()).hexdigest() != stored_result:
+        findings.append({"severity": "critical", "code": "pilot_result_hash_invalid"})
+    if manifest.get("repository_head") != result.get("repository_head"):
+        findings.append({"severity": "critical", "code": "repository_head_mismatch"})
+    if manifest.get("repository_head") != state.get("head"):
+        findings.append({"severity": "warning", "code": "pilot_head_differs_from_state"})
+    if manifest.get("case_id") != result.get("case_id") or manifest.get("repeats") != 3:
+        findings.append({"severity": "critical", "code": "pilot_case_or_repeat_mismatch"})
+    if result.get("future_outcomes_observed") is not True or result.get("future_files_executed") is not True:
+        findings.append({"severity": "critical", "code": "pilot_future_execution_not_recorded"})
+    if result.get("cross_arm_cache_used") is not False or result.get("hidden_input_count") != 0:
+        findings.append({"severity": "critical", "code": "cache_or_hidden_boundary_violation"})
+    if result.get("git_history_mutations") != 0 or result.get("r5_accepted") is not False or result.get("r6_started") is not False:
+        findings.append({"severity": "critical", "code": "authority_or_git_boundary_violation"})
+    provider = int(result.get("provider_calls", -1)); vitis = int(result.get("vitis_launches", -1))
+    if provider < 0 or provider > int(manifest.get("provider_upper_bound", 60)):
+        findings.append({"severity": "critical", "code": "provider_bound_violation"})
+    if vitis < 0 or vitis > int(manifest.get("vitis_upper_bound", 72)):
+        findings.append({"severity": "critical", "code": "vitis_bound_violation"})
+    if int(result.get("provider_calls_after", -1)) != int(manifest.get("provider_used_before", -2)) + provider:
+        findings.append({"severity": "critical", "code": "provider_ledger_mismatch"})
+    if int(result.get("vitis_launches_after", -1)) != int(manifest.get("vitis_used_before", -2)) + vitis:
+        findings.append({"severity": "critical", "code": "vitis_ledger_mismatch"})
+    baselines = result.get("baselines", [])
+    observations = result.get("observations", [])
+    if not isinstance(baselines, list) or len(baselines) != 3:
+        findings.append({"severity": "critical", "code": "baseline_repeat_count"})
+    if not isinstance(observations, list) or len(observations) != 21:
+        findings.append({"severity": "critical", "code": "arm_observation_count"})
+    baseline_ids = {item.get("baseline_id") for item in baselines if isinstance(item, Mapping)}
+    if len(baseline_ids) != 3:
+        findings.append({"severity": "critical", "code": "baseline_identity_not_unique"})
+    for index, item in enumerate(observations if isinstance(observations, list) else []):
+        if not isinstance(item, Mapping):
+            findings.append({"severity": "critical", "code": "observation_not_object"})
+            continue
+        if item.get("baseline_id") not in baseline_ids:
+            findings.append({"severity": "critical", "code": "observation_baseline_mismatch"})
+        if item.get("case_id") != manifest.get("case_id"):
+            findings.append({"severity": "critical", "code": "observation_case_mismatch"})
+        if item.get("hidden_input_count") != 0 or item.get("cross_arm_cache_used") is not False:
+            findings.append({"severity": "critical", "code": "observation_boundary_violation"})
+        arm = item.get("arm")
+        if arm not in {"A0", "A1", "A2", "A3", "A4", "A5", "A6"}:
+            findings.append({"severity": "critical", "code": "unknown_arm"})
+        if not isinstance(item.get("provider_calls"), int) or not isinstance(item.get("vitis_launches"), int):
+            findings.append({"severity": "critical", "code": "observation_usage_malformed"})
+        if unsafe_persisted_content(item):
+            findings.append({"severity": "critical", "code": "private_or_raw_content_persisted"})
+    statuses = [item.get("status") for item in observations if isinstance(item, Mapping)]
+    if any(status == "invalid_evidence" for status in statuses):
+        findings.append({"severity": "critical", "code": "invalid_evidence_observed"})
+    critical = sum(item["severity"] == "critical" for item in findings)
+    status = "clean" if critical == 0 else "blocked"
+    audit = {
+        "schema_version": 1,
+        "auditor": "r5-bounded-pilot-file-only-v1",
+        "status": status,
+        "reason": "all_pilot_boundaries_verified" if status == "clean" else "critical_pilot_finding",
+        "critical_finding_count": critical,
+        "findings": findings,
+        "pilot_manifest_sha256": sha(root / "pilot_manifest.json"),
+        "pilot_result_sha256": sha(root / "pilot_result.json"),
+        "provider_calls": 0,
+        "vitis_launches": 0,
+        "git_history_mutations": 0,
+        "future_files_read_by_auditor": False,
+        "r5_accepted": False,
+        "r6_started": False,
+    }
+    audit["audit_sha256"] = hashlib.sha256(canonical(audit).encode()).hexdigest()
+    (root / "independent_audit.json").write_text(json.dumps(audit, indent=2, sort_keys=True) + chr(10), encoding="utf-8")
+    print("R5_BOUNDED_PILOT_AUDIT_STATUS=" + status)
+    print("R5_BOUNDED_PILOT_AUDIT_REASON=" + audit["reason"])
+    print("CRITICAL_FINDINGS=" + str(critical))
+    print("PROVIDER_CALLS=0")
+    print("VITIS_LAUNCHES=0")
+    return 0 if status == "clean" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
