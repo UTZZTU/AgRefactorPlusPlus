@@ -120,9 +120,26 @@ The audits reported zero critical findings, zero Provider calls, zero Vitis
 launches, zero git mutations, and no future-holdout reads. This is a wiring
 checkpoint only; it is not R5 acceptance or a real campaign result.
 
-The smoke was generated before the implementation commit that records this
-checkpoint. It must be regenerated after commit so its repository-head
-binding and independent audit refer to the committed tree.
+The smoke was regenerated after the implementation and state commits at
+repository head f4a6f0c2d8ee3ccf80bc7cab868026827aa413d3. The post-commit
+wiring evidence is
+/data/agrefactor_runs/r5_p4_a0_a6_wiring_smoke_postcommit/wiring_smoke.json
+(SHA-256 ebb9d43bcccb0e4c3d91148bc5139bd60abb9a8d9cbb5ea659df58420b9c3090).
+Its protocol audit is
+/data/agrefactor_runs/r5_p4_a0_a6_wiring_smoke_postcommit/protocol_audit.json
+(SHA-256 1460cd7e77193f8e37ae99428808d588b65ed7cbfd6b400a91426093dc2ed783)
+and its independent audit is
+/data/agrefactor_runs/r5_p4_a0_a6_wiring_smoke_postcommit/independent_audit.json
+(SHA-256 94f1af794b415d0e559e40a44ba54cea24acd85e6d2b0b669986aab4b0308e5a).
+Both audits are clean with zero external calls, zero git mutations, and no
+future-holdout reads.
+
+The correct agrefactor Conda/Vitis environment also completed the full
+deterministic repository regression: 2,596 tests passed. Tests that print
+Provider/Vitis-looking markers use in-process fakes or temporary fixtures and
+did not enter the authoritative R5 ledger; the ledger remains 104 Provider
+calls and 59 Vitis launches. This full regression is a deterministic
+checkpoint, not R5 pilot evidence.
 
 ## Calibration-Scope Correction
 
