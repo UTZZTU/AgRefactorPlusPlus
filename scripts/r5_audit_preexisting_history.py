@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,9 @@ from agrefactor.recovery.r5_historical_candidate import (
     file_sha256,
     verify_historical_candidate_plan,
 )
+
+
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class PreexistingHistoryAuditError(RuntimeError):
@@ -293,7 +297,7 @@ def _verify_cosim_prior_attempt(
         or audit.get("provider_calls") != 2
         or audit.get("vitis_launches") != 5
         or not isinstance(candidate_after, str)
-        or not re.fullmatch(r"[0-9a-f]{64}", candidate_after)
+        or not _SHA256.fullmatch(candidate_after)
         or reconciliation.get("status")
         != "audited_cosim_interface_depth_contract_fixed"
         or reconciliation.get("source_sha256") != bundle.source_sha256

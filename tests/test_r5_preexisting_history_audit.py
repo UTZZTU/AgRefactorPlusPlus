@@ -16,6 +16,11 @@ SPEC.loader.exec_module(AUDIT)
 
 
 class R5PreexistingHistoryAuditTests(unittest.TestCase):
+    def test_candidate_hash_shape_is_strict(self) -> None:
+        self.assertIsNotNone(AUDIT._SHA256.fullmatch("a" * 64))
+        self.assertIsNone(AUDIT._SHA256.fullmatch("A" * 64))
+        self.assertIsNone(AUDIT._SHA256.fullmatch("a" * 63))
+
     def test_accepted_legacy_split_has_narrow_implicit_scope(self) -> None:
         self.assertEqual(
             AUDIT._certificate_scope(
