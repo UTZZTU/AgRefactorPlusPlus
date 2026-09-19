@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "plan_id": "v2.3-r5-c2hlsc-quicksort-authorized-candidate-revalidation-v1",
+  "status": "frozen_authorized_candidate_revalidation",
+  "case_id": "C2HLSC_quicksort_preexisting_candidate",
+  "period": "history",
+  "reference_top": "quickSort",
+  "candidate_top": "r5_candidate_quickSort",
+  "paths": {
+    "reference": "src/c2hlsc/quicksort/qs.cpp",
+    "public_test": "configs/r5/preexisting_history/C2HLSC_quicksort/public.cpp",
+    "hidden_test": "configs/r5/preexisting_history/C2HLSC_quicksort/hidden.cpp"
+  },
+  "file_sha256s": {
+    "reference": "d8f2d14c19fc0559e118a6addf1f04f1eb1143ee9cb62b94453fea2eac156072",
+    "public_test": "459ddbe4cab584834aacd6bd7d7fe85fee5637c794817fb97186861eafc6e02d",
+    "hidden_test": "0a981c3235182876ef4a7ba6ac6781c1bdefc22ca545aadb4943b1793f846be6"
+  },
+  "source_sha256": "d8f2d14c19fc0559e118a6addf1f04f1eb1143ee9cb62b94453fea2eac156072",
+  "public_runtime_contract": {
+    "schema_version": 2,
+    "kind": "public_differential_self_check_v1",
+    "candidate_mismatch_returncodes": [1],
+    "cosim_interface_depths": {
+      "arr": 9
+    }
+  },
+  "sealed_candidate_evidence": {
+    "archive_path": "/data/agrefactor_runs/r5_p3_c2hlsc_quicksort_post_fix_real_ef0fa9d/evidence.zip",
+    "archive_sha256": "7008c2a415ec29cc92c28e12a1ea0b1aef6d411ce14cf561f6a036022a131d6b",
+    "content_manifest_file_sha256": "f388fb6d4e10c1c9240230b12eb715ceaac9a85c38fbe3e2fd9726586b108af7",
+    "candidate_member": "work/fca3a857992c4fd76326590f135cbb6e03ba082fbe3748fd992bc677f4c76dda.r4/attempt_001/csim/public/suite_001/candidate.cpp",
+    "candidate_before_sha256": "4d7e8c9d6ff2bea8770f58ddc73fdc99135387b6ff58751995de8b333cacb98a",
+    "candidate_after_sha256": "ffee44eba1bd9896f061ccb14d049a9569d82bd9daa98fce061b0aec0958c3c7",
+    "source_episode_member": "ledger/r5-467840816422f25956b2115952d491b4d3723da7.json",
+    "source_episode_sha256": "4b402221ad7eccaf67a8e832164828fa69069b2f8ea56f776da500c412fa2495",
+    "authorization_id": "fca3a857992c4fd76326590f135cbb6e03ba082fbe3748fd992bc677f4c76dda"
+  },
+  "prior_configuration_failure": {
+    "acquisition_result_path": "/data/agrefactor_runs/r5_p3_c2hlsc_quicksort_post_fix_real_ef0fa9d/acquisition_result.json",
+    "acquisition_result_file_sha256": "c7b53daaec7b8c451adb9038d5ea08aa358b06c8d603d007901cd9b3cf659cea",
+    "independent_audit_path": "/data/agrefactor_runs/r5_p3_c2hlsc_quicksort_post_fix_result_audit_1fe1206",
+    "independent_audit_file_sha256": "8b6df6976b753ec4f858fa7ef51b5b0fdd0e8e08430df8084de8e91092c56228",
+    "reconciliation_path": "docs/roadmap/R5_C2HLSC_QUICKSORT_COSIM_INTERFACE_RECONCILIATION.json",
+    "reconciliation_file_sha256": "a74a0d9a218088e50be2fa28c4a588bfe1bad15be634b1ef10bca9e655c4187f"
+  },
+  "budget": {
+    "provider_calls_before": 104,
+    "vitis_launches_before": 56,
+    "provider_call_upper_bound": 0,
+    "vitis_launch_upper_bound": 3,
+    "provider_hard_cap": 500,
+    "vitis_hard_cap": 500
+  },
+  "future_holdout_case_ids": [
+    "Exception_E3_Turbo_Encoder",
+    "Pointer_E3_double_pointer"
+  ],
+  "provider_calls_allowed": false,
+  "candidate_content_addressed": true,
+  "original_authorization_reused_for_identity_only": true,
+  "original_episode_mutation_allowed": false,
+  "fresh_full_validation_required": true,
+  "clean_independent_audit_required": true,
+  "future_files_read_by_protocol": false,
+  "future_outcomes_observed": false,
+  "trusted_revision_creation_allowed": false,
+  "r5_real_campaign_allowed": false,
+  "r5_accepted": false,
+  "r6_started": false
+}

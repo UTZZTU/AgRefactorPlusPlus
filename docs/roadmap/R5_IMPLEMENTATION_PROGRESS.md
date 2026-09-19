@@ -625,3 +625,23 @@ separate clean audit, and leave the original episode immutable. Until those
 conditions are implemented and independently verified, no new positive
 episode or lifecycle promotion is permitted. Future holdouts remain unread,
 R5 remains unaccepted, and R6 remains stopped.
+
+## Authorized Candidate Revalidation Freeze
+
+The exact changed Candidate from the second quicksort attempt is frozen for a
+zero-Provider fresh revalidation. This is not another repair attempt: the
+Candidate bytes, original A2 authorization, source episode, source archive,
+prior configuration-failure audit, reference, Public test, Hidden test, and
+schema-2 runtime contract are all content-addressed before execution. The plan
+is
+`configs/r5/preexisting_history/c2hlsc_quicksort_authorized_candidate_revalidation_plan.json`.
+
+The execution reuses `LocalCandidateValidationHandlerFactory` and
+`ValidationOrchestrator`, so it does not add a product entrypoint or a second
+Vitis flow. Provider use is forbidden. At most three physical Vitis launches
+are allowed: Public csim, csynth, and Public RTL COSIM; Hidden validation keeps
+the existing host-differential path. A separate file-only auditor must verify
+the full fresh prefix, Candidate identity, semantic preservation, original
+episode immutability, and zero critical findings. The executor cannot declare
+itself positive, create a Trusted revision, authorize the future campaign,
+accept R5, or start R6.
