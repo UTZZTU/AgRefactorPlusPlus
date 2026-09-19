@@ -741,3 +741,22 @@ next phase is the A0-A6 wiring smoke against the existing `refactor` path,
 then the bounded campaign and paired regression. `optimize` remains `safe-v1`,
 there is no new CLI or Vitis flow, R5 remains unaccepted, and R6 remains
 stopped.
+## Bounded Real Pilot Preflight
+
+The one-case future pilot is now implemented as a research runner over the
+existing product `refactor` capture and the accepted R4 controller. It does
+not add a product CLI or a second Vitis flow. Each of three repeats creates
+one ordinary common baseline, binds its runtime-derived context signature,
+then executes counterbalanced A0-A6 arms in isolated workspaces. A0/A1 remain
+observation-only; A2/A3 carry no gated memory; A4-A6 receive the frozen
+Trusted snapshot and candidate-only payload.
+
+A new zero-call protocol audit at
+`/data/agrefactor_runs/r5_p5_bounded_pilot_protocol_audit_732852d`
+reconciles the authoritative `104/59` ledger. It freezes a one-case pilot
+upper bound of 60 Provider calls and 72 Vitis launches, and a later two-case
+formal bound of 120/144 while retaining the required recovery reserve. The
+pilot runner and its file-only auditor are committed at
+`b16114c68b7cd7d0e812b3af4b25a658a206f7b6`. No future outcome has been
+observed at this checkpoint; real execution still requires the runner's
+zero-call preflight.
