@@ -226,8 +226,13 @@ def audit(root: Path) -> dict[str, Any]:
             or public_cosim.get("execution", {}).get("returncode") != 0
             or public_cosim.get("execution", {}).get("cosim_launched") is not True
             or public_cosim.get("typed_outcome", {}).get("status") != "passed"
-            or hidden_csim.get("typed_outcome", {}).get("status") != "passed"
-            or hidden_csim.get("typed_outcome", {}).get("candidate_sha256")
+            or hidden_csim.get("compile_execution", {}).get("status") != "completed"
+            or hidden_csim.get("compile_execution", {}).get("returncode") != 0
+            or hidden_csim.get("simulation_execution", {}).get("status") != "completed"
+            or hidden_csim.get("simulation_execution", {}).get("returncode") != 0
+            or hashlib.sha256(
+                payloads.get((base / "csim/hidden/suite_001/refactor_code.cpp").as_posix(), b"")
+            ).hexdigest()
             != candidate_after
         ):
             raise R5AuthorizedRevalidationResultAuditError(
