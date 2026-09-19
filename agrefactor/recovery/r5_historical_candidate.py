@@ -16,6 +16,7 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _SAFE_RELATIVE = re.compile(r"^[A-Za-z0-9_./-]+$")
 ISOLATION_VERSION = "r5-historical-candidate-symbol-isolation-v1"
 MATERIALIZED_ISOLATION_VERSION = "r5-historical-candidate-symbol-isolation-v2"
+_PUBLIC_RUNTIME_CONTRACT_KIND = "public_differential_self_check_v1"
 
 
 class R5HistoricalCandidateError(ValueError):
@@ -142,6 +143,90 @@ def _require_sha256(value: Any, label: str) -> str:
     return value
 
 
+def _normalize_public_runtime_contract(
+    value: Any,
+    *,
+    required: bool,
+) -> dict[str, Any]:
+    if value is None:
+        if required:
+            raise R5HistoricalCandidateError(
+                "post-fix plan lacks a Public runtime contract"
+            )
+        return {
+            "schema_version": 1,
+            "kind": _PUBLIC_RUNTIME_CONTRACT_KIND,
+            "candidate_mismatch_returncodes": [1],
+        }
+    if not isinstance(value, Mapping):
+        raise R5HistoricalCandidateError(
+            "Public runtime contract must be an object"
+        )
+    version = value.get("schema_version")
+    base = {"schema_version", "kind", "candidate_mismatch_returncodes"}
+    expected = (
+        base
+        if version == 1
+        else (base | {"cosim_interface_depths"} if version == 2 else None)
+    )
+    if expected is None or set(value) != expected:
+        raise R5HistoricalCandidateError(
+            "Public runtime contract shape is invalid"
+        )
+    if value.get("kind") != _PUBLIC_RUNTIME_CONTRACT_KIND:
+        raise R5HistoricalCandidateError(
+            "Public runtime contract kind is invalid"
+        )
+    raw_codes = value.get("candidate_mismatch_returncodes")
+    if (
+        not isinstance(raw_codes, Sequence)
+        or isinstance(raw_codes, (str, bytes))
+        or not raw_codes
+    ):
+        raise R5HistoricalCandidateError(
+            "Public mismatch return codes are invalid"
+        )
+    codes: list[int] = []
+    for raw_code in raw_codes:
+        if (
+            isinstance(raw_code, bool)
+            or not isinstance(raw_code, int)
+            or raw_code <= 0
+            or raw_code > 255
+            or raw_code in codes
+        ):
+            raise R5HistoricalCandidateError(
+                "Public mismatch return codes are invalid"
+            )
+        codes.append(raw_code)
+    normalized: dict[str, Any] = {
+        "schema_version": version,
+        "kind": _PUBLIC_RUNTIME_CONTRACT_KIND,
+        "candidate_mismatch_returncodes": codes,
+    }
+    if version == 2:
+        raw_depths = value.get("cosim_interface_depths")
+        if not isinstance(raw_depths, Mapping) or not raw_depths:
+            raise R5HistoricalCandidateError(
+                "COSIM interface depths are missing"
+            )
+        depths: dict[str, int] = {}
+        for raw_port, raw_depth in raw_depths.items():
+            if (
+                not isinstance(raw_port, str)
+                or not _IDENTIFIER.fullmatch(raw_port)
+                or isinstance(raw_depth, bool)
+                or not isinstance(raw_depth, int)
+                or raw_depth <= 0
+            ):
+                raise R5HistoricalCandidateError(
+                    "COSIM interface depth entry is invalid"
+                )
+            depths[raw_port] = raw_depth
+        normalized["cosim_interface_depths"] = dict(sorted(depths.items()))
+    return normalized
+
+
 @dataclass(frozen=True, slots=True)
 class R5HistoricalCandidateBundle:
     case_id: str
@@ -149,6 +234,7 @@ class R5HistoricalCandidateBundle:
     candidate_top: str
     paths: Mapping[str, str]
     file_sha256s: Mapping[str, str]
+    public_runtime_contract: Mapping[str, Any]
     reference_code: str
     legacy_candidate_code: str
     isolated_candidate_code: str
@@ -166,6 +252,9 @@ class R5HistoricalCandidateBundle:
             "candidate_top": self.candidate_top,
             "paths": dict(self.paths),
             "file_sha256s": dict(self.file_sha256s),
+            "public_runtime_contract": json.loads(
+                json.dumps(self.public_runtime_contract, sort_keys=True)
+            ),
             "source_sha256": self.source_sha256,
             "isolated_candidate_sha256": self.isolated_candidate_sha256,
             "plan_sha256": self.plan_sha256,
@@ -184,8 +273,9 @@ def verify_historical_candidate_plan(
     is_initial_freeze = schema_version in {1, 2}
     is_fixed_resume = schema_version == 3
     is_final_resume = schema_version == 4
+    is_cosim_fixed_resume = schema_version == 5
     if (
-        schema_version not in {1, 2, 3, 4}
+        schema_version not in {1, 2, 3, 4, 5}
         or (
             is_initial_freeze
             and plan.get("status")
@@ -204,6 +294,11 @@ def verify_historical_candidate_plan(
             and plan.get("status")
             != "frozen_before_final_expanded_history_attempt"
         )
+        or (
+            is_cosim_fixed_resume
+            and plan.get("status")
+            != "frozen_after_audited_cosim_interface_contract_fix"
+        )
         or plan.get("period") != "history"
         or plan.get("control_role") != "positive"
         or plan.get("failure_family") != "unsupported_construct"
@@ -212,7 +307,7 @@ def verify_historical_candidate_plan(
             and plan.get("legacy_candidate_outcome_observed") is not False
         )
         or (
-            (is_fixed_resume or is_final_resume)
+            (is_fixed_resume or is_final_resume or is_cosim_fixed_resume)
             and plan.get("legacy_candidate_outcome_observed") is not True
         )
         or plan.get("future_outcomes_observed") is not False
@@ -220,6 +315,10 @@ def verify_historical_candidate_plan(
         or plan.get("r5_real_campaign_allowed") is not False
     ):
         raise R5HistoricalCandidateError("historical Candidate plan boundary is invalid")
+    public_runtime_contract = _normalize_public_runtime_contract(
+        plan.get("public_runtime_contract"),
+        required=is_cosim_fixed_resume,
+    )
     case_id = plan.get("case_id")
     reference_top = plan.get("reference_top")
     candidate_top = plan.get("candidate_top")
@@ -296,7 +395,7 @@ def verify_historical_candidate_plan(
         or source_sha in predecessor_sources
     ):
         raise R5HistoricalCandidateError("historical source is not predecessor-independent")
-    if schema_version in {2, 3, 4}:
+    if schema_version in {2, 3, 4, 5}:
         prior_sources = plan.get("prior_observed_source_sha256s")
         required_markers = plan.get("required_legacy_markers")
         if (
@@ -353,6 +452,21 @@ def verify_historical_candidate_plan(
             raise R5HistoricalCandidateError(
                 "final historical attempt boundary is invalid"
             )
+    if is_cosim_fixed_resume:
+        prior_attempt = plan.get("prior_attempt")
+        if (
+            isolation_version != MATERIALIZED_ISOLATION_VERSION
+            or not isinstance(prior_attempt, Mapping)
+            or prior_attempt.get("status")
+            != "clean_cosim_interface_depth_configuration_failure"
+            or prior_attempt.get("attempts_consumed") != 2
+            or prior_attempt.get("maximum_remaining_attempts") != 1
+            or public_runtime_contract.get("schema_version") != 2
+            or plan.get("confidence_threshold_weakened") is not False
+        ):
+            raise R5HistoricalCandidateError(
+                "post-COSIM-fix historical resume boundary is invalid"
+            )
     future_ids = plan.get("future_holdout_case_ids")
     if (
         not isinstance(future_ids, list)
@@ -396,6 +510,7 @@ def verify_historical_candidate_plan(
         candidate_top=candidate_top,
         paths=paths,
         file_sha256s=hashes,
+        public_runtime_contract=public_runtime_contract,
         reference_code=reference,
         legacy_candidate_code=legacy,
         isolated_candidate_code=isolated,

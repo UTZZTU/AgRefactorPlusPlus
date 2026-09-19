@@ -401,11 +401,7 @@ def _task(
                 suite_version="r5-preexisting-history-v1",
                 case_count=1,
                 testbench_path=str(public_path),
-                runtime_contract={
-                    "schema_version": 1,
-                    "kind": "public_differential_self_check_v1",
-                    "candidate_mismatch_returncodes": [1],
-                },
+                runtime_contract=candidate.public_runtime_contract,
             ),
             TestSuiteSpec(
                 suite_id=hidden_suite,

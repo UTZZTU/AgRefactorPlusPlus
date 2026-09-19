@@ -508,6 +508,208 @@ def _verify_pre_provider_contract_failure(
     }
 
 
+def _verify_post_mutation_cosim_configuration_failure(
+    *,
+    payloads: Mapping[str, bytes],
+    manifest: Mapping[str, Any],
+    result: Mapping[str, Any],
+    shadow: Mapping[str, Any],
+) -> dict[str, Any]:
+    integration = result.get("r5_integration")
+    advisory = shadow.get("advisory", {})
+    controller = (
+        integration.get("r4_controller_result", {})
+        if isinstance(integration, Mapping)
+        else {}
+    )
+    reasons = controller.get("reasons") if isinstance(controller, Mapping) else None
+    after_sha = controller.get("after_candidate_sha256")
+    formal_id = controller.get("formal_validation_id")
+    if (
+        result.get("status") != "inconclusive"
+        or result.get("provider_calls") != 2
+        or result.get("vitis_launches") != 5
+        or advisory.get("confidence") != "high"
+        or not isinstance(integration, Mapping)
+        or integration.get("status") != "inconclusive"
+        or integration.get("main_result_unchanged") is not True
+        or integration.get("accepted_by_integration") is not False
+        or not isinstance(controller, Mapping)
+        or controller.get("outcome") != "inconclusive"
+        or reasons != ["independent_auditor_not_clean"]
+        or controller.get("provider_call_count") != 1
+        or controller.get("mutation_count") != 1
+        or not isinstance(after_sha, str)
+        or not _SHA256.fullmatch(after_sha)
+        or after_sha == result.get("initial_candidate_sha256")
+        or not isinstance(formal_id, str)
+        or not formal_id
+        or PurePosixPath(formal_id).name != formal_id
+    ):
+        raise PreexistingHistoryResultAuditError(
+            "post-mutation COSIM failure invariants failed"
+        )
+
+    episode_path = integration.get("episode_path")
+    if not isinstance(episode_path, str):
+        raise PreexistingHistoryResultAuditError(
+            "post-mutation COSIM episode is missing"
+        )
+    episode_relative = "ledger/" + Path(episode_path).name
+    episode = _load_bytes(payloads.get(episode_relative, b""), episode_relative)
+    episode_payload = episode.get("payload")
+    actual = (
+        episode_payload.get("budget_actual", {})
+        if isinstance(episode_payload, Mapping)
+        else {}
+    )
+    delta = actual.get("budget_delta", {}) if isinstance(actual, Mapping) else {}
+    if (
+        episode.get("outcome") != "inconclusive"
+        or episode.get("source_sha256")
+        != manifest.get("case_identity", {}).get("source_sha256")
+        or episode.get("manifest_sha256") != manifest.get("manifest_sha256")
+        or not isinstance(episode_payload, Mapping)
+        or episode_payload.get("outcome_reason")
+        != "independent_auditor_not_clean"
+        or episode_payload.get("candidate_before_sha256")
+        != result.get("initial_candidate_sha256")
+        or episode_payload.get("candidate_after_sha256") != after_sha
+        or episode_payload.get("formal_validation_id") != formal_id
+        or episode_payload.get("provider_call_count") != 1
+        or not isinstance(actual, Mapping)
+        or actual.get("provider_calls") != 1
+        or actual.get("mutation_calls") != 1
+        or not isinstance(delta, Mapping)
+        or delta.get("llm_calls") != 1
+        or episode.get("agent_safe_summary", {}).get("false_repair") is not False
+        or episode.get("agent_safe_summary", {}).get("unsafe_scope") is not False
+        or episode.get("agent_safe_summary", {}).get(
+            "critical_safety_violation"
+        )
+        is not False
+    ):
+        raise PreexistingHistoryResultAuditError(
+            "post-mutation COSIM episode invariants failed"
+        )
+
+    attempt_root = (
+        PurePosixPath("work")
+        / formal_id
+        / "attempt_001"
+    )
+    csim_name = (
+        attempt_root
+        / "csim/public/suite_001/csim_invocation.json"
+    ).as_posix()
+    csynth_name = (attempt_root / "csynth/csynth_invocation.json").as_posix()
+    cosim_root = attempt_root / "public_cosim/suite_001"
+    cosim_name = (cosim_root / "cosim_invocation.json").as_posix()
+    status_name = (cosim_root / "cosim_command_status.json").as_posix()
+    tool_log_name = (
+        cosim_root
+        / "agrefactor_public_cosim/solution/.temp11.log"
+    ).as_posix()
+    csim = _load_bytes(payloads.get(csim_name, b""), csim_name)
+    csynth = _load_bytes(payloads.get(csynth_name, b""), csynth_name)
+    cosim = _load_bytes(payloads.get(cosim_name, b""), cosim_name)
+    command_status = _load_bytes(payloads.get(status_name, b""), status_name)
+    tool_log = payloads.get(tool_log_name, b"")
+    depth_error = re.search(
+        rb"depth specification is required for MAXI interface port "
+        rb"'([A-Za-z_][A-Za-z0-9_]*)' for cosimulation",
+        tool_log,
+    )
+    if (
+        csim.get("runtime_classification", {}).get("status") != "passed"
+        or csim.get("typed_outcome", {}).get("status") != "passed"
+        or csim.get("typed_outcome", {}).get("candidate_sha256") != after_sha
+        or csynth.get("execution", {}).get("status") != "completed"
+        or csynth.get("execution", {}).get("returncode") != 0
+        or cosim.get("runtime_contract", {}).get("schema_version") != 1
+        or cosim.get("cosim_interface_depths") != {}
+        or cosim.get("execution", {}).get("status") != "completed"
+        or cosim.get("execution", {}).get("returncode") != 1
+        or cosim.get("execution", {}).get("cosim_launched") is not True
+        or cosim.get("typed_outcome", {}).get("status")
+        != "missing_or_invalid"
+        or cosim.get("result_summary", {}).get("failure_kind")
+        != "ownership_unknown"
+        or cosim.get("result_summary", {}).get("reason_code")
+        != "cosim_failed_without_typed_owner"
+        or command_status
+        != {
+            "schema_version": 1,
+            "status": "failed",
+            "phase": "cosim",
+            "reason_code": "cosim_command_failed",
+        }
+        or depth_error is None
+    ):
+        raise PreexistingHistoryResultAuditError(
+            "sealed COSIM configuration evidence is incompatible"
+        )
+    return {
+        "status": "clean_cosim_interface_depth_configuration_failure",
+        "reason": "cosim_interface_depth_not_declared",
+        "confidence": advisory.get("confidence"),
+        "candidate_after_sha256": after_sha,
+        "formal_validation_id": formal_id,
+        "missing_maxi_interface_bundle": depth_error.group(1).decode("ascii"),
+        "episode_id": episode.get("episode_id"),
+        "episode_sha256": hashlib.sha256(payloads[episode_relative]).hexdigest(),
+        "mutation_provider_calls": 1,
+        "mutation_count": 1,
+        "public_csim_passed": True,
+        "csynth_passed": True,
+        "rtl_cosim_started": False,
+    }
+
+
+def _blocking_findings(outcome: Mapping[str, Any]) -> list[dict[str, str]]:
+    status = str(outcome.get("status", ""))
+    if status.startswith("clean_pre_provider_") or status.startswith(
+        "clean_provider_or_response_"
+    ):
+        return [
+            {
+                "code": str(outcome.get("reason")),
+                "severity": "blocking",
+                "message": (
+                    "R5 mutation response failed its deterministic contract."
+                    if status.startswith("clean_provider_or_response_")
+                    else (
+                        "R5 mutation preparation failed before its Provider "
+                        "call."
+                    )
+                ),
+            }
+        ]
+    if status.startswith("clean_cosim_interface_depth_"):
+        return [
+            {
+                "code": str(outcome.get("reason")),
+                "severity": "blocking",
+                "message": (
+                    "Public RTL COSIM did not start because its "
+                    "interface-depth contract was absent."
+                ),
+            }
+        ]
+    if status.startswith("clean_pre_r2_"):
+        return [
+            {
+                "code": "history_source_outside_r2_boundary",
+                "severity": "blocking",
+                "message": (
+                    "Deterministic Candidate ownership was already proven, "
+                    "so this source belongs to pre-R2 recovery."
+                ),
+            }
+        ]
+    return []
+
+
 def audit(root: Path) -> dict[str, Any]:
     root = root.expanduser().resolve()
     payloads, archive_sha, content_sha = _verify_archive(root)
@@ -530,16 +732,31 @@ def audit(root: Path) -> dict[str, Any]:
     elif result.get("status") == "abstained":
         outcome = _verify_abstention(result, shadow)
     elif result.get("status") == "inconclusive":
-        outcome = _verify_pre_provider_contract_failure(
-            payloads=payloads,
-            manifest=manifest,
-            result=result,
-            shadow=shadow,
+        integration = result.get("r5_integration")
+        controller = (
+            integration.get("r4_controller_result", {})
+            if isinstance(integration, Mapping)
+            else {}
         )
+        if controller.get("reasons") == ["independent_auditor_not_clean"]:
+            outcome = _verify_post_mutation_cosim_configuration_failure(
+                payloads=payloads,
+                manifest=manifest,
+                result=result,
+                shadow=shadow,
+            )
+        else:
+            outcome = _verify_pre_provider_contract_failure(
+                payloads=payloads,
+                manifest=manifest,
+                result=result,
+                shadow=shadow,
+            )
     else:
         raise PreexistingHistoryResultAuditError(
             "result is neither verified-positive nor safe abstention"
         )
+    findings = _blocking_findings(outcome)
     value: dict[str, Any] = {
         "schema_version": 1,
         "auditor": "r5-preexisting-history-file-auditor-v1",
@@ -558,48 +775,8 @@ def audit(root: Path) -> dict[str, Any]:
         "future_files_read": False,
         "future_outcomes_observed": False,
         "critical_finding_count": 0,
-        "blocking_finding_count": int(
-            str(outcome["status"]).startswith("clean_pre_provider_")
-            or str(outcome["status"]).startswith(
-                "clean_provider_or_response_"
-            )
-            or str(outcome["status"]).startswith("clean_pre_r2_")
-        ),
-        "findings": (
-            [
-                    {
-                        "code": str(outcome.get("reason")),
-                        "severity": "blocking",
-                        "message": (
-                            "R5 mutation response failed its deterministic contract."
-                            if str(outcome["status"]).startswith(
-                                "clean_provider_or_response_"
-                            )
-                            else "R5 mutation preparation failed before its Provider call."
-                        ),
-                    }
-            ]
-            if (
-                str(outcome["status"]).startswith("clean_pre_provider_")
-                or str(outcome["status"]).startswith(
-                    "clean_provider_or_response_"
-                )
-            )
-            else (
-                [
-                    {
-                        "code": "history_source_outside_r2_boundary",
-                        "severity": "blocking",
-                        "message": (
-                            "Deterministic Candidate ownership was already "
-                            "proven, so this source belongs to pre-R2 recovery."
-                        ),
-                    }
-                ]
-                if str(outcome["status"]).startswith("clean_pre_r2_")
-                else []
-            )
-        ),
+        "blocking_finding_count": len(findings),
+        "findings": findings,
         "r5_accepted": False,
         "r6_started": False,
     }

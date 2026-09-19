@@ -269,6 +269,58 @@ class R5HistoricalCandidateTests(unittest.TestCase):
         ):
             verify_historical_candidate_plan(self.root, plan)
 
+    def test_post_cosim_fix_requires_explicit_v2_runtime_contract(self) -> None:
+        plan = copy.deepcopy(self.plan)
+        plan.update(
+            {
+                "schema_version": 5,
+                "status": (
+                    "frozen_after_audited_cosim_interface_contract_fix"
+                ),
+                "legacy_candidate_outcome_observed": True,
+                "symbol_isolation_version": (
+                    "r5-historical-candidate-symbol-isolation-v2"
+                ),
+                "prior_observed_source_sha256s": ["a" * 64],
+                "required_legacy_markers": ["helper(n - 1)"],
+                "prior_attempt": {
+                    "status": (
+                        "clean_cosim_interface_depth_configuration_failure"
+                    ),
+                    "attempts_consumed": 2,
+                    "maximum_remaining_attempts": 1,
+                },
+                "public_runtime_contract": {
+                    "schema_version": 2,
+                    "kind": "public_differential_self_check_v1",
+                    "candidate_mismatch_returncodes": [1],
+                    "cosim_interface_depths": {"out": 1},
+                },
+                "confidence_threshold_weakened": False,
+            }
+        )
+        plan["isolated_candidate_sha256"] = text_sha256(
+            materialize_candidate_symbols(self.legacy, self.symbol_map)
+        )
+        plan["budget"]["provider_calls_before"] = 103
+        plan["budget"]["vitis_launches_before"] = 54
+        bundle = verify_historical_candidate_plan(self.root, plan)
+        self.assertEqual(
+            bundle.public_runtime_contract["cosim_interface_depths"],
+            {"out": 1},
+        )
+        self.assertEqual(
+            bundle.to_identity()["public_runtime_contract"]["schema_version"],
+            2,
+        )
+
+        del plan["public_runtime_contract"]
+        with self.assertRaisesRegex(
+            R5HistoricalCandidateError,
+            "lacks a Public runtime contract",
+        ):
+            verify_historical_candidate_plan(self.root, plan)
+
 
 if __name__ == "__main__":
     unittest.main()

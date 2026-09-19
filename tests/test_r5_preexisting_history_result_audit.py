@@ -321,6 +321,118 @@ class R5PreexistingHistoryResultAuditTests(unittest.TestCase):
             ["response_contract_top_interface_changed"],
         )
 
+    def test_missing_cosim_depth_is_configuration_not_candidate_failure(self) -> None:
+        formal_id = "formal-validation.r4"
+        before = "a" * 64
+        after = "b" * 64
+        source = "c" * 64
+        manifest_sha = "d" * 64
+        base = f"work/{formal_id}/attempt_001"
+        episode = {
+            "outcome": "inconclusive",
+            "source_sha256": source,
+            "manifest_sha256": manifest_sha,
+            "episode_id": "episode-1",
+            "payload": {
+                "outcome_reason": "independent_auditor_not_clean",
+                "candidate_before_sha256": before,
+                "candidate_after_sha256": after,
+                "formal_validation_id": formal_id,
+                "provider_call_count": 1,
+                "budget_actual": {
+                    "provider_calls": 1,
+                    "mutation_calls": 1,
+                    "budget_delta": {"llm_calls": 1},
+                },
+            },
+            "agent_safe_summary": {
+                "false_repair": False,
+                "unsafe_scope": False,
+                "critical_safety_violation": False,
+            },
+        }
+        payloads = {
+            "ledger/episode.json": json.dumps(episode).encode("utf-8"),
+            f"{base}/csim/public/suite_001/csim_invocation.json": json.dumps(
+                {
+                    "runtime_classification": {"status": "passed"},
+                    "typed_outcome": {
+                        "status": "passed",
+                        "candidate_sha256": after,
+                    },
+                }
+            ).encode("utf-8"),
+            f"{base}/csynth/csynth_invocation.json": json.dumps(
+                {"execution": {"status": "completed", "returncode": 0}}
+            ).encode("utf-8"),
+            f"{base}/public_cosim/suite_001/cosim_invocation.json": json.dumps(
+                {
+                    "runtime_contract": {"schema_version": 1},
+                    "cosim_interface_depths": {},
+                    "execution": {
+                        "status": "completed",
+                        "returncode": 1,
+                        "cosim_launched": True,
+                    },
+                    "typed_outcome": {"status": "missing_or_invalid"},
+                    "result_summary": {
+                        "failure_kind": "ownership_unknown",
+                        "reason_code": "cosim_failed_without_typed_owner",
+                    },
+                }
+            ).encode("utf-8"),
+            f"{base}/public_cosim/suite_001/cosim_command_status.json": json.dumps(
+                {
+                    "schema_version": 1,
+                    "status": "failed",
+                    "phase": "cosim",
+                    "reason_code": "cosim_command_failed",
+                }
+            ).encode("utf-8"),
+            (
+                f"{base}/public_cosim/suite_001/agrefactor_public_cosim/"
+                "solution/.temp11.log"
+            ): (
+                b"ERROR: A depth specification is required for MAXI "
+                b"interface port 'gmem' for cosimulation.\n"
+            ),
+        }
+        result = {
+            "status": "inconclusive",
+            "provider_calls": 2,
+            "vitis_launches": 5,
+            "initial_candidate_sha256": before,
+            "r5_integration": {
+                "status": "inconclusive",
+                "main_result_unchanged": True,
+                "accepted_by_integration": False,
+                "episode_path": "/evidence/episode.json",
+                "r4_controller_result": {
+                    "outcome": "inconclusive",
+                    "reasons": ["independent_auditor_not_clean"],
+                    "provider_call_count": 1,
+                    "mutation_count": 1,
+                    "after_candidate_sha256": after,
+                    "formal_validation_id": formal_id,
+                },
+            },
+        }
+        value = AUDIT._verify_post_mutation_cosim_configuration_failure(
+            payloads=payloads,
+            manifest={
+                "manifest_sha256": manifest_sha,
+                "case_identity": {"source_sha256": source},
+            },
+            result=result,
+            shadow={"advisory": {"confidence": "high"}},
+        )
+        self.assertEqual(
+            value["status"],
+            "clean_cosim_interface_depth_configuration_failure",
+        )
+        self.assertEqual(value["missing_maxi_interface_bundle"], "gmem")
+        self.assertFalse(value["rtl_cosim_started"])
+
 
 if __name__ == "__main__":
     unittest.main()

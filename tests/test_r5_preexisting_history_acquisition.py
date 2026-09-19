@@ -48,6 +48,12 @@ class R5PreexistingHistoryAcquisitionTests(unittest.TestCase):
                 "public_test": "3" * 64,
                 "hidden_test": "4" * 64,
             },
+            public_runtime_contract={
+                "schema_version": 2,
+                "kind": "public_differential_self_check_v1",
+                "candidate_mismatch_returncodes": [1],
+                "cosim_interface_depths": {"out": 1},
+            },
             reference_code="void top(int*);\n",
             legacy_candidate_code="void top(int*);\n",
             isolated_candidate_code="void top_hls(int*);\n",
@@ -100,6 +106,22 @@ class R5PreexistingHistoryAcquisitionTests(unittest.TestCase):
         self.assertEqual(first["provider_call_upper_bound"], 2)
         self.assertEqual(first["vitis_launch_upper_bound"], 6)
         self.assertFalse(first["future_files_read"])
+
+    def test_task_preserves_frozen_public_runtime_contract(self) -> None:
+        candidate = self.preflight["candidate"]
+        task = ACQUIRE._task(
+            repository=self.root,
+            candidate=candidate,
+            run_id="history-runtime-contract",
+        )
+        public = next(
+            suite for suite in task.test_suites if suite.split.value == "public"
+        )
+        self.assertEqual(public.runtime_contract["schema_version"], 2)
+        self.assertEqual(
+            public.runtime_contract["cosim_interface_depths"],
+            {"out": 1},
+        )
 
     def test_manifest_uses_audited_continuation_budget(self) -> None:
         preflight = dict(self.preflight)

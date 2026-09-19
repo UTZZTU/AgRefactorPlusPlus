@@ -88,7 +88,10 @@ def _verify_fixed_prior_attempt(
         audit_path: prior.get("independent_audit_file_sha256"),
         reconciliation_path: prior.get("reconciliation_file_sha256"),
     }
-    if any(file_sha256(path) != expected for path, expected in expected_hashes.items()):
+    if any(
+        file_sha256(path) != expected
+        for path, expected in expected_hashes.items()
+    ):
         raise PreexistingHistoryAuditError("prior attempt evidence hash mismatch")
     result = _load(result_path)
     audit = _load(audit_path)
@@ -137,7 +140,15 @@ def _verify_fixed_prior_attempt(
         raise PreexistingHistoryAuditError("prior attempt boundary is incompatible")
     fix_commit = str(prior.get("fix_commit", ""))
     ancestor = subprocess.run(
-        ["git", "-C", str(repository), "merge-base", "--is-ancestor", fix_commit, head],
+        [
+            "git",
+            "-C",
+            str(repository),
+            "merge-base",
+            "--is-ancestor",
+            fix_commit,
+            head,
+        ],
         check=False,
         capture_output=True,
     )
@@ -179,7 +190,10 @@ def _verify_final_prior_attempt(
     }
     if any(path.is_symlink() or not path.is_file() for path in expected_hashes):
         raise PreexistingHistoryAuditError("final resume evidence is missing")
-    if any(file_sha256(path) != expected for path, expected in expected_hashes.items()):
+    if any(
+        file_sha256(path) != expected
+        for path, expected in expected_hashes.items()
+    ):
         raise PreexistingHistoryAuditError("final resume evidence hash mismatch")
     parent = verify_historical_candidate_plan(repository, _load(parent_path))
     result = _load(result_path)
@@ -210,6 +224,119 @@ def _verify_final_prior_attempt(
         "independent_audit_file_sha256": file_sha256(audit_path),
         "independent_audit_sha256": audit.get("audit_sha256"),
         "reconciliation_file_sha256": file_sha256(reconciliation_path),
+    }
+
+
+def _verify_cosim_prior_attempt(
+    *,
+    repository: Path,
+    plan: Mapping[str, Any],
+    bundle: Any,
+    head: str,
+) -> dict[str, Any]:
+    prior = plan.get("prior_attempt")
+    if not isinstance(prior, Mapping):
+        raise PreexistingHistoryAuditError(
+            "post-COSIM-fix resume lacks prior attempt binding"
+        )
+    parent_relative = Path(str(prior.get("parent_plan_path", "")))
+    reconciliation_relative = Path(str(prior.get("reconciliation_path", "")))
+    parent_path = (repository / parent_relative).resolve()
+    reconciliation_path = (repository / reconciliation_relative).resolve()
+    for path in (parent_path, reconciliation_path):
+        try:
+            path.relative_to(repository)
+        except ValueError as exc:
+            raise PreexistingHistoryAuditError(
+                "post-COSIM-fix repo evidence is unsafe"
+            ) from exc
+    result_path = Path(str(prior.get("acquisition_result_path", ""))).resolve()
+    audit_path = Path(str(prior.get("independent_audit_path", ""))).resolve()
+    expected_hashes = {
+        parent_path: prior.get("parent_plan_file_sha256"),
+        result_path: prior.get("acquisition_result_file_sha256"),
+        audit_path: prior.get("independent_audit_file_sha256"),
+        reconciliation_path: prior.get("reconciliation_file_sha256"),
+    }
+    if any(path.is_symlink() or not path.is_file() for path in expected_hashes):
+        raise PreexistingHistoryAuditError(
+            "post-COSIM-fix prior evidence is missing"
+        )
+    if any(
+        file_sha256(path) != expected
+        for path, expected in expected_hashes.items()
+    ):
+        raise PreexistingHistoryAuditError(
+            "post-COSIM-fix prior evidence hash mismatch"
+        )
+    parent = verify_historical_candidate_plan(repository, _load(parent_path))
+    result = _load(result_path)
+    audit = _load(audit_path)
+    reconciliation = _load(reconciliation_path)
+    budget = plan.get("budget")
+    candidate_after = audit.get("outcome", {}).get("candidate_after_sha256")
+    if (
+        parent.source_sha256 != bundle.source_sha256
+        or parent.isolated_candidate_sha256 != bundle.isolated_candidate_sha256
+        or prior.get("status")
+        != "clean_cosim_interface_depth_configuration_failure"
+        or prior.get("attempts_consumed") != 2
+        or prior.get("maximum_remaining_attempts") != 1
+        or result.get("status") != "inconclusive"
+        or result.get("provider_calls") != 2
+        or result.get("vitis_launches") != 5
+        or audit.get("status")
+        != "clean_cosim_interface_depth_configuration_failure"
+        or audit.get("source_sha256") != bundle.source_sha256
+        or audit.get("critical_finding_count") != 0
+        or audit.get("blocking_finding_count") != 1
+        or audit.get("provider_calls") != 2
+        or audit.get("vitis_launches") != 5
+        or not isinstance(candidate_after, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", candidate_after)
+        or reconciliation.get("status")
+        != "audited_cosim_interface_depth_contract_fixed"
+        or reconciliation.get("source_sha256") != bundle.source_sha256
+        or reconciliation.get("candidate_after_sha256") != candidate_after
+        or reconciliation.get("remaining_attempts") != 1
+        or not isinstance(budget, Mapping)
+        or reconciliation.get("budget_after")
+        != {
+            "provider_calls": budget.get("provider_calls_before"),
+            "vitis_launches": budget.get("vitis_launches_before"),
+        }
+    ):
+        raise PreexistingHistoryAuditError(
+            "post-COSIM-fix prior attempt is incompatible"
+        )
+    fix_commit = str(prior.get("fix_commit", ""))
+    ancestor = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repository),
+            "merge-base",
+            "--is-ancestor",
+            fix_commit,
+            head,
+        ],
+        check=False,
+        capture_output=True,
+    )
+    if ancestor.returncode != 0:
+        raise PreexistingHistoryAuditError(
+            "COSIM interface contract fix is not an ancestor"
+        )
+    return {
+        "status": audit["status"],
+        "parent_plan_file_sha256": file_sha256(parent_path),
+        "acquisition_result_file_sha256": file_sha256(result_path),
+        "independent_audit_file_sha256": file_sha256(audit_path),
+        "independent_audit_sha256": audit.get("audit_sha256"),
+        "reconciliation_file_sha256": file_sha256(reconciliation_path),
+        "candidate_after_sha256": candidate_after,
+        "fix_commit": fix_commit,
+        "fix_is_ancestor": True,
     }
 
 
@@ -324,7 +451,16 @@ def audit(
                 bundle=bundle,
             )
             if plan.get("schema_version") == 4
-            else None
+            else (
+                _verify_cosim_prior_attempt(
+                    repository=repository,
+                    plan=plan,
+                    bundle=bundle,
+                    head=head,
+                )
+                if plan.get("schema_version") == 5
+                else None
+            )
         )
     )
 
@@ -419,6 +555,7 @@ def audit(
         "plan_sha256": bundle.plan_sha256,
         "state_file_sha256": file_sha256(state_path),
         "case_identity": bundle.to_identity(),
+        "public_runtime_contract": dict(bundle.public_runtime_contract),
         "host_adapter_checks": host_checks,
         "predecessor_import_result_file_sha256": file_sha256(predecessor_path),
         "predecessor_source_sha256s": predecessor_sources,
