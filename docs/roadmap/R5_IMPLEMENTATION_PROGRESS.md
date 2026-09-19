@@ -550,3 +550,10 @@ or adding a quicksort-specific rule. The source retains two bounded attempts,
 but a new post-fix plan and zero-call audit are required before either is used.
 The cumulative R5 ledger is `101/500` Provider calls and `49/500` Vitis
 launches. R5 remains unaccepted and R6 remains stopped.
+
+The remaining quicksort attempts are now frozen in
+`configs/r5/preexisting_history/c2hlsc_quicksort_post_fix_resume_plan.json`.
+The plan binds the failed archive, independent audit, reconciliation, general
+fix commit `2b66276`, unchanged Candidate and oracle identities, and the
+`101/49` cumulative ledger. It authorizes at most two more attempts and retains
+the first-positive stop. A new zero-call protocol audit remains mandatory.

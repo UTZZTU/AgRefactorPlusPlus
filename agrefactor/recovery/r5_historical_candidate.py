@@ -194,7 +194,10 @@ def verify_historical_candidate_plan(
         or (
             is_fixed_resume
             and plan.get("status")
-            != "frozen_after_audited_pre_provider_isolation_fix"
+            not in {
+                "frozen_after_audited_pre_provider_isolation_fix",
+                "frozen_after_audited_mutation_contract_fix",
+            }
         )
         or (
             is_final_resume

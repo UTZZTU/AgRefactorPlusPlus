@@ -216,6 +216,9 @@ class R5HistoricalCandidateTests(unittest.TestCase):
         post_provider["prior_failed_attempt"]["status"] = (
             "clean_provider_or_response_contract_failure"
         )
+        post_provider["status"] = (
+            "frozen_after_audited_mutation_contract_fix"
+        )
         verify_historical_candidate_plan(self.root, post_provider)
 
         plan["symbol_isolation_version"] = (
