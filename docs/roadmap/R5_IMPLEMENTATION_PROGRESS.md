@@ -783,3 +783,30 @@ rerun or overwritten.  A zero-call resume protocol audit must authorize one
 replacement observation for repeat 3, while the original repeat-3 baseline
 usage remains charged.  R5 is not accepted, the formal campaign remains
 closed, and R6 is not started.
+
+## R5.1 P0-P2 Dataset Registry and Dedup Audit
+
+The project owner authorized the incremental pre-R6 R5.1 route and a
+prospective cumulative 650 Provider / 650 Vitis limit. P0-P2 are implemented
+at `a8e229e1ee22edb6e9472334320ed8c392b4a1d4` without changing older R5
+campaign identities or their historical 500/500 limit.
+
+The deterministic registry accounts for all 57 `src/info.json` entries and
+freezes a semantic-family-level 39 history / 18 future split. Nine C2HLSC
+entries require reviewed adapters, 47 entries remain quarantined because
+their checked-in provenance/license or execution contract is unresolved, and
+one missing source is explicitly rejected. Eleven cases are linked to
+reconstructable predecessor claim documents; a legacy `useful` label is not
+treated as a current successful outcome.
+
+Global D0-D3 auditing includes both the registered source and source files
+actually selected by existing Vitis Tcl. It found a D1 duplicate in an
+inconsistent execution contract and three additional Tcl/registry identity
+mismatches. D2 remains recall-only and never automatically excludes a case;
+D3 only controls split isolation. The independent audit status is
+`passed_with_quarantine`, 42 focused and adjacent tests pass, and P0-P2 used
+zero Provider calls and zero Vitis launches.
+
+P3 may now implement external-checkout adapters and zero-Provider oracle
+smokes. Real Vitis execution remains closed until a new P3/P4 reserve and
+preflight are machine-audited. R5 remains unaccepted and R6 remains stopped.
