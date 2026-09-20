@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "plan_id": "v2.3-r5.1-p3-external-adapter-host-smoke-v1",
+  "frozen_at": "2026-09-20T13:00:00Z",
+  "cases": [
+    {
+      "case_id": "external-c2hlsc-runs-host-oracle",
+      "source_id": "c2hlsc",
+      "checkout_dir": "c2hlsc",
+      "commit": "72d08b7d17da38b7ba9c828dce48403352be4dc3",
+      "decision": "admit",
+      "license": "GPL-3.0-only",
+      "top": "Runs",
+      "compile_mode": "concatenate",
+      "source_files": [
+        {
+          "path": "inputs/runs/runs_inc.txt",
+          "sha256": "a75923ef9fda770c74954c39d69c262cee8163c3199add8267ce7f2e86aa56bb",
+          "role": "include"
+        },
+        {
+          "path": "inputs/runs/runs.cpp",
+          "sha256": "2862a151a710fda27ffaf2b09af068a6e6e04d72e4966e7ba299a2f4feb20d21",
+          "role": "source"
+        }
+      ],
+      "adapter_path": "configs/r5_1/external_adapters/c2hlsc_runs_public.cpp",
+      "adapter_sha256": "8625bfcfa1db1a3d823db2d850e1e3f6660986523a57bb214bc964d5ee4a388e",
+      "include_dirs": [],
+      "pass_marker": "C2HLSC_RUNS_ORACLE=passed"
+    },
+    {
+      "case_id": "external-hls-eval-vector-add-host-oracle",
+      "source_id": "hls-eval",
+      "checkout_dir": "hls-eval",
+      "commit": "8c8bf70a3dae3f20b90da136c01f9649072849e2",
+      "decision": "external-only",
+      "license": "NOASSERTION",
+      "top": "vec_add",
+      "compile_mode": "separate_translation_units",
+      "source_files": [
+        {
+          "path": "tests/test_design_for_tools/vec_add.cpp",
+          "sha256": "390916ab6e43a70f24c015226311a742f0a0254d15888ab3018e916c9ee6d72e",
+          "role": "source"
+        },
+        {
+          "path": "tests/test_design_for_tools/vec_add_tb.cpp",
+          "sha256": "43df0abfb2bc31e44fe49578c4a9efbe68dae5b3dce5110476c404fc25c2ab0d",
+          "role": "oracle"
+        }
+      ],
+      "adapter_path": null,
+      "adapter_sha256": null,
+      "include_dirs": ["tests/test_design_for_tools"],
+      "pass_marker": "Test passed!"
+    },
+    {
+      "case_id": "external-hlspilot-fir-host-oracle",
+      "source_id": "hlspilot",
+      "checkout_dir": "hlspilot",
+      "commit": "1cb3aa9736f84ee4e626271596983a5bea98f6c3",
+      "decision": "external-only",
+      "license": "NOASSERTION",
+      "top": "fir",
+      "compile_mode": "separate_translation_units",
+      "source_files": [
+        {
+          "path": "benchmark/fir/fir.cpp",
+          "sha256": "f8669733f3a9e164fb54ab9ea857886d51baaaa1f98ee741f88bc3c862c97230",
+          "role": "source"
+        }
+      ],
+      "adapter_path": "configs/r5_1/external_adapters/hlspilot_fir_public.cpp",
+      "adapter_sha256": "067ece3fe204cf68b11914f2d9a44a4db4d718af15235b523601270e34301e01",
+      "include_dirs": ["benchmark/fir"],
+      "pass_marker": "HLSPILOT_FIR_ORACLE=passed"
+    },
+    {
+      "case_id": "external-hlsfactory-vector-add-host-oracle",
+      "source_id": "hlsfactory",
+      "checkout_dir": "hlsfactory",
+      "commit": "0fc25c5be0b8a94086ae1f3fc1f950fc66bafc7d",
+      "decision": "external-only",
+      "license": "AGPL-3.0-only; dataset metadata CC-BY-SA-4.0",
+      "top": "vector_add",
+      "compile_mode": "separate_translation_units",
+      "source_files": [
+        {
+          "path": "hlsfactory/hls_dataset_sources/test_designs_vitis_modern/vector_add/vector_add.cpp",
+          "sha256": "be4103f31717bf047debedafd6ea4c2eb5907246017b2d02c2fe1f2e4e995dd1",
+          "role": "source"
+        },
+        {
+          "path": "hlsfactory/hls_dataset_sources/test_designs_vitis_modern/vector_add/vector_add_test.cpp",
+          "sha256": "b653f77765534a540f625ed7d55f8f4c6a3a5b3826aff21c8966e3544125f9dd",
+          "role": "oracle"
+        }
+      ],
+      "adapter_path": null,
+      "adapter_sha256": null,
+      "include_dirs": ["hlsfactory/hls_dataset_sources/test_designs_vitis_modern/vector_add"],
+      "pass_marker": "PASS"
+    }
+  ],
+  "invariants": {
+    "provider_calls": 0,
+    "vitis_launches": 0,
+    "third_party_code_copied_into_repository": false,
+    "smoke_result_implies_formal_admission": false,
+    "r5_accepted": false,
+    "r6_started": false
+  }
+}
