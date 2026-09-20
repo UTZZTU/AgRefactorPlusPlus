@@ -34,6 +34,7 @@ ALLOWED_OUTCOMES = {
     "unnecessary_rewrite",
     "regression",
     "ordinary_refactor_failure",
+    "adapter_or_oracle_invalid",
     "infrastructure_failure",
 }
 FORBIDDEN_PERSISTED_KEYS = {
@@ -138,6 +139,7 @@ def validate_protocol(protocol: Mapping[str, Any]) -> None:
         "max_cosim_calls_per_case": 2,
         "max_vitis_launches_per_case": 8,
         "public_contract_port_binding": "positionally_remap_raw_parameters_and_preserve_explicit_public_global_ports",
+        "public_top_binding": "candidate_oracle_with_reference_and_candidate_symbols",
     }
     for name, expected in expected_product.items():
         if product.get(name) != expected:
@@ -167,14 +169,23 @@ def validate_protocol(protocol: Mapping[str, Any]) -> None:
     phase = budget.get("p5_phase_upper_bound")
     hard = budget.get("hard_cap")
     carried = budget.get("carried_forward")
+    amendment = budget.get("amendment")
     if reserve != {"provider_calls": 143, "vitis_launches": 104}:
         raise P5Error("P5 reserve changed")
-    if phase != {"provider_calls": 180, "vitis_launches": 110}:
+    if phase != {"provider_calls": 260, "vitis_launches": 110}:
         raise P5Error("P5 phase cap changed")
     if hard != {"provider_calls": 650, "vitis_launches": 650}:
         raise P5Error("R5.1 hard cap changed")
-    if carried != {"provider_calls": 248, "vitis_launches": 198}:
+    if carried != {"provider_calls": 365, "vitis_launches": 198}:
         raise P5Error("P5 carried-forward ledger changed")
+    if not isinstance(amendment, Mapping) or (
+        amendment.get("prior_p5_phase_upper_bound")
+        != {"provider_calls": 180, "vitis_launches": 110}
+        or amendment.get("revised_p5_phase_upper_bound") != phase
+        or amendment.get("cumulative_hard_cap_changed") is not False
+        or amendment.get("old_evidence_rewritten") is not False
+    ):
+        raise P5Error("P5 budget amendment is invalid")
     if len(cases) * product["max_llm_calls_per_case"] != reserve["provider_calls"]:
         raise P5Error("P5 Provider reserve does not cover the frozen cohort")
     if len(cases) * product["max_vitis_launches_per_case"] != reserve["vitis_launches"]:
@@ -183,6 +194,11 @@ def validate_protocol(protocol: Mapping[str, Any]) -> None:
         raise P5Error("P5 reserve exceeds its phase cap")
     if any(carried[name] + reserve[name] > hard[name] for name in reserve):
         raise P5Error("P5 reserve exceeds the cumulative hard cap")
+    expected_remaining = {
+        name: hard[name] - carried[name] - reserve[name] for name in reserve
+    }
+    if budget.get("remaining_after_reserve") != expected_remaining:
+        raise P5Error("P5 remaining budget does not reconcile")
     invariants = protocol.get("invariants")
     if not isinstance(invariants, Mapping) or any(
         invariants.get(name) is not False
@@ -330,6 +346,46 @@ def function_parameter_names(code: str, function: str) -> tuple[str, ...]:
     return tuple(names)
 
 
+def bind_reference_top_contract(
+    candidate_test: str,
+    *,
+    reference_top: str,
+    candidate_top: str,
+) -> tuple[str, str]:
+    """Bind both formal tops while preserving the frozen Candidate oracle."""
+
+    anchor = "agrefactor_reference_top_symbol_anchor"
+    if re.search(rf"\b{re.escape(anchor)}\b", candidate_test):
+        raise P5Error("Public test already defines the reference symbol anchor")
+    match = re.search(
+        rf'^\s*(?:extern\s+"C"\s+)?[^#\n;{{}}]*'
+        rf"\b{re.escape(candidate_top)}\s*\("
+        rf"[^;{{}}]*\)\s*;",
+        candidate_test,
+        flags=re.MULTILINE,
+    )
+    if match is None:
+        raise P5Error("Candidate Public declaration is unavailable for reference binding")
+    candidate_declaration = match.group(0).strip()
+    reference_declaration, count = rewrite_cpp_identifier(
+        candidate_declaration,
+        candidate_top,
+        reference_top,
+    )
+    if count != 1:
+        raise P5Error("Candidate Public declaration cannot bind the reference top uniquely")
+    binding = (
+        reference_declaration
+        + "\n[[maybe_unused]] static auto const "
+        + anchor
+        + " = &"
+        + reference_top
+        + ";\n"
+    )
+    adapted = candidate_test[: match.end()] + "\n" + binding + candidate_test[match.end() :]
+    return adapted, anchor
+
+
 def public_global_names(code: str) -> tuple[str, ...]:
     names: list[str] = []
     for match in re.finditer(
@@ -425,7 +481,7 @@ def _validate_repository(repo: Path, protocol: Mapping[str, Any], state: Mapping
         "R6_STARTED": False,
         "R5_1_P4_COMPLETE": True,
         "R5_1_REAL_CALLS_ALLOWED": True,
-        "R5_1_CUMULATIVE_PROVIDER_CALLS": 248,
+        "R5_1_CUMULATIVE_PROVIDER_CALLS": 365,
         "R5_1_CUMULATIVE_VITIS_LAUNCHES": 198,
         "R5_1_PROVIDER_CALL_HARD_CAP": 650,
         "R5_1_VITIS_LAUNCH_HARD_CAP": 650,
@@ -559,9 +615,17 @@ def _entrypoint_evidence(product_root: Path, run_result: Mapping[str, Any]) -> d
     }
 
 
-def classify_outcome(raw: str, succeeded: bool, candidate_changed: bool | None, infrastructure: bool) -> str:
+def classify_outcome(
+    raw: str,
+    succeeded: bool,
+    candidate_changed: bool | None,
+    infrastructure: bool,
+    adapter_invalid: bool = False,
+) -> str:
     if infrastructure:
         return "infrastructure_failure"
+    if adapter_invalid:
+        return "adapter_or_oracle_invalid"
     if raw == "raw_pass_all":
         if not succeeded:
             return "regression"
@@ -587,6 +651,25 @@ def _evidence_inventory(root: Path, campaign_root: Path) -> list[dict[str, Any]]
             }
         )
     return records
+
+
+def _terminal_evidence(product_root: Path) -> dict[str, Any]:
+    path = product_root / "refactor" / "diagnostic_events.json"
+    if not path.is_file():
+        return {"owner": None, "failure_classes": [], "event_id": None}
+    value = load_object(path)
+    events = value.get("events")
+    if not isinstance(events, list) or not events:
+        return {"owner": None, "failure_classes": [], "event_id": None}
+    event = events[-1]
+    if not isinstance(event, Mapping):
+        return {"owner": None, "failure_classes": [], "event_id": None}
+    classes = event.get("failure_classes")
+    return {
+        "owner": event.get("owner"),
+        "failure_classes": list(classes) if isinstance(classes, list) else [],
+        "event_id": event.get("event_id"),
+    }
 
 
 def run_campaign(
@@ -634,11 +717,16 @@ def run_campaign(
         contract_path = material_root / "public_contract.json"
         source_path.write_text(material["design"], encoding="utf-8")
         candidate_top = str(case["top"]) + str(product["candidate_top_suffix"])
-        adapted_test, replacement_count = rewrite_cpp_identifier(
+        candidate_test, replacement_count = rewrite_cpp_identifier(
             material["testbench"], str(case["top"]), candidate_top
         )
         if replacement_count < 1:
             raise P5Error(f"Public adapter did not bind Candidate top: {case_id}")
+        adapted_test, reference_anchor = bind_reference_top_contract(
+            candidate_test,
+            reference_top=str(case["top"]),
+            candidate_top=candidate_top,
+        )
         test_path.write_text(adapted_test, encoding="utf-8")
         adapted_contract = adapt_public_runtime_contract(
             contract=case["runtime_contract"],
@@ -698,16 +786,23 @@ def run_campaign(
             else text_sha256(final_candidate.read_text(encoding="utf-8"))
             != text_sha256(material["design"])
         )
+        terminal_evidence = _terminal_evidence(product_root)
+        adapter_invalid = bool(
+            not succeeded and terminal_evidence.get("owner") == "testbench"
+        )
         outcome = classify_outcome(
             selected[case_id]["raw_classification"],
             succeeded,
             candidate_changed,
             infrastructure,
+            adapter_invalid,
         )
         if outcome not in ALLOWED_OUTCOMES:
             raise AssertionError("unexpected P5 outcome")
         consecutive_infrastructure_failures = (
-            consecutive_infrastructure_failures + 1 if infrastructure else 0
+            consecutive_infrastructure_failures + 1
+            if infrastructure or adapter_invalid
+            else 0
         )
         case_record = {
             "case_id": case_id,
@@ -721,8 +816,10 @@ def run_campaign(
             "material_identity": {
                 **material["identity"],
                 "adapted_public_test_sha256": text_sha256(adapted_test),
+                "candidate_oracle_test_sha256": text_sha256(candidate_test),
                 "candidate_top": candidate_top,
                 "top_identifier_replacement_count": replacement_count,
+                "reference_symbol_anchor": reference_anchor,
                 "public_contract_sha256": canonical_sha256(adapted_contract),
             },
             "product_succeeded": succeeded,
@@ -736,6 +833,7 @@ def run_campaign(
                 or "unknown"
             ),
             "entrypoint_evidence": entrypoint,
+            "terminal_evidence": terminal_evidence,
             "candidate_sha256": candidate_sha,
             "candidate_changed": candidate_changed,
             "outcome": outcome,
@@ -766,7 +864,7 @@ def run_campaign(
     outcome_counts = Counter(item["outcome"] for item in cases)
     result = {
         "schema_version": 1,
-        "campaign_id": "v2.3-r5.1-p5-ordinary-refactor-v1",
+        "campaign_id": str(protocol["protocol_id"]),
         "status": "ready_for_independent_audit",
         "evidence_root": str(output.resolve()),
         "protocol_file_sha256": file_sha256(protocol_path),

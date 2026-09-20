@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "protocol_id": "v2.3-r5.1-p5-ordinary-refactor-v3",
+  "protocol_id": "v2.3-r5.1-p5-ordinary-refactor-v4",
   "route": "V2.3-R5.1-P5",
-  "frozen_at": "2026-09-20T14:50:00Z",
-  "repository_base_head": "4a54da332681998fdafb7ddd07469089fb8fa1f0",
+  "frozen_at": "2026-09-20T15:30:00Z",
+  "repository_base_head": "c5abb57308b3c39b712198188ce208b392266ddc",
   "supersedes": {
     "protocol_id": "v2.3-r5.1-p5-ordinary-refactor-v1",
     "protocol_sha256": "6cb885077aad67d0b64365d08326938492fcc1d186ae1d1724e8c4f1da875a02",
@@ -26,6 +26,22 @@
       "reason": "explicit_global_memory_ports_were_excluded_from_the_public_candidate_abi",
       "provider_calls": 0,
       "vitis_launches": 0,
+      "old_evidence_rewritten": false
+    }
+  ],
+  "invalid_capability_runs": [
+    {
+      "protocol_id": "v2.3-r5.1-p5-ordinary-refactor-v3",
+      "root": "/data/agrefactor_runs/r5_1_p5_ordinary_refactor_v3",
+      "result_file_sha256": "74136ee07469db9ffe560310c3338f23464794722bff1c3fb8a94cd9c0e057df",
+      "result_sha256": "c6922cfcc3fe3c364306dd63011bc21e3449e791f337a1694e58d50808dc8dda",
+      "audit_file_sha256": "1f1df18864bd48f4a9dbf86716a89ac6aa9d47c9f06178fa54e797c5133e42f9",
+      "audit_sha256": "b409d18e9481f124075a813c4c6aa67b2ab92a85219d453518543bfe4d2f0f36",
+      "reason": "frozen_public_test_bound_candidate_top_but_not_reference_top_so_all_cases_stopped_before_vitis",
+      "provider_calls": 117,
+      "vitis_launches": 0,
+      "capability_evidence_admissible": false,
+      "budget_usage_admissible": true,
       "old_evidence_rewritten": false
     }
   ],
@@ -65,6 +81,7 @@
     "max_vitis_launches_per_case": 8,
     "max_wall_time_s_per_case": 7200,
     "public_contract_port_binding": "positionally_remap_raw_parameters_and_preserve_explicit_public_global_ports",
+    "public_top_binding": "candidate_oracle_with_reference_and_candidate_symbols",
     "cosim_policy": "required"
   },
   "model_runtime": {
@@ -76,16 +93,29 @@
     "private_reasoning_persistence_allowed": false
   },
   "budget": {
+    "amendment": {
+      "prior_p5_phase_upper_bound": {
+        "provider_calls": 180,
+        "vitis_launches": 110
+      },
+      "revised_p5_phase_upper_bound": {
+        "provider_calls": 260,
+        "vitis_launches": 110
+      },
+      "reason": "v3_consumed_117_provider_calls_before_the_dual_top_adapter_defect_was_observable",
+      "cumulative_hard_cap_changed": false,
+      "old_evidence_rewritten": false
+    },
     "hard_cap": {
       "provider_calls": 650,
       "vitis_launches": 650
     },
     "carried_forward": {
-      "provider_calls": 248,
+      "provider_calls": 365,
       "vitis_launches": 198
     },
     "p5_phase_upper_bound": {
-      "provider_calls": 180,
+      "provider_calls": 260,
       "vitis_launches": 110
     },
     "campaign_reserve": {
@@ -93,7 +123,7 @@
       "vitis_launches": 104
     },
     "remaining_after_reserve": {
-      "provider_calls": 259,
+      "provider_calls": 142,
       "vitis_launches": 348
     }
   },

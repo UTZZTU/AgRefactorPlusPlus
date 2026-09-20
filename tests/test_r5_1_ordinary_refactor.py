@@ -80,6 +80,38 @@ class R51OrdinaryRefactorTests(unittest.TestCase):
         self.assertEqual(args.max_csynth_calls, 3)
         self.assertEqual(args.max_cosim_calls, 2)
 
+    def test_public_adapter_binds_both_formal_top_symbols(self) -> None:
+        candidate = (
+            "// raw_top must remain a comment\n"
+            'extern "C" void raw_top_hls(int *value);\n'
+            "int main() { int value = 0; raw_top_hls(&value); return value; }\n"
+        )
+        adapted, anchor = MODULE.bind_reference_top_contract(
+            candidate,
+            reference_top="raw_top",
+            candidate_top="raw_top_hls",
+        )
+        self.assertEqual(anchor, "agrefactor_reference_top_symbol_anchor")
+        self.assertIn('extern "C" void raw_top(int *value);', adapted)
+        self.assertIn("= &raw_top;", adapted)
+        self.assertIn("raw_top_hls(&value)", adapted)
+        self.assertIn("// raw_top must remain a comment", adapted)
+
+    def test_public_adapter_rejects_missing_or_preexisting_anchor(self) -> None:
+        with self.assertRaises(MODULE.P5Error):
+            MODULE.bind_reference_top_contract(
+                "int main() { return 0; }\n",
+                reference_top="top",
+                candidate_top="top_hls",
+            )
+        with self.assertRaises(MODULE.P5Error):
+            MODULE.bind_reference_top_contract(
+                "void top_hls(int);\n"
+                "int agrefactor_reference_top_symbol_anchor = 0;\n",
+                reference_top="top",
+                candidate_top="top_hls",
+            )
+
     def test_public_contract_ports_follow_candidate_abi_positionally(self) -> None:
         contract = {
             "schema_version": 2,
@@ -140,6 +172,16 @@ class R51OrdinaryRefactorTests(unittest.TestCase):
         self.assertEqual(
             MODULE.classify_outcome("raw_fail_actionable", True, True, True),
             "infrastructure_failure",
+        )
+        self.assertEqual(
+            MODULE.classify_outcome(
+                "raw_pass_all",
+                False,
+                True,
+                False,
+                adapter_invalid=True,
+            ),
+            "adapter_or_oracle_invalid",
         )
 
 

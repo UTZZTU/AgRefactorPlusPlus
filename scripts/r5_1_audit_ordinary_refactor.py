@@ -33,6 +33,7 @@ ALLOWED_OUTCOMES = {
     "unnecessary_rewrite",
     "regression",
     "ordinary_refactor_failure",
+    "adapter_or_oracle_invalid",
     "infrastructure_failure",
 }
 FORBIDDEN_KEYS = {
@@ -121,6 +122,7 @@ def validate_protocol_shape(protocol: Mapping[str, Any]) -> list[dict[str, str]]
         "max_vitis_launches_per_case": 8,
         "cosim_policy": "required",
         "public_contract_port_binding": "positionally_remap_raw_parameters_and_preserve_explicit_public_global_ports",
+        "public_top_binding": "candidate_oracle_with_reference_and_candidate_symbols",
     }
     if not isinstance(product, Mapping):
         _finding(findings, "product_contract_missing", "P5 product contract is missing")
@@ -154,15 +156,30 @@ def validate_protocol_shape(protocol: Mapping[str, Any]) -> list[dict[str, str]]
     if not isinstance(budget, Mapping):
         _finding(findings, "budget_missing", "P5 budget is missing")
     else:
+        amendment = budget.get("amendment")
+        if not isinstance(amendment, Mapping) or (
+            amendment.get("prior_p5_phase_upper_bound")
+            != {"provider_calls": 180, "vitis_launches": 110}
+            or amendment.get("revised_p5_phase_upper_bound")
+            != {"provider_calls": 260, "vitis_launches": 110}
+            or amendment.get("cumulative_hard_cap_changed") is not False
+            or amendment.get("old_evidence_rewritten") is not False
+        ):
+            _finding(findings, "budget_amendment_invalid", "P5 budget amendment is not auditable")
         reserve = budget.get("campaign_reserve")
         if reserve != {"provider_calls": 143, "vitis_launches": 104}:
             _finding(findings, "reserve_invalid", "P5 reserve must be 143/104")
-        if budget.get("p5_phase_upper_bound") != {"provider_calls": 180, "vitis_launches": 110}:
-            _finding(findings, "phase_cap_invalid", "P5 phase cap must be 180/110")
+        if budget.get("p5_phase_upper_bound") != {"provider_calls": 260, "vitis_launches": 110}:
+            _finding(findings, "phase_cap_invalid", "P5 phase cap must be 260/110")
         if budget.get("hard_cap") != {"provider_calls": 650, "vitis_launches": 650}:
             _finding(findings, "hard_cap_invalid", "R5.1 hard cap must be 650/650")
-        if budget.get("carried_forward") != {"provider_calls": 248, "vitis_launches": 198}:
-            _finding(findings, "carried_ledger_invalid", "P5 must start from 248/198")
+        if budget.get("carried_forward") != {"provider_calls": 365, "vitis_launches": 198}:
+            _finding(findings, "carried_ledger_invalid", "P5 v4 must start from 365/198")
+        if budget.get("remaining_after_reserve") != {
+            "provider_calls": 142,
+            "vitis_launches": 348,
+        }:
+            _finding(findings, "remaining_budget_invalid", "P5 v4 remainder must be 142/348")
     invariants = protocol.get("invariants")
     false_fields = {
         "post_outcome_case_selection_allowed",
@@ -198,6 +215,18 @@ def validate_protocol_shape(protocol: Mapping[str, Any]) -> list[dict[str, str]]
             or failed.get("old_evidence_rewritten") is not False
         ):
             _finding(findings, "failed_audit_history_invalid", "P5 v2 audit identity changed")
+    invalid_runs = protocol.get("invalid_capability_runs")
+    if not isinstance(invalid_runs, list) or len(invalid_runs) != 1:
+        _finding(findings, "invalid_run_history_missing", "P5 must preserve its v3 invalid capability run")
+    else:
+        invalid = invalid_runs[0]
+        if not isinstance(invalid, Mapping) or (
+            invalid.get("protocol_id") != "v2.3-r5.1-p5-ordinary-refactor-v3"
+            or invalid.get("provider_calls") != 117
+            or invalid.get("vitis_launches") != 0
+            or invalid.get("old_evidence_rewritten") is not False
+        ):
+            _finding(findings, "invalid_run_history_mismatch", "P5 v3 run identity changed")
     return findings
 
 
@@ -253,6 +282,59 @@ def _rewrite_identifier(code: str, old: str, new: str) -> tuple[str, int]:
     if state in {"block", "double", "single"}:
         raise ValueError("unterminated C/C++ lexical construct")
     return "".join(output), replacements
+
+
+def _bind_reference_top_contract(
+    candidate_test: str,
+    *,
+    reference_top: str,
+    candidate_top: str,
+) -> tuple[str, str]:
+    anchor = "agrefactor_reference_top_symbol_anchor"
+    if re.search(rf"\b{re.escape(anchor)}\b", candidate_test):
+        raise ValueError("Public test already defines the reference symbol anchor")
+    match = re.search(
+        rf'^\s*(?:extern\s+"C"\s+)?[^#\n;{{}}]*'
+        rf"\b{re.escape(candidate_top)}\s*\("
+        rf"[^;{{}}]*\)\s*;",
+        candidate_test,
+        flags=re.MULTILINE,
+    )
+    if match is None:
+        raise ValueError("Candidate Public declaration is unavailable for reference binding")
+    declaration = match.group(0).strip()
+    reference_declaration, count = _rewrite_identifier(
+        declaration,
+        candidate_top,
+        reference_top,
+    )
+    if count != 1:
+        raise ValueError("Candidate declaration cannot bind the reference top uniquely")
+    binding = (
+        reference_declaration
+        + "\n[[maybe_unused]] static auto const "
+        + anchor
+        + " = &"
+        + reference_top
+        + ";\n"
+    )
+    return candidate_test[: match.end()] + "\n" + binding + candidate_test[match.end() :], anchor
+
+
+def _undefined_symbol_bases(output: str) -> set[str]:
+    symbols: set[str] = set()
+    for line in output.splitlines():
+        text = line.strip()
+        if not text:
+            continue
+        if " U " in f" {text} ":
+            text = text.rsplit(" U ", 1)[-1].strip()
+        elif text.startswith("U "):
+            text = text[2:].strip()
+        else:
+            continue
+        symbols.add(text.split("(", 1)[0].strip())
+    return symbols
 
 
 def _parameter_names(code: str, function: str) -> tuple[str, ...]:
@@ -461,6 +543,36 @@ def _audit_failed_protocol_history(
             _finding(findings, "failed_protocol_audit_identity_mismatch", str(path))
 
 
+def _audit_invalid_capability_history(
+    protocol: Mapping[str, Any], findings: list[dict[str, str]]
+) -> None:
+    for record in protocol.get("invalid_capability_runs", []):
+        if not isinstance(record, Mapping):
+            continue
+        root = Path(str(record.get("root", "")))
+        result_path = root / "result.json"
+        audit_path = root / "independent_audit.json"
+        if (
+            not result_path.is_file()
+            or not audit_path.is_file()
+            or file_sha256(result_path) != record.get("result_file_sha256")
+            or file_sha256(audit_path) != record.get("audit_file_sha256")
+        ):
+            _finding(findings, "invalid_capability_evidence_mismatch", str(root))
+            continue
+        result = load_object(result_path)
+        audit = load_object(audit_path)
+        if (
+            result.get("result_sha256") != record.get("result_sha256")
+            or audit.get("audit_sha256") != record.get("audit_sha256")
+            or result.get("provider_calls") != record.get("provider_calls")
+            or result.get("vitis_launches") != record.get("vitis_launches")
+            or audit.get("status") != "passed"
+            or result.get("executed_case_count") != 13
+        ):
+            _finding(findings, "invalid_capability_identity_mismatch", str(root))
+
+
 def audit_protocol(
     repo: Path,
     external_root: Path,
@@ -486,11 +598,15 @@ def audit_protocol(
     plan, _ = _authority(repo, protocol, findings)
     _audit_superseded_run(protocol, findings)
     _audit_failed_protocol_history(protocol, findings)
+    _audit_invalid_capability_history(protocol, findings)
     compiler = shutil.which("g++")
+    symbol_tool = shutil.which("nm")
     if compiler is None:
         _finding(findings, "compiler_missing", "g++ is required for zero-call adapter audit")
+    if symbol_tool is None:
+        _finding(findings, "symbol_tool_missing", "nm is required for zero-call dual-top audit")
     case_audits: list[dict[str, Any]] = []
-    if plan is not None and compiler is not None:
+    if plan is not None and compiler is not None and symbol_tool is not None:
         with tempfile.TemporaryDirectory(prefix="r5-1-p5-protocol-") as temporary:
             root = Path(temporary)
             selected = {item["case_id"]: item for item in protocol["cases"]}
@@ -502,11 +618,16 @@ def audit_protocol(
                     adapted_source, source_replacements = _rewrite_identifier(
                         material["design"], case["top"], candidate_top
                     )
-                    adapted_test, test_replacements = _rewrite_identifier(
+                    candidate_test, test_replacements = _rewrite_identifier(
                         material["testbench"], case["top"], candidate_top
                     )
                     if source_replacements < 1 or test_replacements < 1:
                         raise ValueError("Candidate top was not bound in source and Public test")
+                    adapted_test, reference_anchor = _bind_reference_top_contract(
+                        candidate_test,
+                        reference_top=case["top"],
+                        candidate_top=candidate_top,
+                    )
                     adapted_depths = _adapt_depths(
                         material["design"],
                         adapted_test,
@@ -522,11 +643,14 @@ def audit_protocol(
                     case_root.mkdir()
                     source_path = case_root / "source.cpp"
                     test_path = case_root / "public_test.cpp"
+                    candidate_test_path = case_root / "candidate_oracle_test.cpp"
+                    test_object = case_root / "public_test.o"
                     binary = case_root / "host_oracle"
                     source_path.write_text(adapted_source, encoding="utf-8")
                     test_path.write_text(adapted_test, encoding="utf-8")
+                    candidate_test_path.write_text(candidate_test, encoding="utf-8")
                     compiled = subprocess.run(
-                        [compiler, "-std=c++17", "-O0", "-Wno-unknown-pragmas", str(source_path), str(test_path), "-o", str(binary)],
+                        [compiler, "-std=c++17", "-O0", "-Wno-unknown-pragmas", str(source_path), str(candidate_test_path), "-o", str(binary)],
                         cwd=case_root,
                         check=False,
                         stdout=subprocess.PIPE,
@@ -536,6 +660,31 @@ def audit_protocol(
                     )
                     if compiled.returncode:
                         raise ValueError("adapted host compile failed")
+                    compiled_test = subprocess.run(
+                        [compiler, "-std=c++17", "-O0", "-c", str(test_path), "-o", str(test_object)],
+                        cwd=case_root,
+                        check=False,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        timeout=120,
+                    )
+                    if compiled_test.returncode:
+                        raise ValueError("dual-top Public test compile failed")
+                    symbols = subprocess.run(
+                        [symbol_tool, "-C", "--undefined-only", str(test_object)],
+                        cwd=case_root,
+                        check=False,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        timeout=120,
+                    )
+                    if symbols.returncode:
+                        raise ValueError("dual-top symbol inspection failed")
+                    undefined = _undefined_symbol_bases(symbols.stdout)
+                    if case["top"] not in undefined or candidate_top not in undefined:
+                        raise ValueError("Public test does not bind both formal top symbols")
                     executed = subprocess.run(
                         [str(binary)],
                         cwd=case_root,
@@ -566,6 +715,11 @@ def audit_protocol(
                             "test_replacement_count": test_replacements,
                             "adapted_source_sha256": text_sha256(adapted_source),
                             "adapted_public_test_sha256": text_sha256(adapted_test),
+                            "candidate_oracle_test_sha256": text_sha256(candidate_test),
+                            "reference_symbol_anchor": reference_anchor,
+                            "undefined_formal_top_symbols": sorted(
+                                {case["top"], candidate_top} & undefined
+                            ),
                             "adapted_cosim_depths": adapted_depths,
                         }
                     )
@@ -605,9 +759,34 @@ def _scan_forbidden(value: Any, findings: list[dict[str, str]], location: str) -
             _scan_forbidden(nested, findings, f"{location}[{index}]")
 
 
-def _reclassify(raw: str, succeeded: bool, changed: bool | None, infrastructure: bool) -> str:
+def _terminal_evidence(product_root: Path) -> dict[str, Any]:
+    path = product_root / "refactor" / "diagnostic_events.json"
+    if not path.is_file():
+        return {"owner": None, "failure_classes": [], "event_id": None}
+    value = load_object(path)
+    events = value.get("events")
+    if not isinstance(events, list) or not events or not isinstance(events[-1], Mapping):
+        return {"owner": None, "failure_classes": [], "event_id": None}
+    event = events[-1]
+    classes = event.get("failure_classes")
+    return {
+        "owner": event.get("owner"),
+        "failure_classes": list(classes) if isinstance(classes, list) else [],
+        "event_id": event.get("event_id"),
+    }
+
+
+def _reclassify(
+    raw: str,
+    succeeded: bool,
+    changed: bool | None,
+    infrastructure: bool,
+    adapter_invalid: bool = False,
+) -> str:
     if infrastructure:
         return "infrastructure_failure"
+    if adapter_invalid:
+        return "adapter_or_oracle_invalid"
     if raw == "raw_pass_all":
         if not succeeded:
             return "regression"
@@ -622,6 +801,8 @@ def audit_result(repo: Path, protocol_path: Path, protocol_audit_path: Path, res
     protocol_audit = load_object(protocol_audit_path)
     result = load_object(result_path)
     findings = validate_protocol_shape(protocol)
+    if result.get("campaign_id") != protocol.get("protocol_id"):
+        _finding(findings, "campaign_identity_mismatch", "P5 result used another protocol identity")
     if protocol_audit.get("status") != "passed" or protocol_audit.get("protocol_sha256") != canonical_sha256(protocol):
         _finding(findings, "protocol_audit_invalid", "P5 protocol audit is not authoritative")
     stored_seal = result.get("result_sha256")
@@ -693,6 +874,7 @@ def audit_result(repo: Path, protocol_path: Path, protocol_audit_path: Path, res
         infrastructure = not run_path.is_file()
         succeeded = False
         changed: bool | None = None
+        terminal_evidence = {"owner": None, "failure_classes": [], "event_id": None}
         if run_path.is_file():
             run = load_object(run_path)
             succeeded = run.get("succeeded") is True
@@ -723,7 +905,25 @@ def audit_result(repo: Path, protocol_path: Path, protocol_audit_path: Path, res
             source = root / "cases" / case_id / "material" / "source.cpp"
             if final_candidate.is_file() and source.is_file():
                 changed = text_sha256(final_candidate.read_text(encoding="utf-8")) != text_sha256(source.read_text(encoding="utf-8"))
-        outcome = _reclassify(planned_case["raw_classification"], succeeded, changed, infrastructure)
+            terminal_evidence = _terminal_evidence(product_root)
+        adapter_invalid = bool(
+            not succeeded and terminal_evidence.get("owner") == "testbench"
+        )
+        if record.get("terminal_evidence") != terminal_evidence:
+            _finding(findings, "terminal_evidence_mismatch", case_id)
+        if adapter_invalid:
+            _finding(
+                findings,
+                "adapter_or_oracle_invalid",
+                f"{case_id}:terminal Public evidence is owned by the frozen testbench",
+            )
+        outcome = _reclassify(
+            planned_case["raw_classification"],
+            succeeded,
+            changed,
+            infrastructure,
+            adapter_invalid,
+        )
         recomputed_outcomes[outcome] += 1
         if record.get("outcome") != outcome or outcome not in ALLOWED_OUTCOMES:
             _finding(findings, "outcome_mismatch", f"{case_id}:{record.get('outcome')}!={outcome}")

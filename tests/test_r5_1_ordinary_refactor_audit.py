@@ -48,6 +48,11 @@ class R51OrdinaryRefactorAuditTests(unittest.TestCase):
                     "eligible_as_pristine_p9_future": False,
                     "outcome": "infrastructure_failure",
                     "candidate_changed": None,
+                    "terminal_evidence": {
+                        "owner": None,
+                        "failure_classes": [],
+                        "event_id": None,
+                    },
                     "budget_usage": {
                         "llm_calls": 11,
                         "csim_calls": 3,
@@ -66,7 +71,7 @@ class R51OrdinaryRefactorAuditTests(unittest.TestCase):
             )
         result = {
             "schema_version": 1,
-            "campaign_id": "v2.3-r5.1-p5-ordinary-refactor-v1",
+            "campaign_id": self.protocol["protocol_id"],
             "status": "ready_for_independent_audit",
             "protocol_file_sha256": MODULE.file_sha256(self.protocol_path),
             "protocol_sha256": MODULE.canonical_sha256(self.protocol),
@@ -132,6 +137,30 @@ class R51OrdinaryRefactorAuditTests(unittest.TestCase):
             "fixture",
         )
         self.assertIn("private_payload_persisted", {item["code"] for item in findings})
+
+    def test_independent_dual_top_binding_and_adapter_classification(self) -> None:
+        candidate = (
+            'extern "C" void kernel_hls(int *value);\n'
+            "int main() { int value = 0; kernel_hls(&value); return value; }\n"
+        )
+        adapted, anchor = MODULE._bind_reference_top_contract(
+            candidate,
+            reference_top="kernel",
+            candidate_top="kernel_hls",
+        )
+        self.assertEqual(anchor, "agrefactor_reference_top_symbol_anchor")
+        self.assertIn('extern "C" void kernel(int *value);', adapted)
+        self.assertIn("= &kernel;", adapted)
+        self.assertEqual(
+            MODULE._reclassify(
+                "raw_pass_all",
+                False,
+                True,
+                False,
+                adapter_invalid=True,
+            ),
+            "adapter_or_oracle_invalid",
+        )
 
 
 if __name__ == "__main__":
