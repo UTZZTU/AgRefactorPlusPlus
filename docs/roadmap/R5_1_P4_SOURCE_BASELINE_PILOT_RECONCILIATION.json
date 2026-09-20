@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "reconciliation_id": "v2.3-r5.1-p4-source-baseline-pilot-reconciliation-v1",
+  "status": "passed_pilot_expansion_required",
+  "phase": "R5.1-P4",
+  "scope": "five-case raw-source baseline pilot; not full P4 completion",
+  "implementation_head": "b2064870abab341be30ebbf7182989eed7e914bd",
+  "implementation_commits": [
+    "8597186",
+    "f273d95",
+    "b206487"
+  ],
+  "protocol": {
+    "path": "configs/r5_1/source_baseline_protocol.json",
+    "file_sha256": "35e927deee1c0958cfc0c322d5f9ecbcfabaf66ef3120c4d3a714eb7600f65b2",
+    "canonical_sha256": "e3ed534c841a30b99d9112c1e913b87c7d7da3d4708bcd2e1a414e3de05fd9b8",
+    "case_count": 5,
+    "source_count": 4,
+    "algorithm_family_count": 4,
+    "provider_call_reserve": 0,
+    "vitis_launch_reserve": 15
+  },
+  "host_preflight": {
+    "root": "/data/agrefactor_runs/r5_1_p4_source_baseline_preflight_v2",
+    "result_path": "/data/agrefactor_runs/r5_1_p4_source_baseline_preflight_v2/host_preflight.json",
+    "result_file_sha256": "0839dbf3a5dea41070c45892d7e7e32d3b1f3ac8d32d3ab50db8c98fe27f49db",
+    "result_canonical_sha256": "4d118ce1f2d93250a40e3957704e289fb4ef03927353f0410664a21197b8e9a5",
+    "audit_path": "/data/agrefactor_runs/r5_1_p4_source_baseline_preflight_v2/independent_audit.json",
+    "audit_file_sha256": "146cb7149cb881ac665a48853f1605b2b98e8511f3bf8dead3c39817ecc0681f",
+    "audit_canonical_sha256": "9749bf1275351b6eb890b913de6ad5a70b61b48241718b80fb9038442bd7fa8a",
+    "status": "passed",
+    "critical_findings": 0
+  },
+  "authoritative_campaign": {
+    "root": "/data/agrefactor_runs/r5_1_p4_source_baseline_v3",
+    "result_path": "/data/agrefactor_runs/r5_1_p4_source_baseline_v3/result.json",
+    "result_file_sha256": "af5551f8995fcbeea782ce76279062c0c9a6586421e8886cbaff338ff7797f18",
+    "result_canonical_sha256": "bd49180ff07d0b71ebd381dc847b5c80e99cda22594d346973f98971d32740f0",
+    "audit_path": "/data/agrefactor_runs/r5_1_p4_source_baseline_v3/independent_audit.json",
+    "audit_file_sha256": "1375a92746cb5ad9a440b1744b871777e0e5bd78908acd6bed24d113f2b2b012",
+    "audit_canonical_sha256": "fd3e52cbd641e4d71bd6b21dcee5645bf585c43edf4abbf253f380ef1add1ed3",
+    "status": "passed",
+    "critical_findings": 0,
+    "provider_calls": 0,
+    "vitis_launches": 14,
+    "stage_reach": {
+      "S0_host_oracle": 5,
+      "S1_public_csim": 5,
+      "S2_csynth": 5,
+      "S3_public_cosim": 4
+    },
+    "classification_counts": {
+      "raw_fail_actionable": 1,
+      "raw_fail_ambiguous": 2,
+      "raw_pass_all": 2
+    }
+  },
+  "cases": [
+    {
+      "case_id": "p4-external-c2hlsc-runs-raw",
+      "source_id": "c2hlsc",
+      "algorithm_family": "statistical_runs",
+      "partition": "history",
+      "classification": "raw_fail_actionable",
+      "terminal_stage": "public_cosim",
+      "failure_owner": "candidate",
+      "failure_family": "functional_mismatch"
+    },
+    {
+      "case_id": "p4-external-hls-eval-vector-add-raw",
+      "source_id": "hls-eval",
+      "algorithm_family": "vector_addition",
+      "partition": "future",
+      "classification": "raw_pass_all",
+      "terminal_stage": "public_cosim",
+      "failure_owner": null,
+      "failure_family": null
+    },
+    {
+      "case_id": "p4-external-hlspilot-fir-raw",
+      "source_id": "hlspilot",
+      "algorithm_family": "finite_impulse_response",
+      "partition": "history",
+      "classification": "raw_pass_all",
+      "terminal_stage": "public_cosim",
+      "failure_owner": null,
+      "failure_family": null
+    },
+    {
+      "case_id": "p4-external-hlsfactory-vector-add-raw",
+      "source_id": "hlsfactory",
+      "algorithm_family": "vector_addition",
+      "partition": "future",
+      "classification": "raw_fail_ambiguous",
+      "terminal_stage": "public_cosim",
+      "failure_owner": "unknown",
+      "failure_family": "unknown"
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-quicksort-raw",
+      "source_id": "c2hlsc",
+      "algorithm_family": "sorting_quicksort",
+      "partition": "history",
+      "classification": "raw_fail_ambiguous",
+      "terminal_stage": "csynth",
+      "failure_owner": "unknown",
+      "failure_family": "unknown"
+    }
+  ],
+  "budget_reconciliation": {
+    "carried_forward": {
+      "provider_calls": 248,
+      "vitis_launches": 111
+    },
+    "p4_physical_consumption": {
+      "provider_calls": 0,
+      "vitis_launches": 28
+    },
+    "p4_attempts": [
+      {
+        "root": "/data/agrefactor_runs/r5_1_p4_source_baseline_v1",
+        "role": "diagnostic_budget_model_failure",
+        "provider_calls": 0,
+        "vitis_launches": 0
+      },
+      {
+        "root": "/data/agrefactor_runs/r5_1_p4_source_baseline_v2",
+        "role": "superseded_stage_summary_evidence",
+        "provider_calls": 0,
+        "vitis_launches": 14
+      },
+      {
+        "root": "/data/agrefactor_runs/r5_1_p4_source_baseline_v3",
+        "role": "authoritative_pilot_evidence",
+        "provider_calls": 0,
+        "vitis_launches": 14
+      }
+    ],
+    "cumulative_after_pilot": {
+      "provider_calls": 248,
+      "vitis_launches": 139
+    },
+    "remaining_to_650_hard_cap": {
+      "provider_calls": 402,
+      "vitis_launches": 511
+    }
+  },
+  "invariants": {
+    "provider_used_for_source_baseline": false,
+    "source_code_modified_by_runner": false,
+    "hidden_inputs_used": false,
+    "future_outcomes_used_for_partitioning": false,
+    "third_party_source_copied_into_repository": false,
+    "formal_admission_unchanged": true,
+    "r5_accepted": false,
+    "r6_started": false
+  },
+  "p4_complete": false,
+  "next_step": "expand P4 source baseline to all eligible nonduplicate T0/T1 cases and approved external samples before P5"
+}
