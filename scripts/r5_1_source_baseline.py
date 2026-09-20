@@ -40,6 +40,7 @@ DEFAULT_PLAN = ROOT / "configs" / "r5_1" / "source_baseline_protocol.json"
 ALLOWED_ROOTS = {"repository", "external"}
 ALLOWED_DECISIONS = {"admit", "external-only"}
 ALLOWED_PARTITIONS = {"history", "future"}
+ALLOWED_HOST_PREFLIGHT_EXPECTATIONS = {"oracle_pass", "candidate_mismatch"}
 ALLOWED_CLASSIFICATIONS = {
     "raw_pass_all",
     "raw_fail_actionable",
@@ -138,7 +139,7 @@ def _validate_assembly(value: Any, case_id: str, role: str) -> None:
 
 
 def validate_plan(plan: Mapping[str, Any]) -> None:
-    if plan.get("schema_version") != 1:
+    if plan.get("schema_version") != 2:
         raise ValueError("unsupported source baseline schema")
     if plan.get("route") != "V2.3-R5.1-P4":
         raise ValueError("unexpected source baseline route")
@@ -209,6 +210,8 @@ def validate_plan(plan: Mapping[str, Any]) -> None:
             raise ValueError(f"invalid top: {case_id}")
         if not isinstance(case.get("known_prior_outcome"), bool):
             raise ValueError(f"known_prior_outcome must be boolean: {case_id}")
+        if case.get("host_preflight_expected") not in ALLOWED_HOST_PREFLIGHT_EXPECTATIONS:
+            raise ValueError(f"invalid host preflight expectation: {case_id}")
         _validate_assembly(case.get("design"), case_id, "design")
         _validate_assembly(case.get("public_testbench"), case_id, "public_testbench")
         marker = case.get("pass_marker")
@@ -387,6 +390,31 @@ def _ensure_empty_output(output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
 
 
+def classify_host_preflight(
+    *,
+    expected: str,
+    compile_returncode: int,
+    run_returncode: int | None,
+    pass_marker_observed: bool,
+    mismatch_returncodes: set[int],
+) -> tuple[bool, str]:
+    if compile_returncode != 0:
+        observed = "compile_failed"
+    elif run_returncode is None:
+        observed = "not_run"
+    elif run_returncode == 0 and pass_marker_observed:
+        observed = "oracle_pass"
+    elif run_returncode in mismatch_returncodes and not pass_marker_observed:
+        observed = "candidate_mismatch"
+    elif run_returncode == 0:
+        observed = "pass_marker_missing"
+    elif pass_marker_observed:
+        observed = "nonzero_with_pass_marker"
+    else:
+        observed = "unexpected_failure"
+    return observed == expected, observed
+
+
 def run_host_preflight(
     repo: Path,
     external_root: Path,
@@ -444,11 +472,15 @@ def run_host_preflight(
         (case_root / "compile.stderr").write_text(compiled.stderr, encoding="utf-8")
         (case_root / "run.stdout").write_text(stdout, encoding="utf-8")
         (case_root / "run.stderr").write_text(stderr, encoding="utf-8")
-        passed = bool(
-            compiled.returncode == 0
-            and executed is not None
-            and executed.returncode == 0
-            and case["pass_marker"] in stdout
+        pass_marker_observed = case["pass_marker"] in stdout
+        passed, observed = classify_host_preflight(
+            expected=case["host_preflight_expected"],
+            compile_returncode=compiled.returncode,
+            run_returncode=None if executed is None else executed.returncode,
+            pass_marker_observed=pass_marker_observed,
+            mismatch_returncodes=set(
+                case["runtime_contract"]["candidate_mismatch_returncodes"]
+            ),
         )
         cases.append(
             {
@@ -457,9 +489,11 @@ def run_host_preflight(
                 "algorithm_family": case["algorithm_family"],
                 "partition": case["partition"],
                 "status": "passed" if passed else "failed",
+                "expected_outcome": case["host_preflight_expected"],
+                "observed_outcome": observed,
                 "compile_returncode": compiled.returncode,
                 "run_returncode": None if executed is None else executed.returncode,
-                "pass_marker_observed": case["pass_marker"] in stdout,
+                "pass_marker_observed": pass_marker_observed,
                 "material_identity": material["identity"],
             }
         )

@@ -28,12 +28,33 @@ class R51SourceBaselineTests(unittest.TestCase):
     def test_frozen_protocol_has_audited_coverage_and_budget(self) -> None:
         MODULE.validate_plan(self.plan)
         cases = self.plan["cases"]
-        self.assertEqual(len(cases), 8)
+        self.assertEqual(self.plan["schema_version"], 2)
+        self.assertEqual(self.plan["protocol_id"], "v2.3-r5.1-p4-source-baseline-v3")
+        self.assertEqual(len(cases), 13)
         self.assertEqual(len({case["source_id"] for case in cases}), 4)
-        self.assertEqual(len({case["algorithm_family"] for case in cases}), 7)
+        self.assertEqual(len({case["algorithm_family"] for case in cases}), 12)
+        case_ids = {case["case_id"] for case in cases}
+        self.assertTrue(
+            {
+                "p4-internal-c2hlsc-aes-raw",
+                "p4-internal-c2hlsc-present-raw",
+                "p4-internal-c2hlsc-sha256-raw",
+                "p4-internal-c2hlsc-overlapping-raw",
+                "p4-internal-c2hlsc-des-raw",
+            }.issubset(case_ids)
+        )
+        des = next(case for case in cases if case["case_id"] == "p4-internal-c2hlsc-des-raw")
+        self.assertEqual(des["host_preflight_expected"], "candidate_mismatch")
+        self.assertTrue(
+            all(
+                case["host_preflight_expected"] == "oracle_pass"
+                for case in cases
+                if case is not des
+            )
+        )
         self.assertEqual(
             self.plan["budget"]["campaign_reserve"],
-            {"provider_calls": 0, "vitis_launches": 24},
+            {"provider_calls": 0, "vitis_launches": 39},
         )
         self.assertEqual(self.plan["invariants"]["provider_calls"], 0)
         self.assertFalse(self.plan["invariants"]["hidden_inputs_used"])
@@ -55,6 +76,44 @@ class R51SourceBaselineTests(unittest.TestCase):
                 plan["invariants"]["validation_budget_per_case"][field] -= 1
                 with self.assertRaisesRegex(ValueError, "validation budget"):
                     MODULE.validate_plan(plan)
+
+    def test_host_preflight_requires_the_frozen_expected_outcome(self) -> None:
+        self.assertEqual(
+            MODULE.classify_host_preflight(
+                expected="candidate_mismatch",
+                compile_returncode=0,
+                run_returncode=1,
+                pass_marker_observed=False,
+                mismatch_returncodes={1},
+            ),
+            (True, "candidate_mismatch"),
+        )
+        self.assertEqual(
+            MODULE.classify_host_preflight(
+                expected="oracle_pass",
+                compile_returncode=0,
+                run_returncode=1,
+                pass_marker_observed=False,
+                mismatch_returncodes={1},
+            ),
+            (False, "candidate_mismatch"),
+        )
+        self.assertEqual(
+            MODULE.classify_host_preflight(
+                expected="candidate_mismatch",
+                compile_returncode=0,
+                run_returncode=0,
+                pass_marker_observed=True,
+                mismatch_returncodes={1},
+            ),
+            (False, "oracle_pass"),
+        )
+
+    def test_missing_host_preflight_expectation_is_rejected(self) -> None:
+        plan = copy.deepcopy(self.plan)
+        plan["cases"][0].pop("host_preflight_expected")
+        with self.assertRaisesRegex(ValueError, "host preflight expectation"):
+            MODULE.validate_plan(plan)
 
     def test_semantic_family_cannot_cross_history_future(self) -> None:
         plan = copy.deepcopy(self.plan)

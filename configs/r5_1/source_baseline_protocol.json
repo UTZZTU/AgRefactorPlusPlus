@@ -1,7 +1,7 @@
 {
-  "schema_version": 1,
-  "protocol_id": "v2.3-r5.1-p4-source-baseline-v1",
-  "frozen_at": "2026-09-20T15:30:00Z",
+  "schema_version": 2,
+  "protocol_id": "v2.3-r5.1-p4-source-baseline-v3",
+  "frozen_at": "2026-09-20T12:05:00Z",
   "route": "V2.3-R5.1-P4",
   "target_profile": {
     "name": "vitis-2023.2-default",
@@ -29,7 +29,7 @@
     },
     "campaign_reserve": {
       "provider_calls": 0,
-      "vitis_launches": 24
+      "vitis_launches": 39
     },
     "unallocated_recovery_buffer": {
       "provider_calls": 42,
@@ -82,12 +82,15 @@
       "runtime_contract": {
         "schema_version": 2,
         "kind": "public_differential_self_check_v1",
-        "candidate_mismatch_returncodes": [1],
+        "candidate_mismatch_returncodes": [
+          1
+        ],
         "cosim_interface_depths": {
           "res_S": 1,
           "res_V": 1
         }
-      }
+      },
+      "host_preflight_expected": "oracle_pass"
     },
     {
       "case_id": "p4-external-hls-eval-vector-add-raw",
@@ -117,7 +120,9 @@
             "sha256": "390916ab6e43a70f24c015226311a742f0a0254d15888ab3018e916c9ee6d72e"
           }
         ],
-        "strip_exact_lines": ["#include \"vec_add.h\""]
+        "strip_exact_lines": [
+          "#include \"vec_add.h\""
+        ]
       },
       "public_testbench": {
         "parts": [
@@ -136,20 +141,25 @@
             "sha256": "43df0abfb2bc31e44fe49578c4a9efbe68dae5b3dce5110476c404fc25c2ab0d"
           }
         ],
-        "strip_exact_lines": ["#include \"vec_add.h\""]
+        "strip_exact_lines": [
+          "#include \"vec_add.h\""
+        ]
       },
       "pass_marker": "Test passed!",
       "public_case_count": 16,
       "runtime_contract": {
         "schema_version": 2,
         "kind": "public_differential_self_check_v1",
-        "candidate_mismatch_returncodes": [1],
+        "candidate_mismatch_returncodes": [
+          1
+        ],
         "cosim_interface_depths": {
           "in0": 16,
           "in1": 16,
           "out": 16
         }
-      }
+      },
+      "host_preflight_expected": "oracle_pass"
     },
     {
       "case_id": "p4-external-hlspilot-fir-raw",
@@ -179,7 +189,9 @@
             "sha256": "f8669733f3a9e164fb54ab9ea857886d51baaaa1f98ee741f88bc3c862c97230"
           }
         ],
-        "strip_exact_lines": ["#include \"fir.h\""]
+        "strip_exact_lines": [
+          "#include \"fir.h\""
+        ]
       },
       "public_testbench": {
         "parts": [
@@ -196,19 +208,24 @@
             "sha256": "067ece3fe204cf68b11914f2d9a44a4db4d718af15235b523601270e34301e01"
           }
         ],
-        "strip_exact_lines": ["#include \"fir.h\""]
+        "strip_exact_lines": [
+          "#include \"fir.h\""
+        ]
       },
       "pass_marker": "HLSPILOT_FIR_ORACLE=passed",
       "public_case_count": 8,
       "runtime_contract": {
         "schema_version": 2,
         "kind": "public_differential_self_check_v1",
-        "candidate_mismatch_returncodes": [1],
+        "candidate_mismatch_returncodes": [
+          1
+        ],
         "cosim_interface_depths": {
           "output": 1,
           "taps": 4
         }
-      }
+      },
+      "host_preflight_expected": "oracle_pass"
     },
     {
       "case_id": "p4-external-hlsfactory-vector-add-raw",
@@ -250,13 +267,16 @@
       "runtime_contract": {
         "schema_version": 2,
         "kind": "public_differential_self_check_v1",
-        "candidate_mismatch_returncodes": [1],
+        "candidate_mismatch_returncodes": [
+          1
+        ],
         "cosim_interface_depths": {
           "a": 1024,
           "b": 1024,
           "c": 1024
         }
-      }
+      },
+      "host_preflight_expected": "oracle_pass"
     },
     {
       "case_id": "p4-internal-c2hlsc-quicksort-raw",
@@ -294,11 +314,14 @@
       "runtime_contract": {
         "schema_version": 2,
         "kind": "public_differential_self_check_v1",
-        "candidate_mismatch_returncodes": [1],
+        "candidate_mismatch_returncodes": [
+          1
+        ],
         "cosim_interface_depths": {
           "arr": 9
         }
-      }
+      },
+      "host_preflight_expected": "oracle_pass"
     },
     {
       "case_id": "p4-internal-c2hlsc-monobit-raw",
@@ -341,11 +364,14 @@
       "runtime_contract": {
         "schema_version": 2,
         "kind": "public_differential_self_check_v1",
-        "candidate_mismatch_returncodes": [1],
+        "candidate_mismatch_returncodes": [
+          1
+        ],
         "cosim_interface_depths": {
           "epsilon": 128
         }
-      }
+      },
+      "host_preflight_expected": "oracle_pass"
     },
     {
       "case_id": "p4-internal-c2hlsc-block-raw",
@@ -388,11 +414,14 @@
       "runtime_contract": {
         "schema_version": 2,
         "kind": "public_differential_self_check_v1",
-        "candidate_mismatch_returncodes": [1],
+        "candidate_mismatch_returncodes": [
+          1
+        ],
         "cosim_interface_depths": {
           "epsilon": 128
         }
-      }
+      },
+      "host_preflight_expected": "oracle_pass"
     },
     {
       "case_id": "p4-internal-c2hlsc-cusums-raw",
@@ -435,9 +464,250 @@
       "runtime_contract": {
         "schema_version": 2,
         "kind": "public_differential_self_check_v1",
-        "candidate_mismatch_returncodes": [1],
+        "candidate_mismatch_returncodes": [
+          1
+        ],
         "cosim_interface_depths": {
           "epsilon": 20000
+        }
+      },
+      "host_preflight_expected": "oracle_pass"
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-aes-raw",
+      "source_id": "c2hlsc",
+      "source_tier": "T0",
+      "decision": "admit",
+      "license": "GPL-3.0-only",
+      "partition": "history",
+      "algorithm_family": "cryptographic_block_cipher_aes",
+      "top": "Cipher",
+      "known_prior_outcome": false,
+      "role": "internal-adapter-required-source-baseline",
+      "design": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "configs/r5_1/source_baseline_adapters/c2hlsc_aes_design_preamble.cpp",
+            "sha256": "01a3da951b39487f5fb0dd4b59813313754caf46478faa63186d946bca64b352"
+          },
+          {
+            "root": "repository",
+            "path": "src/c2hlsc/aes/kernel.cpp",
+            "sha256": "b697ddb34efdb35ac0bb53052184a892a4e4139fa459058feb714a75619be467"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "public_testbench": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "configs/r5_1/source_baseline_adapters/c2hlsc_aes_public.cpp",
+            "sha256": "eff02ffcbeee5dd388b232fe4dc468565b60cd5a8e7b9471439613f72ed72103"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "pass_marker": "C2HLSC_AES_SOURCE_ORACLE=passed",
+      "public_case_count": 1,
+      "runtime_contract": {
+        "schema_version": 2,
+        "kind": "public_differential_self_check_v1",
+        "candidate_mismatch_returncodes": [
+          1
+        ],
+        "cosim_interface_depths": {
+          "state": 1,
+          "RoundKey": 1
+        }
+      },
+      "host_preflight_expected": "oracle_pass"
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-present-raw",
+      "source_id": "c2hlsc",
+      "source_tier": "T0",
+      "decision": "admit",
+      "license": "GPL-3.0-only",
+      "partition": "history",
+      "algorithm_family": "cryptographic_block_cipher_present80",
+      "top": "present80_encryptBlock",
+      "known_prior_outcome": false,
+      "role": "internal-adapter-required-source-baseline",
+      "design": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "src/c2hlsc/present/kernel.cpp",
+            "sha256": "22464a5d1f0884c6beead6ba77561b7d3928a4a2971e97109e79bad7366d0429"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "public_testbench": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "configs/r5_1/source_baseline_adapters/c2hlsc_present_public.cpp",
+            "sha256": "c758bba3f8cc4c5ce9368fac5c21cd76a36035f9e3e699a382e0d61d72b09bd8"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "pass_marker": "C2HLSC_PRESENT_SOURCE_ORACLE=passed",
+      "public_case_count": 1,
+      "runtime_contract": {
+        "schema_version": 2,
+        "kind": "public_differential_self_check_v1",
+        "candidate_mismatch_returncodes": [
+          1
+        ],
+        "cosim_interface_depths": {
+          "block": 1,
+          "key": 1
+        }
+      },
+      "host_preflight_expected": "oracle_pass"
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-sha256-raw",
+      "source_id": "c2hlsc",
+      "source_tier": "T0",
+      "decision": "admit",
+      "license": "GPL-3.0-only",
+      "partition": "history",
+      "algorithm_family": "cryptographic_hash_sha256_update",
+      "top": "sha256_update",
+      "known_prior_outcome": false,
+      "role": "internal-adapter-required-source-baseline",
+      "design": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "src/c2hlsc/sha256/kernel.cpp",
+            "sha256": "aca33f50f1f76a889e892e1b891561b65c7528db6a294cf03067f2cdedf52caf"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "public_testbench": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "configs/r5_1/source_baseline_adapters/c2hlsc_sha256_public.cpp",
+            "sha256": "19e83a39cae7e8bc8bdf6f0a7d306fd52211e6fa33fec81c60d9e496d37afaac"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "pass_marker": "C2HLSC_SHA256_SOURCE_ORACLE=passed",
+      "public_case_count": 56,
+      "runtime_contract": {
+        "schema_version": 2,
+        "kind": "public_differential_self_check_v1",
+        "candidate_mismatch_returncodes": [
+          1
+        ],
+        "cosim_interface_depths": {
+          "data_int": 1,
+          "datalen_int": 1,
+          "state": 1,
+          "bitlen_int": 1,
+          "data": 1
+        }
+      },
+      "host_preflight_expected": "oracle_pass"
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-overlapping-raw",
+      "source_id": "c2hlsc",
+      "source_tier": "T0",
+      "decision": "admit",
+      "license": "GPL-3.0-only",
+      "partition": "history",
+      "algorithm_family": "statistical_overlapping_template",
+      "top": "Overlapping",
+      "known_prior_outcome": false,
+      "role": "internal-adapter-required-source-baseline",
+      "design": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "src/c2hlsc/overlapping/kernel.cpp",
+            "sha256": "5bb1177bf057147bbfcabab53d26e4c9131c48432de42fed8845c0461725e839"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "public_testbench": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "configs/r5_1/source_baseline_adapters/c2hlsc_overlapping_public.cpp",
+            "sha256": "bf9361f46c1468c59364b0a02340d1cfc19783729b6a19c37f693966936f57c0"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "pass_marker": "C2HLSC_OVERLAPPING_SOURCE_ORACLE=passed",
+      "public_case_count": 1056768,
+      "runtime_contract": {
+        "schema_version": 2,
+        "kind": "public_differential_self_check_v1",
+        "candidate_mismatch_returncodes": [
+          1
+        ],
+        "cosim_interface_depths": {
+          "result": 1
+        }
+      },
+      "host_preflight_expected": "oracle_pass"
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-des-raw",
+      "source_id": "c2hlsc",
+      "source_tier": "T0",
+      "decision": "admit",
+      "license": "GPL-3.0-only",
+      "partition": "future",
+      "algorithm_family": "cryptographic_block_cipher_des",
+      "top": "des_crypt",
+      "known_prior_outcome": false,
+      "host_preflight_expected": "candidate_mismatch",
+      "role": "internal-known-answer-raw-failure",
+      "design": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "src/c2hlsc/des/kernel.cpp",
+            "sha256": "83a632d7ba5b27ffdff1ed95ed45a8130c6028ae293b963bb5214c03a19183ab"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "public_testbench": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "configs/r5_1/source_baseline_adapters/c2hlsc_des_public.cpp",
+            "sha256": "8697b99a352cc0e06a6aa57d00ad9f6add71da7e6a534324cf9269673cd56629"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "pass_marker": "C2HLSC_DES_SOURCE_ORACLE=passed",
+      "public_case_count": 1,
+      "runtime_contract": {
+        "schema_version": 2,
+        "kind": "public_differential_self_check_v1",
+        "candidate_mismatch_returncodes": [
+          1
+        ],
+        "cosim_interface_depths": {
+          "in": 1,
+          "out": 1,
+          "key": 1
         }
       }
     }
@@ -445,7 +715,7 @@
   "invariants": {
     "provider_calls": 0,
     "maximum_vitis_launches_per_case": 3,
-    "expected_vitis_upper_bound": 24,
+    "expected_vitis_upper_bound": 39,
     "validation_budget_per_case": {
       "tool_calls": 11,
       "compile_calls": 5,
