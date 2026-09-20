@@ -28,12 +28,12 @@ class R51SourceBaselineTests(unittest.TestCase):
     def test_frozen_protocol_has_audited_coverage_and_budget(self) -> None:
         MODULE.validate_plan(self.plan)
         cases = self.plan["cases"]
-        self.assertEqual(len(cases), 5)
+        self.assertEqual(len(cases), 8)
         self.assertEqual(len({case["source_id"] for case in cases}), 4)
-        self.assertEqual(len({case["algorithm_family"] for case in cases}), 4)
+        self.assertEqual(len({case["algorithm_family"] for case in cases}), 7)
         self.assertEqual(
             self.plan["budget"]["campaign_reserve"],
-            {"provider_calls": 0, "vitis_launches": 15},
+            {"provider_calls": 0, "vitis_launches": 24},
         )
         self.assertEqual(self.plan["invariants"]["provider_calls"], 0)
         self.assertFalse(self.plan["invariants"]["hidden_inputs_used"])

@@ -29,7 +29,7 @@
     },
     "campaign_reserve": {
       "provider_calls": 0,
-      "vitis_launches": 15
+      "vitis_launches": 24
     },
     "unallocated_recovery_buffer": {
       "provider_calls": 42,
@@ -299,12 +299,153 @@
           "arr": 9
         }
       }
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-monobit-raw",
+      "source_id": "c2hlsc",
+      "source_tier": "T0",
+      "decision": "admit",
+      "license": "GPL-3.0-only",
+      "partition": "history",
+      "algorithm_family": "statistical_frequency",
+      "top": "Frequency",
+      "known_prior_outcome": false,
+      "role": "internal-adapter-required-source-baseline",
+      "design": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "configs/r5_1/source_baseline_adapters/c2hlsc_monobit_design_preamble.cpp",
+            "sha256": "0e4766e0e91d441b07dabf370d6ef1b80b630377f23de71f386d70ed2c44c8f1"
+          },
+          {
+            "root": "repository",
+            "path": "src/c2hlsc/monobit/monobit.cpp",
+            "sha256": "b4694b255dd55b54f5bb252495f27eacb03fa483ddc7b995df8dfc7f720fe02e"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "public_testbench": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "configs/r5_1/source_baseline_adapters/c2hlsc_monobit_public.cpp",
+            "sha256": "d34b1fd45bd9838dcc7b436e9d49a94c90d475031809e1bab7690c0b1b87cf85"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "pass_marker": "C2HLSC_MONOBIT_SOURCE_ORACLE=passed",
+      "public_case_count": 128,
+      "runtime_contract": {
+        "schema_version": 2,
+        "kind": "public_differential_self_check_v1",
+        "candidate_mismatch_returncodes": [1],
+        "cosim_interface_depths": {
+          "epsilon": 128
+        }
+      }
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-block-raw",
+      "source_id": "c2hlsc",
+      "source_tier": "T0",
+      "decision": "admit",
+      "license": "GPL-3.0-only",
+      "partition": "history",
+      "algorithm_family": "statistical_block_frequency",
+      "top": "BlockFrequency",
+      "known_prior_outcome": false,
+      "role": "internal-adapter-required-source-baseline",
+      "design": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "configs/r5_1/source_baseline_adapters/c2hlsc_block_design_preamble.cpp",
+            "sha256": "2eccead9043204d12e3d3ba53fc66603bb3884537db8ee95e4bb613bef26cc99"
+          },
+          {
+            "root": "repository",
+            "path": "src/c2hlsc/block/block.cpp",
+            "sha256": "5c3fd278bd94e145d1e91318e6a95825c888a4956f232d1a4db5f32d5e304dda"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "public_testbench": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "configs/r5_1/source_baseline_adapters/c2hlsc_block_public.cpp",
+            "sha256": "4361dbb3f1a5cdcc77442fd5e16a42b4209f67aacffa6b85b119ec4d1a6843bd"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "pass_marker": "C2HLSC_BLOCK_SOURCE_ORACLE=passed",
+      "public_case_count": 128,
+      "runtime_contract": {
+        "schema_version": 2,
+        "kind": "public_differential_self_check_v1",
+        "candidate_mismatch_returncodes": [1],
+        "cosim_interface_depths": {
+          "epsilon": 128
+        }
+      }
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-cusums-raw",
+      "source_id": "c2hlsc",
+      "source_tier": "T0",
+      "decision": "admit",
+      "license": "GPL-3.0-only",
+      "partition": "history",
+      "algorithm_family": "statistical_cumulative_sums",
+      "top": "CumulativeSums",
+      "known_prior_outcome": false,
+      "role": "internal-adapter-required-source-baseline",
+      "design": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "configs/r5_1/source_baseline_adapters/c2hlsc_cusums_design_preamble.cpp",
+            "sha256": "f39f887616f7a892d3a5be331c061502a568219c1b997560c8d3edb05c7ce633"
+          },
+          {
+            "root": "repository",
+            "path": "src/c2hlsc/cusums/cusums.cpp",
+            "sha256": "423ed0212f8a827fb0189ca1fe44f466342f8cf5c8fe6412bcf21d206b66b6b4"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "public_testbench": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "configs/r5_1/source_baseline_adapters/c2hlsc_cusums_public.cpp",
+            "sha256": "930355e58761235f71fc032c8f3cd61d333d8782474a5dada2fde635512dc615"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "pass_marker": "C2HLSC_CUSUMS_SOURCE_ORACLE=passed",
+      "public_case_count": 20000,
+      "runtime_contract": {
+        "schema_version": 2,
+        "kind": "public_differential_self_check_v1",
+        "candidate_mismatch_returncodes": [1],
+        "cosim_interface_depths": {
+          "epsilon": 20000
+        }
+      }
     }
   ],
   "invariants": {
     "provider_calls": 0,
     "maximum_vitis_launches_per_case": 3,
-    "expected_vitis_upper_bound": 15,
+    "expected_vitis_upper_bound": 24,
     "validation_budget_per_case": {
       "tool_calls": 11,
       "compile_calls": 5,
