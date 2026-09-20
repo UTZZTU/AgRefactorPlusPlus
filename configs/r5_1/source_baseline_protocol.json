@@ -1,0 +1,315 @@
+{
+  "schema_version": 1,
+  "protocol_id": "v2.3-r5.1-p4-source-baseline-v1",
+  "frozen_at": "2026-09-20T15:30:00Z",
+  "route": "V2.3-R5.1-P4",
+  "target_profile": {
+    "name": "vitis-2023.2-default",
+    "path": "configs/targets/vitis-2023.2-default.json",
+    "sha256": "e2443c96cd95cd8983578e18bb8bec807a367589423aa9e734db45b5a3338474"
+  },
+  "timeouts_s": {
+    "host": 120,
+    "csim": 180,
+    "csynth": 600,
+    "cosim": 900
+  },
+  "budget": {
+    "hard_cap": {
+      "provider_calls": 650,
+      "vitis_launches": 650
+    },
+    "carried_forward": {
+      "provider_calls": 248,
+      "vitis_launches": 111
+    },
+    "p4_phase_upper_bound": {
+      "provider_calls": 0,
+      "vitis_launches": 170
+    },
+    "campaign_reserve": {
+      "provider_calls": 0,
+      "vitis_launches": 15
+    },
+    "unallocated_recovery_buffer": {
+      "provider_calls": 42,
+      "vitis_launches": 59
+    }
+  },
+  "cases": [
+    {
+      "case_id": "p4-external-c2hlsc-runs-raw",
+      "source_id": "c2hlsc",
+      "source_tier": "T2",
+      "decision": "admit",
+      "license": "GPL-3.0-only",
+      "partition": "history",
+      "algorithm_family": "statistical_runs",
+      "top": "Runs",
+      "known_prior_outcome": false,
+      "role": "external-raw-source-discovery",
+      "design": {
+        "parts": [
+          {
+            "root": "external",
+            "checkout_dir": "c2hlsc",
+            "commit": "72d08b7d17da38b7ba9c828dce48403352be4dc3",
+            "path": "inputs/runs/runs_inc.txt",
+            "sha256": "a75923ef9fda770c74954c39d69c262cee8163c3199add8267ce7f2e86aa56bb"
+          },
+          {
+            "root": "external",
+            "checkout_dir": "c2hlsc",
+            "commit": "72d08b7d17da38b7ba9c828dce48403352be4dc3",
+            "path": "inputs/runs/runs.cpp",
+            "sha256": "2862a151a710fda27ffaf2b09af068a6e6e04d72e4966e7ba299a2f4feb20d21"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "public_testbench": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "configs/r5_1/external_adapters/c2hlsc_runs_public.cpp",
+            "sha256": "8625bfcfa1db1a3d823db2d850e1e3f6660986523a57bb214bc964d5ee4a388e"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "pass_marker": "C2HLSC_RUNS_ORACLE=passed",
+      "public_case_count": 3,
+      "runtime_contract": {
+        "schema_version": 2,
+        "kind": "public_differential_self_check_v1",
+        "candidate_mismatch_returncodes": [1],
+        "cosim_interface_depths": {
+          "res_S": 1,
+          "res_V": 1
+        }
+      }
+    },
+    {
+      "case_id": "p4-external-hls-eval-vector-add-raw",
+      "source_id": "hls-eval",
+      "source_tier": "T2",
+      "decision": "external-only",
+      "license": "NOASSERTION",
+      "partition": "future",
+      "algorithm_family": "vector_addition",
+      "top": "vec_add",
+      "known_prior_outcome": false,
+      "role": "external-hls-ready-control",
+      "design": {
+        "parts": [
+          {
+            "root": "external",
+            "checkout_dir": "hls-eval",
+            "commit": "8c8bf70a3dae3f20b90da136c01f9649072849e2",
+            "path": "tests/test_design_for_tools/vec_add.h",
+            "sha256": "7e03b44f8c6b922b1dc38746c3395869ee519805b1339915abd4bee9b77b734b"
+          },
+          {
+            "root": "external",
+            "checkout_dir": "hls-eval",
+            "commit": "8c8bf70a3dae3f20b90da136c01f9649072849e2",
+            "path": "tests/test_design_for_tools/vec_add.cpp",
+            "sha256": "390916ab6e43a70f24c015226311a742f0a0254d15888ab3018e916c9ee6d72e"
+          }
+        ],
+        "strip_exact_lines": ["#include \"vec_add.h\""]
+      },
+      "public_testbench": {
+        "parts": [
+          {
+            "root": "external",
+            "checkout_dir": "hls-eval",
+            "commit": "8c8bf70a3dae3f20b90da136c01f9649072849e2",
+            "path": "tests/test_design_for_tools/vec_add.h",
+            "sha256": "7e03b44f8c6b922b1dc38746c3395869ee519805b1339915abd4bee9b77b734b"
+          },
+          {
+            "root": "external",
+            "checkout_dir": "hls-eval",
+            "commit": "8c8bf70a3dae3f20b90da136c01f9649072849e2",
+            "path": "tests/test_design_for_tools/vec_add_tb.cpp",
+            "sha256": "43df0abfb2bc31e44fe49578c4a9efbe68dae5b3dce5110476c404fc25c2ab0d"
+          }
+        ],
+        "strip_exact_lines": ["#include \"vec_add.h\""]
+      },
+      "pass_marker": "Test passed!",
+      "public_case_count": 16,
+      "runtime_contract": {
+        "schema_version": 2,
+        "kind": "public_differential_self_check_v1",
+        "candidate_mismatch_returncodes": [1],
+        "cosim_interface_depths": {
+          "in0": 16,
+          "in1": 16,
+          "out": 16
+        }
+      }
+    },
+    {
+      "case_id": "p4-external-hlspilot-fir-raw",
+      "source_id": "hlspilot",
+      "source_tier": "T2",
+      "decision": "external-only",
+      "license": "NOASSERTION",
+      "partition": "history",
+      "algorithm_family": "finite_impulse_response",
+      "top": "fir",
+      "known_prior_outcome": false,
+      "role": "external-hls-ready-control",
+      "design": {
+        "parts": [
+          {
+            "root": "external",
+            "checkout_dir": "hlspilot",
+            "commit": "1cb3aa9736f84ee4e626271596983a5bea98f6c3",
+            "path": "benchmark/fir/fir.h",
+            "sha256": "1ebcc110a9b8a5dec1cd65b40a7da73e58d53712c58cda1240f81a7eedf46612"
+          },
+          {
+            "root": "external",
+            "checkout_dir": "hlspilot",
+            "commit": "1cb3aa9736f84ee4e626271596983a5bea98f6c3",
+            "path": "benchmark/fir/fir.cpp",
+            "sha256": "f8669733f3a9e164fb54ab9ea857886d51baaaa1f98ee741f88bc3c862c97230"
+          }
+        ],
+        "strip_exact_lines": ["#include \"fir.h\""]
+      },
+      "public_testbench": {
+        "parts": [
+          {
+            "root": "external",
+            "checkout_dir": "hlspilot",
+            "commit": "1cb3aa9736f84ee4e626271596983a5bea98f6c3",
+            "path": "benchmark/fir/fir.h",
+            "sha256": "1ebcc110a9b8a5dec1cd65b40a7da73e58d53712c58cda1240f81a7eedf46612"
+          },
+          {
+            "root": "repository",
+            "path": "configs/r5_1/external_adapters/hlspilot_fir_public.cpp",
+            "sha256": "067ece3fe204cf68b11914f2d9a44a4db4d718af15235b523601270e34301e01"
+          }
+        ],
+        "strip_exact_lines": ["#include \"fir.h\""]
+      },
+      "pass_marker": "HLSPILOT_FIR_ORACLE=passed",
+      "public_case_count": 8,
+      "runtime_contract": {
+        "schema_version": 2,
+        "kind": "public_differential_self_check_v1",
+        "candidate_mismatch_returncodes": [1],
+        "cosim_interface_depths": {
+          "output": 1,
+          "taps": 4
+        }
+      }
+    },
+    {
+      "case_id": "p4-external-hlsfactory-vector-add-raw",
+      "source_id": "hlsfactory",
+      "source_tier": "T3",
+      "decision": "external-only",
+      "license": "AGPL-3.0-only; dataset metadata CC-BY-SA-4.0",
+      "partition": "future",
+      "algorithm_family": "vector_addition",
+      "top": "vector_add",
+      "known_prior_outcome": false,
+      "role": "external-hls-ready-control",
+      "design": {
+        "parts": [
+          {
+            "root": "external",
+            "checkout_dir": "hlsfactory",
+            "commit": "0fc25c5be0b8a94086ae1f3fc1f950fc66bafc7d",
+            "path": "hlsfactory/hls_dataset_sources/test_designs_vitis_modern/vector_add/vector_add.cpp",
+            "sha256": "be4103f31717bf047debedafd6ea4c2eb5907246017b2d02c2fe1f2e4e995dd1"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "public_testbench": {
+        "parts": [
+          {
+            "root": "external",
+            "checkout_dir": "hlsfactory",
+            "commit": "0fc25c5be0b8a94086ae1f3fc1f950fc66bafc7d",
+            "path": "hlsfactory/hls_dataset_sources/test_designs_vitis_modern/vector_add/vector_add_test.cpp",
+            "sha256": "b653f77765534a540f625ed7d55f8f4c6a3a5b3826aff21c8966e3544125f9dd"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "pass_marker": "PASS",
+      "public_case_count": 1024,
+      "runtime_contract": {
+        "schema_version": 2,
+        "kind": "public_differential_self_check_v1",
+        "candidate_mismatch_returncodes": [1],
+        "cosim_interface_depths": {
+          "a": 1024,
+          "b": 1024,
+          "c": 1024
+        }
+      }
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-quicksort-raw",
+      "source_id": "c2hlsc",
+      "source_tier": "T0",
+      "decision": "admit",
+      "license": "GPL-3.0-only",
+      "partition": "history",
+      "algorithm_family": "sorting_quicksort",
+      "top": "quickSort",
+      "known_prior_outcome": true,
+      "role": "legacy-history-source-baseline-replay",
+      "design": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "src/c2hlsc/quicksort/qs.cpp",
+            "sha256": "d8f2d14c19fc0559e118a6addf1f04f1eb1143ee9cb62b94453fea2eac156072"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "public_testbench": {
+        "parts": [
+          {
+            "root": "repository",
+            "path": "configs/r5_1/source_baseline_adapters/c2hlsc_quicksort_public.cpp",
+            "sha256": "6061aad1d9cc9ae4331f90521ed3db551b24a66f2601502c5582b14a31d83396"
+          }
+        ],
+        "strip_exact_lines": []
+      },
+      "pass_marker": "C2HLSC_QUICKSORT_SOURCE_ORACLE=passed",
+      "public_case_count": 3,
+      "runtime_contract": {
+        "schema_version": 2,
+        "kind": "public_differential_self_check_v1",
+        "candidate_mismatch_returncodes": [1],
+        "cosim_interface_depths": {
+          "arr": 9
+        }
+      }
+    }
+  ],
+  "invariants": {
+    "provider_calls": 0,
+    "maximum_vitis_launches_per_case": 3,
+    "expected_vitis_upper_bound": 15,
+    "source_code_modified_by_runner": false,
+    "hidden_inputs_used": false,
+    "future_outcomes_used_for_partitioning": false,
+    "formal_admission_unchanged": true,
+    "r5_accepted": false,
+    "r6_started": false
+  }
+}
