@@ -62,7 +62,7 @@ class R51OrdinaryRefactorTests(unittest.TestCase):
         self.assertIn("void top_hls(int value);", rewritten)
         self.assertIn("top_hls(top_extra)", rewritten)
 
-    def test_product_arguments_force_a0_and_no_hidden_tests(self) -> None:
+    def test_product_arguments_leave_r5_unselected_and_disable_hidden(self) -> None:
         args = MODULE.build_product_args(
             protocol=self.protocol,
             source=Path("/tmp/source.cpp"),
@@ -74,11 +74,30 @@ class R51OrdinaryRefactorTests(unittest.TestCase):
         )
         self.assertEqual(args.command, "refactor")
         self.assertEqual(args.hidden_tests, "none")
-        self.assertEqual(args._r5_arm_override, "A0")
+        self.assertFalse(hasattr(args, "_r5_arm_override"))
         self.assertEqual(args.max_llm_calls, 11)
         self.assertEqual(args.max_csim_calls, 3)
         self.assertEqual(args.max_csynth_calls, 3)
         self.assertEqual(args.max_cosim_calls, 2)
+
+    def test_public_contract_ports_follow_candidate_abi_positionally(self) -> None:
+        contract = {
+            "schema_version": 2,
+            "kind": "public_differential_self_check_v1",
+            "candidate_mismatch_returncodes": [1],
+            "cosim_interface_depths": {"res_S": 1, "res_V": 1},
+        }
+        adapted = MODULE.adapt_public_runtime_contract(
+            contract=contract,
+            raw_design="void Runs(int *res_S, int *res_V) {}\n",
+            adapted_public_test="void Runs_hls(int *res_s, int *res_v);\n",
+            raw_top="Runs",
+            candidate_top="Runs_hls",
+        )
+        self.assertEqual(
+            adapted["cosim_interface_depths"],
+            {"res_s": 1, "res_v": 1},
+        )
 
     def test_outcome_classification_preserves_raw_control_semantics(self) -> None:
         self.assertEqual(

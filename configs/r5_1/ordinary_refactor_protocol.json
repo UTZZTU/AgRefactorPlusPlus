@@ -1,9 +1,22 @@
 {
   "schema_version": 1,
-  "protocol_id": "v2.3-r5.1-p5-ordinary-refactor-v1",
+  "protocol_id": "v2.3-r5.1-p5-ordinary-refactor-v2",
   "route": "V2.3-R5.1-P5",
-  "frozen_at": "2026-09-20T13:30:00Z",
-  "repository_base_head": "4a49e027cc8b2c2c31a03ba52a4a10e2a9783b71",
+  "frozen_at": "2026-09-20T14:20:00Z",
+  "repository_base_head": "98c8dd2ef3cc4aca565dc2a550939191bbaeb791",
+  "supersedes": {
+    "protocol_id": "v2.3-r5.1-p5-ordinary-refactor-v1",
+    "protocol_sha256": "6cb885077aad67d0b64365d08326938492fcc1d186ae1d1724e8c4f1da875a02",
+    "failed_run_root": "/data/agrefactor_runs/r5_1_p5_ordinary_refactor_v1",
+    "failed_result_file_sha256": "c82f6e7e3683a259e41a4412315b3173c82402a1f53ede09fd137a67d8454721",
+    "failed_result_sha256": "39d1825d7b2cab35fa4a6025cc0b275022eb8577ea102184d0672826b6683fbc",
+    "failure_phase": "pre_provider_product_contract_validation",
+    "actual_provider_calls": 0,
+    "actual_vitis_launches": 0,
+    "conservative_runner_provider_charge": 33,
+    "conservative_runner_vitis_charge": 24,
+    "old_evidence_rewritten": false
+  },
   "p4_authority": {
     "plan_path": "configs/r5_1/source_baseline_protocol.json",
     "plan_file_sha256": "088b693b9d1f07cc9558ab8a09b3c930a7c8de3d8ee40e4e93c2cebe1cbe3de5",
@@ -25,7 +38,8 @@
     "public_tests": "provided_frozen_p4_oracle",
     "hidden_tests": "none",
     "hidden_scope": "P5 is a Public-only inheritance and discovery campaign; it is not final Hidden generalization evidence",
-    "r5_arm": "A0",
+    "r5_arm": null,
+    "r5_profile_selected": false,
     "r2_shadow": false,
     "r4_integration": false,
     "repair_memory": "none",
@@ -38,6 +52,7 @@
     "max_cosim_calls_per_case": 2,
     "max_vitis_launches_per_case": 8,
     "max_wall_time_s_per_case": 7200,
+    "public_contract_port_binding": "positionally_remap_raw_design_parameters_to_candidate_public_abi",
     "cosim_policy": "required"
   },
   "model_runtime": {

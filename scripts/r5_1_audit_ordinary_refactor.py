@@ -107,7 +107,8 @@ def validate_protocol_shape(protocol: Mapping[str, Any]) -> list[dict[str, str]]
         "runtime_function": "agrefactor.product.run_source_command",
         "public_tests": "provided_frozen_p4_oracle",
         "hidden_tests": "none",
-        "r5_arm": "A0",
+        "r5_arm": None,
+        "r5_profile_selected": False,
         "r2_shadow": False,
         "r4_integration": False,
         "repair_memory": "none",
@@ -119,6 +120,7 @@ def validate_protocol_shape(protocol: Mapping[str, Any]) -> list[dict[str, str]]
         "max_cosim_calls_per_case": 2,
         "max_vitis_launches_per_case": 8,
         "cosim_policy": "required",
+        "public_contract_port_binding": "positionally_remap_raw_design_parameters_to_candidate_public_abi",
     }
     if not isinstance(product, Mapping):
         _finding(findings, "product_contract_missing", "P5 product contract is missing")
@@ -175,6 +177,15 @@ def validate_protocol_shape(protocol: Mapping[str, Any]) -> list[dict[str, str]]
     }
     if not isinstance(invariants, Mapping) or any(invariants.get(name) is not False for name in false_fields):
         _finding(findings, "invariants_invalid", "P5 fail-closed invariants changed")
+    supersedes = protocol.get("supersedes")
+    if not isinstance(supersedes, Mapping) or (
+        supersedes.get("protocol_id") != "v2.3-r5.1-p5-ordinary-refactor-v1"
+        or supersedes.get("failure_phase") != "pre_provider_product_contract_validation"
+        or supersedes.get("actual_provider_calls") != 0
+        or supersedes.get("actual_vitis_launches") != 0
+        or supersedes.get("old_evidence_rewritten") is not False
+    ):
+        _finding(findings, "predecessor_reconciliation_invalid", "P5 v1 failed-run history is not preserved")
     return findings
 
 
@@ -230,6 +241,57 @@ def _rewrite_identifier(code: str, old: str, new: str) -> tuple[str, int]:
     if state in {"block", "double", "single"}:
         raise ValueError("unterminated C/C++ lexical construct")
     return "".join(output), replacements
+
+
+def _parameter_names(code: str, function: str) -> tuple[str, ...]:
+    match = re.search(
+        rf'^\s*(?:extern\s+"C"\s+)?[^#\n;{{}}]*'
+        rf"\b{re.escape(function)}\s*\("
+        rf"(?P<parameters>[^;{{}}]*)\)\s*(?:;|{{)",
+        code,
+        flags=re.MULTILINE,
+    )
+    if match is None:
+        raise ValueError(f"top interface declaration not found: {function}")
+    raw_parameters = match.group("parameters").strip()
+    if not raw_parameters or raw_parameters == "void":
+        return ()
+    names: list[str] = []
+    for raw in raw_parameters.split(","):
+        parameter = raw.split("=", 1)[0].strip()
+        name_match = re.search(
+            r"\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*$",
+            parameter,
+        )
+        if name_match is None:
+            raise ValueError(f"unsupported top parameter: {parameter}")
+        names.append(name_match.group(1))
+    if len(names) != len(set(names)):
+        raise ValueError("top interface repeats a parameter name")
+    return tuple(names)
+
+
+def _adapt_depths(
+    raw_design: str,
+    adapted_test: str,
+    raw_top: str,
+    candidate_top: str,
+    raw_depths: Mapping[str, Any],
+) -> dict[str, int]:
+    raw_names = _parameter_names(raw_design, raw_top)
+    public_names = _parameter_names(adapted_test, candidate_top)
+    if len(raw_names) != len(public_names):
+        raise ValueError("raw and Candidate Public ABI arity differ")
+    positions = {name: index for index, name in enumerate(raw_names)}
+    result: dict[str, int] = {}
+    for name, depth in raw_depths.items():
+        if name not in positions:
+            raise ValueError(f"raw depth port is absent: {name}")
+        target = public_names[positions[name]]
+        if target in result:
+            raise ValueError("depth mapping is not one-to-one")
+        result[target] = int(depth)
+    return result
 
 
 def _host_outcome(returncode: int, stdout: str, marker: str, mismatch_codes: set[int]) -> str:
@@ -291,6 +353,51 @@ def _authority(
     return plan, result
 
 
+def _audit_superseded_run(
+    protocol: Mapping[str, Any], findings: list[dict[str, str]]
+) -> None:
+    predecessor = protocol.get("supersedes")
+    if not isinstance(predecessor, Mapping):
+        return
+    root = Path(str(predecessor.get("failed_run_root", "")))
+    result_path = root / "result.json"
+    if (
+        not result_path.is_file()
+        or file_sha256(result_path) != predecessor.get("failed_result_file_sha256")
+    ):
+        _finding(findings, "predecessor_result_mismatch", str(result_path))
+        return
+    result = load_object(result_path)
+    if result.get("result_sha256") != predecessor.get("failed_result_sha256"):
+        _finding(findings, "predecessor_result_identity_mismatch", str(result_path))
+        return
+    cases = result.get("cases")
+    if not isinstance(cases, list) or len(cases) != 3:
+        _finding(findings, "predecessor_case_count_invalid", "v1 must contain three pre-entry failures")
+        return
+    admitted_errors = (
+        "ValueError:COSIM interface depth port(s) are absent",
+        "ValueError:selected R5 arm requires a complete internal runtime binding",
+    )
+    for case in cases:
+        if (
+            not isinstance(case, Mapping)
+            or case.get("terminal_stage") != "pre_entrypoint_exception"
+            or case.get("budget_accounting") != "conservative_per_case_upper_bound"
+            or not isinstance(case.get("error"), str)
+            or not case["error"].startswith(admitted_errors)
+        ):
+            _finding(findings, "predecessor_failure_not_pre_provider", str(case))
+            continue
+        product = root / "cases" / str(case.get("case_id")) / "product"
+        if product.exists() or (product / "run_result.json").exists():
+            _finding(findings, "predecessor_product_execution_observed", str(product))
+    if result.get("provider_calls") != predecessor.get("conservative_runner_provider_charge"):
+        _finding(findings, "predecessor_conservative_provider_charge_mismatch", "v1")
+    if result.get("vitis_launches") != predecessor.get("conservative_runner_vitis_charge"):
+        _finding(findings, "predecessor_conservative_vitis_charge_mismatch", "v1")
+
+
 def audit_protocol(
     repo: Path,
     external_root: Path,
@@ -314,6 +421,7 @@ def audit_protocol(
         if ancestor:
             _finding(findings, "base_head_not_ancestor", "P5 base is not ancestral")
     plan, _ = _authority(repo, protocol, findings)
+    _audit_superseded_run(protocol, findings)
     compiler = shutil.which("g++")
     if compiler is None:
         _finding(findings, "compiler_missing", "g++ is required for zero-call adapter audit")
@@ -335,6 +443,17 @@ def audit_protocol(
                     )
                     if source_replacements < 1 or test_replacements < 1:
                         raise ValueError("Candidate top was not bound in source and Public test")
+                    adapted_depths = _adapt_depths(
+                        material["design"],
+                        adapted_test,
+                        case["top"],
+                        candidate_top,
+                        case["runtime_contract"]["cosim_interface_depths"],
+                    )
+                    if not set(adapted_depths).issubset(
+                        set(_parameter_names(adapted_test, candidate_top))
+                    ):
+                        raise ValueError("adapted depth ports are absent from Candidate ABI")
                     case_root = root / case_id
                     case_root.mkdir()
                     source_path = case_root / "source.cpp"
@@ -383,6 +502,7 @@ def audit_protocol(
                             "test_replacement_count": test_replacements,
                             "adapted_source_sha256": text_sha256(adapted_source),
                             "adapted_public_test_sha256": text_sha256(adapted_test),
+                            "adapted_cosim_depths": adapted_depths,
                         }
                     )
                 except Exception as exc:
@@ -514,7 +634,6 @@ def audit_result(repo: Path, protocol_path: Path, protocol_audit_path: Path, res
             succeeded = run.get("succeeded") is True
             bootstrap_plan = load_object(product_root / "bootstrap" / "test_source_plan.json")
             formal = load_object(product_root / "bootstrap" / "formal_validation_request.json")
-            binding = formal.get("r5_binding")
             public = bootstrap_plan.get("public")
             hidden = bootstrap_plan.get("hidden")
             if (
@@ -523,10 +642,8 @@ def audit_result(repo: Path, protocol_path: Path, protocol_audit_path: Path, res
                 or public.get("mode") != "provided"
                 or not isinstance(hidden, Mapping)
                 or hidden.get("mode") != "none"
-                or formal.get("r5_arm") != "A0"
-                or not isinstance(binding, Mapping)
-                or binding.get("r4_integration_bound") is not False
-                or binding.get("memory_payload_count") != 0
+                or formal.get("r5_arm") is not None
+                or formal.get("r5_binding") is not None
             ):
                 _finding(findings, "entrypoint_boundary_violated", case_id)
             raw_usage = run.get("budget_usage")

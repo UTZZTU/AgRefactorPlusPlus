@@ -125,7 +125,8 @@ def validate_protocol(protocol: Mapping[str, Any]) -> None:
         "runtime_function": "agrefactor.product.run_source_command",
         "public_tests": "provided_frozen_p4_oracle",
         "hidden_tests": "none",
-        "r5_arm": "A0",
+        "r5_arm": None,
+        "r5_profile_selected": False,
         "r2_shadow": False,
         "r4_integration": False,
         "repair_memory": "none",
@@ -136,6 +137,7 @@ def validate_protocol(protocol: Mapping[str, Any]) -> None:
         "max_csynth_calls_per_case": 3,
         "max_cosim_calls_per_case": 2,
         "max_vitis_launches_per_case": 8,
+        "public_contract_port_binding": "positionally_remap_raw_design_parameters_to_candidate_public_abi",
     }
     for name, expected in expected_product.items():
         if product.get(name) != expected:
@@ -298,6 +300,67 @@ def rewrite_cpp_identifier(code: str, old: str, new: str) -> tuple[str, int]:
     return "".join(output), replacements
 
 
+def function_parameter_names(code: str, function: str) -> tuple[str, ...]:
+    """Extract ordered parameter names from one top declaration or definition."""
+
+    match = re.search(
+        rf'^\s*(?:extern\s+"C"\s+)?[^#\n;{{}}]*'
+        rf"\b{re.escape(function)}\s*\("
+        rf"(?P<parameters>[^;{{}}]*)\)\s*(?:;|{{)",
+        code,
+        flags=re.MULTILINE,
+    )
+    if match is None:
+        raise P5Error(f"top interface declaration not found: {function}")
+    parameters = match.group("parameters").strip()
+    if not parameters or parameters == "void":
+        return ()
+    names: list[str] = []
+    for raw in parameters.split(","):
+        parameter = raw.split("=", 1)[0].strip()
+        name_match = re.search(
+            r"\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*$",
+            parameter,
+        )
+        if name_match is None:
+            raise P5Error(f"unsupported top parameter: {parameter}")
+        names.append(name_match.group(1))
+    if len(names) != len(set(names)):
+        raise P5Error("top interface repeats a parameter name")
+    return tuple(names)
+
+
+def adapt_public_runtime_contract(
+    *,
+    contract: Mapping[str, Any],
+    raw_design: str,
+    adapted_public_test: str,
+    raw_top: str,
+    candidate_top: str,
+) -> dict[str, Any]:
+    """Bind raw-design COSIM depths to the frozen Candidate Public ABI."""
+
+    source_names = function_parameter_names(raw_design, raw_top)
+    public_names = function_parameter_names(adapted_public_test, candidate_top)
+    if len(source_names) != len(public_names):
+        raise P5Error("raw design and Candidate Public ABI arity differ")
+    raw_depths = contract.get("cosim_interface_depths")
+    if not isinstance(raw_depths, Mapping):
+        raise P5Error("P4 runtime contract lacks COSIM depths")
+    positions = {name: index for index, name in enumerate(source_names)}
+    adapted_depths: dict[str, int] = {}
+    for raw_name, depth in raw_depths.items():
+        if raw_name not in positions:
+            raise P5Error(f"raw COSIM port is absent from top interface: {raw_name}")
+        public_name = public_names[positions[raw_name]]
+        if public_name in adapted_depths:
+            raise P5Error("Candidate Public ABI depth mapping is not one-to-one")
+        adapted_depths[public_name] = int(depth)
+    value = dict(contract)
+    value["cosim_interface_depths"] = adapted_depths
+    return value
+
+
 def _protocol_audit_authorized(
     repo: Path,
     protocol: Mapping[str, Any],
@@ -404,7 +467,6 @@ def build_product_args(
         "--json",
     ]
     args = build_parser().parse_args(argv)
-    setattr(args, "_r5_arm_override", "A0")
     return args
 
 
@@ -445,7 +507,6 @@ def _entrypoint_evidence(product_root: Path, run_result: Mapping[str, Any]) -> d
         raise P5Error("product metadata is missing")
     hidden = plan.get("hidden")
     public = plan.get("public")
-    binding = request.get("r5_binding")
     if (
         run_result.get("mode") != "refactor"
         or metadata.get("execution_mode") != "source_bootstrap"
@@ -453,10 +514,8 @@ def _entrypoint_evidence(product_root: Path, run_result: Mapping[str, Any]) -> d
         or public.get("mode") != "provided"
         or not isinstance(hidden, Mapping)
         or hidden.get("mode") != "none"
-        or request.get("r5_arm") != "A0"
-        or not isinstance(binding, Mapping)
-        or binding.get("r4_integration_bound") is not False
-        or binding.get("memory_payload_count") != 0
+        or request.get("r5_arm") is not None
+        or request.get("r5_binding") is not None
     ):
         raise P5Error("product run escaped the ordinary-refactor A0 boundary")
     return {
@@ -465,8 +524,7 @@ def _entrypoint_evidence(product_root: Path, run_result: Mapping[str, Any]) -> d
         "public_mode": public["mode"],
         "hidden_mode": hidden["mode"],
         "r5_arm": request["r5_arm"],
-        "r4_integration_bound": binding["r4_integration_bound"],
-        "memory_payload_count": binding["memory_payload_count"],
+        "r5_binding": request["r5_binding"],
         "formal_validation_started": phase_metadata.get("formal_validation_started"),
         "orchestration_status": phase_metadata.get("orchestration_status"),
         "last_validation_state": phase_metadata.get("last_validation_state"),
@@ -523,6 +581,9 @@ def run_campaign(
     runtime = protocol["model_runtime"]
     if not os.environ.get(str(runtime["api_key_env"])):
         raise P5Error("selected Provider credential is missing")
+    selected_arm = os.environ.get("AGREFACTOR_R5_ARM", "").strip().casefold()
+    if selected_arm not in {"", "off", "none"}:
+        raise P5Error("ordinary P5 requires AGREFACTOR_R5_ARM to remain unselected")
     if output.exists():
         raise P5Error("P5 output directory must not already exist")
     output.mkdir(parents=True)
@@ -552,7 +613,14 @@ def run_campaign(
         if replacement_count < 1:
             raise P5Error(f"Public adapter did not bind Candidate top: {case_id}")
         test_path.write_text(adapted_test, encoding="utf-8")
-        write_object(contract_path, dict(case["runtime_contract"]))
+        adapted_contract = adapt_public_runtime_contract(
+            contract=case["runtime_contract"],
+            raw_design=material["design"],
+            adapted_public_test=adapted_test,
+            raw_top=str(case["top"]),
+            candidate_top=candidate_top,
+        )
+        write_object(contract_path, adapted_contract)
         product_root = case_root / "product"
         run_id = f"r5-1-p5-{case_id}-{namespace}"
         run_result: dict[str, Any] | None = None
@@ -628,7 +696,7 @@ def run_campaign(
                 "adapted_public_test_sha256": text_sha256(adapted_test),
                 "candidate_top": candidate_top,
                 "top_identifier_replacement_count": replacement_count,
-                "public_contract_sha256": canonical_sha256(case["runtime_contract"]),
+                "public_contract_sha256": canonical_sha256(adapted_contract),
             },
             "product_succeeded": succeeded,
             "product_status": None if run_result is None else run_result.get("status"),
