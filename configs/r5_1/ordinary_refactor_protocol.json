@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "protocol_id": "v2.3-r5.1-p5-ordinary-refactor-v4",
+  "protocol_id": "v2.3-r5.1-p5-ordinary-refactor-v5",
   "route": "V2.3-R5.1-P5",
-  "frozen_at": "2026-09-20T15:30:00Z",
-  "repository_base_head": "c5abb57308b3c39b712198188ce208b392266ddc",
+  "frozen_at": "2026-09-20T15:45:00Z",
+  "repository_base_head": "2021d3ac5f469a32144b6ff9a3b5e644a98a510c",
   "supersedes": {
     "protocol_id": "v2.3-r5.1-p5-ordinary-refactor-v1",
     "protocol_sha256": "6cb885077aad67d0b64365d08326938492fcc1d186ae1d1724e8c4f1da875a02",
@@ -24,6 +24,16 @@
       "file_sha256": "b42d1c46ed4930e0de87726a068d12f6ee16dbba4ece92f1b2e144731b806faa",
       "audit_sha256": "800ab3e7a5d6419fd73d44eadd0e9bef3b35261186fa0a54304dff6d6a6256bd",
       "reason": "explicit_global_memory_ports_were_excluded_from_the_public_candidate_abi",
+      "provider_calls": 0,
+      "vitis_launches": 0,
+      "old_evidence_rewritten": false
+    },
+    {
+      "protocol_id": "v2.3-r5.1-p5-ordinary-refactor-v4",
+      "path": "/data/agrefactor_runs/r5_1_p5_protocol_audit_v4.json",
+      "file_sha256": "4dc4030d7be0382a5f4e16ee6ccc7f2f338ff07ce8e3e19889d98ac3e08ae910",
+      "audit_sha256": "70e3b940f193ee10461e5f13374c26038c8e7cda65c4e0a558bf6344539b08cc",
+      "reason": "independent_nm_parser_retained_the_leading_undefined_symbol_marker",
       "provider_calls": 0,
       "vitis_launches": 0,
       "old_evidence_rewritten": false

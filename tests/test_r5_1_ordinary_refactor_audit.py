@@ -152,6 +152,13 @@ class R51OrdinaryRefactorAuditTests(unittest.TestCase):
         self.assertIn('extern "C" void kernel(int *value);', adapted)
         self.assertIn("= &kernel;", adapted)
         self.assertEqual(
+            MODULE._undefined_symbol_bases(
+                "                 U kernel_hls(int*)\n"
+                "0000000000000000 U kernel(int*)\n"
+            ),
+            {"kernel", "kernel_hls"},
+        )
+        self.assertEqual(
             MODULE._reclassify(
                 "raw_pass_all",
                 False,

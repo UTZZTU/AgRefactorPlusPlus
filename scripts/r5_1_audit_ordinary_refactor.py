@@ -204,17 +204,23 @@ def validate_protocol_shape(protocol: Mapping[str, Any]) -> list[dict[str, str]]
     ):
         _finding(findings, "predecessor_reconciliation_invalid", "P5 v1 failed-run history is not preserved")
     failed_audits = protocol.get("failed_protocol_audits")
-    if not isinstance(failed_audits, list) or len(failed_audits) != 1:
-        _finding(findings, "failed_audit_history_invalid", "P5 must preserve its v2 failed protocol audit")
+    if not isinstance(failed_audits, list) or len(failed_audits) != 2:
+        _finding(findings, "failed_audit_history_invalid", "P5 must preserve its v2 and v4 failed protocol audits")
     else:
-        failed = failed_audits[0]
-        if not isinstance(failed, Mapping) or (
-            failed.get("protocol_id") != "v2.3-r5.1-p5-ordinary-refactor-v2"
-            or failed.get("provider_calls") != 0
-            or failed.get("vitis_launches") != 0
-            or failed.get("old_evidence_rewritten") is not False
-        ):
-            _finding(findings, "failed_audit_history_invalid", "P5 v2 audit identity changed")
+        expected = {
+            "v2.3-r5.1-p5-ordinary-refactor-v2",
+            "v2.3-r5.1-p5-ordinary-refactor-v4",
+        }
+        observed = {
+            item.get("protocol_id")
+            for item in failed_audits
+            if isinstance(item, Mapping)
+            and item.get("provider_calls") == 0
+            and item.get("vitis_launches") == 0
+            and item.get("old_evidence_rewritten") is False
+        }
+        if observed != expected:
+            _finding(findings, "failed_audit_history_invalid", "P5 failed audit identities changed")
     invalid_runs = protocol.get("invalid_capability_runs")
     if not isinstance(invalid_runs, list) or len(invalid_runs) != 1:
         _finding(findings, "invalid_run_history_missing", "P5 must preserve its v3 invalid capability run")
@@ -327,10 +333,10 @@ def _undefined_symbol_bases(output: str) -> set[str]:
         text = line.strip()
         if not text:
             continue
-        if " U " in f" {text} ":
-            text = text.rsplit(" U ", 1)[-1].strip()
-        elif text.startswith("U "):
+        if text.startswith("U "):
             text = text[2:].strip()
+        elif " U " in text:
+            text = text.rsplit(" U ", 1)[-1].strip()
         else:
             continue
         symbols.add(text.split("(", 1)[0].strip())
