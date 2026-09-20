@@ -99,6 +99,27 @@ class R51OrdinaryRefactorTests(unittest.TestCase):
             {"res_s": 1, "res_v": 1},
         )
 
+    def test_public_contract_preserves_explicit_global_memory_port(self) -> None:
+        adapted = MODULE.adapt_public_runtime_contract(
+            contract={
+                "schema_version": 2,
+                "kind": "public_differential_self_check_v1",
+                "candidate_mismatch_returncodes": [1],
+                "cosim_interface_depths": {"epsilon": 65535, "result": 1},
+            },
+            raw_design="int epsilon[65535];\nvoid Frequency(int* result) {}\n",
+            adapted_public_test=(
+                "extern int epsilon[65535];\n"
+                "void Frequency_hls(int* observed);\n"
+            ),
+            raw_top="Frequency",
+            candidate_top="Frequency_hls",
+        )
+        self.assertEqual(
+            adapted["cosim_interface_depths"],
+            {"epsilon": 65535, "observed": 1},
+        )
+
     def test_outcome_classification_preserves_raw_control_semantics(self) -> None:
         self.assertEqual(
             MODULE.classify_outcome("raw_pass_all", True, True, False),

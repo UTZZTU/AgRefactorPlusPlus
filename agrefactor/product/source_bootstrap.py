@@ -360,6 +360,31 @@ def _public_candidate_parameter_names(
     return tuple(names)
 
 
+def _public_candidate_global_names(testbench_code: str) -> tuple[str, ...]:
+    """Read explicitly declared global Candidate ports from a Public test."""
+
+    if not isinstance(testbench_code, str):
+        raise TypeError("testbench_code must be a string")
+    names: list[str] = []
+    for match in re.finditer(
+        r'^\s*extern\s+(?!")(?P<declaration>[^#\n;(){}]+)\s*;',
+        testbench_code,
+        flags=re.MULTILINE,
+    ):
+        declaration = match.group("declaration").strip()
+        if "," in declaration or "=" in declaration:
+            continue
+        name_match = re.search(
+            r"\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*$",
+            declaration,
+        )
+        if name_match is not None:
+            names.append(name_match.group(1))
+    if len(names) != len(set(names)):
+        raise ValueError("Public Candidate ABI repeats a global port name")
+    return tuple(names)
+
+
 def _load_public_test_contracts(
     contract_paths: Sequence[str | os.PathLike[str]],
     public_paths: Sequence[str | os.PathLike[str]],
@@ -403,16 +428,20 @@ def _load_public_test_contracts(
                 raise FileNotFoundError(
                     f"Public test not found: {public_path}"
                 )
-            parameter_names = set(
+            public_code = public_path.read_text(encoding="utf-8")
+            interface_names = set(
                 _public_candidate_parameter_names(
-                    public_path.read_text(encoding="utf-8"),
+                    public_code,
                     candidate_top_function,
                 )
+            )
+            interface_names.update(
+                _public_candidate_global_names(public_code)
             )
             depth_ports = set(
                 suite.runtime_contract["cosim_interface_depths"]
             )
-            missing_ports = sorted(depth_ports - parameter_names)
+            missing_ports = sorted(depth_ports - interface_names)
             if missing_ports:
                 raise ValueError(
                     "COSIM interface depth port(s) are absent from the "

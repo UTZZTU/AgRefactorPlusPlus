@@ -137,7 +137,7 @@ def validate_protocol(protocol: Mapping[str, Any]) -> None:
         "max_csynth_calls_per_case": 3,
         "max_cosim_calls_per_case": 2,
         "max_vitis_launches_per_case": 8,
-        "public_contract_port_binding": "positionally_remap_raw_design_parameters_to_candidate_public_abi",
+        "public_contract_port_binding": "positionally_remap_raw_parameters_and_preserve_explicit_public_global_ports",
     }
     for name, expected in expected_product.items():
         if product.get(name) != expected:
@@ -330,6 +330,27 @@ def function_parameter_names(code: str, function: str) -> tuple[str, ...]:
     return tuple(names)
 
 
+def public_global_names(code: str) -> tuple[str, ...]:
+    names: list[str] = []
+    for match in re.finditer(
+        r'^\s*extern\s+(?!")(?P<declaration>[^#\n;(){}]+)\s*;',
+        code,
+        flags=re.MULTILINE,
+    ):
+        declaration = match.group("declaration").strip()
+        if "," in declaration or "=" in declaration:
+            continue
+        name_match = re.search(
+            r"\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*$",
+            declaration,
+        )
+        if name_match is not None:
+            names.append(name_match.group(1))
+    if len(names) != len(set(names)):
+        raise P5Error("Candidate Public ABI repeats a global port name")
+    return tuple(names)
+
+
 def adapt_public_runtime_contract(
     *,
     contract: Mapping[str, Any],
@@ -344,15 +365,21 @@ def adapt_public_runtime_contract(
     public_names = function_parameter_names(adapted_public_test, candidate_top)
     if len(source_names) != len(public_names):
         raise P5Error("raw design and Candidate Public ABI arity differ")
+    public_globals = set(public_global_names(adapted_public_test))
     raw_depths = contract.get("cosim_interface_depths")
     if not isinstance(raw_depths, Mapping):
         raise P5Error("P4 runtime contract lacks COSIM depths")
     positions = {name: index for index, name in enumerate(source_names)}
     adapted_depths: dict[str, int] = {}
     for raw_name, depth in raw_depths.items():
-        if raw_name not in positions:
-            raise P5Error(f"raw COSIM port is absent from top interface: {raw_name}")
-        public_name = public_names[positions[raw_name]]
+        if raw_name in positions:
+            public_name = public_names[positions[raw_name]]
+        elif raw_name in public_globals:
+            public_name = raw_name
+        else:
+            raise P5Error(
+                f"raw COSIM port is absent from top parameters and Public globals: {raw_name}"
+            )
         if public_name in adapted_depths:
             raise P5Error("Candidate Public ABI depth mapping is not one-to-one")
         adapted_depths[public_name] = int(depth)

@@ -197,6 +197,70 @@ class P40FPrR1CCosimDepthContractTests(unittest.TestCase):
                     candidate_top_function="top_hls",
                 )
 
+    def test_contract_loader_accepts_explicit_extern_global_port(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            public = root / "public.cpp"
+            public.write_text(
+                "extern int epsilon[65535];\n"
+                "void top_hls(int* output);\n"
+                "int main(){return 0;}\n",
+                encoding="utf-8",
+            )
+            contract = root / "contract.json"
+            contract.write_text(
+                json.dumps(
+                    {
+                        **V2,
+                        "cosim_interface_depths": {
+                            "epsilon": 65535,
+                            "output": 1,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            loaded = _load_public_test_contracts(
+                (contract,),
+                (public,),
+                candidate_top_function="top_hls",
+            )
+            self.assertEqual(
+                loaded[0]["cosim_interface_depths"],
+                {"epsilon": 65535, "output": 1},
+            )
+
+    def test_comment_or_string_cannot_authorize_global_port(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            public = root / "public.cpp"
+            public.write_text(
+                "// extern int guessed[32];\n"
+                'const char* note = "extern int guessed[32];";\n'
+                "void top_hls(int* output);\n"
+                "int main(){return 0;}\n",
+                encoding="utf-8",
+            )
+            contract = root / "contract.json"
+            contract.write_text(
+                json.dumps(
+                    {
+                        **V2,
+                        "cosim_interface_depths": {"guessed": 32},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                ValueError,
+                "absent from the Public Candidate ABI",
+            ):
+                _load_public_test_contracts(
+                    (contract,),
+                    (public,),
+                    candidate_top_function="top_hls",
+                )
+
     def test_cli_accepts_public_test_contract(self):
         args = build_parser().parse_args(
             [

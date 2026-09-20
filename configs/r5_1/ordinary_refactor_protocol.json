@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "protocol_id": "v2.3-r5.1-p5-ordinary-refactor-v2",
+  "protocol_id": "v2.3-r5.1-p5-ordinary-refactor-v3",
   "route": "V2.3-R5.1-P5",
-  "frozen_at": "2026-09-20T14:20:00Z",
-  "repository_base_head": "98c8dd2ef3cc4aca565dc2a550939191bbaeb791",
+  "frozen_at": "2026-09-20T14:50:00Z",
+  "repository_base_head": "4a54da332681998fdafb7ddd07469089fb8fa1f0",
   "supersedes": {
     "protocol_id": "v2.3-r5.1-p5-ordinary-refactor-v1",
     "protocol_sha256": "6cb885077aad67d0b64365d08326938492fcc1d186ae1d1724e8c4f1da875a02",
@@ -17,6 +17,18 @@
     "conservative_runner_vitis_charge": 24,
     "old_evidence_rewritten": false
   },
+  "failed_protocol_audits": [
+    {
+      "protocol_id": "v2.3-r5.1-p5-ordinary-refactor-v2",
+      "path": "/data/agrefactor_runs/r5_1_p5_protocol_audit_v2.json",
+      "file_sha256": "b42d1c46ed4930e0de87726a068d12f6ee16dbba4ece92f1b2e144731b806faa",
+      "audit_sha256": "800ab3e7a5d6419fd73d44eadd0e9bef3b35261186fa0a54304dff6d6a6256bd",
+      "reason": "explicit_global_memory_ports_were_excluded_from_the_public_candidate_abi",
+      "provider_calls": 0,
+      "vitis_launches": 0,
+      "old_evidence_rewritten": false
+    }
+  ],
   "p4_authority": {
     "plan_path": "configs/r5_1/source_baseline_protocol.json",
     "plan_file_sha256": "088b693b9d1f07cc9558ab8a09b3c930a7c8de3d8ee40e4e93c2cebe1cbe3de5",
@@ -52,7 +64,7 @@
     "max_cosim_calls_per_case": 2,
     "max_vitis_launches_per_case": 8,
     "max_wall_time_s_per_case": 7200,
-    "public_contract_port_binding": "positionally_remap_raw_design_parameters_to_candidate_public_abi",
+    "public_contract_port_binding": "positionally_remap_raw_parameters_and_preserve_explicit_public_global_ports",
     "cosim_policy": "required"
   },
   "model_runtime": {

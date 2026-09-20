@@ -120,7 +120,7 @@ def validate_protocol_shape(protocol: Mapping[str, Any]) -> list[dict[str, str]]
         "max_cosim_calls_per_case": 2,
         "max_vitis_launches_per_case": 8,
         "cosim_policy": "required",
-        "public_contract_port_binding": "positionally_remap_raw_design_parameters_to_candidate_public_abi",
+        "public_contract_port_binding": "positionally_remap_raw_parameters_and_preserve_explicit_public_global_ports",
     }
     if not isinstance(product, Mapping):
         _finding(findings, "product_contract_missing", "P5 product contract is missing")
@@ -186,6 +186,18 @@ def validate_protocol_shape(protocol: Mapping[str, Any]) -> list[dict[str, str]]
         or supersedes.get("old_evidence_rewritten") is not False
     ):
         _finding(findings, "predecessor_reconciliation_invalid", "P5 v1 failed-run history is not preserved")
+    failed_audits = protocol.get("failed_protocol_audits")
+    if not isinstance(failed_audits, list) or len(failed_audits) != 1:
+        _finding(findings, "failed_audit_history_invalid", "P5 must preserve its v2 failed protocol audit")
+    else:
+        failed = failed_audits[0]
+        if not isinstance(failed, Mapping) or (
+            failed.get("protocol_id") != "v2.3-r5.1-p5-ordinary-refactor-v2"
+            or failed.get("provider_calls") != 0
+            or failed.get("vitis_launches") != 0
+            or failed.get("old_evidence_rewritten") is not False
+        ):
+            _finding(findings, "failed_audit_history_invalid", "P5 v2 audit identity changed")
     return findings
 
 
@@ -271,6 +283,27 @@ def _parameter_names(code: str, function: str) -> tuple[str, ...]:
     return tuple(names)
 
 
+def _global_names(code: str) -> tuple[str, ...]:
+    names: list[str] = []
+    for match in re.finditer(
+        r'^\s*extern\s+(?!")(?P<declaration>[^#\n;(){}]+)\s*;',
+        code,
+        flags=re.MULTILINE,
+    ):
+        declaration = match.group("declaration").strip()
+        if "," in declaration or "=" in declaration:
+            continue
+        name_match = re.search(
+            r"\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*$",
+            declaration,
+        )
+        if name_match is not None:
+            names.append(name_match.group(1))
+    if len(names) != len(set(names)):
+        raise ValueError("Candidate Public ABI repeats a global port name")
+    return tuple(names)
+
+
 def _adapt_depths(
     raw_design: str,
     adapted_test: str,
@@ -282,12 +315,16 @@ def _adapt_depths(
     public_names = _parameter_names(adapted_test, candidate_top)
     if len(raw_names) != len(public_names):
         raise ValueError("raw and Candidate Public ABI arity differ")
+    public_globals = set(_global_names(adapted_test))
     positions = {name: index for index, name in enumerate(raw_names)}
     result: dict[str, int] = {}
     for name, depth in raw_depths.items():
-        if name not in positions:
+        if name in positions:
+            target = public_names[positions[name]]
+        elif name in public_globals:
+            target = name
+        else:
             raise ValueError(f"raw depth port is absent: {name}")
-        target = public_names[positions[name]]
         if target in result:
             raise ValueError("depth mapping is not one-to-one")
         result[target] = int(depth)
@@ -398,6 +435,32 @@ def _audit_superseded_run(
         _finding(findings, "predecessor_conservative_vitis_charge_mismatch", "v1")
 
 
+def _audit_failed_protocol_history(
+    protocol: Mapping[str, Any], findings: list[dict[str, str]]
+) -> None:
+    for record in protocol.get("failed_protocol_audits", []):
+        if not isinstance(record, Mapping):
+            continue
+        path = Path(str(record.get("path", "")))
+        if not path.is_file() or file_sha256(path) != record.get("file_sha256"):
+            _finding(findings, "failed_protocol_audit_file_mismatch", str(path))
+            continue
+        audit = load_object(path)
+        codes = {
+            item.get("code")
+            for item in audit.get("findings", [])
+            if isinstance(item, Mapping)
+        }
+        if (
+            audit.get("status") != "failed"
+            or audit.get("audit_sha256") != record.get("audit_sha256")
+            or audit.get("provider_calls") != 0
+            or audit.get("vitis_launches") != 0
+            or "adapter_preflight_failed" not in codes
+        ):
+            _finding(findings, "failed_protocol_audit_identity_mismatch", str(path))
+
+
 def audit_protocol(
     repo: Path,
     external_root: Path,
@@ -422,6 +485,7 @@ def audit_protocol(
             _finding(findings, "base_head_not_ancestor", "P5 base is not ancestral")
     plan, _ = _authority(repo, protocol, findings)
     _audit_superseded_run(protocol, findings)
+    _audit_failed_protocol_history(protocol, findings)
     compiler = shutil.which("g++")
     if compiler is None:
         _finding(findings, "compiler_missing", "g++ is required for zero-call adapter audit")
@@ -450,9 +514,9 @@ def audit_protocol(
                         candidate_top,
                         case["runtime_contract"]["cosim_interface_depths"],
                     )
-                    if not set(adapted_depths).issubset(
-                        set(_parameter_names(adapted_test, candidate_top))
-                    ):
+                    public_symbols = set(_parameter_names(adapted_test, candidate_top))
+                    public_symbols.update(_global_names(adapted_test))
+                    if not set(adapted_depths).issubset(public_symbols):
                         raise ValueError("adapted depth ports are absent from Candidate ABI")
                     case_root = root / case_id
                     case_root.mkdir()
