@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agrefactor.local/schemas/r5_1/dataset_registry.schema.json",
+  "title": "AgRefactor V2.3 R5.1 dataset registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "registry_id", "frozen_at", "source_info_sha256", "policy_sha256", "cases", "summary", "invariants", "registry_sha256"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "registry_id": {"const": "v2.3-r5.1-internal-dataset-registry-v1"},
+    "frozen_at": {"type": "string"},
+    "source_info_sha256": {"$ref": "#/$defs/sha256"},
+    "policy_sha256": {"$ref": "#/$defs/sha256"},
+    "cases": {"type": "array", "minItems": 57, "maxItems": 57, "items": {"$ref": "#/$defs/case"}},
+    "summary": {"type": "object"},
+    "invariants": {"type": "object"},
+    "registry_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullableSha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_id", "alias", "source_path", "source_family", "legacy_info_label", "source_sha256", "normalized_token_sha256", "ast_structural_fingerprint", "algorithm_family", "top", "interface", "execution_contract", "oracles", "raw_source_baseline", "eligibility", "exclusion_reasons", "history_future_partition", "nearest_duplicate_refs", "upstream", "legacy_claim_refs"],
+      "properties": {
+        "case_id": {"type": "string", "pattern": "^internal-[a-z0-9_-]+-[0-9a-f]{16}$"},
+        "alias": {"type": "string", "minLength": 1},
+        "source_path": {"type": "string", "pattern": "^src/"},
+        "source_family": {"enum": ["app", "c2hlsc", "heterorefactor", "hlsrewritter", "leetcode"]},
+        "legacy_info_label": {"enum": ["useful", "not_useful"]},
+        "source_sha256": {"$ref": "#/$defs/nullableSha256"},
+        "normalized_token_sha256": {"$ref": "#/$defs/nullableSha256"},
+        "ast_structural_fingerprint": {"$ref": "#/$defs/nullableSha256"},
+        "algorithm_family": {"type": "string", "minLength": 1},
+        "top": {"type": "string", "minLength": 1},
+        "interface": {"type": "object"},
+        "execution_contract": {"type": "object"},
+        "oracles": {"type": "object"},
+        "raw_source_baseline": {"type": "object"},
+        "eligibility": {"enum": ["eligible_for_p3_smoke", "adapter_required", "quarantine", "reject", "duplicate_excluded"]},
+        "exclusion_reasons": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "history_future_partition": {"enum": ["history", "future"]},
+        "nearest_duplicate_refs": {"type": "array", "items": {"type": "object"}},
+        "upstream": {"type": "object"},
+        "legacy_claim_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      }
+    }
+  }
+}

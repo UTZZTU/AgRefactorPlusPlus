@@ -1,0 +1,38 @@
+{
+  "audit_id": "v2.3-r5.1-dataset-and-dedup-audit-v1",
+  "audit_sha256": "649f10d49aa69c8911a5b8bef0976428d663838b465bfda0b6c19a265b551b52",
+  "checks": {
+    "all_internal_cases_accounted_for": true,
+    "d0_d1_duplicates_explained": true,
+    "d2_never_auto_excludes": true,
+    "duplicate_refs_symmetric": true,
+    "family_split_isolated": true,
+    "future_outcomes_observed_before_split": false,
+    "hidden_content_used": false,
+    "internal_case_count": 57,
+    "registry_reproducible": true,
+    "source_hashes_verified": true,
+    "unlicensed_sources_not_admitted": true
+  },
+  "eligibility_counts": {
+    "adapter_required": 9,
+    "quarantine": 47,
+    "reject": 1
+  },
+  "external_source_manifest_sha256": "46681fd2510e86fd86d44f43ae06d357563b1cc173b451619b4f65580219f242",
+  "failures": [],
+  "frozen_at": "2026-09-20T12:00:00Z",
+  "git_history_mutations": 0,
+  "next_step": "P3_external_adapter_zero_provider_smoke",
+  "provider_calls": 0,
+  "r5_accepted": false,
+  "r6_started": false,
+  "registry_sha256": "ff0a5e25b28bc057f0a6ef96f185a1eace3270a131dd90d949ac725516f3f386",
+  "schema_version": 1,
+  "status": "passed_with_quarantine",
+  "vitis_launches": 0,
+  "warnings": [
+    "checked_in_provenance_or_license_unresolved:47",
+    "registered_source_missing_and_rejected:internal-c2hlsc-8c028873a5eac404"
+  ]
+}

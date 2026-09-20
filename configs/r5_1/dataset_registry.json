@@ -1,0 +1,4257 @@
+{
+  "cases": [
+    {
+      "algorithm_family": "cryptography_stream_cipher",
+      "alias": "chacha20_stream",
+      "ast_structural_fingerprint": "89700df650ebee259a40005bdd032fa03c65b4826defd58b016fd11a6191ecf6",
+      "case_id": "internal-app-045476f2e21d0fd8",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 22,
+        "top_lexically_found": true,
+        "top_signature_sha256": "0c390d9a2f1cc7933059be2eb104e05a8e779f7af33b0186c0ecc82483acab1f"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "e7dbdb7dda6ce6e2f4fc11ff3ad5f46ca270cedc0bf187a46568c8d9968edb2a",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "app",
+      "source_path": "src/app/libsodium/chacha20_stream.cpp",
+      "source_sha256": "262b7034844bebac7adda219a66db30481ac21d23a59b57461c5889969f98d58",
+      "top": "chacha20_encrypt_bytes",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "unresolved_per_upstream_component",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "sequence_chaining",
+      "alias": "mm_chain_dp_orig",
+      "ast_structural_fingerprint": "f4e7fa44d7648a3eb67965bad33dd881f150981bf9436e5fa80cbc183956aa32",
+      "case_id": "internal-app-3d666c0b2f30094e",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "vitis_tcl_execution_contract_inconsistent"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/app/minimap2/gemini_1.cpp"
+        ],
+        "declared_top": "mm_chain_dp_hls",
+        "declared_top_found_in_added_source": false,
+        "declared_top_matches_registry": false,
+        "registered_source_declared": false,
+        "status": "inconsistent",
+        "tcl_path": "src/app/minimap2/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 32,
+        "top_lexically_found": true,
+        "top_signature_sha256": "71eb56664608baafa4d15729962485b894323de6692c589b353f00a49af53c40"
+      },
+      "legacy_claim_refs": [
+        "docs/results/ablation_tables.txt",
+        "docs/results/coverage/summary.md"
+      ],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "7cca4dbf5d9c05bb0b58c8460ed53173ba4871b3b83934749a3eff9e420a2557",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/app/minimap2/vitis.tcl",
+          "present": true,
+          "sha256": "5405d59abc33b62b2dec50b4f14d5380f0130b99f2507f69d6d62c24d6270b88"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "app",
+      "source_path": "src/app/minimap2/mm_chain_dp_orig.cpp",
+      "source_sha256": "5ad79fb64261db2f9e9daccae70d641e7131556e76270a8a8ea85abf3499ce3f",
+      "top": "mm_chain_dp_orig",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "unresolved_per_upstream_component",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "cryptography_hashing",
+      "alias": "blake2b_compress",
+      "ast_structural_fingerprint": "ee72f45e88e1dfc6b812a509c9ddb1302701832213ff026c2ae29a578964cb9d",
+      "case_id": "internal-app-456706d81214aa75",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 11,
+        "top_lexically_found": true,
+        "top_signature_sha256": "06352cbfd556d4807c3b3510a9f47a4705b9114f497d8ec6fca5859c6655e822"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "f28f826e0bc19eb2e01bf3200d9cfe130d2e98180ebc6cbb8d8a2ac563eb95bf",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "app",
+      "source_path": "src/app/libsodium/blake2b_compress.cpp",
+      "source_sha256": "32dd0fb488e9978504192c66fdb3ddb1f5a3468d2b3325f7393e1f9b4c5fef79",
+      "top": "blake2b_compress",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "unresolved_per_upstream_component",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "video_filtering",
+      "alias": "av1_apply_temporal_filter",
+      "ast_structural_fingerprint": "fe3babb9de92905054a771b9dcc7762c9e72699542134c3ec1908d317ac07c61",
+      "case_id": "internal-app-4dce57fee93c76fa",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 25,
+        "top_lexically_found": true,
+        "top_signature_sha256": "37152fe540edc92c9332769fe4205907f89b14848bc91cd67008599a2d6925d3"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "aa6fc057d760a2fd14e8b843282d959044e5fcf1dcf86ffa02eecf2cf955caf4",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "app",
+      "source_path": "src/app/aom/av1_apply_temporal_filter.cpp",
+      "source_sha256": "304da533efc66e8422280e279ddfc4250355e57816bc61eb5a2b6e9ca8484eb4",
+      "top": "av1_apply_temporal_filter",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "unresolved_per_upstream_component",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "video_rate_distortion",
+      "alias": "av1_compound_type_rd",
+      "ast_structural_fingerprint": "79f567c6e2cecf5737c2674341feb5dff1b5800c0c683840eb12469e65c5e1c2",
+      "case_id": "internal-app-6350dc1f2eab6b4c",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 39,
+        "top_lexically_found": true,
+        "top_signature_sha256": "9a03c151fd6a1efcd8865ec6951cba0b8e17a319dc747e1e5475b7ca26a6201f"
+      },
+      "legacy_claim_refs": [
+        "docs/results/ablation_tables.txt",
+        "docs/results/coverage/summary.md"
+      ],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "6e799b8f5e4e5d0fb7a8b4b258ac6c8d3058b41b3090133aae37a8fd7e75c210",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "app",
+      "source_path": "src/app/aom/av1_compound_type_rd.cpp",
+      "source_sha256": "ce0aefc70604f8d5b2b56a86e4105be5d31d35579c7e9f6707713785209f8d32",
+      "top": "av1_compound_type_rd",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "unresolved_per_upstream_component",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "image_transform",
+      "alias": "idct_generic",
+      "ast_structural_fingerprint": "2c2a1e6bc875d4c7729c23392abf6c7d8ffed984a0c0fad0992a2d7135762035",
+      "case_id": "internal-app-863afab035b2ab8f",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 57,
+        "top_lexically_found": true,
+        "top_signature_sha256": "a17452ebce64063056acfd67faa81f2b9fbdae172e15188e76401db386fce660"
+      },
+      "legacy_claim_refs": [
+        "docs/results/ablation_tables.txt",
+        "docs/results/coverage/summary.md"
+      ],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "6caa1aa5a1c1e4c301ec8f734b127b683239f1558a37ea25b4a911480441ac96",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "app",
+      "source_path": "src/app/libjpeg/idct_generic.cpp",
+      "source_sha256": "8297a4a0d699c09036d6f405b4dc55374900c8e1c84d276b67aece870dc40521",
+      "top": "idct_generic",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "unresolved_per_upstream_component",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "image_color_quantization",
+      "alias": "fill_inverse_cmap",
+      "ast_structural_fingerprint": "d86bd51cf0713fc0ebfd7dfe14d18acebaa50ba8fd74c127ede1a60e9b009f52",
+      "case_id": "internal-app-9863226a260fc4e4",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 36,
+        "top_lexically_found": true,
+        "top_signature_sha256": "66759ff9ceba7a2685b7dfa04789a3d0beffcbe74febf7bf5654939829c58462"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [
+        {
+          "case_id": "internal-app-9eb0b7b013029668",
+          "level": "D3",
+          "reason": "same_semantic_family_split_isolation",
+          "score": 1.0
+        },
+        {
+          "case_id": "internal-app-de81a2c47f81356a",
+          "level": "D3",
+          "reason": "same_semantic_family_split_isolation",
+          "score": 1.0
+        }
+      ],
+      "normalized_token_sha256": "b8d35ef3fb47deb1bade247d0540e1a500c7f322f8a396a08deca06f9bd018bf",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "app",
+      "source_path": "src/app/libjpeg/fill_inverse_cmap.cpp",
+      "source_sha256": "31affbf538fd27baf6e2d01bf807300c7a270d3e3e9a7f24f17e0084f0b332ec",
+      "top": "fill_inverse_cmap",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "unresolved_per_upstream_component",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "image_color_quantization",
+      "alias": "median_cut",
+      "ast_structural_fingerprint": "8208702bb33809d05108047d19eb60bc15e194c51d5d5bd476819f879bf91b77",
+      "case_id": "internal-app-9eb0b7b013029668",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 13,
+        "top_lexically_found": true,
+        "top_signature_sha256": "e9be6d0d524b9e547f3487bbe273d1ef144983c8577c562008ea7cf3d24df7bb"
+      },
+      "legacy_claim_refs": [
+        "docs/results/ablation_tables.txt",
+        "docs/results/coverage/summary.md"
+      ],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [
+        {
+          "case_id": "internal-app-9863226a260fc4e4",
+          "level": "D3",
+          "reason": "same_semantic_family_split_isolation",
+          "score": 1.0
+        },
+        {
+          "case_id": "internal-app-de81a2c47f81356a",
+          "level": "D3",
+          "reason": "same_semantic_family_split_isolation",
+          "score": 1.0
+        }
+      ],
+      "normalized_token_sha256": "2d8a6a466bfdb4c8a868c2e07327eafa21317f2a11d948fa7d21e4c7359ff06d",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "app",
+      "source_path": "src/app/libjpeg/median_cut.cpp",
+      "source_sha256": "99e59d09d6244367cebf98c9897192f710b05588fead969fe2e950dd80e5476f",
+      "top": "median_cut",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "unresolved_per_upstream_component",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "cryptography_password_hashing",
+      "alias": "argon2_fill_segment",
+      "ast_structural_fingerprint": "34caebd72c2d2e7c2daaa698ac87d195d440521ed7d225d072a1ea34a6e196f4",
+      "case_id": "internal-app-a7f0e0bb3c050058",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 21,
+        "top_lexically_found": true,
+        "top_signature_sha256": "2be296c378c27e3f3f98a8211728ccd5ffc499c7d52eaa413e17e25f1ed9c794"
+      },
+      "legacy_claim_refs": [
+        "docs/results/ablation_tables.txt",
+        "docs/results/coverage/summary.md"
+      ],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "4c8b65e9b65ff63175dedd499aa6c8fa9c33853acf5dbb793ba8487749281de7",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "app",
+      "source_path": "src/app/libsodium/argon2_fill_segment.cpp",
+      "source_sha256": "fb8239d9336e64856745b194c402fc779cab1cda14a86b058573a5ac5f54af5f",
+      "top": "argon2_fill_segment",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "unresolved_per_upstream_component",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "image_encoding",
+      "alias": "encode_one_block",
+      "ast_structural_fingerprint": "9a9b05d37f40e4f47f962287bc4b12a98f14baf7011515c7bd73a40432224fe8",
+      "case_id": "internal-app-dcfe05ecfc12e242",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 20,
+        "top_lexically_found": true,
+        "top_signature_sha256": "cc02a7e96c656166ddfd7008f98d388f513072cc17d55a0d9716dc45879f53eb"
+      },
+      "legacy_claim_refs": [
+        "docs/results/ablation_tables.txt",
+        "docs/results/coverage/summary.md"
+      ],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "e07d28046267d20ff26f8cb4e90d28bf2c0b756add4b93e4e9fee93abc2daf00",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "app",
+      "source_path": "src/app/libjpeg/encode_one_block.cpp",
+      "source_sha256": "6ea404287287b32c5f04c3f540cc083c24a7568dbec3442659ca93f8671c9fdc",
+      "top": "encode_one_block",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "unresolved_per_upstream_component",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "image_color_quantization",
+      "alias": "select_colors",
+      "ast_structural_fingerprint": "94540d3770abe1a7152534ded9b51b6a83b3fb3a739d44466e1e3ff0b468a0fb",
+      "case_id": "internal-app-de81a2c47f81356a",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 27,
+        "top_lexically_found": true,
+        "top_signature_sha256": "1c6d9997d2604f5a6aa15c6ba474f483553607d076482e6860f66c8c4f774a10"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [
+        {
+          "case_id": "internal-app-9863226a260fc4e4",
+          "level": "D3",
+          "reason": "same_semantic_family_split_isolation",
+          "score": 1.0
+        },
+        {
+          "case_id": "internal-app-9eb0b7b013029668",
+          "level": "D3",
+          "reason": "same_semantic_family_split_isolation",
+          "score": 1.0
+        }
+      ],
+      "normalized_token_sha256": "a2b5112c752d4780ba07378fad5fe9abc6ed7a216f603685c18b6368f07e863c",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "app",
+      "source_path": "src/app/libjpeg/select_colors.cpp",
+      "source_sha256": "d1cbaa9104a7cb80ef2ea5ee255e909a37e853c5f240f09b5663533961118bcc",
+      "top": "select_colors",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "unresolved_per_upstream_component",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "genomics_recalibration",
+      "alias": "recalib_table_orig",
+      "ast_structural_fingerprint": "59e9cf236aaaf546322e6dd12b699a2df05facb07790986022f7f03ec22af79a",
+      "case_id": "internal-app-eb447617c6f25394",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "vitis_tcl_execution_contract_inconsistent"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/app/bqsr/gemini_1.cpp"
+        ],
+        "declared_top": "bqsr_top",
+        "declared_top_found_in_added_source": false,
+        "declared_top_matches_registry": false,
+        "registered_source_declared": false,
+        "status": "inconsistent",
+        "tcl_path": "src/app/bqsr/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 91,
+        "top_lexically_found": true,
+        "top_signature_sha256": "49a350ed6eb8a23988a16fe5fadfa0a222b856ba20a02d8eba4f9d271c0e8216"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "b496d296fbebfe848e908489d2126c45aaa1dfaa9dcb217bc77868ee9b82779c",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/app/bqsr/vitis.tcl",
+          "present": true,
+          "sha256": "af2e338e9026f5039903eab5b1a8623cafcf9d67bf34adced342918a8b0fc5af"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "app",
+      "source_path": "src/app/bqsr/recalib_table_orig.cpp",
+      "source_sha256": "3b9c80f70a3f9daa440c9dd166a8d2755e355bb17f3cff62e2dbbdf55776b74e",
+      "top": "Java_com_falconcomputing_genomics_bqsr_FalconRecalibrationEngine_recalibrateNative",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "unresolved_per_upstream_component",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "cryptography_aes",
+      "alias": "aes",
+      "ast_structural_fingerprint": "14f88c8dd09432bd34ebc0afd4b364b43458ca23a36443bf010f1d6284fbef12",
+      "case_id": "internal-c2hlsc-161b5522a37d6efa",
+      "eligibility": "adapter_required",
+      "exclusion_reasons": [
+        "independent_public_hidden_oracle_pair_missing"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/c2hlsc/aes/kernel.cpp"
+        ],
+        "declared_top": "Cipher",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/c2hlsc/aes/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 12,
+        "top_lexically_found": true,
+        "top_signature_sha256": "a59dfee22d5dc6838476640d7b99f226e1c7cdace73a4071d8ae8b413123a808"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [
+        {
+          "case_id": "internal-hlsrewritter-9ac2cd27b9514a55",
+          "level": "D3",
+          "reason": "same_semantic_family_split_isolation",
+          "score": 1.0
+        }
+      ],
+      "normalized_token_sha256": "42a408aa3dfad81688195dc6a9a0aae7c2f72f31cb468f7ce870c5163e5adc41",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/c2hlsc/aes/vitis.tcl",
+          "present": true,
+          "sha256": "ed8894db51421f28810483497d0173be70513589d08b6ac0a67942800a4febf7"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/aes/kernel.cpp",
+      "source_sha256": "b697ddb34efdb35ac0bb53052184a892a4e4139fa459058feb714a75619be467",
+      "top": "Cipher",
+      "upstream": {
+        "admission": "admit_after_oracle_and_file_provenance_review",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "GPL-3.0-only",
+        "license_status": "verified_for_official_repository",
+        "upstream_commit": "72d08b7d17da38b7ba9c828dce48403352be4dc3",
+        "upstream_path": null,
+        "upstream_repo": "https://github.com/Lucaz97/c2hlsc"
+      }
+    },
+    {
+      "algorithm_family": "statistical_frequency",
+      "alias": "monobit",
+      "ast_structural_fingerprint": "e34f40e2b3a9b16c41b4a7982883fd663eb14e4ced7c6ebd255a2ae71cfaf9ec",
+      "case_id": "internal-c2hlsc-2099e3604ac663b1",
+      "eligibility": "adapter_required",
+      "exclusion_reasons": [
+        "independent_public_hidden_oracle_pair_missing"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/c2hlsc/monobit/kernel.cpp"
+        ],
+        "declared_top": "Frequency",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/c2hlsc/monobit/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 1,
+        "top_lexically_found": true,
+        "top_signature_sha256": "39889321244d1c8268d6a6d7a925c72fe5e8ad07572a65be6adc8e0da177b5e9"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "238d0b2778c8860e3fbc629de770e5bb78f7000e38d495464f72e2ecf5999ec0",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/c2hlsc/monobit/vitis.tcl",
+          "present": true,
+          "sha256": "7d27f63b56d45004a93edd435021311da54f359251a3577e552a2ef446118978"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/monobit/kernel.cpp",
+      "source_sha256": "95c59c4ede414a1895d5ceaebd6656fd458ddea7a79521b92da1209c3ae98164",
+      "top": "Frequency",
+      "upstream": {
+        "admission": "admit_after_oracle_and_file_provenance_review",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "GPL-3.0-only",
+        "license_status": "verified_for_official_repository",
+        "upstream_commit": "72d08b7d17da38b7ba9c828dce48403352be4dc3",
+        "upstream_path": null,
+        "upstream_repo": "https://github.com/Lucaz97/c2hlsc"
+      }
+    },
+    {
+      "algorithm_family": "statistical_block_frequency",
+      "alias": "block",
+      "ast_structural_fingerprint": "18a873c991aca7eaa829443f19e857a4384e1a1dcbfa4753ffc6a11f292d9170",
+      "case_id": "internal-c2hlsc-234a7d7a52876f76",
+      "eligibility": "adapter_required",
+      "exclusion_reasons": [
+        "independent_public_hidden_oracle_pair_missing"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/c2hlsc/block/kernel.cpp"
+        ],
+        "declared_top": "BlockFrequency",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/c2hlsc/block/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 1,
+        "top_lexically_found": true,
+        "top_signature_sha256": "8369a86890ab056514eb3c416410a8f544067ddf6d3977e21f1a3ce8b852705e"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "42c0201c33e8fe9e25b07c53c9b82997502364825c86c5f8d37343b2c29e7d16",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/c2hlsc/block/vitis.tcl",
+          "present": true,
+          "sha256": "07b0f6262a9431111f6b01aa79875015f81a7bd11ecd241d8ac333236b645e7d"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/block/kernel.cpp",
+      "source_sha256": "10174882cfb34d0c805366771b0067e45ece34415f7321b3ec4b7ed2258c53ad",
+      "top": "BlockFrequency",
+      "upstream": {
+        "admission": "admit_after_oracle_and_file_provenance_review",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "GPL-3.0-only",
+        "license_status": "verified_for_official_repository",
+        "upstream_commit": "72d08b7d17da38b7ba9c828dce48403352be4dc3",
+        "upstream_path": null,
+        "upstream_repo": "https://github.com/Lucaz97/c2hlsc"
+      }
+    },
+    {
+      "algorithm_family": "cryptography_present",
+      "alias": "present",
+      "ast_structural_fingerprint": "b2ecf7071c1cfc55c618cca1b9d7ec2d291118cfc26ce2bb4a1c6de7612fc280",
+      "case_id": "internal-c2hlsc-380cf61172221f3e",
+      "eligibility": "adapter_required",
+      "exclusion_reasons": [
+        "independent_public_hidden_oracle_pair_missing"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/c2hlsc/present/kernel.cpp"
+        ],
+        "declared_top": "present80_encryptBlock",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/c2hlsc/present/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 7,
+        "top_lexically_found": true,
+        "top_signature_sha256": "a59dfee22d5dc6838476640d7b99f226e1c7cdace73a4071d8ae8b413123a808"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "4f39cb1460e70c4f0057bc5d496d53377656c4c60e9115cd5259aaa3e38980ca",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/c2hlsc/present/vitis.tcl",
+          "present": true,
+          "sha256": "0bfc397381929d0d50ae5f9c42e0842bb1c3499f3a0de455ee63eef4f6b7bfc0"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/present/kernel.cpp",
+      "source_sha256": "22464a5d1f0884c6beead6ba77561b7d3928a4a2971e97109e79bad7366d0429",
+      "top": "present80_encryptBlock",
+      "upstream": {
+        "admission": "admit_after_oracle_and_file_provenance_review",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "GPL-3.0-only",
+        "license_status": "verified_for_official_repository",
+        "upstream_commit": "72d08b7d17da38b7ba9c828dce48403352be4dc3",
+        "upstream_path": null,
+        "upstream_repo": "https://github.com/Lucaz97/c2hlsc"
+      }
+    },
+    {
+      "algorithm_family": "cryptography_des",
+      "alias": "des",
+      "ast_structural_fingerprint": "f384d8cd00cd2c544353e25a8eb7b8a4f81e30421be4165ef3ac96f52d7c1ad1",
+      "case_id": "internal-c2hlsc-481b094abd9133a5",
+      "eligibility": "adapter_required",
+      "exclusion_reasons": [
+        "independent_public_hidden_oracle_pair_missing"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/c2hlsc/des/kernel.cpp"
+        ],
+        "declared_top": "des_crypt",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/c2hlsc/des/vitis.tcl"
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 9,
+        "top_lexically_found": true,
+        "top_signature_sha256": "7a22be19f9fb9e11290fff9da1784e52072c7b3e59cebedd0cc8136305e7f2f0"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "569e1c5f690cbcad769e533b7742305d279483ef8d8f8a582734f44a610a5bd6",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/c2hlsc/des/vitis.tcl",
+          "present": true,
+          "sha256": "0dff97b1dc0f301d1df82b21b976f50337d6ec5d6d1509ac5e1e00706850ea7b"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/des/kernel.cpp",
+      "source_sha256": "83a632d7ba5b27ffdff1ed95ed45a8130c6028ae293b963bb5214c03a19183ab",
+      "top": "des_crypt",
+      "upstream": {
+        "admission": "admit_after_oracle_and_file_provenance_review",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "GPL-3.0-only",
+        "license_status": "verified_for_official_repository",
+        "upstream_commit": "72d08b7d17da38b7ba9c828dce48403352be4dc3",
+        "upstream_path": null,
+        "upstream_repo": "https://github.com/Lucaz97/c2hlsc"
+      }
+    },
+    {
+      "algorithm_family": "statistical_cumulative_sums",
+      "alias": "cusums",
+      "ast_structural_fingerprint": "bcf6a4aa559f0c0a7ca6528c570d6f855f4365da8fb0280487d300c538741b37",
+      "case_id": "internal-c2hlsc-5af493b856f15c88",
+      "eligibility": "adapter_required",
+      "exclusion_reasons": [
+        "independent_public_hidden_oracle_pair_missing"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/c2hlsc/cusums/kernel.cpp"
+        ],
+        "declared_top": "CumulativeSums",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/c2hlsc/cusums/vitis.tcl"
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 1,
+        "top_lexically_found": true,
+        "top_signature_sha256": "178a8e0e66357fa503ab80bcad3416bb477b8896c78ff404f645a54439f7508d"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "54948282d926cf57c3d0a3adb9187018c3cf6a09a17e0b18eb5ce39ebdef40a1",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/c2hlsc/cusums/vitis.tcl",
+          "present": true,
+          "sha256": "35731401614088a999b830fe55d498f7b1a0c3bc45d1af413265d9c8c40ee5f3"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/cusums/kernel.cpp",
+      "source_sha256": "94717a1c1116ea211b599c1f3d885d964794535e8b5b0e7edc9031d7c7ab77a3",
+      "top": "CumulativeSums",
+      "upstream": {
+        "admission": "admit_after_oracle_and_file_provenance_review",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "GPL-3.0-only",
+        "license_status": "verified_for_official_repository",
+        "upstream_commit": "72d08b7d17da38b7ba9c828dce48403352be4dc3",
+        "upstream_path": null,
+        "upstream_repo": "https://github.com/Lucaz97/c2hlsc"
+      }
+    },
+    {
+      "algorithm_family": "statistical_overlapping_template",
+      "alias": "overlapping",
+      "ast_structural_fingerprint": "2f87642fb25de80b2aacec6951968863b730a048ed2312db649e21ce981f18a5",
+      "case_id": "internal-c2hlsc-62a9c672dfbf83e3",
+      "eligibility": "adapter_required",
+      "exclusion_reasons": [
+        "independent_public_hidden_oracle_pair_missing"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/c2hlsc/overlapping/kernel.cpp"
+        ],
+        "declared_top": "Overlapping",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/c2hlsc/overlapping/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 1,
+        "top_lexically_found": true,
+        "top_signature_sha256": "8369a86890ab056514eb3c416410a8f544067ddf6d3977e21f1a3ce8b852705e"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "819253a3010ac0e0107cf759c3be1c0f20dc0f3bc4c9ed4cd29771172b687668",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/c2hlsc/overlapping/vitis.tcl",
+          "present": true,
+          "sha256": "d9311c7ff6654ed97ed6eab7389dd8c9af199ed738eb1535448f42740533f7cb"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/overlapping/kernel.cpp",
+      "source_sha256": "5bb1177bf057147bbfcabab53d26e4c9131c48432de42fed8845c0461725e839",
+      "top": "Overlapping",
+      "upstream": {
+        "admission": "admit_after_oracle_and_file_provenance_review",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "GPL-3.0-only",
+        "license_status": "verified_for_official_repository",
+        "upstream_commit": "72d08b7d17da38b7ba9c828dce48403352be4dc3",
+        "upstream_path": null,
+        "upstream_repo": "https://github.com/Lucaz97/c2hlsc"
+      }
+    },
+    {
+      "algorithm_family": "statistical_runs",
+      "alias": "runs",
+      "ast_structural_fingerprint": null,
+      "case_id": "internal-c2hlsc-8c028873a5eac404",
+      "eligibility": "reject",
+      "exclusion_reasons": [
+        "source_file_missing"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 0,
+        "top_lexically_found": false,
+        "top_signature_sha256": null
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": null,
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/runs/kernel.cpp",
+      "source_sha256": null,
+      "top": "Runs",
+      "upstream": {
+        "admission": "admit_after_oracle_and_file_provenance_review",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "GPL-3.0-only",
+        "license_status": "verified_for_official_repository",
+        "upstream_commit": "72d08b7d17da38b7ba9c828dce48403352be4dc3",
+        "upstream_path": null,
+        "upstream_repo": "https://github.com/Lucaz97/c2hlsc"
+      }
+    },
+    {
+      "algorithm_family": "cryptography_sha256",
+      "alias": "sha256",
+      "ast_structural_fingerprint": "ca5b125e48d0defbeff7e237c2e45f3392e4171e52e6e428e3c2b597b193bcc5",
+      "case_id": "internal-c2hlsc-bf2190606d6eaa18",
+      "eligibility": "adapter_required",
+      "exclusion_reasons": [
+        "independent_public_hidden_oracle_pair_missing"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/c2hlsc/sha256/kernel.cpp"
+        ],
+        "declared_top": "sha256_update",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/c2hlsc/sha256/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 13,
+        "top_lexically_found": true,
+        "top_signature_sha256": "c4aeea6067c08753fcf4749f9cb5022615afa5f91e269b36ccd0edd77ad3766e"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "49599b9de943fbee83748c438db8ac8029d74a1018f022ec1a78fe68ab28e203",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/c2hlsc/sha256/vitis.tcl",
+          "present": true,
+          "sha256": "85895b89901dcc5162e8e7d06c6212d59028ac90482c0bce658aaffd29769471"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/sha256/kernel.cpp",
+      "source_sha256": "aca33f50f1f76a889e892e1b891561b65c7528db6a294cf03067f2cdedf52caf",
+      "top": "sha256_update",
+      "upstream": {
+        "admission": "admit_after_oracle_and_file_provenance_review",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "GPL-3.0-only",
+        "license_status": "verified_for_official_repository",
+        "upstream_commit": "72d08b7d17da38b7ba9c828dce48403352be4dc3",
+        "upstream_path": null,
+        "upstream_repo": "https://github.com/Lucaz97/c2hlsc"
+      }
+    },
+    {
+      "algorithm_family": "sorting",
+      "alias": "quicksort",
+      "ast_structural_fingerprint": "aa6b9df44c3443bed569b95af17747797b4b97b771dc922c9cbe3cf58204bb4c",
+      "case_id": "internal-c2hlsc-cf8d9477a3ee2db4",
+      "eligibility": "adapter_required",
+      "exclusion_reasons": [
+        "independent_public_hidden_oracle_pair_missing"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/c2hlsc/quicksort/kernel.cpp"
+        ],
+        "declared_top": "quickSort",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/c2hlsc/quicksort/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 3,
+        "top_lexically_found": true,
+        "top_signature_sha256": "e3ead924a0080c75deeff6b63fa667c09c9fd437179eb7c7cfca57d00a7944f4"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [
+        {
+          "case_id": "internal-heterorefactor-80e1c82b9be0c186",
+          "level": "D3",
+          "reason": "same_semantic_family_split_isolation",
+          "score": 1.0
+        }
+      ],
+      "normalized_token_sha256": "731e0631dc1e6ac22b82355534128d8c1d60479b78183691ed4de548216d8c05",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/c2hlsc/quicksort/vitis.tcl",
+          "present": true,
+          "sha256": "e7fd1e2b8b1e01a1671381ef7e85e2ce1f3afef10cd6f549e2c4b61646caab0c"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/quicksort/kernel.cpp",
+      "source_sha256": "e89b487e89e877d2b3d2344c53b3e7cc8010e21b7adc6f029da2f8e9a0bfd179",
+      "top": "quickSort",
+      "upstream": {
+        "admission": "admit_after_oracle_and_file_provenance_review",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "GPL-3.0-only",
+        "license_status": "verified_for_official_repository",
+        "upstream_commit": "72d08b7d17da38b7ba9c828dce48403352be4dc3",
+        "upstream_path": null,
+        "upstream_repo": "https://github.com/Lucaz97/c2hlsc"
+      }
+    },
+    {
+      "algorithm_family": "graph_traversal",
+      "alias": "dfs",
+      "ast_structural_fingerprint": "f716c12704aff31414f2d54116ee8201d65b72d96458378fce6d7abb596c1264",
+      "case_id": "internal-heterorefactor-10cdb44acd7ce016",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 5,
+        "top_lexically_found": true,
+        "top_signature_sha256": "979294ea571343a2fdfea3936d6de65804de1c982a6b0becf0a3b0b3cb5ec692"
+      },
+      "legacy_claim_refs": [
+        "docs/acceptance/pre-stage3/POST_CLI_REAL_SMOKE_ACCEPTANCE.md",
+        "docs/results/ablation_tables.txt",
+        "docs/results/coverage/summary.md"
+      ],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [
+        {
+          "case_id": "internal-hlsrewritter-5d6e5be6a40413ef",
+          "level": "D3",
+          "reason": "same_semantic_family_split_isolation",
+          "score": 1.0
+        }
+      ],
+      "normalized_token_sha256": "fdb3e8f04ef25178bb52145fea841985702116511a68da2239380262bc5ced54",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "heterorefactor",
+      "source_path": "src/heterorefactor/dfs/kernel.cpp",
+      "source_sha256": "9d96e356223d3e3cb9a3b0ef04850ab34b620f863273eb9026034d9955c2e535",
+      "top": "process_top",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "linked_structure",
+      "alias": "linkedlist",
+      "ast_structural_fingerprint": "c28af220c2a09d8989472f96f4408de4729488e6e8a1517314fb8e9a2fbb8624",
+      "case_id": "internal-heterorefactor-3c9e37ebadc46853",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 11,
+        "top_lexically_found": true,
+        "top_signature_sha256": "979294ea571343a2fdfea3936d6de65804de1c982a6b0becf0a3b0b3cb5ec692"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [
+        {
+          "case_id": "internal-hlsrewritter-ff862758b06f3e93",
+          "level": "D3",
+          "reason": "same_semantic_family_split_isolation",
+          "score": 1.0
+        }
+      ],
+      "normalized_token_sha256": "762c6a26df33f319cae6de69c38c64356a62a04988f1acbe7258776bb389ddc9",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "heterorefactor",
+      "source_path": "src/heterorefactor/linkedlist/kernel.cpp",
+      "source_sha256": "f9747c34d9bf6600390fb7cff28a1d62c0aa64145dd6b4dd4e253f7bb7767570",
+      "top": "process_top",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "sorting",
+      "alias": "mergesort",
+      "ast_structural_fingerprint": "d933fc8cb6572729818bca68e25faf7d632bacab86cf0b108b667fd7593caf19",
+      "case_id": "internal-heterorefactor-80e1c82b9be0c186",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 7,
+        "top_lexically_found": true,
+        "top_signature_sha256": "979294ea571343a2fdfea3936d6de65804de1c982a6b0becf0a3b0b3cb5ec692"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [
+        {
+          "case_id": "internal-c2hlsc-cf8d9477a3ee2db4",
+          "level": "D3",
+          "reason": "same_semantic_family_split_isolation",
+          "score": 1.0
+        }
+      ],
+      "normalized_token_sha256": "757adacaba4bebc01c0e94052637b25a4c03fcfa2cefdfc711c0bd6b417b04e4",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "heterorefactor",
+      "source_path": "src/heterorefactor/mergesort/kernel.cpp",
+      "source_sha256": "93d9858beb28f770b5cb62b9140aabdbd10146d12cf422835fe514c8a0b95c54",
+      "top": "process_top",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "matrix_multiplication",
+      "alias": "strassen",
+      "ast_structural_fingerprint": "12cc1a2cabf827b69b90622af32eb26d7edb56c0a79137cafc543f9d8c72fcdf",
+      "case_id": "internal-heterorefactor-9a811c53f89ec597",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 6,
+        "top_lexically_found": true,
+        "top_signature_sha256": "20d6a89b15d25d8413fcb37fc6baab2bf3dec895923375a6147d67449bea43ac"
+      },
+      "legacy_claim_refs": [
+        "docs/results/ablation_tables.txt",
+        "docs/results/coverage/summary.md"
+      ],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "8c929675d28955babee7821da16647192736b006d173f3cc363aac8957919179",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "heterorefactor",
+      "source_path": "src/heterorefactor/strassen/kernel.cpp",
+      "source_sha256": "b6a0f3d8cad2e9d42bd8f39cefc4789e124d419dd7443b5ad7eadc1ecfd3882b",
+      "top": "process_top",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "multi_pattern_matching",
+      "alias": "ahocorasick",
+      "ast_structural_fingerprint": "3f3ddecf821cc783b00ecc91c02f7065857b463cccf5049f5c44df37c7d71c96",
+      "case_id": "internal-heterorefactor-abfbf6b9cd4a3d10",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 10,
+        "top_lexically_found": true,
+        "top_signature_sha256": "e1e8ed71b3b9b9b71fc915c69ec72c6fa5d4c045947c374c01cb36da094d68b6"
+      },
+      "legacy_claim_refs": [
+        "docs/results/ablation_tables.txt",
+        "docs/results/coverage/summary.md"
+      ],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "a10484ba03809986808cac073e54e23bf17d505c0c87c6b461da787104cb1a88",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "heterorefactor",
+      "source_path": "src/heterorefactor/ahocorasick/kernel.cpp",
+      "source_sha256": "b572dad312ce89b68220c75787ffce357834157e87e55d2c06fe65336027cae1",
+      "top": "process_top",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "sequence_decoding",
+      "alias": "Boolean_E4_CTC",
+      "ast_structural_fingerprint": "073d045421907c92e9e15ecda84577fc49844d06bf299f14dcb02606cc55a855",
+      "case_id": "internal-hlsrewritter-22d958f12c25e13d",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Boolean_E4_CTC/kernel.cpp"
+        ],
+        "declared_top": "process_image",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Boolean_E4_CTC/vitis.tcl"
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 2,
+        "top_lexically_found": true,
+        "top_signature_sha256": "bc3b5dced39ed28b136e16076c65a6908dde62c088744a2d051284eb4d021b41"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "not_useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "4b14fe9529a4e09eadcb0c0bc80812d26e495837329af474c7ece54e48b5b7eb",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Boolean_E4_CTC/tb.cpp",
+          "present": true,
+          "sha256": "ae05442d11147d2e755ca7db2468e6e0c90909365e0ae4c65da3520544227fce"
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Boolean_E4_CTC/vitis.tcl",
+          "present": true,
+          "sha256": "8d574010af81786a445688f29b64af980667d94132e5bc544e6991e95f105808"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Boolean_E4_CTC/kernel.cpp",
+      "source_sha256": "5a9a8f6dfcc66feeb47d0e74dfb027019dd4130dc3c65e1520c1dc11ac413f39",
+      "top": "process_image",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "signal_filtering",
+      "alias": "Exception_E2_Filter",
+      "ast_structural_fingerprint": "fc6b7e3542025f4f07b725db17d7821748a53a5d35c31c81881f1e69a6413ba3",
+      "case_id": "internal-hlsrewritter-2bdfb899846734dd",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Exception_E2_Filter/kernel.cpp"
+        ],
+        "declared_top": "run",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Exception_E2_Filter/vitis.tcl"
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 1,
+        "top_lexically_found": true,
+        "top_signature_sha256": "a4de3c05c84e20496cacf710557bb86e16ca4fc31757a0d690235887cf3059c1"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "not_useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "5b1b61856bf837d259d663f6529911c541e6e497c5d0373343db2efa5307cfb3",
+      "oracles": {
+        "hidden": {
+          "path": "configs/r5/oracle_adapters/Exception_E2_Filter/hidden.cpp",
+          "present": true,
+          "sha256": "69ea672d04dd842927d0169abf543bf9f0025f847d0d9d0b79a377f1532a595c"
+        },
+        "independent_public_hidden_pair": true,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Exception_E2_Filter/tb.cpp",
+          "present": true,
+          "sha256": "c57a2c8292fe3ba93412b04029f4afa6258f84d1d70f3fbaad2699114c10f890"
+        },
+        "public": {
+          "path": "configs/r5/oracle_adapters/Exception_E2_Filter/public.cpp",
+          "present": true,
+          "sha256": "523c32da8518a3f0d9b095abe2fc2cb0a95e4b0a7d251f174f9fab1919a6005b"
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Exception_E2_Filter/vitis.tcl",
+          "present": true,
+          "sha256": "45103aebfd178a890e7cf3351993543c7b0448217c2dd7dcfdf2d17a74f1038c"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Exception_E2_Filter/kernel.cpp",
+      "source_sha256": "bdaf6c21bf5aa4b9c3de2ef844fa1e02e8f53483e5282c51fbf56a53a9abded2",
+      "top": "run",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "dynamic_sequence",
+      "alias": "Incomplete_E1_Fibonacci",
+      "ast_structural_fingerprint": "255ecbe127108a7a6ee9647001ed6f2b553f1303e32fd37ebcb3719a81566770",
+      "case_id": "internal-hlsrewritter-3d891585abc21093",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Incomplete_E1_Fibonacci/kernel.cpp"
+        ],
+        "declared_top": "FibSubseq",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Incomplete_E1_Fibonacci/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 2,
+        "top_lexically_found": true,
+        "top_signature_sha256": "dc8c90191501a90355e5d3715cbf1dcd42a24c263bda7e966280b47b50569337"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "6bdf7b0a39ee39cf416b0b6e13d1b9753c907e16740f9a56650b3721134a7d25",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Incomplete_E1_Fibonacci/tb.cpp",
+          "present": true,
+          "sha256": "f31c4d661459cce6c3da094903e89e5696c7f4060f3cdf0584f906a24fc868f1"
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Incomplete_E1_Fibonacci/vitis.tcl",
+          "present": true,
+          "sha256": "34294a5ee5d48aff486b0e628d6499640ba0a7a8814505b1e82eb349ca162af9"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Incomplete_E1_Fibonacci/kernel.cpp",
+      "source_sha256": "23e1d8d405b1b34692bc151f8e2a27260837df971b043c9eec55c334e72ff30f",
+      "top": "FibSubseq",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "tree_traversal",
+      "alias": "DA_E2_binary_tree",
+      "ast_structural_fingerprint": "3bbeb3603d5931624bea60d6671d640e1937b2cc0eb92d1df68722a930a37907",
+      "case_id": "internal-hlsrewritter-3fa90f3d2d17cbbf",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "d1_duplicate_in_inconsistent_execution_contract",
+        "vitis_tcl_execution_contract_inconsistent"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/DA_E2_binary_tree/kernel.cpp"
+        ],
+        "declared_top": "DFS",
+        "declared_top_found_in_added_source": false,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": false,
+        "status": "inconsistent",
+        "tcl_path": "src/hlsrewritter/DA_E2_binary_tree/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 9,
+        "top_lexically_found": true,
+        "top_signature_sha256": "8f7c40287d7b7d8bf643cb569a4a3a9a4187efc47e1eb7236172a0a9f87897b4"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "not_useful",
+      "nearest_duplicate_refs": [
+        {
+          "case_id": "internal-hlsrewritter-48df229d9d93843b",
+          "level": "D1",
+          "reason": "case_file_d1_match:src/hlsrewritter/DA_E2_binary_tree/kernel.cpp:src/hlsrewritter/DA_E1_linear_program/kernel.cpp",
+          "score": 1.0
+        }
+      ],
+      "normalized_token_sha256": "e367bc8fea9f0c576c936e9987c4b7b948a9a1d31046dcff8369abd6c4e71ef2",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/DA_E2_binary_tree/tb.cpp",
+          "present": true,
+          "sha256": "3e890d4ba2d6e3911af2f410ccfc487e0375981bc74f96c3a8c61700890a66c9"
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/DA_E2_binary_tree/vitis.tcl",
+          "present": true,
+          "sha256": "e6d345f03fe1962aedc5e3a4e7455c3b55d00511a309f54d1a1c10214a118c12"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/DA_E2_binary_tree/kernel.h",
+      "source_sha256": "ae3793eaefefde63157aee6c968f099c2ed8be0f33dc8608c23e9bb6d91dae2d",
+      "top": "DFS",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "hash_table",
+      "alias": "Pointer_E2_hash_table",
+      "ast_structural_fingerprint": "d1a5f7776e8decf234bed55677789fe2c0ac4211526f5acd25c050253c585b57",
+      "case_id": "internal-hlsrewritter-4539f56bb019b7c4",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Pointer_E2_hash_table/kernel.cpp"
+        ],
+        "declared_top": "length",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Pointer_E2_hash_table/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 9,
+        "top_lexically_found": true,
+        "top_signature_sha256": "8af6072f92006541950981347d100ad2a83487c7f4784f0fe622ccf8be95fbd8"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "not_useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "c600c9cc9d98d34d3e899ced668848d8a58a1c0a1cb7c1e9724c21dca5410053",
+      "oracles": {
+        "hidden": {
+          "path": "configs/r5/oracle_adapters/Pointer_E2_hash_table/hidden.cpp",
+          "present": true,
+          "sha256": "d972ee4c36b247ee00377612a7acad0f3e0ebbb39c2e1cbbb02507888183a991"
+        },
+        "independent_public_hidden_pair": true,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Pointer_E2_hash_table/tb.cpp",
+          "present": true,
+          "sha256": "ea01f9cfca05043615a0df67a55e34690c5823f24062feb04fc69df6416b63a8"
+        },
+        "public": {
+          "path": "configs/r5/oracle_adapters/Pointer_E2_hash_table/public.cpp",
+          "present": true,
+          "sha256": "aa8a011b5f1b185a82ac0bed70d3256227a1438ae959994d77436504467a9337"
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Pointer_E2_hash_table/vitis.tcl",
+          "present": true,
+          "sha256": "d088c7df45553e928f63ed75ccb7d70163eee12fcdb67668bf4e739cebbb7509"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Pointer_E2_hash_table/kernel.cpp",
+      "source_sha256": "f82f8adadf7cbd1ffd594ccb6674d2f853a507a1bedc942aac02bd2aea423ed2",
+      "top": "length",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "mathematical_optimization",
+      "alias": "DA_E1_linear_program",
+      "ast_structural_fingerprint": "6a69d70127bfb373a6f27d8c2e1ffe73c24b3b774dacb2cba8af8100fa482b91",
+      "case_id": "internal-hlsrewritter-48df229d9d93843b",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/DA_E1_linear_program/kernel.cpp"
+        ],
+        "declared_top": "solve",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/DA_E1_linear_program/vitis.tcl"
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 9,
+        "top_lexically_found": true,
+        "top_signature_sha256": "dc770f73d67b98c02e899d59a6480a2e4d2ad23bb071b1ded35d6ba1619b0ca6"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "not_useful",
+      "nearest_duplicate_refs": [
+        {
+          "case_id": "internal-hlsrewritter-3fa90f3d2d17cbbf",
+          "level": "D1",
+          "reason": "case_file_d1_match:src/hlsrewritter/DA_E1_linear_program/kernel.cpp:src/hlsrewritter/DA_E2_binary_tree/kernel.cpp",
+          "score": 1.0
+        }
+      ],
+      "normalized_token_sha256": "dcc5255070abb0a98cc8ae231bb3eea20bdc3b33b0e7da5ddbdbe4e7fb15c452",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/DA_E1_linear_program/tb.cpp",
+          "present": true,
+          "sha256": "e14a93f99834d596a8df5841343f5f851cbbc2b4da4a75086cc99977457fb852"
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/DA_E1_linear_program/vitis.tcl",
+          "present": true,
+          "sha256": "73292c184809962dd9a9c90482b02c7169b0f76fde197f4ef6d6278e68297caf"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/DA_E1_linear_program/kernel.cpp",
+      "source_sha256": "1a670660c479a47fa42f9cabc3fce0804c3608a13d86b88c3b31a1cfdeef768e",
+      "top": "solve",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "machine_learning_classification",
+      "alias": "Boolean_E1_SVM",
+      "ast_structural_fingerprint": "66b4a32a3d07f55f071cef09cb00cc5076c5ebe5ae6245a836a35f3c3efda9e4",
+      "case_id": "internal-hlsrewritter-520b65486371b57c",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Boolean_E1_SVM/kernel.cpp"
+        ],
+        "declared_top": "svm_classify",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Boolean_E1_SVM/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 1,
+        "top_lexically_found": true,
+        "top_signature_sha256": "a6026b34212a3eaf59aebcbd941064d1e2c4c48616ff4669b98983fe74ac882e"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "not_useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "35e90fe130030855645ff41fe27c1698a7f420ae7b25a58384ce7fcb60816873",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Boolean_E1_SVM/tb.cpp",
+          "present": true,
+          "sha256": "39581713bc90ee3240475c8d5c4bd56f8095b2b50504c8df6031c404e570f3fd"
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Boolean_E1_SVM/vitis.tcl",
+          "present": true,
+          "sha256": "f96bd74bb1e3a3e6f8d56003c5c46d200e75ec8af5c70a7b6a29b19764990b20"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Boolean_E1_SVM/kernel.cpp",
+      "source_sha256": "ecc83629247c5e6915508eb2f946fbe9f34ca4fc133e2a9fee6125acbba5824a",
+      "top": "svm_classify",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "pointer_structure",
+      "alias": "Pointer_E3_double_pointer",
+      "ast_structural_fingerprint": "338a7590bd23d6f0dc78d7e2931d65c5706c53557f225758c42133e18f800452",
+      "case_id": "internal-hlsrewritter-59ad11d3d78a3de9",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Pointer_E3_double_pointer/kernel.cpp"
+        ],
+        "declared_top": "trap",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Pointer_E3_double_pointer/vitis.tcl"
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 3,
+        "top_lexically_found": true,
+        "top_signature_sha256": "6b601a4087cd93f23b41d6b3811ba093d0d8232bbc83eb0fed2ea12a4d188bbb"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "95726d1d4a7b209325c879710f9f3a6ad6ce632a16e2c7dd97d0da619a3137dd",
+      "oracles": {
+        "hidden": {
+          "path": "configs/r5/oracle_adapters/Pointer_E3_double_pointer/hidden.cpp",
+          "present": true,
+          "sha256": "f52a1d0fb5694ecc5ced8bb5946f0e85a433b30245508db69907148175567a04"
+        },
+        "independent_public_hidden_pair": true,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Pointer_E3_double_pointer/tb.cpp",
+          "present": true,
+          "sha256": "6c1e24631c8cb464d3a5034e7b4057bf0f3b051b4601131346600b59106adee9"
+        },
+        "public": {
+          "path": "configs/r5/oracle_adapters/Pointer_E3_double_pointer/public.cpp",
+          "present": true,
+          "sha256": "e2f82b104c19d0d705240a322b076e7953a289aa35476f880f9b42825092ebcb"
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Pointer_E3_double_pointer/vitis.tcl",
+          "present": true,
+          "sha256": "543e9ff079eb9bd7b44566d560aea216af4bd1306b9521c9408ce76f8c22e123"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Pointer_E3_double_pointer/kernel.cpp",
+      "source_sha256": "44dbf21b4848851d5067cb01d6d44f69a78f53e613ff826b19e045a7e4b35601",
+      "top": "trap",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "graph_traversal",
+      "alias": "Recursive_E2_DFS",
+      "ast_structural_fingerprint": "45ab206355f953cf68c423c927664d8f93df3efac6dc5c1a76c9767c10f910ef",
+      "case_id": "internal-hlsrewritter-5d6e5be6a40413ef",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Recursive_E2_DFS/kernel.cpp"
+        ],
+        "declared_top": "process_top",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Recursive_E2_DFS/vitis.tcl"
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 6,
+        "top_lexically_found": true,
+        "top_signature_sha256": "af9660066b3ccde13b14eb2e30ab0554eae102dd1a5d0b72f82b6b44e83ea638"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [
+        {
+          "case_id": "internal-heterorefactor-10cdb44acd7ce016",
+          "level": "D3",
+          "reason": "same_semantic_family_split_isolation",
+          "score": 1.0
+        }
+      ],
+      "normalized_token_sha256": "1d37e10f4dcf9db0ea2292d1fbfcdf6c9cc1db02b0d5840763c153984c8b6b10",
+      "oracles": {
+        "hidden": {
+          "path": "configs/r5/oracle_adapters/Recursive_E2_DFS/hidden.cpp",
+          "present": true,
+          "sha256": "ce4ac80de535bc8d61a48266ea6bdf4d759d8a552cc3234e9bf05a6866ce7a45"
+        },
+        "independent_public_hidden_pair": true,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Recursive_E2_DFS/tb.cpp",
+          "present": true,
+          "sha256": "2c8aa29afdf0ce7749d5ac3f4fe65cff035800e604abd455a709b438716080c1"
+        },
+        "public": {
+          "path": "configs/r5/oracle_adapters/Recursive_E2_DFS/public.cpp",
+          "present": true,
+          "sha256": "7bda65b4cdfd59babf82ad8fc0f85e89e241ec8ae4f64a5345f6920d15c0d4bc"
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Recursive_E2_DFS/vitis.tcl",
+          "present": true,
+          "sha256": "948bf79300c213f5324b8c7a66913b27c504a729805030a72ef141fe2c903724"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Recursive_E2_DFS/kernel.cpp",
+      "source_sha256": "234a22a69143190b02fe8b65c55782539e26a09465fbb53be535fed796741da3",
+      "top": "process_top",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "stream_processing",
+      "alias": "Struct_E1_stream",
+      "ast_structural_fingerprint": "520fdf3c62d8979ff80ad76e7cfc4aeab8ab921f2aae4df34f502ed5818e6243",
+      "case_id": "internal-hlsrewritter-73f46050d5f7c972",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Struct_E1_stream/kernel.cpp"
+        ],
+        "declared_top": "top",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Struct_E1_stream/vitis.tcl"
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 6,
+        "top_lexically_found": true,
+        "top_signature_sha256": "ae0412dfb52d7fc413e54f180a305bb09e21853ff1b5298ac13acece95f869c1"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "not_useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "1531527796a9c57e4c84e2c4eec6fbcebe92258c2da421fafcea39b2009b0872",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Struct_E1_stream/tb.cpp",
+          "present": true,
+          "sha256": "3e251b52a7a28b743e7147efc5c6a31fbab246454251cef904fb214765eecb12"
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Struct_E1_stream/vitis.tcl",
+          "present": true,
+          "sha256": "07aa0bcd3b8a6c817272d4f14d2306da42928e6193a21cdca9805292f5363e86"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Struct_E1_stream/kernel.cpp",
+      "source_sha256": "b377f16502105c8aa20cc47b88c25d93a21ff69e07fb4ca0d8b9c2b63b99b1b3",
+      "top": "top",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "neural_network_inference",
+      "alias": "Pointer_E1_DNN",
+      "ast_structural_fingerprint": "2a85e63951b63c25ecdfac21fe21da5c8e794303c6719e46760f4d1a0470087d",
+      "case_id": "internal-hlsrewritter-8d8656cde6689287",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Pointer_E1_DNN/kernel.cpp"
+        ],
+        "declared_top": "forward",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Pointer_E1_DNN/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 3,
+        "top_lexically_found": true,
+        "top_signature_sha256": "3ebffc8d4695656e24f5ae78534a4c97631258e21f53c8c0c6ad9fbac522c418"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "72081d38a538bd063113a9b850b95f8314621b968fd5349e0791ff3e813380f3",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Pointer_E1_DNN/tb.cpp",
+          "present": true,
+          "sha256": "8ec658c0607bf5c7b475d4b16afe599fade93e70a576d4db4daeb20a3d8de310"
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Pointer_E1_DNN/vitis.tcl",
+          "present": true,
+          "sha256": "64632aa60ed8734faa13a083a12f5e810356989e076a4594a0fc8b48917ffd54"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Pointer_E1_DNN/kernel.cpp",
+      "source_sha256": "68aa374f623fd2509c68eb8cf92d08b542fce998a4517336a30b8bb98ec033b4",
+      "top": "forward",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "error_correction_coding",
+      "alias": "Exception_E3_Turbo_Encoder",
+      "ast_structural_fingerprint": "acfbe85de6d4616c4640b000eae21bd004cc6c0362b5bd97bbb6f93a0c0fd461",
+      "case_id": "internal-hlsrewritter-8f8e5ff9774671dc",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Exception_E3_Turbo_Encoder/kernel.cpp"
+        ],
+        "declared_top": "regUpdate",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Exception_E3_Turbo_Encoder/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 1,
+        "top_lexically_found": true,
+        "top_signature_sha256": "0baffac022f1bd23719140ce9b81d2ff4c05a85b7befba2151f4dbdbd48327f7"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "ed48002abc7c7d29d07b6adbe0c660b8e68bb2880c4a1212fe18704c4040b06f",
+      "oracles": {
+        "hidden": {
+          "path": "configs/r5/oracle_adapters/Exception_E3_Turbo_Encoder/hidden.cpp",
+          "present": true,
+          "sha256": "9a78de194892b590c28a44715e7fa0b6adb9abfba98a4f3def704586cd08973e"
+        },
+        "independent_public_hidden_pair": true,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Exception_E3_Turbo_Encoder/tb.cpp",
+          "present": true,
+          "sha256": "758a292c4896550441693accd039362d911310e6da342a1713832bbb964f8f2f"
+        },
+        "public": {
+          "path": "configs/r5/oracle_adapters/Exception_E3_Turbo_Encoder/public.cpp",
+          "present": true,
+          "sha256": "1631d21f0143724a2b589ed132174f93819636d5dcda7d8569e200c41d48c8ca"
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Exception_E3_Turbo_Encoder/vitis.tcl",
+          "present": true,
+          "sha256": "4fc3221563e71b37b09e36273c78537f45ce0aa38f25b2ad1e6eaf9d8c2a7e98"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Exception_E3_Turbo_Encoder/kernel.cpp",
+      "source_sha256": "0174bd91c1b01ab9006675de3552db00bc595d5381b88681e2be2600e0230bcf",
+      "top": "regUpdate",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "integer_arithmetic",
+      "alias": "Struct_E3_long",
+      "ast_structural_fingerprint": "ce47391ceaa6988f52aa8a22855d9a36f09bd5623769dd046cf4985fd5409976",
+      "case_id": "internal-hlsrewritter-944cc3882c2a1fc2",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "vitis_tcl_execution_contract_inconsistent"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Struct_E3_long/kernel.cpp"
+        ],
+        "declared_top": "process",
+        "declared_top_found_in_added_source": false,
+        "declared_top_matches_registry": false,
+        "registered_source_declared": true,
+        "status": "inconsistent",
+        "tcl_path": "src/hlsrewritter/Struct_E3_long/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 5,
+        "top_lexically_found": true,
+        "top_signature_sha256": "3a050f24f20aa43cdaae67e98ab3df7b9958a6692cd62908dadc11d60f54d478"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "4bb33cf03a9ef7ebfe00d611c13d6c440fd762b1ee3b37da7dcff8fce531ffb7",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Struct_E3_long/tb.cpp",
+          "present": true,
+          "sha256": "e8f929784ca8996f7a028ed1e56062bfea9e9da9e3d754aae8a005fe3daf4947"
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Struct_E3_long/vitis.tcl",
+          "present": true,
+          "sha256": "aea4dc90e6fdf65202053a9e9555e7deeddc3abc49802d5501c138e0668970f7"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Struct_E3_long/kernel.cpp",
+      "source_sha256": "17aa9684d7cea2f3fb7bfde41c3853ec62edf7fb9b44dafb9fa8cb10b17d765b",
+      "top": "process_top",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "cryptography_aes",
+      "alias": "Incomplete_E3_AES",
+      "ast_structural_fingerprint": "a39abf1c293474183bedf84579e2f19131776735fb298e9eb40a921cf4d8d6c9",
+      "case_id": "internal-hlsrewritter-9ac2cd27b9514a55",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Incomplete_E3_AES/kernel.cpp"
+        ],
+        "declared_top": "aes_encrypt",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Incomplete_E3_AES/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 5,
+        "top_lexically_found": true,
+        "top_signature_sha256": "d84bd5de715ae979ffcceba3ac79d4d63371f9e34ac33840481bc28ea6585427"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [
+        {
+          "case_id": "internal-c2hlsc-161b5522a37d6efa",
+          "level": "D3",
+          "reason": "same_semantic_family_split_isolation",
+          "score": 1.0
+        }
+      ],
+      "normalized_token_sha256": "62036ad210bc21f2d7cc76166f814db05f8ef2313e6e2cfc4e365986929d77a7",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Incomplete_E3_AES/tb.cpp",
+          "present": true,
+          "sha256": "646d9bbb1c09712312fedc3037bed9793f43cfee428dd29a6a0442ce89a2a869"
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Incomplete_E3_AES/vitis.tcl",
+          "present": true,
+          "sha256": "8abc7e9d25c0fb6ac6958f85648327e4fc1053663b010ac1336f51284492f29f"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Incomplete_E3_AES/kernel.cpp",
+      "source_sha256": "6f82527c45c9cd8b473bb1699028bebda789d2df2ea91f922e360f9eabee6792",
+      "top": "aes_encrypt",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "matrix_rotation",
+      "alias": "Incomplete_E2_Cyclic_Rotation",
+      "ast_structural_fingerprint": "9f8f4be76921b69f3eeca6ec85a9859fb9cdc7b199b82d7007553056975d6404",
+      "case_id": "internal-hlsrewritter-9c94a04b3c2a1f2c",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Incomplete_E2_Cyclic_Rotation/kernel.cpp"
+        ],
+        "declared_top": "rotateGrid",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Incomplete_E2_Cyclic_Rotation/vitis.tcl"
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 4,
+        "top_lexically_found": true,
+        "top_signature_sha256": "fe20545c1552146c4e4b4f8e11973bd7b5e14a5d5c6ca391bde2497690128dcc"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "722d7805b19f65e0bd1a2c845ccbe0d96f103d0196304386dd5e5df383036c8b",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Incomplete_E2_Cyclic_Rotation/tb.cpp",
+          "present": true,
+          "sha256": "0a1f7693c88a90eaf3cd11d8b6eda27be9859646fecd69ed502683079d570070"
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Incomplete_E2_Cyclic_Rotation/vitis.tcl",
+          "present": true,
+          "sha256": "84d9492bb3bae968561ae453f61dfc40b7c9b891d52be96124ddcbc3412ca7de"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Incomplete_E2_Cyclic_Rotation/kernel.cpp",
+      "source_sha256": "80ba184b8bf78cf3eba8a0336578c267b7f0bbf3db2cd604a7d450c824e81214",
+      "top": "rotateGrid",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "fast_fourier_transform",
+      "alias": "Boolean_E2_FFT",
+      "ast_structural_fingerprint": "ed80bf0900f9807f66219e0635076b4684a707594935fba58eeea2cedc55418e",
+      "case_id": "internal-hlsrewritter-c82291cb22b5a411",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Boolean_E2_FFT/kernel.cpp"
+        ],
+        "declared_top": "fft_processing",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Boolean_E2_FFT/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 7,
+        "top_lexically_found": true,
+        "top_signature_sha256": "c43972379cb0964dc2d5cd1a1b98f7110c9090ae5a7028e16faa42ffef49c2d2"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "not_useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "8d964d9c7d469d9e5a17fff598cea90d28c3ba8a6085e3372445603bdea2d197",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Boolean_E2_FFT/tb.cpp",
+          "present": true,
+          "sha256": "75d88798650ddd66e4d55c27e63bd889c68f67451f69e99dfd90f38b7e784004"
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Boolean_E2_FFT/vitis.tcl",
+          "present": true,
+          "sha256": "9aed5319b7cb41ecd97ebc668ad91feafd78cbfdc43972e37ca3cc7be57d200c"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Boolean_E2_FFT/kernel.cpp",
+      "source_sha256": "ec0b5c8ed7ff34cd1be941e038168f67ec7ad14bb0be4ca9f8c0b65a48e295ab",
+      "top": "fft_processing",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "nearest_neighbor",
+      "alias": "DA_E3_KNN",
+      "ast_structural_fingerprint": "148de70deb020d7219a513c9efeb454b1e26159f5b85676ed1bbd7b2646f1ebf",
+      "case_id": "internal-hlsrewritter-d31364b38ba9e803",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/DA_E3_KNN/kernel.cpp"
+        ],
+        "declared_top": "knn",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/DA_E3_KNN/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 2,
+        "top_lexically_found": true,
+        "top_signature_sha256": "d259f71bf1422567195558662f39162250e146aa6c2ecba64dee7453299935d8"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "8e4a393f8a5630a25c4cbe9aff231b1e61920c96500b6066e5f5df3bd43f3db2",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/DA_E3_KNN/tb.cpp",
+          "present": true,
+          "sha256": "14482575be33e293d9df0afc4258015a796d5275c285e05d885b8b5967a4d4ab"
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/DA_E3_KNN/vitis.tcl",
+          "present": true,
+          "sha256": "5fe6c881e9c318ebb24cc7131eabef40e1b75dc83a75b2821fc6c7ed0f726403"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/DA_E3_KNN/kernel.cpp",
+      "source_sha256": "2418d4d03b5dfc419f8741cfe7cb16c1036397dd72d184f028f2e63321d084ec",
+      "top": "knn",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "computational_geometry",
+      "alias": "Struct_E3_max",
+      "ast_structural_fingerprint": "a95b57afdc325525f74f6bb2ed2485c51ff328a786ecc1a2623926b52976e3df",
+      "case_id": "internal-hlsrewritter-e6024cd9e687a2a1",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Struct_E3_max/kernel.cpp"
+        ],
+        "declared_top": "maxPoints",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Struct_E3_max/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 5,
+        "top_lexically_found": true,
+        "top_signature_sha256": "dc770f73d67b98c02e899d59a6480a2e4d2ad23bb071b1ded35d6ba1619b0ca6"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [
+        {
+          "case_id": "internal-leetcode-ec323132c251fe0d",
+          "level": "D3",
+          "reason": "same_semantic_family_split_isolation",
+          "score": 1.0
+        }
+      ],
+      "normalized_token_sha256": "3dda98d5534c0433f96d2a604e307d71e1edd44f5ffdff0ca416b65c4f160823",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Struct_E3_max/tb.cpp",
+          "present": true,
+          "sha256": "8a2f3027d3a08086110a54fd734a27605da0f0b381c91b984f80a5a56d890c7e"
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Struct_E3_max/vitis.tcl",
+          "present": true,
+          "sha256": "05b1d5fa19065a520e7ae44ffcd3a781bbc725089bd14cea6aa1c1a2626c33be"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Struct_E3_max/kernel.cpp",
+      "source_sha256": "892ba31fc53a35cd77e634cf6466c23e5678b0e7e22d46ad59c514ab9fe9e8f3",
+      "top": "maxPoints",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "matrix_decomposition",
+      "alias": "Exception_E1_Matrix_QR_Decomposition",
+      "ast_structural_fingerprint": "b76901569d64873ec8004fc5f23e8acc3529d062eebe7f22a8b36aceb2feddbe",
+      "case_id": "internal-hlsrewritter-f15aa084ff3b41b6",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Exception_E1_Matrix_QR_Decomposition/kernel.cpp"
+        ],
+        "declared_top": "qrd_compute",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Exception_E1_Matrix_QR_Decomposition/vitis.tcl"
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 6,
+        "top_lexically_found": true,
+        "top_signature_sha256": "aaa02d5145177eecb09a94eb50013973fc8fa44b8381f464264b31bbb70ab472"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "ae3aba4226b9a71320d32dc66ce0637f0ab84d09e3062f05b3f7e70ca2bbc4c3",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Exception_E1_Matrix_QR_Decomposition/tb.cpp",
+          "present": true,
+          "sha256": "0e828ac9c17ae7e9b7cac45193af43957055417c09f114429b83712214fe5eea"
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Exception_E1_Matrix_QR_Decomposition/vitis.tcl",
+          "present": true,
+          "sha256": "dc647d9ad2f1d0b56e03059657fd7b8d13c410441d918bb6c42b63695f65ad2d"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Exception_E1_Matrix_QR_Decomposition/kernel.cpp",
+      "source_sha256": "9a10c13851dbb1b4a57cf3620829e0d448e91696affb24387b4bbfde959f3d20",
+      "top": "qrd_compute",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "linked_structure",
+      "alias": "Recursive_E1_linked_list",
+      "ast_structural_fingerprint": "a1c01de2cb0efb5d20436de6f6ccf758dd847e7034f26d65755dbb1ce03238a0",
+      "case_id": "internal-hlsrewritter-ff862758b06f3e93",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Recursive_E1_linked_list/kernel.cpp"
+        ],
+        "declared_top": "reverseKGroup",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Recursive_E1_linked_list/vitis.tcl"
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 4,
+        "top_lexically_found": true,
+        "top_signature_sha256": "fe20545c1552146c4e4b4f8e11973bd7b5e14a5d5c6ca391bde2497690128dcc"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [
+        {
+          "case_id": "internal-heterorefactor-3c9e37ebadc46853",
+          "level": "D3",
+          "reason": "same_semantic_family_split_isolation",
+          "score": 1.0
+        }
+      ],
+      "normalized_token_sha256": "de1d9477440c6b7968cac9dc44447ebb87d06d5ed0a5655c7551e0841e9e7bc7",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Recursive_E1_linked_list/tb.cpp",
+          "present": true,
+          "sha256": "8c799cc8a5c92e18cc7a8bfee7c701f96d9594281cb595b8b38d194bf895ff55"
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Recursive_E1_linked_list/vitis.tcl",
+          "present": true,
+          "sha256": "80fbbcafcc50816dc306d09aded0da9b1b2e0a54b2fefd1e9b3f958af615b32a"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Recursive_E1_linked_list/kernel.cpp",
+      "source_sha256": "673c644da2e7b718b0ba50763d185cd599a69acc223927b1d730bbc51022b489",
+      "top": "reverseKGroup",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "string_search",
+      "alias": "remove_invalid_parentheses",
+      "ast_structural_fingerprint": "aa68efac62ca68791dc4f583d9dc23b28edd2f2d94f02263939f9b0e1180a6dc",
+      "case_id": "internal-leetcode-194dbf3afc3f74cc",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 6,
+        "top_lexically_found": true,
+        "top_signature_sha256": "059584c178dc8673f76c1c08d7319a37ae0546993f0f0a890078c035b25d44d7"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "541aa4bfa617a3100c47a467418ff74ee1823f8173452083541e2dc0bcca905e",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/remove_invalid_parentheses.cpp",
+      "source_sha256": "7f5d2b8aab7212d92e0af1422a61ad7068decaf325d9cdc6a65be2a74a99c064",
+      "top": "removeInvalidParentheses",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "implementation_provenance_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "graph_connectivity",
+      "alias": "critical_connections_in_a_network",
+      "ast_structural_fingerprint": "ecc7c7d9a5dd7338a02c7688bea4e9a7ec49ac266c59a6533b5628bb9f6ef187",
+      "case_id": "internal-leetcode-5cf406cc12d42d44",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 7,
+        "top_lexically_found": true,
+        "top_signature_sha256": "5c357a261823bdfd75c0ca427d2909d8a455e3e8911aebe74ae772639a8e360b"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "d67e1b9c15565a2696a57ddd792d646b501a486c5c83ec4b591a7ea332d8d76e",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/critical_connections_in_a_network.cpp",
+      "source_sha256": "5284b65ab62d0e6c39ce3ea3e4b3d94dca4e19b3be70704fdc25c921a34bb7fc",
+      "top": "criticalConnections",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "implementation_provenance_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "range_selection",
+      "alias": "smallest_range_covering_elements_from_k_lists",
+      "ast_structural_fingerprint": "cdacd92e739a6f3591fccaac3917683377565cfb5c5a11278dfe98812406ba9a",
+      "case_id": "internal-leetcode-5d91999ac034a1b8",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 8,
+        "top_lexically_found": true,
+        "top_signature_sha256": "119fc9b5bb35dd5b889c24972fab0bf3ce9dd21dc7f6d5ddf6ff90fc04f9c7da"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "839cfa8860d037fee1ea0c38320c31962130d9227d93b94d3042ce99e814889b",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/smallest_range_covering_elements_from_k_lists.cpp",
+      "source_sha256": "a66cf0756b99de7f2385ed1f5c824191d8203cdece73a4b0651cd8c968a8e92a",
+      "top": "smallestRange",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "implementation_provenance_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "sliding_window",
+      "alias": "sliding_window_maximum",
+      "ast_structural_fingerprint": "7e350fcbeea3f46cc338e7edce0052c976cbef2b661d8c8b1d4e9b6801771ff7",
+      "case_id": "internal-leetcode-7cda8e2923c3d14e",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 8,
+        "top_lexically_found": true,
+        "top_signature_sha256": "87a41e85b15a9a9251277117f8d178a2ad70a6e4efbea024472c1e80a24f7605"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "c270dc9fd30248552d5b91d915fac0930ab0035c5e836028ce16bf2fa73ea83d",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/sliding_window_maximum.cpp",
+      "source_sha256": "9dbe1c2149eaf611fecc8a8f29fef77cfa14a9b66d21d00829df98d963e4bdc2",
+      "top": "maxSlidingWindow",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "implementation_provenance_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "combinatorial_assignment",
+      "alias": "distribute_repeating_integers",
+      "ast_structural_fingerprint": "4ef6d1bc140edb1826259e2e55595fe9820b8c106c990b07eb342da200365088",
+      "case_id": "internal-leetcode-960d78a93052302d",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 7,
+        "top_lexically_found": true,
+        "top_signature_sha256": "aacc25447c153e66c5edd386deb143a7cc705552c175c675ba3ed1f7a9dfd2d7"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "9507efed1eb6bc9dca0e65897bf2d4dbcc47189e0a6e10618cd69aa1897feb93",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/distribute_repeating_integers.cpp",
+      "source_sha256": "4ff41871908fd465418a5262ba781854a8aa5108626b0cf4eeec419498c5e05c",
+      "top": "canDistribute",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "implementation_provenance_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "string_segmentation",
+      "alias": "work_break_ii",
+      "ast_structural_fingerprint": "9e1cadac850890545ca565313c349431f4f674cef248de4f450950047fb497fa",
+      "case_id": "internal-leetcode-9d95780c81775a64",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 10,
+        "top_lexically_found": true,
+        "top_signature_sha256": "a8e4ecf5b04c9777e00cb083df9836e881c9567a4ac6b3687045ceab83f22b34"
+      },
+      "legacy_claim_refs": [
+        "docs/results/ablation_tables.txt",
+        "docs/results/coverage/summary.md"
+      ],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "1a627c23daaf543990743cc579a918282e1b8792cf791b85d1e509e5c72377f1",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/work_break_ii.cpp",
+      "source_sha256": "3ec9d15585231d68d703ec7fbea271ada5537134f043629e30845cf9e3144ac7",
+      "top": "wordBreak",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "implementation_provenance_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "tree_transformation",
+      "alias": "delete_nodes_and_return_forest",
+      "ast_structural_fingerprint": "f058c8c61d6a04e9c39fa090f3b641ceb5c96321fba6894eabe6729c4901eeec",
+      "case_id": "internal-leetcode-c89852548bd7e17a",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 10,
+        "top_lexically_found": true,
+        "top_signature_sha256": "e2a418869aa3c5d88b7a61311a7cd1168dfc8ced5b44f6eeeb39f5d0e47878c7"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "c48fe92eac2246c1f4a16d0b7f47f8a080180f7ded8cbd2904a423f9ea42a2f2",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/delete_nodes_and_return_forest.cpp",
+      "source_sha256": "282522c7c39ba317c7582346839563adcbb088c6d1d371094fcf0c904e1fc0e2",
+      "top": "delNodes",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "implementation_provenance_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "graph_pathfinding",
+      "alias": "swin_in_rising_water",
+      "ast_structural_fingerprint": "b0faa516fcda3187255c88e897560de9620f0a516fed88da85d8d4d4ec251848",
+      "case_id": "internal-leetcode-cba699ac658a119f",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "future",
+      "interface": {
+        "call_name_count": 12,
+        "top_lexically_found": true,
+        "top_signature_sha256": "119fc9b5bb35dd5b889c24972fab0bf3ce9dd21dc7f6d5ddf6ff90fc04f9c7da"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "fcea21bb6215ca7ec27669a317401b7c2ab52f4a75b02ccb5ac71f95e0284c0e",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/swim_in_rising_water.cpp",
+      "source_sha256": "5b6fbc8bcaa9cf4b4dc3b0a26a6d0dda02a0b4f007c227d1b9a2d22491f594c4",
+      "top": "swimInWater",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "implementation_provenance_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "constraint_search",
+      "alias": "sudoku_solver",
+      "ast_structural_fingerprint": "eb4e9c2c409a5392e04c863f38e869b5792d7a724862d629944a407a9e1451c5",
+      "case_id": "internal-leetcode-ddcf3a7f23f2c02a",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 6,
+        "top_lexically_found": true,
+        "top_signature_sha256": "5f200fcbbd40669dd8292ae4bb97f74e30a25d2d30314f1adc3bd6bf02d27fbb"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "9434b6332c3831d8ee99dfdbb3ac5fdb68471b1805e675ff1270e33bb17d2125",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/sudoku_solver.cpp",
+      "source_sha256": "b284c1db7ec77101ea2e2a76b4711822aaa159ef5739f3071e5e545965a2396f",
+      "top": "solveSudoku",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "implementation_provenance_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
+      "algorithm_family": "computational_geometry",
+      "alias": "the_skyline_problem",
+      "ast_structural_fingerprint": "1e712ae5af124ba5a4c437a34be44d29068f368c46c316cc30e9a2618bffc712",
+      "case_id": "internal-leetcode-ec323132c251fe0d",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [],
+        "declared_top": null,
+        "declared_top_found_in_added_source": null,
+        "declared_top_matches_registry": null,
+        "registered_source_declared": null,
+        "status": "absent",
+        "tcl_path": null
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 10,
+        "top_lexically_found": true,
+        "top_signature_sha256": "119fc9b5bb35dd5b889c24972fab0bf3ce9dd21dc7f6d5ddf6ff90fc04f9c7da"
+      },
+      "legacy_claim_refs": [
+        "docs/results/ablation_tables.txt",
+        "docs/results/coverage/summary.md"
+      ],
+      "legacy_info_label": "useful",
+      "nearest_duplicate_refs": [
+        {
+          "case_id": "internal-hlsrewritter-e6024cd9e687a2a1",
+          "level": "D3",
+          "reason": "same_semantic_family_split_isolation",
+          "score": 1.0
+        }
+      ],
+      "normalized_token_sha256": "4716b59030622b422c4c9398326732c482a4f371ca473f019be59b9032212197",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/the_skyline_problem.cpp",
+      "source_sha256": "c91867130aa8d8c3d3bbc52c34b9f554cc3f43970d934bc9ef39d29acc0df118",
+      "top": "getSkyline",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "implementation_provenance_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    }
+  ],
+  "frozen_at": "2026-09-20T12:00:00Z",
+  "invariants": {
+    "all_internal_cases_accounted_for": true,
+    "d2_candidates_auto_excluded": false,
+    "family_split_isolated": true,
+    "future_outcomes_observed_before_split": false,
+    "git_history_mutations": 0,
+    "hidden_content_fingerprinted": false,
+    "provider_calls": 0,
+    "source_hash_canonicalization": "crlf_to_lf_only",
+    "vitis_launches": 0
+  },
+  "policy_sha256": "e50f3746b0b351d0b39e0cc6fc2c3e1a173d5cfc92a041fb7b67a16d08eb5cfa",
+  "registry_id": "v2.3-r5.1-internal-dataset-registry-v1",
+  "registry_sha256": "ff0a5e25b28bc057f0a6ef96f185a1eace3270a131dd90d949ac725516f3f386",
+  "schema_version": 1,
+  "source_info_sha256": "034869411fe8993cc512f549ef7f15a6b952a04952db2d9630ae4ebd3a805aa0",
+  "summary": {
+    "case_count": 57,
+    "d0_case_count": 0,
+    "d1_case_count": 2,
+    "d2_candidate_case_count": 0,
+    "eligibility_counts": {
+      "adapter_required": 9,
+      "quarantine": 47,
+      "reject": 1
+    },
+    "legacy_claim_case_count": 11,
+    "legacy_not_useful_count": 8,
+    "legacy_useful_count": 49,
+    "missing_source_count": 1,
+    "partition_counts": {
+      "future": 18,
+      "history": 39
+    },
+    "source_family_counts": {
+      "app": 12,
+      "c2hlsc": 10,
+      "heterorefactor": 5,
+      "hlsrewritter": 20,
+      "leetcode": 10
+    }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "manifest_id": "v2.3-r5.1-external-source-candidates-v1",
+  "frozen_at": "2026-09-20T12:00:00Z",
+  "sources": [
+    {
+      "source_id": "hlspilot",
+      "official_url": "https://github.com/xcw-1010/HLSPilot",
+      "commit": "1cb3aa9736f84ee4e626271596983a5bea98f6c3",
+      "license": "NOASSERTION",
+      "license_evidence": "GitHub license endpoint returned 404 on 2026-09-20",
+      "decision": "external-only",
+      "reason": "repository identity is fixed but no repository license was found; do not copy code"
+    },
+    {
+      "source_id": "hls-eval",
+      "official_url": "https://github.com/sharc-lab/hls-eval",
+      "commit": "8c8bf70a3dae3f20b90da136c01f9649072849e2",
+      "license": "NOASSERTION",
+      "license_evidence": "GitHub license endpoint returned 404 on 2026-09-20",
+      "decision": "external-only",
+      "reason": "sub-dataset licenses require per-case review before admission"
+    },
+    {
+      "source_id": "c2hlsc",
+      "official_url": "https://github.com/Lucaz97/c2hlsc",
+      "commit": "72d08b7d17da38b7ba9c828dce48403352be4dc3",
+      "license": "GPL-3.0-only",
+      "license_evidence": "https://github.com/Lucaz97/c2hlsc/blob/main/LICENSE",
+      "decision": "admit",
+      "reason": "official commit and license are fixed; admit only non-duplicate cases with executable oracles"
+    },
+    {
+      "source_id": "hlsfactory",
+      "official_url": "https://github.com/sharc-lab/HLSFactory",
+      "commit": "0fc25c5be0b8a94086ae1f3fc1f950fc66bafc7d",
+      "license": "AGPL-3.0-only; dataset metadata CC-BY-SA-4.0",
+      "license_evidence": "https://github.com/sharc-lab/HLSFactory/blob/main/LICENSE",
+      "decision": "external-only",
+      "reason": "use a pinned external checkout and review every bundled dataset license; do not vendor into this repository"
+    },
+    {
+      "source_id": "timelyhls",
+      "official_url": null,
+      "commit": null,
+      "license": "NOASSERTION",
+      "license_evidence": null,
+      "decision": "quarantine",
+      "reason": "paper is a design reference; no verified official dataset repository was identified"
+    },
+    {
+      "source_id": "llm-hls-program-repair-2407.03889",
+      "official_url": "https://doi.org/10.48550/arXiv.2407.03889",
+      "commit": null,
+      "license": "not_applicable_to_paper_metadata",
+      "license_evidence": null,
+      "decision": "reject",
+      "reason": "method reference only; no separately verified benchmark artifact admitted"
+    }
+  ],
+  "invariants": {
+    "third_party_code_copied": false,
+    "unlicensed_source_admitted": false,
+    "provider_calls": 0,
+    "vitis_launches": 0
+  }
+}
