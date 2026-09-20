@@ -150,6 +150,7 @@ class R51OrdinaryRefactorAuditTests(unittest.TestCase):
         )
         self.assertEqual(anchor, "agrefactor_reference_top_symbol_anchor")
         self.assertIn('extern "C" void kernel(int *value);', adapted)
+        self.assertIn("[[gnu::used]]", adapted)
         self.assertIn("= &kernel;", adapted)
         self.assertEqual(
             MODULE._undefined_symbol_bases(

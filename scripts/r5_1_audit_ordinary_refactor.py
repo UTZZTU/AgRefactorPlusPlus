@@ -161,7 +161,7 @@ def validate_protocol_shape(protocol: Mapping[str, Any]) -> list[dict[str, str]]
             amendment.get("prior_p5_phase_upper_bound")
             != {"provider_calls": 180, "vitis_launches": 110}
             or amendment.get("revised_p5_phase_upper_bound")
-            != {"provider_calls": 260, "vitis_launches": 110}
+            != {"provider_calls": 287, "vitis_launches": 110}
             or amendment.get("cumulative_hard_cap_changed") is not False
             or amendment.get("old_evidence_rewritten") is not False
         ):
@@ -169,17 +169,17 @@ def validate_protocol_shape(protocol: Mapping[str, Any]) -> list[dict[str, str]]
         reserve = budget.get("campaign_reserve")
         if reserve != {"provider_calls": 143, "vitis_launches": 104}:
             _finding(findings, "reserve_invalid", "P5 reserve must be 143/104")
-        if budget.get("p5_phase_upper_bound") != {"provider_calls": 260, "vitis_launches": 110}:
-            _finding(findings, "phase_cap_invalid", "P5 phase cap must be 260/110")
+        if budget.get("p5_phase_upper_bound") != {"provider_calls": 287, "vitis_launches": 110}:
+            _finding(findings, "phase_cap_invalid", "P5 phase cap must be 287/110")
         if budget.get("hard_cap") != {"provider_calls": 650, "vitis_launches": 650}:
             _finding(findings, "hard_cap_invalid", "R5.1 hard cap must be 650/650")
-        if budget.get("carried_forward") != {"provider_calls": 365, "vitis_launches": 198}:
-            _finding(findings, "carried_ledger_invalid", "P5 v4 must start from 365/198")
+        if budget.get("carried_forward") != {"provider_calls": 392, "vitis_launches": 198}:
+            _finding(findings, "carried_ledger_invalid", "P5 v6 must start from 392/198")
         if budget.get("remaining_after_reserve") != {
-            "provider_calls": 142,
+            "provider_calls": 115,
             "vitis_launches": 348,
         }:
-            _finding(findings, "remaining_budget_invalid", "P5 v4 remainder must be 142/348")
+            _finding(findings, "remaining_budget_invalid", "P5 v6 remainder must be 115/348")
     invariants = protocol.get("invariants")
     false_fields = {
         "post_outcome_case_selection_allowed",
@@ -222,17 +222,28 @@ def validate_protocol_shape(protocol: Mapping[str, Any]) -> list[dict[str, str]]
         if observed != expected:
             _finding(findings, "failed_audit_history_invalid", "P5 failed audit identities changed")
     invalid_runs = protocol.get("invalid_capability_runs")
-    if not isinstance(invalid_runs, list) or len(invalid_runs) != 1:
-        _finding(findings, "invalid_run_history_missing", "P5 must preserve its v3 invalid capability run")
+    if not isinstance(invalid_runs, list) or len(invalid_runs) != 2:
+        _finding(findings, "invalid_run_history_missing", "P5 must preserve its v3 and v5 invalid capability runs")
     else:
-        invalid = invalid_runs[0]
-        if not isinstance(invalid, Mapping) or (
-            invalid.get("protocol_id") != "v2.3-r5.1-p5-ordinary-refactor-v3"
-            or invalid.get("provider_calls") != 117
-            or invalid.get("vitis_launches") != 0
-            or invalid.get("old_evidence_rewritten") is not False
-        ):
-            _finding(findings, "invalid_run_history_mismatch", "P5 v3 run identity changed")
+        expected = {
+            "v2.3-r5.1-p5-ordinary-refactor-v3": (117, 13, "passed"),
+            "v2.3-r5.1-p5-ordinary-refactor-v5": (27, 3, "failed"),
+        }
+        observed = {
+            item.get("protocol_id"): (
+                item.get("provider_calls"),
+                item.get("executed_case_count"),
+                item.get("audit_status"),
+            )
+            for item in invalid_runs
+            if isinstance(item, Mapping)
+            and item.get("vitis_launches") == 0
+            and item.get("old_evidence_rewritten") is False
+            and item.get("capability_evidence_admissible") is False
+            and item.get("budget_usage_admissible") is True
+        }
+        if observed != expected:
+            _finding(findings, "invalid_run_history_mismatch", "P5 invalid run identities changed")
     return findings
 
 
@@ -318,7 +329,7 @@ def _bind_reference_top_contract(
         raise ValueError("Candidate declaration cannot bind the reference top uniquely")
     binding = (
         reference_declaration
-        + "\n[[maybe_unused]] static auto const "
+        + "\n[[gnu::used]] static auto const "
         + anchor
         + " = &"
         + reference_top
@@ -573,8 +584,9 @@ def _audit_invalid_capability_history(
             or audit.get("audit_sha256") != record.get("audit_sha256")
             or result.get("provider_calls") != record.get("provider_calls")
             or result.get("vitis_launches") != record.get("vitis_launches")
-            or audit.get("status") != "passed"
-            or result.get("executed_case_count") != 13
+            or audit.get("status") != record.get("audit_status")
+            or result.get("executed_case_count")
+            != record.get("executed_case_count")
         ):
             _finding(findings, "invalid_capability_identity_mismatch", str(root))
 
@@ -667,7 +679,7 @@ def audit_protocol(
                     if compiled.returncode:
                         raise ValueError("adapted host compile failed")
                     compiled_test = subprocess.run(
-                        [compiler, "-std=c++17", "-O0", "-c", str(test_path), "-o", str(test_object)],
+                        [compiler, "-std=c++17", "-O2", "-flto", "-c", str(test_path), "-o", str(test_object)],
                         cwd=case_root,
                         check=False,
                         stdout=subprocess.PIPE,

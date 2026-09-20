@@ -172,11 +172,11 @@ def validate_protocol(protocol: Mapping[str, Any]) -> None:
     amendment = budget.get("amendment")
     if reserve != {"provider_calls": 143, "vitis_launches": 104}:
         raise P5Error("P5 reserve changed")
-    if phase != {"provider_calls": 260, "vitis_launches": 110}:
+    if phase != {"provider_calls": 287, "vitis_launches": 110}:
         raise P5Error("P5 phase cap changed")
     if hard != {"provider_calls": 650, "vitis_launches": 650}:
         raise P5Error("R5.1 hard cap changed")
-    if carried != {"provider_calls": 365, "vitis_launches": 198}:
+    if carried != {"provider_calls": 392, "vitis_launches": 198}:
         raise P5Error("P5 carried-forward ledger changed")
     if not isinstance(amendment, Mapping) or (
         amendment.get("prior_p5_phase_upper_bound")
@@ -376,7 +376,7 @@ def bind_reference_top_contract(
         raise P5Error("Candidate Public declaration cannot bind the reference top uniquely")
     binding = (
         reference_declaration
-        + "\n[[maybe_unused]] static auto const "
+        + "\n[[gnu::used]] static auto const "
         + anchor
         + " = &"
         + reference_top
@@ -481,7 +481,7 @@ def _validate_repository(repo: Path, protocol: Mapping[str, Any], state: Mapping
         "R6_STARTED": False,
         "R5_1_P4_COMPLETE": True,
         "R5_1_REAL_CALLS_ALLOWED": True,
-        "R5_1_CUMULATIVE_PROVIDER_CALLS": 365,
+        "R5_1_CUMULATIVE_PROVIDER_CALLS": 392,
         "R5_1_CUMULATIVE_VITIS_LAUNCHES": 198,
         "R5_1_PROVIDER_CALL_HARD_CAP": 650,
         "R5_1_VITIS_LAUNCH_HARD_CAP": 650,
