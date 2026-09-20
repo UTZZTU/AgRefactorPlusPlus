@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "authorization_id": "v2.3-r5.1-budget-650x650-20260920",
+  "authorized_at": "2026-09-20",
+  "authorized_by": "project_owner",
+  "status": "authorized_for_r5_1_pre_r6_work",
+  "branch": "research-roadmap-v2.3",
+  "authorization_base_head": "6958e796b3b8a3a0f84f9a7974345692c225cd36",
+  "historical_r5_budget": {
+    "provider_hard_cap": 500,
+    "vitis_hard_cap": 500,
+    "provider_calls_consumed": 248,
+    "vitis_launches_consumed": 111,
+    "historical_manifests_and_reconciliations_mutable": false
+  },
+  "r5_1_cumulative_budget": {
+    "provider_hard_cap": 650,
+    "vitis_hard_cap": 650,
+    "provider_calls_carried_forward": 248,
+    "vitis_launches_carried_forward": 111,
+    "provider_calls_available": 402,
+    "vitis_launches_available": 539
+  },
+  "first_round_reservation": {
+    "provider_calls_upper_bound": 360,
+    "vitis_launches_upper_bound": 480,
+    "provider_recovery_reserve": 42,
+    "vitis_recovery_reserve": 59
+  },
+  "invariants": {
+    "prospective_only": true,
+    "single_cumulative_ledger": true,
+    "old_r5_evidence_rewritten": false,
+    "budget_preflight_required_before_real_calls": true,
+    "unused_stage_budget_automatically_transferable": false,
+    "r5_accepted": false,
+    "r6_started": false
+  }
+}
