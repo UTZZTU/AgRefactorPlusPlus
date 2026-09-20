@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "reconciliation_id": "v2.3-r5.1-scope-amendment-20260920-reconciliation-v1",
+  "status": "passed_ready_for_p6_after_owner_resume",
+  "branch": "research-roadmap-v2.3",
+  "checkpoint_base_head": "b7c13699972ada40f1f076d63602f5b491c15e66",
+  "p5_preserved": true,
+  "p0_p5_reexecuted": false,
+  "p0_p5_evidence_rewritten": false,
+  "old_scope": {
+    "version": "v2.3-r5.1-pre-r6-route-v1",
+    "path": "docs/roadmap/V2_3_PRE_R6_ROBUSTNESS_AND_EVIDENCE_PLAN.md",
+    "file_sha256": "11635a6671720ac22e7ca289a09249f28f434364889429104fe70e3dd281c11b",
+    "preserved": true
+  },
+  "new_scope": {
+    "version": "v2.3-r5.1-pre-r6-scope-v2",
+    "decision_record": "docs/roadmap/V2_3_R5_1_SCOPE_AMENDMENT_20260920.md",
+    "decision_record_file_sha256": "32f6dffc8df950f18d4cd46219e9cc9e1e87e42d33672281c673f91911168f9d",
+    "protocol": "configs/r5_1/r5_1_pre_r6_scope_protocol_v2.json",
+    "protocol_file_sha256": "cb2b7a092396a69cdc1c80c3687a3e74372ce63a1b81d8e0e5fb9ab1c1f5cd97",
+    "protocol_sha256": "c8f31566e257ec245e0b56f337f4a5a93ff305100d93661f1c02a0e0decbc1a0",
+    "r5_acceptance_gate": "configs/r5_1/r5_acceptance_gate_v2.json",
+    "r5_acceptance_gate_file_sha256": "44a45e1491050e31104f22e10197717830317f57bc10a824fb2084bfebb0126f",
+    "r6_entry_gate": "configs/r5_1/r6_entry_gate_v2.json",
+    "r6_entry_gate_file_sha256": "5f21fefa760cb86a5ad70f88643789d6104d946e20f297113a024a248a77cf0f"
+  },
+  "p8_required": [
+    "O0_Captured_append_only_identity_diff_validation_public_refs",
+    "O1_Observed_deterministic_classification_and_audit",
+    "observation_repair_identity_and_statistics_separation",
+    "zero_prompt_gate_or_mutation_authority",
+    "zero_future_hidden_leakage_retroactive_relabel_or_promotion"
+  ],
+  "deferred": [
+    "O2_Ablation_supported",
+    "O3_Replicated",
+    "observation_cross_case_replay",
+    "observation_ablation_runner",
+    "observation_to_repair_pattern_promotion",
+    "M_O_campaign",
+    "observation_memory_efficacy_claim"
+  ],
+  "p9_required_arms": [
+    "S",
+    "B",
+    "D",
+    "M-R"
+  ],
+  "p9_optional_arms": [
+    "M-O"
+  ],
+  "independent_audit": {
+    "path": "/data/agrefactor_runs/r5_1_scope_amendment_v2/independent_audit.json",
+    "file_sha256": "49cb0c4141a31ffb5ca0d5991ca26bd98acf4556ff7c44c5dd81a8242b6c169f",
+    "audit_sha256": "03af36b38775b255cb5dec9ec920652ad947f68c5a71cc7c92a3f4d1f609ceae",
+    "status": "passed",
+    "critical_findings": 0,
+    "provider_calls": 0,
+    "vitis_launches": 0,
+    "git_history_mutations": 0
+  },
+  "budget": {
+    "provider_calls_cumulative": 512,
+    "vitis_launches_cumulative": 232,
+    "provider_calls_remaining": 138,
+    "vitis_launches_remaining": 418
+  },
+  "acceptance": {
+    "r5_accepted": false,
+    "r6_started": false,
+    "owner_decision_required": true
+  },
+  "next_step": "P6_opportunity_and_abstention_root_cause_protocol_after_project_owner_resumes"
+}

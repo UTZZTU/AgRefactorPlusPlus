@@ -521,6 +521,44 @@
   "R5_1_P5_V6_VITIS_LAUNCHES": 34,
   "R5_1_P5_V6_ORDINARY_REFACTOR_FAILURE_COUNT": 7,
   "R5_1_P5_V6_REGRESSION_COUNT": 6,
+  "R5_1_SCOPE_PROTOCOL_VERSION": 2,
+  "R5_1_SCOPE_PROTOCOL": "configs/r5_1/r5_1_pre_r6_scope_protocol_v2.json",
+  "R5_1_SCOPE_AMENDMENT": "docs/roadmap/V2_3_R5_1_SCOPE_AMENDMENT_20260920.md",
+  "R5_1_SCOPE_AMENDMENT_STATUS": "passed_zero_call_independent_consistency_audit",
+  "R5_1_SCOPE_AMENDMENT_PROSPECTIVE_ONLY": true,
+  "R5_1_P0_P5_EVIDENCE_REWRITTEN": false,
+  "R5_1_SCOPE_PROTOCOL_FILE_SHA256": "cb2b7a092396a69cdc1c80c3687a3e74372ce63a1b81d8e0e5fb9ab1c1f5cd97",
+  "R5_1_SCOPE_PROTOCOL_SHA256": "c8f31566e257ec245e0b56f337f4a5a93ff305100d93661f1c02a0e0decbc1a0",
+  "R5_1_SCOPE_AMENDMENT_FILE_SHA256": "32f6dffc8df950f18d4cd46219e9cc9e1e87e42d33672281c673f91911168f9d",
+  "R5_1_P8_REQUIRED_LEVELS": [
+    "O0_Captured",
+    "O1_Observed"
+  ],
+  "R5_1_P8_DEFERRED_LEVELS": [
+    "O2_Ablation_supported",
+    "O3_Replicated"
+  ],
+  "R5_1_P9_REQUIRED_ARMS": [
+    "S",
+    "B",
+    "D",
+    "M-R"
+  ],
+  "R5_1_P9_OPTIONAL_ARMS": [
+    "M-O"
+  ],
+  "R5_1_M_O_CURRENT_BUDGET_ALLOWED": false,
+  "R5_1_R5_ACCEPTANCE_GATE": "configs/r5_1/r5_acceptance_gate_v2.json",
+  "R5_1_R5_ACCEPTANCE_GATE_FILE_SHA256": "44a45e1491050e31104f22e10197717830317f57bc10a824fb2084bfebb0126f",
+  "R5_1_R6_ENTRY_GATE": "configs/r5_1/r6_entry_gate_v2.json",
+  "R5_1_R6_ENTRY_GATE_FILE_SHA256": "5f21fefa760cb86a5ad70f88643789d6104d946e20f297113a024a248a77cf0f",
+  "R5_1_SCOPE_AMENDMENT_RECONCILIATION": "docs/roadmap/R5_1_SCOPE_AMENDMENT_RECONCILIATION.json",
+  "R5_1_SCOPE_AMENDMENT_AUDIT": "/data/agrefactor_runs/r5_1_scope_amendment_v2/independent_audit.json",
+  "R5_1_SCOPE_AMENDMENT_AUDIT_FILE_SHA256": "49cb0c4141a31ffb5ca0d5991ca26bd98acf4556ff7c44c5dd81a8242b6c169f",
+  "R5_1_SCOPE_AMENDMENT_AUDIT_SHA256": "03af36b38775b255cb5dec9ec920652ad947f68c5a71cc7c92a3f4d1f609ceae",
+  "R5_1_SCOPE_AMENDMENT_PROVIDER_CALLS": 0,
+  "R5_1_SCOPE_AMENDMENT_VITIS_LAUNCHES": 0,
+  "R5_1_SCOPE_AMENDMENT_GIT_HISTORY_MUTATIONS": 0,
   "R5_1_REAL_CALLS_ALLOWED": false,
   "R6_STARTED": false,
   "STAGE4_ALLOWED": false,
@@ -533,7 +571,7 @@
   "implementation_head": "9e962138af28a14c23ba59c83aeee3c93d25f83d",
   "implementation_state": "R5.1-P5-complete-no-ordinary-refactor-success-observed",
   "independent_audit_state": "R5.1-P5-protocol-and-result-independent-audits-passed",
-  "next_step": "R5.1-versioned-scope-amendment-before-P6-R6-remains-prohibited",
+  "next_step": "R5.1-P6-opportunity-and-abstention-root-cause-protocol-after-project-owner-resumes-R6-remains-prohibited",
   "package_self_acceptance": false,
   "r0_external_acceptance_archive": "agrefactor_v23_r0_correction_finalize_20260828T144812Z_2495321.tar.gz",
   "r0_external_acceptance_archive_sha256": "4209d6330f0d9089cc92c97d25ba1112b460a0e5201f11298f99047da0304f77",

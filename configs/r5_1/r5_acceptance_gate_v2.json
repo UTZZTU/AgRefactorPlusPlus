@@ -1,0 +1,63 @@
+{
+  "schema_version": 2,
+  "gate_id": "v2.3-r5.1-acceptance-gate-v2",
+  "status": "prospective_not_satisfied",
+  "governed_by": "v2.3-r5.1-pre-r6-scope-v2",
+  "preserved_requirements": [
+    "rebuildable_legacy_cases_replayed_or_excluded_with_reason",
+    "internal_registry_external_license_and_D0_D3_dedup_complete",
+    "all_scored_cases_have_source_baseline_oracle_and_family_split",
+    "at_least_three_independent_sources_and_four_semantic_failure_families",
+    "at_least_eight_independent_complete_future_failures_enter_R2_or_claim_is_owner_narrowed",
+    "general_rules_not_benchmark_path_or_single_log_code_special_cases",
+    "default_off_refactor_optimize_safe_v1_and_full_regressions_pass",
+    "frozen_rebuildable_identity_budget_result_and_audit_archive",
+    "zero_critical_safety_findings"
+  ],
+  "repair_memory_requirements": {
+    "source": "verified_repair_episode_memory_only",
+    "minimum_memory_assisted_verified_positive_future_cases": 2,
+    "paired_no_memory_failure_or_higher_cost_required": true,
+    "positive_and_attributable_negative_lifecycle_accounting": true,
+    "applicability_gate_required": true,
+    "revision_lifecycle_required": true,
+    "snapshot_required": true,
+    "authorization_hash_required": true,
+    "separate_negative_transfer_report": true,
+    "separate_false_repair_report": true,
+    "separate_wrong_object_mutation_report": true,
+    "separate_false_success_report": true
+  },
+  "observation_governance_requirements": {
+    "mandatory_levels": [
+      "O0_Captured",
+      "O1_Observed"
+    ],
+    "append_only": true,
+    "identity_and_statistics_separate_from_repair_ledger": true,
+    "prompt_consumption_allowed": false,
+    "gate_consumption_allowed": false,
+    "mutation_authorization_allowed": false,
+    "repair_lifecycle_promotion_allowed": false,
+    "verified_positive_credit_allowed": false,
+    "memory_efficacy_credit_allowed": false,
+    "future_hidden_leakage_allowed": false,
+    "retroactive_relabel_allowed": false
+  },
+  "deferred_non_blockers": [
+    "O2_Ablation_supported",
+    "O3_Replicated",
+    "observation_cross_case_replay",
+    "observation_ablation_runner",
+    "observation_to_repair_pattern_promotion",
+    "M_O_campaign",
+    "observation_memory_efficacy_claim"
+  ],
+  "current_state": {
+    "p5_checkpoint_preserved": true,
+    "r5_accepted": false,
+    "r6_started": false,
+    "owner_acceptance_required": true,
+    "agent_self_acceptance_allowed": false
+  }
+}

@@ -39,6 +39,36 @@
       "status": "current"
     },
     {
+      "path": "docs/roadmap/V2_3_R5_1_SCOPE_AMENDMENT_20260920.md",
+      "role": "project-owner-approved prospective P6-P9 scope amendment; resolves post-P5 conflicts without rewriting the original route",
+      "status": "current"
+    },
+    {
+      "path": "configs/r5_1/r5_1_pre_r6_scope_protocol_v2.json",
+      "role": "machine-readable R5.1 P6-P10 scope protocol v2",
+      "status": "current"
+    },
+    {
+      "path": "configs/r5_1/r5_acceptance_gate_v2.json",
+      "role": "scope-amended R5 acceptance gate",
+      "status": "current"
+    },
+    {
+      "path": "configs/r5_1/r6_entry_gate_v2.json",
+      "role": "scope-amended R6 entry gate",
+      "status": "current"
+    },
+    {
+      "path": "docs/roadmap/R5_1_P5_ORDINARY_REFACTOR_CHECKPOINT.json",
+      "role": "immutable P5 v6 result, budget, manifest, archive, and independent-audit checkpoint",
+      "status": "current"
+    },
+    {
+      "path": "docs/roadmap/R5_1_SCOPE_AMENDMENT_RECONCILIATION.json",
+      "role": "zero-call independent-audit reconciliation for the prospective P6-P9 scope amendment",
+      "status": "current"
+    },
+    {
       "path": "docs/roadmap/R5_1_BUDGET_AUTHORIZATION.json",
       "role": "prospective cumulative 650/650 R5.1 budget authorization",
       "status": "current"
@@ -179,10 +209,10 @@
       "status": "current"
     }
   ],
-  "head": "aa34d6a8d8615cc718daf73df0098e3eb4a1eff4",
-  "head_role": "R5.1-P3-external-adapter-host-smoke-audited",
-  "implementation_head": "aa34d6a8d8615cc718daf73df0098e3eb4a1eff4",
-  "next_step": "R5.1-P4-source-baseline-protocol-budget-reserve-and-eligibility-preflight-R6-remains-prohibited",
+  "head": "b7c13699972ada40f1f076d63602f5b491c15e66",
+  "head_role": "R5.1-P5-checkpoint-preserved-scope-amendment-zero-call-audited",
+  "implementation_head": "b7c13699972ada40f1f076d63602f5b491c15e66",
+  "next_step": "R5.1-P6-opportunity-and-abstention-root-cause-protocol-after-project-owner-resumes-R6-remains-prohibited",
   "package_self_acceptance": false,
   "primary_empirical_environment": "Vitis HLS 2023.2",
   "r0_external_acceptance_archive": "agrefactor_v23_r0_correction_finalize_20260828T144812Z_2495321.tar.gz",
@@ -298,8 +328,8 @@
   "r5_consumed_vitis_launches": 111,
   "r5_real_campaign_allowed": false,
   "repository": "UTZZTU/AgRefactorPlusPlus",
-  "repository_head_prefix": "aa34d6a",
-  "repository_head_role": "R5.1-P3-external-adapter-host-smoke-audited",
+  "repository_head_prefix": "b7c1369",
+  "repository_head_role": "R5.1-P5-checkpoint-preserved-scope-amendment-zero-call-audited",
   "route": "V2.3",
   "schema_version": 1,
   "status": "current",

@@ -1,0 +1,33 @@
+{
+  "schema_version": 2,
+  "gate_id": "v2.3-r6-entry-gate-v2",
+  "status": "closed",
+  "governed_by": "v2.3-r5.1-pre-r6-scope-v2",
+  "required_before_entry": [
+    "p0_p5_checkpoint_and_evidence_hashes_preserved",
+    "p6_p7_real_opportunity_and_abstention_root_cause_audit_complete",
+    "p8_o0_o1_safe_isolation_loop_passed",
+    "p9_S_B_D_M_R_time_ordered_paired_campaign_complete_or_owner_approved_narrow_claim",
+    "verified_repair_positive_and_attributable_negative_lifecycle_active",
+    "applicability_gate_revision_snapshot_and_authorization_hash_active",
+    "hidden_future_leakage_false_success_wrong_object_mutation_and_unauthorized_authorization_zero",
+    "refactor_optimize_full_only_and_default_off_behavior_preserved",
+    "independent_audit_has_zero_critical_findings",
+    "project_owner_explicitly_accepts_R5"
+  ],
+  "not_required_for_entry": [
+    "O2_Ablation_supported",
+    "O3_Replicated",
+    "observation_cross_case_replay",
+    "observation_ablation_runner",
+    "observation_to_repair_pattern_promotion",
+    "M_O_campaign",
+    "observation_memory_efficacy_claim"
+  ],
+  "current_state": {
+    "r5_accepted": false,
+    "r6_started": false,
+    "entry_allowed": false,
+    "implementation_agent_may_open_gate": false
+  }
+}

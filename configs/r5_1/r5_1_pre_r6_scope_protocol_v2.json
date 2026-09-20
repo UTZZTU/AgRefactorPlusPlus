@@ -1,0 +1,177 @@
+{
+  "schema_version": 2,
+  "protocol_id": "v2.3-r5.1-pre-r6-scope-v2",
+  "status": "project_owner_approved_prospective_amendment",
+  "route": "V2.3-R5.1-P6-P10",
+  "branch": "research-roadmap-v2.3",
+  "effective_date": "2026-09-20",
+  "decision_record": "docs/roadmap/V2_3_R5_1_SCOPE_AMENDMENT_20260920.md",
+  "supersession": {
+    "previous_scope_id": "v2.3-r5.1-pre-r6-route-v1",
+    "previous_scope_document": "docs/roadmap/V2_3_PRE_R6_ROBUSTNESS_AND_EVIDENCE_PLAN.md",
+    "previous_scope_file_sha256": "11635a6671720ac22e7ca289a09249f28f434364889429104fe70e3dd281c11b",
+    "prospective_only": true,
+    "previous_document_rewritten": false,
+    "conflicts_after_p5_resolved_by": "v2.3-r5.1-pre-r6-scope-v2"
+  },
+  "effective_after_checkpoint": {
+    "path": "docs/roadmap/R5_1_P5_ORDINARY_REFACTOR_CHECKPOINT.json",
+    "file_sha256": "6bcfbc94c51a0feee8d832810702ada66d05848daa3b028eddaaa334849e1ac0",
+    "checkpoint_id": "v2.3-r5.1-p5-ordinary-refactor-v6-checkpoint",
+    "p5_preserved": true,
+    "p0_p5_evidence_rewritten": false,
+    "p0_p5_reexecution_required": false
+  },
+  "core_research_line": {
+    "name": "owner-aware evidence-gated open-world diagnosis",
+    "required_components": [
+      "deterministic_authority_separation",
+      "calibrated_abstention",
+      "verified_positive_and_negative_repair_memory",
+      "safe_candidate_only_repair",
+      "time_ordered_future_evaluation"
+    ],
+    "observation_ledger_role": "auxiliary_governance_only",
+    "second_primary_research_line_created": false
+  },
+  "p8_mandatory_minimum": {
+    "levels": [
+      "O0_Captured",
+      "O1_Observed"
+    ],
+    "o0_required_fields": [
+      "source_identity",
+      "candidate_identity",
+      "typed_ast_diff",
+      "transformation_family",
+      "affected_symbols",
+      "formal_validation_result",
+      "public_evidence_refs"
+    ],
+    "o1_deterministic_checks": [
+      "transformation_classification",
+      "identity",
+      "provenance",
+      "formal_validation",
+      "audit_status"
+    ],
+    "required_properties": [
+      "append_only",
+      "observation_not_repair_success",
+      "observation_and_repair_identity_namespaces_separate",
+      "observation_and_repair_statistics_separate",
+      "ordinary_success_cannot_be_repair_episode",
+      "o0_o1_cannot_be_provisional_or_trusted_repair_pattern",
+      "future_hidden_leakage_zero",
+      "retroactive_relabel_zero",
+      "unauthorized_authorization_zero"
+    ],
+    "forbidden_inputs": [
+      "raw_provider_response",
+      "private_reasoning",
+      "hidden_evidence",
+      "future_information"
+    ],
+    "forbidden_consumers": [
+      "product_prompt",
+      "applicability_gate",
+      "r4_mutation_authorization",
+      "r5_mutation_authorization",
+      "repair_pattern_lifecycle"
+    ],
+    "forbidden_metrics": [
+      "verified_positive",
+      "memory_assisted_repair_success",
+      "repair_memory_efficacy"
+    ],
+    "product_prompt_injection_default": false
+  },
+  "deferred_extensions": {
+    "release_horizon": "post_R6_or_explicit_future_work",
+    "owner_approval_required": true,
+    "current_budget_allowed": false,
+    "items": [
+      "O2_Ablation_supported",
+      "O3_Replicated",
+      "ordinary_success_cross_case_replay",
+      "observation_causal_ablation_runner",
+      "observation_to_provisional_or_trusted_promotion",
+      "M_O_memory_efficacy_campaign",
+      "observation_memory_future_repair_rate_claim"
+    ],
+    "schema_reservations_allowed": true,
+    "implementation_required_for_r5_acceptance": false,
+    "implementation_required_for_r6_entry": false
+  },
+  "p9_primary_matrix": {
+    "required_arms": {
+      "S": "raw_source_baseline",
+      "B": "ordinary_refactor_R2_R5_off",
+      "D": "R2_R4_on_memory_none",
+      "M-R": "trusted_repair_memory"
+    },
+    "optional_arms": {
+      "M-O": "qualified_observation_memory_post_R6_extension"
+    },
+    "m_o_current_budget_allowed": false,
+    "m_o_primary_efficacy_claim_allowed": false,
+    "memory_efficacy_source": "verified_repair_episode_memory_only",
+    "required_m_r_controls": [
+      "strict_time_ordered_history_future_separation",
+      "verified_positive_and_attributable_negative_lifecycle_accounting",
+      "applicability_gate",
+      "revision_lifecycle",
+      "immutable_snapshot",
+      "authorization_hash",
+      "paired_fair_no_memory_arm"
+    ],
+    "required_separate_reports": [
+      "negative_transfer",
+      "false_repair",
+      "wrong_object_mutation",
+      "false_success"
+    ]
+  },
+  "claim_boundary": {
+    "o0_o1_supported_claim": "ordinary_experience_is_safely_recorded_without_polluting_repair_memory",
+    "o0_o1_forbidden_claim": "ordinary_success_memory_improves_future_repair_rate",
+    "m_r_supported_claim_requires_paired_evidence": true
+  },
+  "acceptance_gates": {
+    "r5": "configs/r5_1/r5_acceptance_gate_v2.json",
+    "r6_entry": "configs/r5_1/r6_entry_gate_v2.json"
+  },
+  "product_boundaries": {
+    "formal_entrypoints": [
+      "refactor",
+      "optimize",
+      "full"
+    ],
+    "new_cli_allowed": false,
+    "second_candidate_repair_allowed": false,
+    "second_vitis_runner_allowed": false,
+    "second_validation_or_success_authority_allowed": false,
+    "r2_r5_default_enabled": false,
+    "primary_entrypoint": "refactor",
+    "optimize_profile": "safe-v1"
+  },
+  "budget_at_effective_boundary": {
+    "provider_hard_cap": 650,
+    "vitis_hard_cap": 650,
+    "cumulative_provider_calls": 512,
+    "cumulative_vitis_launches": 232,
+    "remaining_provider_calls": 138,
+    "remaining_vitis_launches": 418,
+    "scope_amendment_provider_calls": 0,
+    "scope_amendment_vitis_launches": 0
+  },
+  "audit_contract": {
+    "independent_auditor": "scripts/r5_1_audit_scope_amendment.py",
+    "provider_calls": 0,
+    "vitis_launches": 0,
+    "git_history_mutations": 0,
+    "old_evidence_hash_verification_required": true,
+    "r5_accepted": false,
+    "r6_started": false
+  }
+}
