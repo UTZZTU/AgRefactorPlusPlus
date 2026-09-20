@@ -331,7 +331,7 @@
           {
             "root": "repository",
             "path": "configs/r5_1/source_baseline_adapters/c2hlsc_monobit_public.cpp",
-            "sha256": "d34b1fd45bd9838dcc7b436e9d49a94c90d475031809e1bab7690c0b1b87cf85"
+            "sha256": "9b4391898e712415d344b43b0558383d8c3bf7948dbe60fa697dd6a72da33668"
           }
         ],
         "strip_exact_lines": []
@@ -378,7 +378,7 @@
           {
             "root": "repository",
             "path": "configs/r5_1/source_baseline_adapters/c2hlsc_block_public.cpp",
-            "sha256": "4361dbb3f1a5cdcc77442fd5e16a42b4209f67aacffa6b85b119ec4d1a6843bd"
+            "sha256": "ea967f8c4c7cbaac0cffe8f59ebf3563c94a635f706bd6aede743e8687b0efe8"
           }
         ],
         "strip_exact_lines": []
@@ -425,7 +425,7 @@
           {
             "root": "repository",
             "path": "configs/r5_1/source_baseline_adapters/c2hlsc_cusums_public.cpp",
-            "sha256": "930355e58761235f71fc032c8f3cd61d333d8782474a5dada2fde635512dc615"
+            "sha256": "6863d283cb7d9dc64e786f7a51abeac78815ec542bd31620eaf22fa3558d6ec0"
           }
         ],
         "strip_exact_lines": []

@@ -1,5 +1,9 @@
 #include <cstdio>
 
+#define N 128
+extern int epsilon[N];
+void Frequency(int *result);
+
 int main() {
     for (int i = 0; i < N; ++i) {
         epsilon[i] = (i * 73) % 7 == 0;

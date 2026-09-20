@@ -1,6 +1,11 @@
 #include <cmath>
 #include <cstdio>
 
+#define N 16
+#define M 8
+extern int epsilon[N * M];
+void BlockFrequency(double *result);
+
 int main() {
     for (int i = 0; i < N * M; ++i) {
         epsilon[i] = (i * 73) % 7 == 0;

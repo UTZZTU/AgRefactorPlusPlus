@@ -1,5 +1,9 @@
 #include <cstdio>
 
+#define N 20000
+extern int epsilon[N];
+void CumulativeSums(int *res_sup, int *res_inf);
+
 int main() {
     for (int i = 0; i < N; ++i) {
         epsilon[i] = (i * 73) % 7 == 0;
