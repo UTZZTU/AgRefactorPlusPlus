@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "protocol_id": "v2.3-r5.1-p5-ordinary-refactor-v1",
+  "route": "V2.3-R5.1-P5",
+  "frozen_at": "2026-09-20T13:30:00Z",
+  "repository_base_head": "4a49e027cc8b2c2c31a03ba52a4a10e2a9783b71",
+  "p4_authority": {
+    "plan_path": "configs/r5_1/source_baseline_protocol.json",
+    "plan_file_sha256": "088b693b9d1f07cc9558ab8a09b3c930a7c8de3d8ee40e4e93c2cebe1cbe3de5",
+    "plan_sha256": "7fb89c276347d070b62cfe06a0af9968dd632870f0e6c398d0ce279ec31bff8c",
+    "materializer_path": "scripts/r5_1_source_baseline.py",
+    "materializer_file_sha256": "a9b957c81d48d80f2413e2b0e1bfd0227689862fd23439fd5f65b6703b7a2f71",
+    "result_path": "/data/agrefactor_runs/r5_1_p4_source_baseline_v8/result.json",
+    "result_file_sha256": "0d424261f13b0fd2c6dc6c36368ef87cee71c39c1819ab5c384a1a7dfb4c3791",
+    "result_sha256": "b4bb633b815bfe72a7675b6e665fdaa72ae5a801cae905252040a20500d1d8d6",
+    "audit_path": "/data/agrefactor_runs/r5_1_p4_source_baseline_v8/independent_audit.json",
+    "audit_file_sha256": "1a1692a562dec29dcd4a3c83b95b3c70de963ebde4b6e8bebad08edfeb40eec3",
+    "audit_sha256": "3d586ee85ae087db6c8cf2dd7cb57215dbb6e6e17cf2825481348f73fdae5180"
+  },
+  "product_contract": {
+    "command": "refactor",
+    "python_entrypoint": "python -m agrefactor.cli refactor",
+    "runtime_function": "agrefactor.product.run_source_command",
+    "candidate_top_suffix": "_hls",
+    "public_tests": "provided_frozen_p4_oracle",
+    "hidden_tests": "none",
+    "hidden_scope": "P5 is a Public-only inheritance and discovery campaign; it is not final Hidden generalization evidence",
+    "r5_arm": "A0",
+    "r2_shadow": false,
+    "r4_integration": false,
+    "repair_memory": "none",
+    "observation_memory": "not_yet_implemented",
+    "max_testbench_repairs": 1,
+    "max_candidate_repairs": 1,
+    "max_llm_calls_per_case": 11,
+    "max_csim_calls_per_case": 3,
+    "max_csynth_calls_per_case": 3,
+    "max_cosim_calls_per_case": 2,
+    "max_vitis_launches_per_case": 8,
+    "max_wall_time_s_per_case": 7200,
+    "cosim_policy": "required"
+  },
+  "model_runtime": {
+    "model": "deepseek-flash",
+    "family": "deepseek",
+    "base_url": "https://api.deepseek.com",
+    "api_key_env": "DEEPSEEK_API_KEY",
+    "raw_response_persistence_allowed": false,
+    "private_reasoning_persistence_allowed": false
+  },
+  "budget": {
+    "hard_cap": {
+      "provider_calls": 650,
+      "vitis_launches": 650
+    },
+    "carried_forward": {
+      "provider_calls": 248,
+      "vitis_launches": 198
+    },
+    "p5_phase_upper_bound": {
+      "provider_calls": 180,
+      "vitis_launches": 110
+    },
+    "campaign_reserve": {
+      "provider_calls": 143,
+      "vitis_launches": 104
+    },
+    "remaining_after_reserve": {
+      "provider_calls": 259,
+      "vitis_launches": 348
+    }
+  },
+  "cases": [
+    {
+      "case_id": "p4-external-c2hlsc-runs-raw",
+      "raw_classification": "raw_fail_actionable",
+      "discovery_role": "ordinary_refactor_opportunity",
+      "eligible_as_pristine_p9_future": false
+    },
+    {
+      "case_id": "p4-external-hls-eval-vector-add-raw",
+      "raw_classification": "raw_pass_all",
+      "discovery_role": "unnecessary_rewrite_control",
+      "eligible_as_pristine_p9_future": false
+    },
+    {
+      "case_id": "p4-external-hlspilot-fir-raw",
+      "raw_classification": "raw_pass_all",
+      "discovery_role": "unnecessary_rewrite_control",
+      "eligible_as_pristine_p9_future": false
+    },
+    {
+      "case_id": "p4-external-hlsfactory-vector-add-raw",
+      "raw_classification": "raw_fail_ambiguous",
+      "discovery_role": "ordinary_refactor_discovery",
+      "eligible_as_pristine_p9_future": false
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-quicksort-raw",
+      "raw_classification": "raw_fail_ambiguous",
+      "discovery_role": "legacy_claim_replay",
+      "eligible_as_pristine_p9_future": false
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-monobit-raw",
+      "raw_classification": "raw_fail_ambiguous",
+      "discovery_role": "ordinary_refactor_discovery",
+      "eligible_as_pristine_p9_future": false
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-block-raw",
+      "raw_classification": "raw_fail_ambiguous",
+      "discovery_role": "ordinary_refactor_discovery",
+      "eligible_as_pristine_p9_future": false
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-cusums-raw",
+      "raw_classification": "raw_fail_ambiguous",
+      "discovery_role": "ordinary_refactor_discovery",
+      "eligible_as_pristine_p9_future": false
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-aes-raw",
+      "raw_classification": "raw_pass_all",
+      "discovery_role": "unnecessary_rewrite_control",
+      "eligible_as_pristine_p9_future": false
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-present-raw",
+      "raw_classification": "raw_pass_all",
+      "discovery_role": "unnecessary_rewrite_control",
+      "eligible_as_pristine_p9_future": false
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-sha256-raw",
+      "raw_classification": "raw_pass_all",
+      "discovery_role": "unnecessary_rewrite_control",
+      "eligible_as_pristine_p9_future": false
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-overlapping-raw",
+      "raw_classification": "raw_pass_all",
+      "discovery_role": "unnecessary_rewrite_control",
+      "eligible_as_pristine_p9_future": false
+    },
+    {
+      "case_id": "p4-internal-c2hlsc-des-raw",
+      "raw_classification": "raw_fail_ambiguous",
+      "discovery_role": "ordinary_refactor_discovery",
+      "eligible_as_pristine_p9_future": false
+    }
+  ],
+  "invariants": {
+    "case_count": 13,
+    "repeats_per_case": 1,
+    "minimum_source_count": 3,
+    "minimum_algorithm_family_count": 4,
+    "post_outcome_case_selection_allowed": false,
+    "manual_source_or_test_repair_allowed": false,
+    "public_test_reused_as_hidden": false,
+    "p5_cases_may_be_reused_as_pristine_p9_future": false,
+    "raw_pass_may_count_as_refactor_lift": false,
+    "r2_r4_r5_enabled": false,
+    "git_history_mutations_allowed": false,
+    "r5_accepted": false,
+    "r6_started": false
+  }
+}
