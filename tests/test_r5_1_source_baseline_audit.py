@@ -33,10 +33,17 @@ class R51SourceBaselineAuditTests(unittest.TestCase):
     def _preflight(self) -> dict:
         cases = []
         for index, case in enumerate(self.plan["cases"]):
+            expectation = case["host_preflight_expected"]
+            oracle_pass = expectation == "oracle_pass"
             cases.append(
                 {
                     "case_id": case["case_id"],
                     "status": "passed",
+                    "expected_outcome": expectation,
+                    "observed_outcome": expectation,
+                    "compile_returncode": 0,
+                    "run_returncode": 0 if oracle_pass else 1,
+                    "pass_marker_observed": oracle_pass,
                     "material_identity": {
                         "design_sha256": f"{index + 1:064x}",
                         "testbench_sha256": f"{index + 101:064x}",
@@ -122,6 +129,36 @@ class R51SourceBaselineAuditTests(unittest.TestCase):
         self.assertIn(
             "unexpected_external_calls", {item["code"] for item in audit["findings"]}
         )
+
+    def test_preflight_status_cannot_hide_expectation_mismatch(self) -> None:
+        preflight = self._preflight()
+        preflight["cases"][0]["run_returncode"] = 1
+        preflight["cases"][0]["pass_marker_observed"] = False
+        preflight["cases"][0]["observed_outcome"] = "candidate_mismatch"
+        preflight["result_sha256"] = MODULE.sha_value(
+            {key: value for key, value in preflight.items() if key != "result_sha256"}
+        )
+        audit = MODULE.audit_preflight(self.plan, preflight)
+        self.assertEqual(audit["status"], "failed")
+        self.assertIn(
+            "host_expectation_mismatch",
+            {item["code"] for item in audit["findings"]},
+        )
+
+    def test_result_rejects_invalid_preflight_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            preflight = self._preflight()
+            preflight["cases"][0]["expected_outcome"] = "candidate_mismatch"
+            preflight["result_sha256"] = MODULE.sha_value(
+                {key: value for key, value in preflight.items() if key != "result_sha256"}
+            )
+            result = self._result(Path(temporary), preflight)
+            audit = MODULE.audit_result(self.plan, preflight, result)
+            self.assertEqual(audit["status"], "failed")
+            self.assertIn(
+                "preflight_contract_invalid",
+                {item["code"] for item in audit["findings"]},
+            )
 
     def test_clean_result_passes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

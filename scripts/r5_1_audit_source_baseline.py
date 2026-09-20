@@ -19,6 +19,7 @@ if str(SCRIPT_DIR) not in sys.path:
 from r5_1_source_baseline import (  # noqa: E402
     ALLOWED_CLASSIFICATIONS,
     canonical,
+    classify_host_preflight,
     load_object,
     sha_file,
     sha_value,
@@ -100,13 +101,37 @@ def audit_preflight(
         findings.append(_finding("case_count_mismatch", "host preflight case count is incomplete"))
         cases = []
     expected_ids = {case["case_id"] for case in plan["cases"]}
+    planned_cases = {case["case_id"]: case for case in plan["cases"]}
     observed_ids = {case.get("case_id") for case in cases if isinstance(case, Mapping)}
     if expected_ids != observed_ids:
         findings.append(_finding("case_identity_mismatch", "host preflight case identities differ from the plan"))
     for case in cases:
-        if not isinstance(case, Mapping) or case.get("status") != "passed":
-            findings.append(_finding("host_oracle_failed", f"host oracle failed: {case.get('case_id') if isinstance(case, Mapping) else 'invalid'}"))
+        if not isinstance(case, Mapping) or case.get("case_id") not in planned_cases:
+            findings.append(_finding("host_oracle_failed", "host oracle record is invalid"))
             continue
+        case_id = case["case_id"]
+        planned = planned_cases[case_id]
+        passed, observed = classify_host_preflight(
+            expected=planned["host_preflight_expected"],
+            compile_returncode=case.get("compile_returncode"),
+            run_returncode=case.get("run_returncode"),
+            pass_marker_observed=case.get("pass_marker_observed") is True,
+            mismatch_returncodes=set(
+                planned["runtime_contract"]["candidate_mismatch_returncodes"]
+            ),
+        )
+        if (
+            not passed
+            or case.get("status") != "passed"
+            or case.get("expected_outcome") != planned["host_preflight_expected"]
+            or case.get("observed_outcome") != observed
+        ):
+            findings.append(
+                _finding(
+                    "host_expectation_mismatch",
+                    f"host observation does not match the frozen expectation: {case_id}",
+                )
+            )
         identity = case.get("material_identity")
         if not isinstance(identity, Mapping):
             findings.append(_finding("material_identity_missing", f"material identity missing: {case.get('case_id')}"))
@@ -177,6 +202,9 @@ def audit_result(
         findings.append(_finding("plan_identity_mismatch", "result used another plan"))
     if result.get("preflight_result_sha256") != preflight.get("result_sha256"):
         findings.append(_finding("preflight_identity_mismatch", "result used another host preflight"))
+    preflight_audit = audit_preflight(plan, preflight)
+    if preflight_audit["critical_findings"] != 0:
+        findings.append(_finding("preflight_contract_invalid", "result depends on an invalid host preflight"))
     if result.get("provider_calls") != 0:
         findings.append(_finding("provider_call_violation", "source baseline made Provider calls"))
     reserve = plan["budget"]["campaign_reserve"]["vitis_launches"]
