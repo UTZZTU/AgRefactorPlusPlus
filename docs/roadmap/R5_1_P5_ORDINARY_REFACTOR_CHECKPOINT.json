@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "checkpoint_id": "v2.3-r5.1-p5-ordinary-refactor-v6-checkpoint",
+  "status": "complete_independent_audit_passed",
+  "created_at": "2026-09-20",
+  "branch": "research-roadmap-v2.3",
+  "execution_head": "9e962138af28a14c23ba59c83aeee3c93d25f83d",
+  "prospective_scope_amendment_applied": false,
+  "historical_evidence_rewritten": false,
+  "campaign": {
+    "campaign_id": "v2.3-r5.1-p5-ordinary-refactor-v6",
+    "protocol": "configs/r5_1/ordinary_refactor_protocol.json",
+    "protocol_file_sha256": "902777ee34627ea71b6941efd8b23159e368904225d614756f9a56ad07b84125",
+    "protocol_sha256": "d778a70246849d63c27231fd5f153f3d28e6e60bf4d5093359ff6aa0ca1b697e",
+    "protocol_audit": "/data/agrefactor_runs/r5_1_p5_protocol_audit_v6.json",
+    "protocol_audit_file_sha256": "ec8c700aef44b9428eef6e095aca74ac9b71edfba2b1df5ed7d2db5ee2e8e98f",
+    "protocol_audit_sha256": "5e3e3fe5b3920a7c155d341cd1958af52ab7746c5110bab0c8d48e5cba876bec",
+    "evidence_root": "/data/agrefactor_runs/r5_1_p5_ordinary_refactor_v6",
+    "result_file_sha256": "18a97da86973be512a7b8cd3c99148fc89e30dfe5d7acf38437ce391887464a4",
+    "result_sha256": "8e826ad4535c0a602653af817bb766a6965795756d7d83014c3ef8c9f267ffa2",
+    "budget_ledger_file_sha256": "f06f8833645df8ae90ae6e75a29d31f0e3809a819c3281be7c203ef3df1f103b",
+    "checkpoint_manifest": "/data/agrefactor_runs/r5_1_p5_ordinary_refactor_v6/checkpoint_manifest.sha256",
+    "checkpoint_manifest_file_sha256": "89f7f8f3ad52b5f2915c4a51546ade7df8a225646c47cf2e60dd766f4444c8b9",
+    "checkpoint_manifest_file_count": 408,
+    "checkpoint_archive": "/data/agrefactor_runs/checkpoints/r5_1_p5_ordinary_refactor_v6.tar",
+    "checkpoint_archive_sha256": "dcff42b9b240a86962e6a7e339167e27282552c6a67d88d2a54a616ee8f27dd4",
+    "executed_case_count": 13,
+    "outcome_counts": {
+      "ordinary_refactor_failure": 7,
+      "regression": 6
+    },
+    "provider_calls": 120,
+    "vitis_launches": 34,
+    "git_history_mutations": 0,
+    "working_tree_mutations": 0,
+    "hidden_evidence_claimed": false,
+    "raw_provider_response_persisted": false,
+    "private_reasoning_persisted": false
+  },
+  "independent_audit": {
+    "path": "/data/agrefactor_runs/r5_1_p5_ordinary_refactor_v6/independent_audit.json",
+    "file_sha256": "bbd5d0d5fe4711915f6b02f54b50eaf606b1e5004523531a5653f4acde09ed4e",
+    "audit_sha256": "c9d44e163a03a449ef5ba56c179c842d4a46ec36c9fb27ac697e55bfd1cf27bd",
+    "status": "passed",
+    "critical_findings": 0,
+    "warning_findings": 0,
+    "provider_calls": 0,
+    "vitis_launches": 0,
+    "git_history_mutations": 0
+  },
+  "budget_after_checkpoint": {
+    "provider_hard_cap": 650,
+    "vitis_hard_cap": 650,
+    "cumulative_provider_calls": 512,
+    "cumulative_vitis_launches": 232,
+    "remaining_provider_calls": 138,
+    "remaining_vitis_launches": 418
+  },
+  "acceptance_state": {
+    "r5_accepted": false,
+    "r6_started": false,
+    "package_self_acceptance": false
+  },
+  "next_step": "apply_versioned_scope_amendment_before_p6"
+}
