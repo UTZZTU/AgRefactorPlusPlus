@@ -496,9 +496,7 @@ def _stage_statuses(outcome: Any) -> dict[str, str]:
         name = mapping.get(step.state.value)
         if name is None:
             continue
-        statuses[name] = "passed" if step.transition.next_state.value not in {
-            "validation_terminal", "repair_candidate", "budget_exhausted"
-        } else "failed"
+        statuses[name] = "failed" if step.source_blocking else "passed"
     return statuses
 
 

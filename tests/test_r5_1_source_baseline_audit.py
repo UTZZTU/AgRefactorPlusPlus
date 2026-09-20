@@ -66,6 +66,7 @@ class R51SourceBaselineAuditTests(unittest.TestCase):
                     "case_id": planned["case_id"],
                     "material_identity": prior["material_identity"],
                     "classification": "raw_fail_ambiguous",
+                    "terminal_state": "public_evaluation",
                     "stage_statuses": {
                         "S0_host_oracle": "passed",
                         "S1_public_csim": "failed",
@@ -129,6 +130,21 @@ class R51SourceBaselineAuditTests(unittest.TestCase):
             audit = MODULE.audit_result(self.plan, preflight, result)
             self.assertEqual(audit["status"], "passed")
             self.assertEqual(audit["critical_findings"], 0)
+
+    def test_nonpass_terminal_stage_cannot_be_claimed_as_passed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            preflight = self._preflight()
+            result = self._result(Path(temporary), preflight)
+            result["cases"][0]["stage_statuses"]["S1_public_csim"] = "passed"
+            result["result_sha256"] = MODULE.sha_value(
+                {key: value for key, value in result.items() if key != "result_sha256"}
+            )
+            audit = MODULE.audit_result(self.plan, preflight, result)
+            self.assertEqual(audit["status"], "failed")
+            self.assertIn(
+                "terminal_stage_claim_invalid",
+                {item["code"] for item in audit["findings"]},
+            )
 
     def test_evidence_path_escape_and_hash_mismatch_are_rejected(self) -> None:
         for mutation, expected in (("escape", "evidence_path_escape"), ("hash", "evidence_hash_mismatch")):

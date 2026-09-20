@@ -4,6 +4,7 @@ import copy
 import importlib.util
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 
 
@@ -95,6 +96,31 @@ class R51SourceBaselineTests(unittest.TestCase):
                     ),
                     expected,
                 )
+
+    def test_stage_status_uses_blocking_authority(self) -> None:
+        outcome = SimpleNamespace(
+            result=SimpleNamespace(
+                steps=(
+                    SimpleNamespace(
+                        state=SimpleNamespace(value="public_evaluation"),
+                        source_blocking=False,
+                    ),
+                    SimpleNamespace(
+                        state=SimpleNamespace(value="csynth"),
+                        source_blocking=True,
+                    ),
+                )
+            )
+        )
+        self.assertEqual(
+            MODULE._stage_statuses(outcome),
+            {
+                "S0_host_oracle": "passed",
+                "S1_public_csim": "passed",
+                "S2_csynth": "failed",
+                "S3_public_cosim": "not_run",
+            },
+        )
 
 
 if __name__ == "__main__":

@@ -212,6 +212,26 @@ def audit_result(
         stages = case.get("stage_statuses")
         if not isinstance(stages, Mapping) or stages.get("S0_host_oracle") != "passed":
             findings.append(_finding("stage_matrix_invalid", f"S0 host oracle missing: {case_id}"))
+        terminal_stage = {
+            "preflight": "S0_host_oracle",
+            "public_evaluation": "S1_public_csim",
+            "csynth": "S2_csynth",
+            "public_cosim": "S3_public_cosim",
+        }.get(case.get("terminal_state"))
+        if (
+            classification != "raw_pass_all"
+            and terminal_stage is not None
+            and (
+                not isinstance(stages, Mapping)
+                or stages.get(terminal_stage) != "failed"
+            )
+        ):
+            findings.append(
+                _finding(
+                    "terminal_stage_claim_invalid",
+                    f"terminal stage is not marked failed: {case_id}",
+                )
+            )
         if classification == "raw_pass_all" and (
             not isinstance(stages, Mapping)
             or any(stages.get(stage) != "passed" for stage in ("S1_public_csim", "S2_csynth", "S3_public_cosim"))
