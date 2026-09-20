@@ -36,6 +36,24 @@ class R51SourceBaselineTests(unittest.TestCase):
         )
         self.assertEqual(self.plan["invariants"]["provider_calls"], 0)
         self.assertFalse(self.plan["invariants"]["hidden_inputs_used"])
+        self.assertEqual(
+            self.plan["invariants"]["validation_budget_per_case"],
+            {
+                "tool_calls": 11,
+                "compile_calls": 5,
+                "csim_calls": 1,
+                "csynth_calls": 1,
+                "cosim_calls": 1,
+            },
+        )
+
+    def test_validation_budget_cannot_underfund_staged_preflight(self) -> None:
+        for field in ("tool_calls", "compile_calls"):
+            with self.subTest(field=field):
+                plan = copy.deepcopy(self.plan)
+                plan["invariants"]["validation_budget_per_case"][field] -= 1
+                with self.assertRaisesRegex(ValueError, "validation budget"):
+                    MODULE.validate_plan(plan)
 
     def test_semantic_family_cannot_cross_history_future(self) -> None:
         plan = copy.deepcopy(self.plan)

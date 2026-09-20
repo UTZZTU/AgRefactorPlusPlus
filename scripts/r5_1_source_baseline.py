@@ -256,6 +256,15 @@ def validate_plan(plan: Mapping[str, Any]) -> None:
         raise ValueError("source baseline call invariants are invalid")
     if invariants.get("expected_vitis_upper_bound") != expected_vitis:
         raise ValueError("source baseline Vitis upper bound is stale")
+    validation_budget = invariants.get("validation_budget_per_case")
+    if validation_budget != {
+        "tool_calls": 11,
+        "compile_calls": 5,
+        "csim_calls": 1,
+        "csynth_calls": 1,
+        "cosim_calls": 1,
+    }:
+        raise ValueError("per-case validation budget does not cover the frozen stage plan")
     if reserve.get("vitis_launches") != expected_vitis or expected_vitis > phase.get("vitis_launches"):
         raise ValueError("source baseline reserve does not cover the frozen cases")
     if len(sources) < 3 or len(family_partitions) < 4:
@@ -599,14 +608,15 @@ def run_source_baseline(
             mode=RunMode.REFACTOR,
             test_suites=(suite,),
         )
+        validation_budget = plan["invariants"]["validation_budget_per_case"]
         budget = BudgetManager(
             BudgetLimits(
                 max_llm_calls=0,
-                max_tool_calls=8,
-                max_compile_calls=1,
-                max_csim_calls=1,
-                max_csynth_calls=1,
-                max_cosim_calls=1,
+                max_tool_calls=validation_budget["tool_calls"],
+                max_compile_calls=validation_budget["compile_calls"],
+                max_csim_calls=validation_budget["csim_calls"],
+                max_csynth_calls=validation_budget["csynth_calls"],
+                max_cosim_calls=validation_budget["cosim_calls"],
                 max_tokens=0,
                 max_cost_usd=0,
             )

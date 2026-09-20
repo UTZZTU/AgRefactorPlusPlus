@@ -305,6 +305,13 @@
     "provider_calls": 0,
     "maximum_vitis_launches_per_case": 3,
     "expected_vitis_upper_bound": 15,
+    "validation_budget_per_case": {
+      "tool_calls": 11,
+      "compile_calls": 5,
+      "csim_calls": 1,
+      "csynth_calls": 1,
+      "cosim_calls": 1
+    },
     "source_code_modified_by_runner": false,
     "hidden_inputs_used": false,
     "future_outcomes_used_for_partitioning": false,
