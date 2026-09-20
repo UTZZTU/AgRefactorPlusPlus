@@ -810,3 +810,35 @@ zero Provider calls and zero Vitis launches.
 P3 may now implement external-checkout adapters and zero-Provider oracle
 smokes. Real Vitis execution remains closed until a new P3/P4 reserve and
 preflight are machine-audited. R5 remains unaccepted and R6 remains stopped.
+
+## R5.1 P3 External Adapter Host Smoke
+
+P3 freezes one external-checkout host oracle from each of C2HLSC, HLS-Eval,
+HLSPilot, and HLSFactory at repository implementation head
+`aa34d6a8d8615cc718daf73df0098e3eb4a1eff4`. Third-party source remains in
+fixed external checkouts. The repository contains only the frozen plan and two
+bounded project-owned host adapters; HLS-Eval and HLSFactory use their upstream
+testbenches.
+
+All four cases compiled and ran successfully under Ubuntu `g++ 11.4.0`. A
+separate file-only auditor reproduced `passed` with zero critical findings.
+The immutable evidence root is
+`/data/agrefactor_runs/r5_1_p3_external_adapter_smoke_v1`; `result.json` has
+file SHA-256
+`1c40569308cdb21960d59fc1bd4cdea76eaa136ac97de290092fc5ae2673081b`,
+and `independent_audit.json` has file SHA-256
+`cc99d4ca1fc5365ca5bfcf87d1b6cd82d6df8e272ea17027ded87ed7ba00fed4`.
+The machine-readable reconciliation is
+`docs/roadmap/R5_1_P3_EXTERNAL_ADAPTER_RECONCILIATION.json`.
+
+This smoke establishes only source identity, checkout integrity, host
+compilability, and an enforceable Public oracle. It does not change a source's
+license decision, formally admit a scoring case, establish a source baseline,
+or authorize Provider/Vitis execution. P3 consumed zero Provider calls and
+zero Vitis launches, so the cumulative ledger remains `248/650` Provider and
+`111/650` Vitis.
+
+The next authorized work is P4 protocol construction: select eligible
+non-duplicate cases, freeze S0-S4 source-baseline contracts, calculate a
+machine-audited worst-case reserve, and run host-only preflight before any
+real Vitis launch. R5 remains unaccepted and R6 remains stopped.

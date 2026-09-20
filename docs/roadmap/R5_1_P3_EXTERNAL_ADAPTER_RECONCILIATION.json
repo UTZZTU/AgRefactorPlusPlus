@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "reconciliation_id": "v2.3-r5.1-p3-external-adapter-host-smoke-reconciliation-v1",
+  "status": "passed",
+  "phase": "R5.1-P3",
+  "implementation_head": "aa34d6a8d8615cc718daf73df0098e3eb4a1eff4",
+  "plan": {
+    "path": "configs/r5_1/external_adapter_smoke_plan.json",
+    "file_sha256": "49f5e1f4584c51d54202ee7c07426ac441c29ea42689940f1e997209dabaf682",
+    "canonical_sha256": "1d678c0e9646741418c2b55a94d1b0f41511fb584394ce845e43ff1b77bf6720"
+  },
+  "evidence": {
+    "root": "/data/agrefactor_runs/r5_1_p3_external_adapter_smoke_v1",
+    "result_path": "/data/agrefactor_runs/r5_1_p3_external_adapter_smoke_v1/result.json",
+    "result_file_sha256": "1c40569308cdb21960d59fc1bd4cdea76eaa136ac97de290092fc5ae2673081b",
+    "result_canonical_sha256": "849f971f5f5ba808f19e096d0715e1041c07b3e873f8236592c349b029350b8f",
+    "independent_audit_path": "/data/agrefactor_runs/r5_1_p3_external_adapter_smoke_v1/independent_audit.json",
+    "independent_audit_file_sha256": "cc99d4ca1fc5365ca5bfcf87d1b6cd82d6df8e272ea17027ded87ed7ba00fed4",
+    "independent_audit_canonical_sha256": "3c53496c01d7da4713c8f334c5df4b87fa985c52f6641b7d24a4b1fa2e016c42",
+    "critical_findings": 0
+  },
+  "sources": [
+    {
+      "source_id": "c2hlsc",
+      "case_id": "external-c2hlsc-runs-host-oracle",
+      "commit": "72d08b7d17da38b7ba9c828dce48403352be4dc3",
+      "license": "GPL-3.0-only",
+      "decision": "admit",
+      "oracle_origin": "project-owned-bounded-host-adapter",
+      "status": "passed"
+    },
+    {
+      "source_id": "hls-eval",
+      "case_id": "external-hls-eval-vector-add-host-oracle",
+      "commit": "8c8bf70a3dae3f20b90da136c01f9649072849e2",
+      "license": "NOASSERTION",
+      "decision": "external-only",
+      "oracle_origin": "upstream-testbench",
+      "status": "passed"
+    },
+    {
+      "source_id": "hlspilot",
+      "case_id": "external-hlspilot-fir-host-oracle",
+      "commit": "1cb3aa9736f84ee4e626271596983a5bea98f6c3",
+      "license": "NOASSERTION",
+      "decision": "external-only",
+      "oracle_origin": "project-owned-bounded-host-adapter",
+      "status": "passed"
+    },
+    {
+      "source_id": "hlsfactory",
+      "case_id": "external-hlsfactory-vector-add-host-oracle",
+      "commit": "0fc25c5be0b8a94086ae1f3fc1f950fc66bafc7d",
+      "license": "AGPL-3.0-only; dataset metadata CC-BY-SA-4.0",
+      "decision": "external-only",
+      "oracle_origin": "upstream-testbench",
+      "status": "passed"
+    }
+  ],
+  "source_count": 4,
+  "provider_calls": 0,
+  "vitis_launches": 0,
+  "git_history_mutations": 0,
+  "formal_admission_unchanged": true,
+  "third_party_code_copied_into_repository": false,
+  "real_vitis_execution_authorized": false,
+  "r5_accepted": false,
+  "r6_started": false,
+  "next_step": "R5.1-P4-source-baseline-protocol-budget-reserve-and-eligibility-preflight"
+}

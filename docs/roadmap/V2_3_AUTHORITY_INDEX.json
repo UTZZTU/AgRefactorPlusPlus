@@ -59,6 +59,16 @@
       "status": "current"
     },
     {
+      "path": "configs/r5_1/external_adapter_smoke_plan.json",
+      "role": "frozen four-source R5.1 P3 external host-oracle smoke plan",
+      "status": "current"
+    },
+    {
+      "path": "docs/roadmap/R5_1_P3_EXTERNAL_ADAPTER_RECONCILIATION.json",
+      "role": "P3 external adapter host-smoke evidence and independent-audit reconciliation",
+      "status": "current"
+    },
+    {
       "path": "docs/roadmap/RESEARCH_ROADMAP_V2_2.md",
       "role": "superseded research route",
       "status": "historical"
@@ -169,10 +179,10 @@
       "status": "current"
     }
   ],
-  "head": "a8e229e1ee22edb6e9472334320ed8c392b4a1d4",
-  "head_role": "R5.1-P0-P2-dataset-registry-and-dedup-audited",
-  "implementation_head": "a8e229e1ee22edb6e9472334320ed8c392b4a1d4",
-  "next_step": "R5.1-P3-external-adapter-zero-provider-smoke-R6-remains-prohibited",
+  "head": "aa34d6a8d8615cc718daf73df0098e3eb4a1eff4",
+  "head_role": "R5.1-P3-external-adapter-host-smoke-audited",
+  "implementation_head": "aa34d6a8d8615cc718daf73df0098e3eb4a1eff4",
+  "next_step": "R5.1-P4-source-baseline-protocol-budget-reserve-and-eligibility-preflight-R6-remains-prohibited",
   "package_self_acceptance": false,
   "primary_empirical_environment": "Vitis HLS 2023.2",
   "r0_external_acceptance_archive": "agrefactor_v23_r0_correction_finalize_20260828T144812Z_2495321.tar.gz",
@@ -262,7 +272,7 @@
   "r5_started": true,
   "r5_deterministic_implementation_status": "implemented_2515_full_regression_passed",
   "r5_evidence_inventory_status": "accepted_r4_predecessor_import_provisional",
-  "r5_dataset_status": "R5.1-P0-P2-internal-registry-complete-explicit-quarantine-P3-next",
+  "r5_dataset_status": "R5.1-P3-four-external-source-host-oracle-smokes-passed-P4-next",
   "r5_predecessor_import_reconciliation": "docs/roadmap/R5_R4_PREDECESSOR_IMPORT_RECONCILIATION.json",
   "r5_predecessor_lifecycle": "Provisional",
   "r5_imported_verified_positive_count": 2,
@@ -288,8 +298,8 @@
   "r5_consumed_vitis_launches": 111,
   "r5_real_campaign_allowed": false,
   "repository": "UTZZTU/AgRefactorPlusPlus",
-  "repository_head_prefix": "a8e229e",
-  "repository_head_role": "R5.1-P0-P2-dataset-registry-and-dedup-audited",
+  "repository_head_prefix": "aa34d6a",
+  "repository_head_role": "R5.1-P3-external-adapter-host-smoke-audited",
   "route": "V2.3",
   "schema_version": 1,
   "status": "current",
