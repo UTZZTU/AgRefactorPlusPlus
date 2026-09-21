@@ -10,7 +10,7 @@
 
 > AgRefactor++ 的普通 `refactor` 是否真正继承了原 AgRefactor 已有的广泛案例能力？
 
-本轮优先测量产品继承覆盖和普通 refactor 可用性，不先做论文级 memory efficacy campaign。R2-R5 在第一阶段关闭；只有普通 refactor 基线建立后，才对同一批案例开启内部 R2-R5 实验。正式产品入口仍只有 `refactor`、`optimize`、`full`，不新增 CLI、Candidate repair 或 Vitis runner。
+本轮优先测量产品继承覆盖、普通 refactor 可用性和真实证据驱动流程，不先做经验系统 efficacy campaign。R2-R5 在第一阶段关闭；只有普通 refactor 基线建立后，才对同一批案例开启不带 memory 的 R2-R4 实验。正式产品入口仍只有 `refactor`、`optimize`、`full`，不新增 CLI、Candidate repair 或 Vitis runner。
 
 ## 2. 数据范围：优先使用仓库现有 src/
 
@@ -91,25 +91,28 @@ HeteroRefactor 基线稳定后，依次扩展其他内部目录。每一批都�
 
 比较必须至少包括：完整验证通过率、真正 refactor lift、regression、失败阶段、成本和可复现性。AgRefactor++ 的目标不是在不公平条件下“必然高于”原版，而是不能在相同合同和环境下无故显著退化；任何差异都要定位到产品流程、模型配置、适配器或工具链。
 
-## 7. 阶段 V：R2-R5 开启后的配对重跑
+## 7. 阶段 V：R2-R4 真实证据流程的配对重跑
 
-只对阶段 II/III 中已经完成普通 baseline 的案例开启内部 R2-R5。使用相同 source、Candidate 起点、testbench、target、model identity 和预算，至少形成：
+只对阶段 II/III 中已经完成普通 baseline 的案例开启不带 memory 的 R2-R4。使用相同 source、Candidate 起点、testbench、target、model identity 和预算，形成：
 
-- `B`：普通 refactor，R2-R5 关闭；
+- `B`：普通 refactor，R2-R4 关闭；
 - `D`：R2-R4 开启，memory none；
-- `M-R`：已有 Trusted repair memory 时开启；没有合格 memory 时明确记为 unavailable，不伪造 memory 结果。
 
 对普通 baseline 失败案例重点观察：R2 是否产生合法 agent-safe 证据、R4 是否安全授权、Candidate-only 修复是否通过正式验证、失败是否属于真实 ambiguity。任何拒答都必须区分真实证据不足与 parser/evidence contract/product 缺陷。
 
-原版 AgRefactor 的“记忆开启”对照只有在原版确实存在可重建的 memory 开关和相同语义时才执行；否则报告 `not comparable`，不人为给原版补一套新机制。
+本阶段不评价 Trusted repair memory 是否提高修复率，也不运行 M-R 或原版记忆开启对照。
 
-## 8. 阶段 VI：内部完成后再扩展外部案例
+## 8. 阶段 VI：第一部分完成后再扩展外部案例
 
-只有内部 `src/` 样例完成一轮继承测试、失败分类和通用修复后，才引入其他论文或开源 GitHub 项目案例。外部案例仍需许可、commit、去重、oracle 和 adapter 审计；不得用外部新样例替代内部继承覆盖的缺口。
+只有内部 `src/` 样例完成一轮继承测试、失败分类、通用修复和 R2-R4 证据流程验证后，才引入其他论文或开源 GitHub 项目案例。外部案例仍需许可、commit、去重、oracle 和 adapter 审计；不得用外部新样例替代内部继承覆盖的缺口。
+
+## 8.1 后续扩展：经验系统
+
+以下内容不属于当前第一部分的验收范围，后续单独立项：Trusted repair memory 的 M-R 配对实验、positive/negative episode efficacy、memory 的 negative transfer 统计、observation promotion，以及任何以持续记忆提高未来修复率为目标的结论。相关 schema 和既有代码保留，但本路线不调用、不消耗当前预算，也不作为当前阶段的通过条件。
 
 ## 9. 失败修复与验收原则
 
-- 普通 refactor 失败不能直接归因于 R2-R5；先看 R2-R5 是否关闭及失败阶段。
+- 普通 refactor 失败不能直接归因于 R2-R4；先看 R2-R4 是否关闭及失败阶段。
 - adapter/oracle/toolchain 失败不计入模型能力失败，但必须修复或明确排除。
 - raw source 已通过而 Candidate 失败，记为 regression/unnecessary rewrite，并要求回退或保留原始正确 Candidate 的通用策略。
 - 只修复跨至少两个独立案例复现的通用缺陷；不为单个 benchmark 或日志编号硬编码。
@@ -117,6 +120,6 @@ HeteroRefactor 基线稳定后，依次扩展其他内部目录。每一批都�
 
 ## 10. 暂停点与下一步
 
-当前状态：原 R5.1 P0-P9 暂停；R5 未接受；R6 未启动；现有 P0-P5 证据保留。
+当前状态：原 R5.1 P0-P9 暂停；R5 未接受；R6 未启动；现有 P0-P5 证据保留。当前路线只完成真实证据驱动的第一部分，经验系统 efficacy 暂不纳入。
 
 下一实际动作不是调用 Provider/Vitis，而是执行阶段 I 的零调用 `src/` 样例分类和 inheritance manifest 审计。阶段 I 通过后，才授权 HeteroRefactor 小批量普通 refactor 运行。预算必须为新路线重新预留；不得静默把旧 P5 剩余预算当作无限额度。
