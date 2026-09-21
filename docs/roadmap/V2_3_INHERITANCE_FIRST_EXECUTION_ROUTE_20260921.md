@@ -18,14 +18,21 @@
 
 ### 2.1 样例判定
 
-一个目录只有在能够识别为可运行 HLS 设计时才进入测试候选。最低条件是至少具备：
+一个目录中的 C/C++ 文件只要能够识别为独立设计源码，就应进入普通 `refactor` 测试
+候选。最低条件是：
 
-- kernel/design source；
-- public testbench 或可重建的 public oracle；
-- top/interface 信息；
-- Vitis Tcl、target profile 或现有产品 adapter 中至少一种可执行入口。
+- 存在可解析的 C/C++ design source；
+- 存在明确 top，或能够由确定性分析可靠识别 top；
+- 源码依赖能够从案例目录、仓库公共依赖或已记录的 include path 中解析。
 
-以下文件不能单独当作样例：公共头文件、辅助库、模板、生成代码；单独的 `main.cpp` 或 test utility；没有对应 kernel/top 的 testbench；第三方依赖、工具脚本和文档示例；同一实现的复制、格式变体或仅改变 top 名称的副本。
+预先存在的 public/hidden testbench 和 `vitis.tcl` 都不是进入候选池的必要条件。当前
+source-only 产品流程应使用已有测试生成能力生成 testbench，并由统一 Vitis 2023.2
+runner 生成和执行所需命令；不得因缺少数据集自带 Tcl 而排除案例。
+
+以下文件不能仅凭扩展名直接当作独立样例：公共头文件、辅助库、模板、生成代码；只承担
+host/test 驱动作用且没有独立设计 top 的 `main.cpp` 或 test utility；第三方依赖、工具
+脚本和文档示例；同一实现的复制、格式变体或仅改变 top 名称的副本。缺少预置 testbench
+或 `vitis.tcl` 本身不是排除理由。
 
 分类器必须输出每个目录的 `sample / support / generated / duplicate / blocked` 状态、来源路径、source/test/top/Tcl 文件、许可和排除理由。分类阶段零 Provider、零 Vitis。
 
@@ -33,17 +40,22 @@
 
 候选分为两个状态：
 
-- `inheritance_testable`：可以用原有 harness 或最小接口适配运行，用于广覆盖继承测试；
+- `inheritance_testable`：具备 design source、top 和可解析依赖，能够通过当前 source-only
+  `refactor` 入口尝试运行；允许由产品生成 tests，不要求预置 harness 或 Tcl；
 - `strict_efficacy_eligible`：身份、oracle、TargetProfile、history/future 和审计合同全部完整，可进入正式 efficacy 统计。
 
-缺少严格合同不等于永远不测试；它只限制结论类型。任何 adapter 或工具链阻塞都必须单独报告，不能记为模型失败。
+缺少预置 testbench、Tcl 或严格实验合同不等于不测试；它只限制最终结论类型。生成的
+testbench 必须在各实验臂运行前冻结并经过 oracle/preflight 审核，才能使案例进一步成为
+`strict_efficacy_eligible`。测试生成失败、adapter 或工具链阻塞必须单独报告，不能记为
+Candidate 或模型修复失败。
 
 ## 3. 阶段 I：内部样例盘点与冻结
 
 1. 扫描 `src/`，建立目录级和文件级 manifest。
 2. 识别 HeteroRefactor、HLSRewriter、C2HLSC 等目录及其真实样例边界。
 3. 按 D0-D3 去重，但不因语义同族而删除所有重复：同族样例保留为覆盖样本，报告时不冒充独立来源。
-4. 为每个候选绑定 source、testbench、top、Tcl、target、许可证和运行入口。
+4. 为每个候选绑定 source、top、依赖、许可证和 source-only 运行入口；若存在原始
+   testbench/Tcl 则作为 provenance 记录，若不存在则记录产品生成 testbench 的冻结身份。
 5. 生成零调用独立审计报告后冻结第一批 HeteroRefactor cohort。
 
 退出条件：每个 `src/` 目录都有明确状态；没有把支持文件误当样例；所有排除都有理由。
