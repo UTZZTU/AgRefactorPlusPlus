@@ -10,7 +10,7 @@ void process_top(
 );
 
 int main() {
-    int substring_length = 15;
+    int substring_length = 16;
     char substrings[64] = "he%she%his%hers%";
     char query[64] = "ushers%";
     int substring_indexes[64];

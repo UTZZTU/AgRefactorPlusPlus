@@ -56,10 +56,10 @@
       "oracle_stub_sha256": "35c13dae8885a12ecf20ef4aaa0568bac30803ea013c88dd43e7c0a3abb1574f",
       "public_marker": "HETEROREFACTOR_AHOCORASICK_PUBLIC_ORACLE=passed",
       "public_test_path": "configs/inheritance/stage2/ahocorasick/public.cpp",
-      "public_test_sha256": "7c4afad28df6d6cad58ef770ff64d66a5119b9d32d056d85daba297962a88114",
+      "public_test_sha256": "7873be14e6e0a2774209c663d227e66fc8e777b7af0470e3c6c68d85c10501ce",
       "source_marker": "HETEROREFACTOR_AHOCORASICK_SOURCE_ORACLE=passed",
       "source_oracle_path": "configs/inheritance/stage2/ahocorasick/source_oracle.cpp",
-      "source_oracle_sha256": "db14295e2b1204eafc746c6a2c072d6c6af77f663429f9a99b0d71a37de25765",
+      "source_oracle_sha256": "0a0ba9a4a0507f178a5800862065d5e6fe13713edb844e8ff16c33506a73a143",
       "source_path": "src/heterorefactor/ahocorasick/kernel.cpp",
       "source_sha256": "b572dad312ce89b68220c75787ffce357834157e87e55d2c06fe65336027cae1",
       "top": "process_top"
@@ -101,9 +101,15 @@
     "family": "deepseek",
     "name": "deepseek-flash"
   },
-  "protocol_id": "v2.3-inheritance-first-stage2-v1",
+  "protocol_id": "v2.3-inheritance-first-stage2-v2",
   "route": "V2.3-INHERITANCE-FIRST-STAGE-II",
   "schema_version": 1,
+  "supersedes": {
+    "failed_preflight_root": "/data/agrefactor_runs/inheritance_stage2_preflight_v1",
+    "provider_calls": 0,
+    "reason": "ahocorasick_fixed_substring_buffer_length_was_15_instead_of_16",
+    "vitis_launches": 0
+  },
   "target_profile": {
     "name": "vitis-2023.2-default",
     "path": "configs/targets/vitis-2023.2-default.json",

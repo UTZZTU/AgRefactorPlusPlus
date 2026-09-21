@@ -52,6 +52,15 @@ class InheritanceStage2Tests(unittest.TestCase):
             self.assertNotIn("hidden", lowered)
             self.assertNotIn("future", lowered)
 
+    def test_ahocorasick_fixed_length_matches_the_frozen_input(self) -> None:
+        case = next(
+            item for item in self.protocol["cases"] if item["case_id"] == "ahocorasick"
+        )
+        for key in ("source_oracle_path", "public_test_path"):
+            text = (ROOT / case[key]).read_text(encoding="utf-8")
+            self.assertIn('"he%she%his%hers%"', text)
+            self.assertRegex(text, r"(?:substring_length|source_length) = 16;")
+
     def test_wrong_asset_hash_fails_closed(self) -> None:
         altered = json.loads(json.dumps(self.protocol))
         altered["cases"][0]["source_sha256"] = "0" * 64
