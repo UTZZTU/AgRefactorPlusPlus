@@ -468,6 +468,49 @@ class P2SourceOnlyBootstrapTests(unittest.TestCase):
                 2,
             )
 
+    def test_refactor_accepts_provided_public_without_hidden_handoff(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            public = root / "public.cpp"
+            public.write_text(PUBLIC, encoding="utf-8")
+            request = make_request(
+                root,
+                plan=build_test_source_plan(
+                    public_paths=(public,),
+                    hidden_mode="none",
+                ),
+            )
+            layout = SourceRunLayout.create(
+                request.run_id,
+                artifact_base=root / "artifacts",
+                work_base=root / "work",
+            )
+            layout.artifact_root.mkdir(parents=True)
+            phase = SourceBootstrapPhase(
+                request=request,
+                layout=layout,
+                generation_adapter=FakeGenerationAdapter(
+                    include_public=False,
+                    include_hidden=False,
+                ),
+                formal_phase_builder=CapturingFormalBuilder(),
+            )
+            context = RunContext(
+                run_id="p2-test",
+                task=TaskSpec(
+                    task_id="source-task",
+                    kernel_path=str(request.source_path),
+                    kernel_name="top",
+                ),
+                budget=BudgetManager(request.budget_contract.to_budget_limits()),
+                trace=TraceRecorder("p2-test", task_id="source-task"),
+            )
+
+            result = phase(context)
+
+            self.assertTrue(result.succeeded)
+            self.assertIsNone(phase.accepted_optimization_material)
+
     def test_legacy_adapter_exposes_generation_only_raw_result(self):
         task = TaskSpec(
             task_id="legacy-generation-only",

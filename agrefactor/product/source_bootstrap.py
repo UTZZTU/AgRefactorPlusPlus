@@ -1987,7 +1987,7 @@ class SourceBootstrapPhase:
                 else None
             ),
         )
-        if accepted:
+        if accepted and self._request.mode is RunMode.FULL:
             from .stage3_optimizer import AcceptedOptimizationMaterial
 
             self._accepted_optimization_material = AcceptedOptimizationMaterial(
