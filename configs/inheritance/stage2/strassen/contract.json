@@ -1,0 +1,14 @@
+{
+  "candidate_mismatch_returncodes": [1],
+  "cosim_interface_depths": {
+    "fallback": 1,
+    "lp": 1,
+    "mat1": 16,
+    "mat2": 16,
+    "mat3": 16,
+    "mp": 1,
+    "np": 1
+  },
+  "kind": "public_differential_self_check_v1",
+  "schema_version": 2
+}

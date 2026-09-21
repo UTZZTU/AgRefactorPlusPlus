@@ -1,0 +1,10 @@
+{
+  "candidate_mismatch_returncodes": [1],
+  "cosim_interface_depths": {
+    "fallback": 1,
+    "input": 32,
+    "output": 32
+  },
+  "kind": "public_differential_self_check_v1",
+  "schema_version": 2
+}

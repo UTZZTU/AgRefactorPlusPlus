@@ -1,0 +1,118 @@
+{
+  "budget": {
+    "provider_calls_hard_cap": 200,
+    "vitis_launches_hard_cap": 200
+  },
+  "cases": [
+    {
+      "algorithm_family": "graph_traversal",
+      "case_id": "dfs",
+      "contract_path": "configs/inheritance/stage2/dfs/contract.json",
+      "contract_sha256": "d0d3c020959098754e7ae8ff0dc3173fcb795b733c661fbf84f5a297c792dd07",
+      "dependencies": [],
+      "mismatch_stub_path": "configs/inheritance/stage2/dfs/mismatch_stub.cpp",
+      "mismatch_stub_sha256": "8edf8c665ec15ef3aa678926dd62170a773a0c6ea1f4f896a972baa5180da730",
+      "oracle_stub_path": "configs/inheritance/stage2/dfs/oracle_stub.cpp",
+      "oracle_stub_sha256": "fa7c3680b61d9779d289344ead02d0566983d8d85afd41b8a5a26899e0c604b6",
+      "public_marker": "HETEROREFACTOR_DFS_PUBLIC_ORACLE=passed",
+      "public_test_path": "configs/inheritance/stage2/dfs/public.cpp",
+      "public_test_sha256": "300160451cb2d42143722059d17719470a4c40deeaec3b4c5fdcfaa0d31452c4",
+      "source_marker": "HETEROREFACTOR_DFS_SOURCE_ORACLE=passed",
+      "source_oracle_path": "configs/inheritance/stage2/dfs/source_oracle.cpp",
+      "source_oracle_sha256": "704d0a4d8ec3340075d99adecf5463336398838fd08d895b590501b6e6024e4e",
+      "source_path": "src/heterorefactor/dfs/kernel.cpp",
+      "source_sha256": "9d96e356223d3e3cb9a3b0ef04850ab34b620f863273eb9026034d9955c2e535",
+      "top": "process_top"
+    },
+    {
+      "algorithm_family": "sorting",
+      "case_id": "mergesort",
+      "contract_path": "configs/inheritance/stage2/mergesort/contract.json",
+      "contract_sha256": "d0d3c020959098754e7ae8ff0dc3173fcb795b733c661fbf84f5a297c792dd07",
+      "dependencies": [],
+      "mismatch_stub_path": "configs/inheritance/stage2/mergesort/mismatch_stub.cpp",
+      "mismatch_stub_sha256": "8edf8c665ec15ef3aa678926dd62170a773a0c6ea1f4f896a972baa5180da730",
+      "oracle_stub_path": "configs/inheritance/stage2/mergesort/oracle_stub.cpp",
+      "oracle_stub_sha256": "fa7c3680b61d9779d289344ead02d0566983d8d85afd41b8a5a26899e0c604b6",
+      "public_marker": "HETEROREFACTOR_MERGESORT_PUBLIC_ORACLE=passed",
+      "public_test_path": "configs/inheritance/stage2/mergesort/public.cpp",
+      "public_test_sha256": "a3ac7232a18f9d74f9746df54d48d521c1b9af9ea0110cc8c8cdad1c447d448b",
+      "source_marker": "HETEROREFACTOR_MERGESORT_SOURCE_ORACLE=passed",
+      "source_oracle_path": "configs/inheritance/stage2/mergesort/source_oracle.cpp",
+      "source_oracle_sha256": "e92776d3882af524fc8516d1b5032ba6f41ca4cd4ee727acc32b6777a07ceec6",
+      "source_path": "src/heterorefactor/mergesort/kernel.cpp",
+      "source_sha256": "93d9858beb28f770b5cb62b9140aabdbd10146d12cf422835fe514c8a0b95c54",
+      "top": "process_top"
+    },
+    {
+      "algorithm_family": "multi_pattern_matching",
+      "case_id": "ahocorasick",
+      "contract_path": "configs/inheritance/stage2/ahocorasick/contract.json",
+      "contract_sha256": "da60fb7968962ecab358feef0d0d18f644a64d1104cecf865bb15befd8529a9d",
+      "dependencies": [],
+      "mismatch_stub_path": "configs/inheritance/stage2/ahocorasick/mismatch_stub.cpp",
+      "mismatch_stub_sha256": "e42a65128c1a7bfded41d394a361b8ae37665016beeb0113af00bc90b6831145",
+      "oracle_stub_path": "configs/inheritance/stage2/ahocorasick/oracle_stub.cpp",
+      "oracle_stub_sha256": "35c13dae8885a12ecf20ef4aaa0568bac30803ea013c88dd43e7c0a3abb1574f",
+      "public_marker": "HETEROREFACTOR_AHOCORASICK_PUBLIC_ORACLE=passed",
+      "public_test_path": "configs/inheritance/stage2/ahocorasick/public.cpp",
+      "public_test_sha256": "7c4afad28df6d6cad58ef770ff64d66a5119b9d32d056d85daba297962a88114",
+      "source_marker": "HETEROREFACTOR_AHOCORASICK_SOURCE_ORACLE=passed",
+      "source_oracle_path": "configs/inheritance/stage2/ahocorasick/source_oracle.cpp",
+      "source_oracle_sha256": "db14295e2b1204eafc746c6a2c072d6c6af77f663429f9a99b0d71a37de25765",
+      "source_path": "src/heterorefactor/ahocorasick/kernel.cpp",
+      "source_sha256": "b572dad312ce89b68220c75787ffce357834157e87e55d2c06fe65336027cae1",
+      "top": "process_top"
+    },
+    {
+      "algorithm_family": "matrix_multiplication",
+      "case_id": "strassen",
+      "contract_path": "configs/inheritance/stage2/strassen/contract.json",
+      "contract_sha256": "9067a784445fae9a78907d7d3c5b8f9bf796124285560fdd790de215fbca69e0",
+      "dependencies": [],
+      "mismatch_stub_path": "configs/inheritance/stage2/strassen/mismatch_stub.cpp",
+      "mismatch_stub_sha256": "e2a5d8f6c7509143570bc574f50192776bf3e19a91db5fe93b838f5565a6dab6",
+      "oracle_stub_path": "configs/inheritance/stage2/strassen/oracle_stub.cpp",
+      "oracle_stub_sha256": "46fd4d8b824aecb4e07b9a590ad966ce2b9e73c5a8bc2e82f2049a65a65b8789",
+      "public_marker": "HETEROREFACTOR_STRASSEN_PUBLIC_ORACLE=passed",
+      "public_test_path": "configs/inheritance/stage2/strassen/public.cpp",
+      "public_test_sha256": "07a2e7dc02ddb286aae941cd85acb4b13e281ca52f036ccb6e24cdfbc5f6c204",
+      "source_marker": "HETEROREFACTOR_STRASSEN_SOURCE_ORACLE=passed",
+      "source_oracle_path": "configs/inheritance/stage2/strassen/source_oracle.cpp",
+      "source_oracle_sha256": "43915f8f439265e2f14b809ca796b05ebacc34f812413abdc971a0c639a2572f",
+      "source_path": "src/heterorefactor/strassen/kernel.cpp",
+      "source_sha256": "b6a0f3d8cad2e9d42bd8f39cefc4789e124d419dd7443b5ad7eadc1ecfd3882b",
+      "top": "process_top"
+    }
+  ],
+  "cohort_sha256": "b808132a1fbf4f3b55e5b098722ae5ea95290b68c9133c13e2c0732aa570cb92",
+  "execution": {
+    "candidate_top_suffix": "_hls",
+    "cosim_policy": "required",
+    "hidden_tests": "none",
+    "memory_enabled": false,
+    "mode": "refactor",
+    "optimize_enabled": false,
+    "r2_r4_enabled": false
+  },
+  "model": {
+    "api_key_env": "DEEPSEEK_API_KEY",
+    "base_url": "https://api.deepseek.com",
+    "family": "deepseek",
+    "name": "deepseek-flash"
+  },
+  "protocol_id": "v2.3-inheritance-first-stage2-v1",
+  "route": "V2.3-INHERITANCE-FIRST-STAGE-II",
+  "schema_version": 1,
+  "target_profile": {
+    "name": "vitis-2023.2-default",
+    "path": "configs/targets/vitis-2023.2-default.json",
+    "sha256": "e2443c96cd95cd8983578e18bb8bec807a367589423aa9e734db45b5a3338474"
+  },
+  "timeouts_s": {
+    "cosim": 1200,
+    "csim": 180,
+    "csynth": 900,
+    "host": 120
+  }
+}

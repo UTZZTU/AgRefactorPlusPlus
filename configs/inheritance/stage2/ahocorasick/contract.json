@@ -1,0 +1,13 @@
+{
+  "candidate_mismatch_returncodes": [1],
+  "cosim_interface_depths": {
+    "fallback": 1,
+    "query": 64,
+    "query_indexes": 64,
+    "substring_indexes": 64,
+    "substring_length_p": 1,
+    "substrings": 64
+  },
+  "kind": "public_differential_self_check_v1",
+  "schema_version": 2
+}
