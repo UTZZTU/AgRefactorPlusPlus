@@ -49,11 +49,27 @@ testbench 必须在各实验臂运行前冻结并经过 oracle/preflight 审核�
 `strict_efficacy_eligible`。测试生成失败、adapter 或工具链阻塞必须单独报告，不能记为
 Candidate 或模型修复失败。
 
+### 2.3 服务器环境初始化
+
+所有服务器端命令都应在项目环境初始化后执行。进入新 SSH/Xshell 会话后，先运行：
+
+```bash
+source /data/agrefactorpp_env.sh
+```
+
+该脚本负责加载 AgRefactor++ 所需的 Python 环境、Vitis HLS 2023.2 路径及相关运行变量。若命令需要真实 Provider，再额外加载密钥环境（不把密钥写入 manifest、日志或 prompt）：
+
+```bash
+source ~/.config/agrefactor/provider.env
+```
+
+分类、manifest 审计和其他零调用检查也要先执行环境初始化，但不得因此产生 Provider 或 Vitis 调用。
+
 ## 3. 阶段 I：内部样例盘点与冻结
 
 1. 扫描 `src/`，建立目录级和文件级 manifest。
 2. 识别 HeteroRefactor、HLSRewriter、C2HLSC 等目录及其真实样例边界。
-3. 按 D0-D3 去重，但不因语义同族而删除所有重复：同族样例保留为覆盖样本，报告时不冒充独立来源。
+3. 按 D0-D3 记录重复关系和独立性，但不因语义同族而删除所有重复：D0 是规范化后的字节完全相同，D1 是去注释/格式后的词法 token 完全相同，D2 是结构 token 五元组 Jaccard 达到 0.92 以上并需人工复核，D3 是声明的语义算法家族。D0/D1 可合并重复实现；D2 只产生待复核候选，不能自动排除；D3 只用于 history/future 隔离和报告，不能被当作独立来源，也不能自动删除同族样例。同族样例仍保留为覆盖样本。
 4. 为每个候选绑定 source、top、依赖、许可证和 source-only 运行入口；若存在原始
    testbench/Tcl 则作为 provenance 记录，若不存在则记录产品生成 testbench 的冻结身份。
 5. 生成零调用独立审计报告后冻结第一批 HeteroRefactor cohort。
