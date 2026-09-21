@@ -1,0 +1,64 @@
+{
+  "cases": [
+    {
+      "algorithm_family": "multi_pattern_matching",
+      "case_id": "heterorefactor-ahocorasick",
+      "existing_tcl_paths": [],
+      "existing_testbench_paths": [],
+      "selection_rationale": "dynamic trie and state-machine traversal",
+      "source_path": "src/heterorefactor/ahocorasick/kernel.cpp",
+      "source_sha256": "b572dad312ce89b68220c75787ffce357834157e87e55d2c06fe65336027cae1",
+      "strict_efficacy_eligible": false,
+      "testbench_plan": "product_generated_and_freeze_required",
+      "top": "process_top"
+    },
+    {
+      "algorithm_family": "graph_traversal",
+      "case_id": "heterorefactor-dfs",
+      "existing_tcl_paths": [],
+      "existing_testbench_paths": [],
+      "selection_rationale": "dynamic binary-tree construction and recursion",
+      "source_path": "src/heterorefactor/dfs/kernel.cpp",
+      "source_sha256": "9d96e356223d3e3cb9a3b0ef04850ab34b620f863273eb9026034d9955c2e535",
+      "strict_efficacy_eligible": false,
+      "testbench_plan": "product_generated_and_freeze_required",
+      "top": "process_top"
+    },
+    {
+      "algorithm_family": "sorting",
+      "case_id": "heterorefactor-mergesort",
+      "existing_tcl_paths": [],
+      "existing_testbench_paths": [],
+      "selection_rationale": "recursive linked-list sorting",
+      "source_path": "src/heterorefactor/mergesort/kernel.cpp",
+      "source_sha256": "93d9858beb28f770b5cb62b9140aabdbd10146d12cf422835fe514c8a0b95c54",
+      "strict_efficacy_eligible": false,
+      "testbench_plan": "product_generated_and_freeze_required",
+      "top": "process_top"
+    },
+    {
+      "algorithm_family": "matrix_multiplication",
+      "case_id": "heterorefactor-strassen",
+      "existing_tcl_paths": [],
+      "existing_testbench_paths": [],
+      "selection_rationale": "recursive matrix allocation and multiplication",
+      "source_path": "src/heterorefactor/strassen/kernel.cpp",
+      "source_sha256": "b6a0f3d8cad2e9d42bd8f39cefc4789e124d419dd7443b5ad7eadc1ecfd3882b",
+      "strict_efficacy_eligible": false,
+      "testbench_plan": "product_generated_and_freeze_required",
+      "top": "process_top"
+    }
+  ],
+  "cohort_id": "v2.3-inheritance-first-heterorefactor-pilot-v1",
+  "cohort_sha256": "b808132a1fbf4f3b55e5b098722ae5ea95290b68c9133c13e2c0732aa570cb92",
+  "execution_authorized": false,
+  "execution_requires_owner_review": true,
+  "git_history_mutations": 0,
+  "inventory_sha256": "135bc61e6277e738a6aa3d61b96406bf5718d83416666187ecbf30629103b081",
+  "memory_enabled": false,
+  "provider_calls": 0,
+  "r2_r4_enabled": false,
+  "schema_version": 1,
+  "selection_policy": "four structurally distinct cases; defer adjacent linkedlist and strassen_break variants",
+  "vitis_launches": 0
+}

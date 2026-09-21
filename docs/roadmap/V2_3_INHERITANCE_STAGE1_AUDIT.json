@@ -1,0 +1,27 @@
+{
+  "audit_id": "v2.3-inheritance-first-stage1-audit-v1",
+  "audit_sha256": "95c642afb93b3498b6f1ffb035e13e27cfffd6873612639457e754ff42514d5c",
+  "checks": {
+    "all_directories_accounted": true,
+    "all_src_code_files_accounted": true,
+    "d0_d1_relations_complete": true,
+    "d2_never_auto_excludes": true,
+    "d2_relations_independently_recomputed": true,
+    "d3_families_independently_recomputed": true,
+    "heterorefactor_cohort_identity_frozen": true,
+    "missing_testbench_or_tcl_never_auto_excludes": true,
+    "provenance_fields_present": true,
+    "source_and_token_hashes_verified": true,
+    "strict_cases_require_future_freeze": true
+  },
+  "failures": [],
+  "git_history_mutations": 0,
+  "next_step": "owner_review_then_stage2",
+  "provider_calls": 0,
+  "schema_version": 1,
+  "status": "passed",
+  "vitis_launches": 0,
+  "warnings": [
+    "legacy_registry_contains_missing_source"
+  ]
+}
