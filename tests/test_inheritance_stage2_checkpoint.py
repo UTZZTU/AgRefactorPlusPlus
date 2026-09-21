@@ -80,6 +80,15 @@ class InheritanceStage2CheckpointTests(unittest.TestCase):
         ] = True
         self.assertFalse(AUDIT.private_reasoning_absent(dirty))
 
+    def test_preflight_stability_is_recomputed_from_runs(self) -> None:
+        runs = [
+            {"returncode": 0, "stdout": "passed\n", "valid": True},
+            {"returncode": 0, "stdout": "passed\n", "valid": True},
+        ]
+        self.assertTrue(AUDIT.stable_successful_runs(runs))
+        runs[1]["stdout"] = "different\n"
+        self.assertFalse(AUDIT.stable_successful_runs(runs))
+
     def test_audit_accumulates_named_failures(self) -> None:
         audit = AUDIT.Audit()
         audit.check("valid", True)

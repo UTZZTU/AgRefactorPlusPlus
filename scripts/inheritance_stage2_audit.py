@@ -80,6 +80,16 @@ def private_reasoning_absent(model_calls: dict[str, Any]) -> bool:
     return True
 
 
+def stable_successful_runs(runs: list[dict[str, Any]]) -> bool:
+    return (
+        len(runs) == 2
+        and all(item.get("valid") is True for item in runs)
+        and runs[0].get("returncode") == 0
+        and runs[1].get("returncode") == 0
+        and runs[0].get("stdout") == runs[1].get("stdout")
+    )
+
+
 def verify_evidence_files(audit: Audit, record: dict[str, Any], prefix: str) -> None:
     root = Path(record["root"])
     for item in record.get("evidence_files", []):
@@ -149,9 +159,24 @@ def main() -> int:
     audit.check("preflight_zero_vitis", passed_preflight.get("vitis_launches") == 0)
     for case in passed_preflight.get("cases", []):
         cid = case.get("case_id", "unknown")
-        audit.check(f"{cid}:source_oracle_stable", case.get("source_stable") is True)
-        audit.check(f"{cid}:differential_oracle_stable", case.get("differential_stable") is True)
-        audit.check(f"{cid}:mismatch_detected", case.get("mismatch_detected") is True)
+        audit.check(
+            f"{cid}:source_oracle_stable",
+            case.get("source_compile", {}).get("valid") is True
+            and stable_successful_runs(case.get("source_runs", [])),
+        )
+        audit.check(
+            f"{cid}:differential_oracle_stable",
+            case.get("differential_compile", {}).get("valid") is True
+            and stable_successful_runs(case.get("differential_runs", [])),
+        )
+        mismatch = case.get("mismatch_run", {})
+        audit.check(
+            f"{cid}:mismatch_detected",
+            case.get("mismatch_compile", {}).get("valid") is True
+            and mismatch.get("valid") is True
+            and mismatch.get("returncode") == 1
+            and mismatch.get("marker_observed") is False,
+        )
 
     baseline_path = Path(manifest["baseline"]["root"]) / "result.json"
     audit.check("baseline_immutable", file_sha256(baseline_path) == manifest["baseline"]["result_sha256"])
