@@ -167,7 +167,7 @@ def main() -> int:
     require_hash(protocol_path, inputs["protocol_sha256"])
     protocol = load_object(protocol_path)
     if protocol.get("cohort_sha256") != inputs["stage1_cohort_sha256"]:
-        raise ValueError("Stage I cohort identity changed")
+        raise ValueError("Stage II-B cohort identity changed")
 
     preflight = inputs["preflight"]
     require_hash(Path(preflight["failed_root"]) / "result.json", preflight["failed_result_sha256"])
@@ -216,14 +216,20 @@ def main() -> int:
         )
 
     baseline_result = load_object(baseline_root / "result.json")
-    provider_calls = sum(item["provider_calls"] for item in all_attempts)
+    budget = inputs["budget"]
+    provider_calls = sum(item["provider_calls"] for item in all_attempts) + int(
+        budget.get("prior_provider_calls", 0)
+    )
     baseline_vitis = sum(
         vitis_launches(case.get("budget_usage", {}))
         for case in baseline_result.get("cases", [])
     )
     refactor_vitis = sum(item["vitis_launches"] for item in all_attempts)
-    vitis_calls = baseline_vitis + refactor_vitis
-    budget = inputs["budget"]
+    vitis_calls = (
+        baseline_vitis
+        + refactor_vitis
+        + int(budget.get("prior_vitis_launches", 0))
+    )
     if provider_calls != budget["provider_calls_expected"]:
         raise ValueError(f"provider call count mismatch: {provider_calls}")
     if vitis_calls != budget["vitis_launches_expected"]:

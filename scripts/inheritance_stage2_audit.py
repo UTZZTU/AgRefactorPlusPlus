@@ -199,8 +199,9 @@ def main() -> int:
         usage = case.get("budget_usage", {})
         baseline_vitis += sum(int(usage.get(key, 0)) for key in ("csim_calls", "csynth_calls", "cosim_calls"))
 
-    provider_calls = 0
-    refactor_vitis = 0
+    input_budget = inputs["budget"]
+    provider_calls = int(input_budget.get("prior_provider_calls", 0))
+    refactor_vitis = int(input_budget.get("prior_vitis_launches", 0))
     case_ids = []
     for case_record in manifest.get("cases", []):
         case_id = case_record["case_id"]
@@ -266,14 +267,19 @@ def main() -> int:
             audit.check(f"{failed_prefix}:not_success", failed_result.get("status") != "succeeded")
             audit.check(f"{failed_prefix}:classification", bool(failed.get("classification")))
 
-    audit.check("case_order", case_ids == ["dfs", "mergesort", "ahocorasick", "strassen"])
+    expected_case_ids = [item["case_id"] for item in inputs["cases"]]
+    audit.check("case_order", case_ids == expected_case_ids)
     budget = manifest.get("budget", {})
     total_vitis = baseline_vitis + refactor_vitis
     audit.check("provider_count", provider_calls == budget.get("provider_calls") == inputs["budget"]["provider_calls_expected"])
     audit.check("vitis_count", total_vitis == budget.get("vitis_launches") == inputs["budget"]["vitis_launches_expected"])
     audit.check("provider_cap", provider_calls <= inputs["budget"]["provider_calls_hard_cap"])
     audit.check("vitis_cap", total_vitis <= inputs["budget"]["vitis_launches_hard_cap"])
-    audit.check("success_count", manifest.get("outcome", {}).get("ordinary_refactor_success_count") == 4)
+    audit.check(
+        "success_count",
+        manifest.get("outcome", {}).get("ordinary_refactor_success_count")
+        == len(expected_case_ids),
+    )
     audit.check("regression_count", manifest.get("outcome", {}).get("regression_count") == 0)
     audit.check("blocked_count", manifest.get("outcome", {}).get("blocked_count") == 0)
 

@@ -1,0 +1,52 @@
+{
+  "baseline": {
+    "artifact_manifest_sha256": "e5582aedd99fdadad47c634b8a43a1b5ecdc8e3a83419dd6da964a5dcc84b4ff",
+    "result_sha256": "cde5703ae77f5b69ba33c17186e1b1b920d5f4d527c20006823ad6887f687a50",
+    "root": "/data/agrefactor_runs/inheritance_stage2b_source_baseline_v2"
+  },
+  "budget": {
+    "prior_provider_calls": 0,
+    "prior_vitis_launches": 4,
+    "provider_calls_expected": 18,
+    "provider_calls_hard_cap": 600,
+    "vitis_launches_expected": 14,
+    "vitis_launches_hard_cap": 600
+  },
+  "cases": [
+    {
+      "case_id": "linkedlist",
+      "failed_attempts": [],
+      "successful_run": {
+        "root": "/data/agrefactor_runs/inheritance_stage2b_refactor_linkedlist_v1",
+        "run_artifact_manifest_sha256": "46dfeb6d9d0eb8c0013137028a8c5afc0ee692ee217162ccd10e3a10e84d1884",
+        "run_result_sha256": "0e089070820ce7d9d24ba794186c29c2b3dff5b7e850f21630345778cb129f89"
+      }
+    },
+    {
+      "case_id": "strassen_break",
+      "failed_attempts": [],
+      "successful_run": {
+        "root": "/data/agrefactor_runs/inheritance_stage2b_refactor_strassen_break_v2",
+        "run_artifact_manifest_sha256": "83ad2fcea89026e0a600e63a184d1a09d0f236dbc8652d08691b6df7f85b221f",
+        "run_result_sha256": "69347e394258c7c4329e10a6b1abdcd1e6e9253a21a9aa875fd4812633125047"
+      }
+    }
+  ],
+  "checkpoint_id": "v2.3-inheritance-first-stage2b-checkpoint-v1",
+  "expected_branch": "research-roadmap-v2.3",
+  "historical_stage2_usage": {
+    "provider_calls": 60,
+    "vitis_launches": 23
+  },
+  "preflight": {
+    "failed_result_sha256": "be4986a019dd9d13efbff6d1f8d32769d7cd93fbdb2bc284e51b233446221ac1",
+    "failed_root": "/data/agrefactor_runs/inheritance_stage2b_preflight_v1",
+    "passed_result_sha256": "82d7919c2a7fcfa089a28a4aae8485aaeccf58361f0942f56f24bd402db87df8",
+    "passed_root": "/data/agrefactor_runs/inheritance_stage2b_preflight_v6"
+  },
+  "product_fix_commit": null,
+  "protocol_path": "configs/inheritance/stage2b/protocol.json",
+  "protocol_sha256": "29d5da4f443e2c73548992eb388cf40bf57c4d1ce140aea3f0a40f928482f991",
+  "schema_version": 1,
+  "stage1_cohort_sha256": "stage2b-linkedlist-strassen-break-frozen-v1"
+}
