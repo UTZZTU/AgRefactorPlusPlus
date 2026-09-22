@@ -28,7 +28,7 @@
       "algorithm_family": "matrix_multiplication_variant",
       "case_id": "strassen_break",
       "contract_path": "configs/inheritance/stage2b/strassen_break/contract.json",
-      "contract_sha256": "eb0b34773849005a95af7c731c16934b20fc48825cfcceefbd6da3b1f0d452e7",
+      "contract_sha256": "9067a784445fae9a78907d7d3c5b8f9bf796124285560fdd790de215fbca69e0",
       "dependencies": [],
       "mismatch_stub_path": "configs/inheritance/stage2b/strassen_break/mismatch_stub.cpp",
       "mismatch_stub_sha256": "c26d44f19d022a28efdda34a2fb43d465e7d8b3fc122f71d0bf8c3683578ce70",
