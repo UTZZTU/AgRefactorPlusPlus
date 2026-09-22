@@ -263,6 +263,21 @@ def build_rejection_summary(
     if not isinstance(budget, Mapping):
         budget = {}
     pricing = _summary_pricing(identity)
+    rejection_kind = rejection.get("kind")
+    if rejection_kind == "safety_ceiling_exceeded":
+        reason = (
+            f"{rejection.get('resource')}={rejection.get('user_requested')} "
+            "exceeds system safety ceiling "
+            f"{rejection.get('system_safety_ceiling')}"
+        )
+        hard_budget_exhausted = {
+            "resource": rejection.get("resource"),
+            "stage": "request",
+            "kind": rejection_kind,
+        }
+    else:
+        reason = rejection.get("reason_code") or rejection_kind
+        hard_budget_exhausted = None
     payload = {
         "schema_version": PRODUCT_RUN_SUMMARY_SCHEMA_VERSION,
         "status": "rejected",
@@ -277,11 +292,7 @@ def build_rejection_summary(
         },
         "repairs": {"used": 0, "limit": None},
         "failed_stage": "request",
-        "reason": (
-            f"{rejection.get('resource')}={rejection.get('user_requested')} "
-            f"exceeds system safety ceiling "
-            f"{rejection.get('system_safety_ceiling')}"
-        ),
+        "reason": reason,
         "artifacts": {
             "root": str(root),
             "details": str(root / "full_result.json"),
@@ -296,11 +307,7 @@ def build_rejection_summary(
         "soft_budgets": dict(budget.get("soft_usage_budgets", {})),
         "usage": None,
         "remaining": None,
-        "hard_budget_exhausted": {
-            "resource": rejection.get("resource"),
-            "stage": "request",
-            "kind": rejection.get("kind"),
-        },
+        "hard_budget_exhausted": hard_budget_exhausted,
         "soft_budget_exceeded": {"tokens": False, "cost": False},
         "pricing": pricing,
         "cost_estimation_quality": pricing.get(

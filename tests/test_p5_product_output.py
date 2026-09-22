@@ -478,6 +478,25 @@ class P5ProductOutputTests(unittest.TestCase):
             self.assertEqual(summary["status"], "rejected")
             self.assertEqual(summary["failed_stage"], "request")
 
+    def test_eligibility_rejection_is_not_rendered_as_budget_exhaustion(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self._identity(root)
+            rejection = {
+                "kind": "refactor_eligibility_rejected",
+                "reason_code": "auto_public_tests_private_global_dependency",
+                "provider_call_observed": False,
+            }
+            (root / "request_rejection.json").write_text(
+                json.dumps(rejection), encoding="utf-8"
+            )
+            summary = build_rejection_summary(root)
+            self.assertEqual(
+                summary["reason"],
+                "auto_public_tests_private_global_dependency",
+            )
+            self.assertIsNone(summary["hard_budget_exhausted"])
+
     def test_soft_budget_exceeded_does_not_change_acceptance(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
