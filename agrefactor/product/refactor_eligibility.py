@@ -928,15 +928,36 @@ def _declaration_names(
         return set(), None
     if any(value in _DECLARATION_EXCLUSIONS for value in values):
         return set(), None
+    if (
+        values[0] in {"struct", "union"}
+        and (
+            len(values) == 2
+            or ("}" in values and values[-1] == "}")
+        )
+    ):
+        return set(), None
     initializer = values.index("=") if "=" in values else len(values)
     declaration_prefix = values[:initializer]
     if "(" in declaration_prefix or ")" in declaration_prefix:
-        if "*" in declaration_prefix:
+        opening = declaration_prefix.index("(")
+        if (
+            opening + 1 < len(declaration_prefix)
+            and declaration_prefix[opening + 1] == "*"
+        ):
             return (
                 set(),
                 "unresolved_file_scope_callable_or_pointer_declaration",
             )
-        return set(), None
+        if (
+            opening > 0
+            and statement[opening - 1].kind == "identifier"
+            and declaration_prefix[opening - 1] not in _TYPE_OR_QUALIFIER
+        ):
+            return set(), None
+        return (
+            set(),
+            "unresolved_file_scope_callable_or_pointer_declaration",
+        )
     if "const" in values or "constexpr" in values or "constinit" in values:
         return set(), None
 

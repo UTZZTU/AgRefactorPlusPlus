@@ -364,6 +364,40 @@ extern "C" int top(int x) {
             report.boundary.ambiguity_codes,
         )
 
+    def test_pointer_function_prototypes_are_not_global_objects(self):
+        source = r'''
+struct Node;
+struct Node *helper(struct Node *value, int *output);
+void top(struct Node *value, int *output) {
+    helper(value, output);
+}
+'''
+        evidence = analyze_source_boundary(
+            source_code=source,
+            top_function="top",
+        )
+        self.assertTrue(evidence.analysis_complete)
+        self.assertEqual(evidence.mutable_file_scope_objects, ())
+        self.assertEqual(evidence.private_global_dependencies, ())
+
+    def test_struct_definition_tag_is_not_a_global_object(self):
+        source = r'''
+struct Node {
+    int value;
+    Node *next;
+};
+void top(Node *value, int *output) {
+    output[0] = value->value;
+}
+'''
+        evidence = analyze_source_boundary(
+            source_code=source,
+            top_function="top",
+        )
+        self.assertTrue(evidence.analysis_complete)
+        self.assertEqual(evidence.mutable_file_scope_objects, ())
+        self.assertEqual(evidence.private_global_dependencies, ())
+
     def test_rejection_is_agent_safe_and_no_provider_call(self):
         report = assess_refactor_eligibility(
             source_code=PRIVATE_GLOBAL,
