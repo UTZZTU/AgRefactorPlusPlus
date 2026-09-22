@@ -13,7 +13,7 @@
       "mismatch_stub_path": "configs/inheritance/stage2b/linkedlist/mismatch_stub.cpp",
       "mismatch_stub_sha256": "a54c1cf505aa3da955a748ccb6c071220fa3c28771f99a2c2d09b3eebe616935",
       "oracle_stub_path": "configs/inheritance/stage2b/linkedlist/oracle_stub.cpp",
-      "oracle_stub_sha256": "6d461aca51b6f0026db1723ea19860969db9c016ff194a9dda763299ef4e6fe5",
+      "oracle_stub_sha256": "89331ceb9820b82125799e419ee157760309f9a7cc5bf28cc106c7083a8dc05e",
       "public_marker": "HETEROREFACTOR_LINKEDLIST_PUBLIC_ORACLE=passed",
       "public_test_path": "configs/inheritance/stage2b/linkedlist/public.cpp",
       "public_test_sha256": "4e7e88e3b6038df77a4f43cbf74894676cf293dbc625a49bb02b1d1e09600454",
