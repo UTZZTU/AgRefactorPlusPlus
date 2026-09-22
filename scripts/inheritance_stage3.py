@@ -838,6 +838,9 @@ def seal(repo: Path, protocol_path: Path, generation: Path, preflight_root: Path
     preflight_result = load_object(preflight_root / "result.json")
     baseline_result = load_object(baseline / "result.json")
     campaign_results = [load_object(path / "result.json") for path in campaigns]
+    baseline_cases = {
+        item["case_id"]: item for item in baseline_result.get("cases", [])
+    }
     cases: list[dict[str, Any]] = []
     for item in preflight_result["cases"]:
         if item.get("status") == "blocked":
@@ -855,6 +858,12 @@ def seal(repo: Path, protocol_path: Path, generation: Path, preflight_root: Path
     for path, result in zip(campaigns, campaign_results):
         for item in result["cases"]:
             record = dict(item)
+            if (
+                record.get("classification") == "blocked"
+                and baseline_cases.get(record.get("case_id"), {}).get("classification")
+                == "raw_pass_all"
+            ):
+                record["classification"] = "unnecessary_rewrite"
             record["campaign_result_sha256"] = file_sha256(path / "result.json")
             cases.append(record)
     total_provider = CARRIED_STAGE2B["provider_calls"] + int(generation_result["provider_calls"]) + sum(int(item["provider_calls"]) for item in campaign_results)
