@@ -69,14 +69,18 @@ def git(repo: Path, *args: str) -> str:
 def verify_protocol(repo: Path, protocol: dict[str, Any]) -> None:
     if protocol.get("schema_version") != 1:
         raise ValueError("unsupported protocol schema")
-    if protocol.get("route") != "V2.3-INHERITANCE-FIRST-STAGE-II":
+    route = protocol.get("route")
+    if route not in {
+        "V2.3-INHERITANCE-FIRST-STAGE-II",
+        "V2.3-INHERITANCE-FIRST-STAGE-II-B",
+    }:
         raise ValueError("unexpected route")
-    if [case.get("case_id") for case in protocol.get("cases", [])] != [
-        "dfs",
-        "mergesort",
-        "ahocorasick",
-        "strassen",
-    ]:
+    expected_case_ids = (
+        ["dfs", "mergesort", "ahocorasick", "strassen"]
+        if route == "V2.3-INHERITANCE-FIRST-STAGE-II"
+        else ["linkedlist", "strassen_break"]
+    )
+    if [case.get("case_id") for case in protocol.get("cases", [])] != expected_case_ids:
         raise ValueError("case order or identity differs from the frozen cohort")
     execution = protocol.get("execution")
     expected_execution = {
@@ -91,10 +95,12 @@ def verify_protocol(repo: Path, protocol: dict[str, Any]) -> None:
     if execution != expected_execution:
         raise ValueError("execution boundary is not ordinary refactor")
     budget = protocol.get("budget")
-    if budget != {
-        "provider_calls_hard_cap": 200,
-        "vitis_launches_hard_cap": 200,
-    }:
+    expected_budget = (
+        {"provider_calls_hard_cap": 200, "vitis_launches_hard_cap": 200}
+        if route == "V2.3-INHERITANCE-FIRST-STAGE-II"
+        else {"provider_calls_hard_cap": 600, "vitis_launches_hard_cap": 600}
+    )
+    if budget != expected_budget:
         raise ValueError("Stage II budget authority changed")
     target = protocol.get("target_profile")
     if not isinstance(target, dict):
