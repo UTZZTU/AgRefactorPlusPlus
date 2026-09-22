@@ -1,0 +1,742 @@
+{
+  "budget": {
+    "provider_calls_hard_cap": 600,
+    "vitis_launches_hard_cap": 600
+  },
+  "carried_stage2b": {
+    "provider_calls": 18,
+    "vitis_launches": 14
+  },
+  "cases": [
+    {
+      "algorithm_family": "video_filtering",
+      "case_id": "app-aom-av1_apply_temporal_filter",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "app",
+      "source_path": "src/app/aom/av1_apply_temporal_filter.cpp",
+      "source_sha256": "73b255e9a9f998155bf8b2c0d49e0101acbb82b291ba99cd9a18fa55168473cd",
+      "top": "av1_apply_temporal_filter"
+    },
+    {
+      "algorithm_family": "video_rate_distortion",
+      "case_id": "app-aom-av1_compound_type_rd",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "app",
+      "source_path": "src/app/aom/av1_compound_type_rd.cpp",
+      "source_sha256": "2558c937658032c85643a3ff6aca483c66834c93474541e9ef43af33a83a7f4e",
+      "top": "av1_compound_type_rd"
+    },
+    {
+      "algorithm_family": "genomics_recalibration",
+      "case_id": "app-bqsr-recalib_table_orig",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "app",
+      "source_path": "src/app/bqsr/recalib_table_orig.cpp",
+      "source_sha256": "3b9c80f70a3f9daa440c9dd166a8d2755e355bb17f3cff62e2dbbdf55776b74e",
+      "top": "Java_com_falconcomputing_genomics_bqsr_FalconRecalibrationEngine_recalibrateNative"
+    },
+    {
+      "algorithm_family": "image_encoding",
+      "case_id": "app-libjpeg-encode_one_block",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "app",
+      "source_path": "src/app/libjpeg/encode_one_block.cpp",
+      "source_sha256": "6ea404287287b32c5f04c3f540cc083c24a7568dbec3442659ca93f8671c9fdc",
+      "top": "encode_one_block"
+    },
+    {
+      "algorithm_family": "image_color_quantization",
+      "case_id": "app-libjpeg-fill_inverse_cmap",
+      "d3_family_members": [
+        "src/app/libjpeg/median_cut.cpp",
+        "src/app/libjpeg/select_colors.cpp"
+      ],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "app",
+      "source_path": "src/app/libjpeg/fill_inverse_cmap.cpp",
+      "source_sha256": "31affbf538fd27baf6e2d01bf807300c7a270d3e3e9a7f24f17e0084f0b332ec",
+      "top": "fill_inverse_cmap"
+    },
+    {
+      "algorithm_family": "image_transform",
+      "case_id": "app-libjpeg-idct_generic",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "app",
+      "source_path": "src/app/libjpeg/idct_generic.cpp",
+      "source_sha256": "8297a4a0d699c09036d6f405b4dc55374900c8e1c84d276b67aece870dc40521",
+      "top": "idct_generic"
+    },
+    {
+      "algorithm_family": "image_color_quantization",
+      "case_id": "app-libjpeg-median_cut",
+      "d3_family_members": [
+        "src/app/libjpeg/fill_inverse_cmap.cpp",
+        "src/app/libjpeg/select_colors.cpp"
+      ],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "app",
+      "source_path": "src/app/libjpeg/median_cut.cpp",
+      "source_sha256": "99e59d09d6244367cebf98c9897192f710b05588fead969fe2e950dd80e5476f",
+      "top": "median_cut"
+    },
+    {
+      "algorithm_family": "image_color_quantization",
+      "case_id": "app-libjpeg-select_colors",
+      "d3_family_members": [
+        "src/app/libjpeg/fill_inverse_cmap.cpp",
+        "src/app/libjpeg/median_cut.cpp"
+      ],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "app",
+      "source_path": "src/app/libjpeg/select_colors.cpp",
+      "source_sha256": "d1cbaa9104a7cb80ef2ea5ee255e909a37e853c5f240f09b5663533961118bcc",
+      "top": "select_colors"
+    },
+    {
+      "algorithm_family": "cryptography_password_hashing",
+      "case_id": "app-libsodium-argon2_fill_segment",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "app",
+      "source_path": "src/app/libsodium/argon2_fill_segment.cpp",
+      "source_sha256": "fb8239d9336e64856745b194c402fc779cab1cda14a86b058573a5ac5f54af5f",
+      "top": "argon2_fill_segment"
+    },
+    {
+      "algorithm_family": "cryptography_hashing",
+      "case_id": "app-libsodium-blake2b_compress",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "app",
+      "source_path": "src/app/libsodium/blake2b_compress.cpp",
+      "source_sha256": "32dd0fb488e9978504192c66fdb3ddb1f5a3468d2b3325f7393e1f9b4c5fef79",
+      "top": "blake2b_compress"
+    },
+    {
+      "algorithm_family": "cryptography_stream_cipher",
+      "case_id": "app-libsodium-chacha20_stream",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "app",
+      "source_path": "src/app/libsodium/chacha20_stream.cpp",
+      "source_sha256": "262b7034844bebac7adda219a66db30481ac21d23a59b57461c5889969f98d58",
+      "top": "chacha20_encrypt_bytes"
+    },
+    {
+      "algorithm_family": "sequence_chaining",
+      "case_id": "app-minimap2-mm_chain_dp_new",
+      "d3_family_members": [
+        "src/app/minimap2/mm_chain_dp_orig.cpp",
+        "src/opt/app/minimap2.cpp"
+      ],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "app",
+      "source_path": "src/app/minimap2/mm_chain_dp_new.cpp",
+      "source_sha256": "7b523a78235009f74c0f9f1fea4a4bfa43c622bd51356760c1771953f0e7eeba",
+      "top": "mm_chain_dp_new"
+    },
+    {
+      "algorithm_family": "sequence_chaining",
+      "case_id": "app-minimap2-mm_chain_dp_orig",
+      "d3_family_members": [
+        "src/app/minimap2/mm_chain_dp_new.cpp",
+        "src/opt/app/minimap2.cpp"
+      ],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "app",
+      "source_path": "src/app/minimap2/mm_chain_dp_orig.cpp",
+      "source_sha256": "5ad79fb64261db2f9e9daccae70d641e7131556e76270a8a8ea85abf3499ce3f",
+      "top": "mm_chain_dp_orig"
+    },
+    {
+      "algorithm_family": "cryptography_aes",
+      "case_id": "c2hlsc-aes-kernel",
+      "d3_family_members": [
+        "src/hlsrewritter/Incomplete_E3_AES/kernel.cpp"
+      ],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [
+        {
+          "level": "D0",
+          "path": "src/c2hlsc/aes/AES.c",
+          "score": 1.0
+        },
+        {
+          "level": "D1",
+          "path": "src/c2hlsc/aes/AES.c",
+          "score": 1.0
+        }
+      ],
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/aes/kernel.cpp",
+      "source_sha256": "b697ddb34efdb35ac0bb53052184a892a4e4139fa459058feb714a75619be467",
+      "top": "Cipher"
+    },
+    {
+      "algorithm_family": "statistical_block_frequency",
+      "case_id": "c2hlsc-block-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/block/kernel.cpp",
+      "source_sha256": "10174882cfb34d0c805366771b0067e45ece34415f7321b3ec4b7ed2258c53ad",
+      "top": "BlockFrequency"
+    },
+    {
+      "algorithm_family": "statistical_cumulative_sums",
+      "case_id": "c2hlsc-cusums-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/cusums/kernel.cpp",
+      "source_sha256": "94717a1c1116ea211b599c1f3d885d964794535e8b5b0e7edc9031d7c7ab77a3",
+      "top": "CumulativeSums"
+    },
+    {
+      "algorithm_family": "cryptography_des",
+      "case_id": "c2hlsc-des-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/des/kernel.cpp",
+      "source_sha256": "83a632d7ba5b27ffdff1ed95ed45a8130c6028ae293b963bb5214c03a19183ab",
+      "top": "des_crypt"
+    },
+    {
+      "algorithm_family": "statistical_frequency",
+      "case_id": "c2hlsc-monobit-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/monobit/kernel.cpp",
+      "source_sha256": "95c59c4ede414a1895d5ceaebd6656fd458ddea7a79521b92da1209c3ae98164",
+      "top": "Frequency"
+    },
+    {
+      "algorithm_family": "statistical_overlapping_template",
+      "case_id": "c2hlsc-overlapping-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/overlapping/kernel.cpp",
+      "source_sha256": "5bb1177bf057147bbfcabab53d26e4c9131c48432de42fed8845c0461725e839",
+      "top": "Overlapping"
+    },
+    {
+      "algorithm_family": "cryptography_present",
+      "case_id": "c2hlsc-present-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/present/kernel.cpp",
+      "source_sha256": "22464a5d1f0884c6beead6ba77561b7d3928a4a2971e97109e79bad7366d0429",
+      "top": "present80_encryptBlock"
+    },
+    {
+      "algorithm_family": "sorting",
+      "case_id": "c2hlsc-quicksort-kernel",
+      "d3_family_members": [
+        "src/heterorefactor/mergesort/kernel.cpp"
+      ],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/quicksort/kernel.cpp",
+      "source_sha256": "e89b487e89e877d2b3d2344c53b3e7cc8010e21b7adc6f029da2f8e9a0bfd179",
+      "top": "quickSort"
+    },
+    {
+      "algorithm_family": "cryptography_sha256",
+      "case_id": "c2hlsc-sha256-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "c2hlsc",
+      "source_path": "src/c2hlsc/sha256/kernel.cpp",
+      "source_sha256": "aca33f50f1f76a889e892e1b891561b65c7528db6a294cf03067f2cdedf52caf",
+      "top": "sha256_update"
+    },
+    {
+      "algorithm_family": "machine_learning_classification",
+      "case_id": "hlsrewritter-boolean_e1_svm-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Boolean_E1_SVM/kernel.cpp",
+      "source_sha256": "ecc83629247c5e6915508eb2f946fbe9f34ca4fc133e2a9fee6125acbba5824a",
+      "top": "svm_classify"
+    },
+    {
+      "algorithm_family": "fast_fourier_transform",
+      "case_id": "hlsrewritter-boolean_e2_fft-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Boolean_E2_FFT/kernel.cpp",
+      "source_sha256": "ec0b5c8ed7ff34cd1be941e038168f67ec7ad14bb0be4ca9f8c0b65a48e295ab",
+      "top": "fft_processing"
+    },
+    {
+      "algorithm_family": "sequence_decoding",
+      "case_id": "hlsrewritter-boolean_e4_ctc-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Boolean_E4_CTC/kernel.cpp",
+      "source_sha256": "5a9a8f6dfcc66feeb47d0e74dfb027019dd4130dc3c65e1520c1dc11ac413f39",
+      "top": "process_image"
+    },
+    {
+      "algorithm_family": "mathematical_optimization",
+      "case_id": "hlsrewritter-da_e1_linear_program-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [
+        {
+          "level": "D1",
+          "path": "src/hlsrewritter/DA_E2_binary_tree/kernel.cpp",
+          "score": 1.0
+        }
+      ],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/DA_E1_linear_program/kernel.cpp",
+      "source_sha256": "1a670660c479a47fa42f9cabc3fce0804c3608a13d86b88c3b31a1cfdeef768e",
+      "top": "solve"
+    },
+    {
+      "algorithm_family": "tree_traversal",
+      "case_id": "hlsrewritter-da_e2_binary_tree-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/DA_E2_binary_tree/kernel.h",
+      "source_sha256": "538db901642ef53b1cb63806278438c773b2f67803fb730e33eece359a2ee4a9",
+      "top": "DFS"
+    },
+    {
+      "algorithm_family": "nearest_neighbor",
+      "case_id": "hlsrewritter-da_e3_knn-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/DA_E3_KNN/kernel.cpp",
+      "source_sha256": "2418d4d03b5dfc419f8741cfe7cb16c1036397dd72d184f028f2e63321d084ec",
+      "top": "knn"
+    },
+    {
+      "algorithm_family": "matrix_decomposition",
+      "case_id": "hlsrewritter-exception_e1_matrix_qr_decomposition-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Exception_E1_Matrix_QR_Decomposition/kernel.cpp",
+      "source_sha256": "9a10c13851dbb1b4a57cf3620829e0d448e91696affb24387b4bbfde959f3d20",
+      "top": "qrd_compute"
+    },
+    {
+      "algorithm_family": "signal_filtering",
+      "case_id": "hlsrewritter-exception_e2_filter-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Exception_E2_Filter/kernel.cpp",
+      "source_sha256": "bdaf6c21bf5aa4b9c3de2ef844fa1e02e8f53483e5282c51fbf56a53a9abded2",
+      "top": "run"
+    },
+    {
+      "algorithm_family": "error_correction_coding",
+      "case_id": "hlsrewritter-exception_e3_turbo_encoder-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Exception_E3_Turbo_Encoder/kernel.cpp",
+      "source_sha256": "0174bd91c1b01ab9006675de3552db00bc595d5381b88681e2be2600e0230bcf",
+      "top": "regUpdate"
+    },
+    {
+      "algorithm_family": "dynamic_sequence",
+      "case_id": "hlsrewritter-incomplete_e1_fibonacci-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Incomplete_E1_Fibonacci/kernel.cpp",
+      "source_sha256": "23e1d8d405b1b34692bc151f8e2a27260837df971b043c9eec55c334e72ff30f",
+      "top": "FibSubseq"
+    },
+    {
+      "algorithm_family": "matrix_rotation",
+      "case_id": "hlsrewritter-incomplete_e2_cyclic_rotation-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Incomplete_E2_Cyclic_Rotation/kernel.cpp",
+      "source_sha256": "80ba184b8bf78cf3eba8a0336578c267b7f0bbf3db2cd604a7d450c824e81214",
+      "top": "rotateGrid"
+    },
+    {
+      "algorithm_family": "cryptography_aes",
+      "case_id": "hlsrewritter-incomplete_e3_aes-kernel",
+      "d3_family_members": [
+        "src/c2hlsc/aes/kernel.cpp"
+      ],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Incomplete_E3_AES/kernel.cpp",
+      "source_sha256": "6f82527c45c9cd8b473bb1699028bebda789d2df2ea91f922e360f9eabee6792",
+      "top": "aes_encrypt"
+    },
+    {
+      "algorithm_family": "neural_network_inference",
+      "case_id": "hlsrewritter-pointer_e1_dnn-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Pointer_E1_DNN/kernel.cpp",
+      "source_sha256": "68aa374f623fd2509c68eb8cf92d08b542fce998a4517336a30b8bb98ec033b4",
+      "top": "forward"
+    },
+    {
+      "algorithm_family": "hash_table",
+      "case_id": "hlsrewritter-pointer_e2_hash_table-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Pointer_E2_hash_table/kernel.cpp",
+      "source_sha256": "f82f8adadf7cbd1ffd594ccb6674d2f853a507a1bedc942aac02bd2aea423ed2",
+      "top": "length"
+    },
+    {
+      "algorithm_family": "pointer_structure",
+      "case_id": "hlsrewritter-pointer_e3_double_pointer-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Pointer_E3_double_pointer/kernel.cpp",
+      "source_sha256": "44dbf21b4848851d5067cb01d6d44f69a78f53e613ff826b19e045a7e4b35601",
+      "top": "trap"
+    },
+    {
+      "algorithm_family": "linked_structure",
+      "case_id": "hlsrewritter-recursive_e1_linked_list-kernel",
+      "d3_family_members": [
+        "src/heterorefactor/linkedlist/kernel.cpp"
+      ],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Recursive_E1_linked_list/kernel.cpp",
+      "source_sha256": "673c644da2e7b718b0ba50763d185cd599a69acc223927b1d730bbc51022b489",
+      "top": "reverseKGroup"
+    },
+    {
+      "algorithm_family": "graph_traversal",
+      "case_id": "hlsrewritter-recursive_e2_dfs-kernel",
+      "d3_family_members": [
+        "src/heterorefactor/dfs/kernel.cpp"
+      ],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Recursive_E2_DFS/kernel.cpp",
+      "source_sha256": "234a22a69143190b02fe8b65c55782539e26a09465fbb53be535fed796741da3",
+      "top": "process_top"
+    },
+    {
+      "algorithm_family": "stream_processing",
+      "case_id": "hlsrewritter-struct_e1_stream-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [
+        {
+          "level": "D0",
+          "path": "src/hlsrewritter/Struct_E1_stream/kernel copy.cpp",
+          "score": 1.0
+        },
+        {
+          "level": "D1",
+          "path": "src/hlsrewritter/Struct_E1_stream/kernel copy.cpp",
+          "score": 1.0
+        }
+      ],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Struct_E1_stream/kernel.cpp",
+      "source_sha256": "b377f16502105c8aa20cc47b88c25d93a21ff69e07fb4ca0d8b9c2b63b99b1b3",
+      "top": "top"
+    },
+    {
+      "algorithm_family": "integer_arithmetic",
+      "case_id": "hlsrewritter-struct_e3_long-kernel",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Struct_E3_long/kernel.cpp",
+      "source_sha256": "17aa9684d7cea2f3fb7bfde41c3853ec62edf7fb9b44dafb9fa8cb10b17d765b",
+      "top": "process_top"
+    },
+    {
+      "algorithm_family": "computational_geometry",
+      "case_id": "hlsrewritter-struct_e3_max-kernel",
+      "d3_family_members": [
+        "src/leetcode/the_skyline_problem.cpp"
+      ],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Struct_E3_max/kernel.cpp",
+      "source_sha256": "892ba31fc53a35cd77e634cf6466c23e5678b0e7e22d46ad59c514ab9fe9e8f3",
+      "top": "maxPoints"
+    },
+    {
+      "algorithm_family": "graph_connectivity",
+      "case_id": "leetcode-critical_connections_in_a_network",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/critical_connections_in_a_network.cpp",
+      "source_sha256": "5284b65ab62d0e6c39ce3ea3e4b3d94dca4e19b3be70704fdc25c921a34bb7fc",
+      "top": "criticalConnections"
+    },
+    {
+      "algorithm_family": "tree_transformation",
+      "case_id": "leetcode-delete_nodes_and_return_forest",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/delete_nodes_and_return_forest.cpp",
+      "source_sha256": "282522c7c39ba317c7582346839563adcbb088c6d1d371094fcf0c904e1fc0e2",
+      "top": "delNodes"
+    },
+    {
+      "algorithm_family": "combinatorial_assignment",
+      "case_id": "leetcode-distribute_repeating_integers",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/distribute_repeating_integers.cpp",
+      "source_sha256": "4ff41871908fd465418a5262ba781854a8aa5108626b0cf4eeec419498c5e05c",
+      "top": "canDistribute"
+    },
+    {
+      "algorithm_family": "string_search",
+      "case_id": "leetcode-remove_invalid_parentheses",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/remove_invalid_parentheses.cpp",
+      "source_sha256": "7f5d2b8aab7212d92e0af1422a61ad7068decaf325d9cdc6a65be2a74a99c064",
+      "top": "removeInvalidParentheses"
+    },
+    {
+      "algorithm_family": "sliding_window",
+      "case_id": "leetcode-sliding_window_maximum",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/sliding_window_maximum.cpp",
+      "source_sha256": "9dbe1c2149eaf611fecc8a8f29fef77cfa14a9b66d21d00829df98d963e4bdc2",
+      "top": "maxSlidingWindow"
+    },
+    {
+      "algorithm_family": "range_selection",
+      "case_id": "leetcode-smallest_range_covering_elements_from_k_lists",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/smallest_range_covering_elements_from_k_lists.cpp",
+      "source_sha256": "a66cf0756b99de7f2385ed1f5c824191d8203cdece73a4b0651cd8c968a8e92a",
+      "top": "smallestRange"
+    },
+    {
+      "algorithm_family": "constraint_search",
+      "case_id": "leetcode-sudoku_solver",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/sudoku_solver.cpp",
+      "source_sha256": "b284c1db7ec77101ea2e2a76b4711822aaa159ef5739f3071e5e545965a2396f",
+      "top": "solveSudoku"
+    },
+    {
+      "algorithm_family": "graph_pathfinding",
+      "case_id": "leetcode-swim_in_rising_water",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/swim_in_rising_water.cpp",
+      "source_sha256": "5b6fbc8bcaa9cf4b4dc3b0a26a6d0dda02a0b4f007c227d1b9a2d22491f594c4",
+      "top": "swimInWater"
+    },
+    {
+      "algorithm_family": "computational_geometry",
+      "case_id": "leetcode-the_skyline_problem",
+      "d3_family_members": [
+        "src/hlsrewritter/Struct_E3_max/kernel.cpp"
+      ],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/the_skyline_problem.cpp",
+      "source_sha256": "c91867130aa8d8c3d3bbc52c34b9f554cc3f43970d934bc9ef39d29acc0df118",
+      "top": "getSkyline"
+    },
+    {
+      "algorithm_family": "string_segmentation",
+      "case_id": "leetcode-work_break_ii",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "leetcode",
+      "source_path": "src/leetcode/work_break_ii.cpp",
+      "source_sha256": "3ec9d15585231d68d703ec7fbea271ada5537134f043629e30845cf9e3144ac7",
+      "top": "wordBreak"
+    },
+    {
+      "algorithm_family": "sequence_chaining",
+      "case_id": "opt-app-minimap2",
+      "d3_family_members": [
+        "src/app/minimap2/mm_chain_dp_new.cpp",
+        "src/app/minimap2/mm_chain_dp_orig.cpp"
+      ],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "opt",
+      "source_path": "src/opt/app/minimap2.cpp",
+      "source_sha256": "409c1d0b0040e5d9aae8b37a0249f5cb9fb56fcae6242c28937de76187837c5e",
+      "top": "top"
+    },
+    {
+      "algorithm_family": "matrix_multiplication",
+      "case_id": "opt-prometheus-2mm_extra_large",
+      "d3_family_members": [
+        "src/heterorefactor/strassen/kernel.cpp",
+        "src/heterorefactor/strassen_break/kernel.cpp",
+        "src/opt/prometheus/3mm_large.cpp"
+      ],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "opt",
+      "source_path": "src/opt/prometheus/2mm_extra_large.cpp",
+      "source_sha256": "5b411485579d3856ef90a55cf41af15d553365756d8782ddec154072f4bbde3f",
+      "top": "top"
+    },
+    {
+      "algorithm_family": "matrix_multiplication",
+      "case_id": "opt-prometheus-3mm_large",
+      "d3_family_members": [
+        "src/heterorefactor/strassen/kernel.cpp",
+        "src/heterorefactor/strassen_break/kernel.cpp",
+        "src/opt/prometheus/2mm_extra_large.cpp"
+      ],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "opt",
+      "source_path": "src/opt/prometheus/3mm_large.cpp",
+      "source_sha256": "d14adc1af24449f24995db1e2eadecb2c2587fa468b6a74e3735f968a2299bfc",
+      "top": "top"
+    },
+    {
+      "algorithm_family": "optical_flow",
+      "case_id": "opt-rosetta-optical_flow",
+      "d3_family_members": [],
+      "dependencies_resolvable": true,
+      "duplicate_refs": [],
+      "source_family": "opt",
+      "source_path": "src/opt/rosetta/optical_flow.cpp",
+      "source_sha256": "fb8b27346f0b3920abcf11f95de02670515cc3c0791e2148a15bbe6e399b803b",
+      "top": "top"
+    }
+  ],
+  "cohort_counts": {
+    "app": 13,
+    "c2hlsc": 9,
+    "hlsrewritter": 20,
+    "leetcode": 10,
+    "opt": 4
+  },
+  "cohort_sha256": "b8ce2e070344aa3a109110f82ee44e88bc884768f689cfd1cf6f1c510f1ad95d",
+  "execution": {
+    "candidate_top_suffix": "_hls",
+    "cosim_policy": "required",
+    "hidden_tests": "none",
+    "memory_enabled": false,
+    "mode": "refactor",
+    "optimize_enabled": false,
+    "r2_r4_enabled": false
+  },
+  "historical_stage2": {
+    "provider_calls": 60,
+    "vitis_launches": 23
+  },
+  "inventory": {
+    "inventory_id": "v2.3-inheritance-first-stage1-v1",
+    "inventory_sha256": "a7f9a14f5ab530d7882bd94f97f0a633e677151b7c925bf6c6ea8b637119f339",
+    "path": "configs/inheritance/inheritance_manifest_v1.json"
+  },
+  "model": {
+    "api_key_env": "DEEPSEEK_API_KEY",
+    "base_url": "https://api.deepseek.com",
+    "family": "deepseek",
+    "name": "deepseek-flash"
+  },
+  "protocol_id": "v2.3-inheritance-first-stage3-v1",
+  "route": "V2.3-INHERITANCE-FIRST-STAGE-III",
+  "schema_version": 1,
+  "target_profile": {
+    "name": "vitis-2023.2-default",
+    "path": "configs/targets/vitis-2023.2-default.json",
+    "sha256": "e2443c96cd95cd8983578e18bb8bec807a367589423aa9e734db45b5a3338474"
+  },
+  "timeouts_s": {
+    "cosim": 1200,
+    "csim": 180,
+    "csynth": 900,
+    "host": 120
+  }
+}
