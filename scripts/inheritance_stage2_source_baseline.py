@@ -96,6 +96,11 @@ def main() -> int:
     if preflight.get("repo_head") != head:
         raise ValueError("preflight repository identity is stale")
     target = resolve_target_profile(protocol["target_profile"]["name"])
+    route_prefix = (
+        "stage2b"
+        if protocol.get("route") == "V2.3-INHERITANCE-FIRST-STAGE-II-B"
+        else "stage2"
+    )
     cases = []
     for case in protocol["cases"]:
         case_root = output / "cases" / case["case_id"]
@@ -103,7 +108,7 @@ def main() -> int:
         contract = load_object(repo / case["contract_path"])
         testbench = (repo / case["source_oracle_path"]).read_text(encoding="utf-8")
         source = (repo / case["source_path"]).read_text(encoding="utf-8")
-        suite_id = f"stage2-{case['case_id']}-source"
+        suite_id = f"{route_prefix}-{case['case_id']}-source"
         suite = TestSuiteSpec(
             suite_id=suite_id,
             split=EvaluationSplit.PUBLIC,
@@ -113,7 +118,7 @@ def main() -> int:
             runtime_contract=contract,
         )
         task = TaskSpec(
-            task_id=f"inheritance-stage2-{case['case_id']}-source",
+            task_id=f"inheritance-{route_prefix}-{case['case_id']}-source",
             kernel_path=case["source_path"],
             kernel_name=case["top"],
             target=target,
@@ -132,7 +137,7 @@ def main() -> int:
                 max_cost_usd=0,
             )
         )
-        run_id = f"inheritance-stage2-{case['case_id']}-source"
+        run_id = f"inheritance-{route_prefix}-{case['case_id']}-source"
         trace = TraceRecorder(
             run_id,
             task_id=task.task_id,
