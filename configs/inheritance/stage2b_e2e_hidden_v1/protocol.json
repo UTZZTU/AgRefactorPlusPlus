@@ -1,0 +1,62 @@
+{
+  "budget": {
+    "provider_calls_hard_cap": 240,
+    "vitis_launches_hard_cap": 300
+  },
+  "cases": [
+    {
+      "algorithm_family": "linked_list",
+      "case_id": "linkedlist",
+      "contract_path": "configs/inheritance/stage2b/linkedlist/contract.json",
+      "contract_sha256": "d0d3c020959098754e7ae8ff0dc3173fcb795b733c661fbf84f5a297c792dd07",
+      "dependencies": [],
+      "source_oracle_path": "configs/inheritance/stage2b/linkedlist/source_oracle.cpp",
+      "source_oracle_sha256": "d734d15cae867b22f89f1c56b82b32c3f29f443001d2b2c3459a7fd9817bc6a0",
+      "source_path": "src/heterorefactor/linkedlist/kernel.cpp",
+      "source_sha256": "f9747c34d9bf6600390fb7cff28a1d62c0aa64145dd6b4dd4e253f7bb7767570",
+      "top": "process_top"
+    },
+    {
+      "algorithm_family": "matrix_multiplication_variant",
+      "case_id": "strassen_break",
+      "contract_path": "configs/inheritance/stage2b/strassen_break/contract.json",
+      "contract_sha256": "9067a784445fae9a78907d7d3c5b8f9bf796124285560fdd790de215fbca69e0",
+      "dependencies": [],
+      "source_oracle_path": "configs/inheritance/stage2b/strassen_break/source_oracle.cpp",
+      "source_oracle_sha256": "415ac9f84b156589a5c9787974264d927d5fd6a3fe096bb44dbd72b04d1b41d5",
+      "source_path": "src/heterorefactor/strassen_break/kernel.cpp",
+      "source_sha256": "c3d953b836e9708dc2291648542447090342f7b76ca5abd455cc7d5cda2158c1",
+      "top": "process_top"
+    }
+  ],
+  "cohort_sha256": "stage2b-linkedlist-strassen-break-frozen-v1",
+  "execution": {
+    "cosim_policy": "required",
+    "hidden_tests": "auto",
+    "memory_enabled": false,
+    "mode": "refactor",
+    "optimize_enabled": false,
+    "public_tests": "auto",
+    "r2_r4_enabled": false
+  },
+  "model": {
+    "api_key_env": "DEEPSEEK_API_KEY",
+    "base_url": "https://api.deepseek.com",
+    "family": "deepseek",
+    "name": "deepseek-flash"
+  },
+  "protocol_id": "v2.3-inheritance-first-stage2b-e2e-hidden-v1",
+  "route": "V2.3-INHERITANCE-FIRST-STAGE-II-B",
+  "schema_version": 1,
+  "target_profile": {
+    "name": "vitis-2023.2-default",
+    "path": "configs/targets/vitis-2023.2-default.json",
+    "sha256": "e2443c96cd95cd8983578e18bb8bec807a367589423aa9e734db45b5a3338474"
+  },
+  "timeouts_s": {
+    "cosim": 1200,
+    "csim": 180,
+    "csynth": 900,
+    "host": 120
+  }
+}
