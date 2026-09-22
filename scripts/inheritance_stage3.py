@@ -792,7 +792,7 @@ def run_refactors(repo: Path, protocol_path: Path, generation_root: Path, prefli
         run_result = load_object(root / "run_result.json") if (root / "run_result.json").is_file() else {}
         identity = load_object(root / "execution_identity.json") if (root / "execution_identity.json").is_file() else {}
         candidate = identity.get("candidates", {}).get("final", {})
-        source_passed = baseline_cases.get(case["case_id"], {}).get("terminal_state") == "accepted"
+        source_passed = baseline_cases.get(case["case_id"], {}).get("classification") == "raw_pass_all"
         succeeded = (
             completed.returncode == 0
             and run_result.get("status") == "succeeded"
@@ -839,6 +839,19 @@ def seal(repo: Path, protocol_path: Path, generation: Path, preflight_root: Path
     baseline_result = load_object(baseline / "result.json")
     campaign_results = [load_object(path / "result.json") for path in campaigns]
     cases: list[dict[str, Any]] = []
+    for item in preflight_result["cases"]:
+        if item.get("status") == "blocked":
+            cases.append(
+                {
+                    "case_id": item["case_id"],
+                    "classification": "adapter_or_oracle_invalid",
+                    "provider_calls": 0,
+                    "vitis_launches": 0,
+                    "preflight_reason": item.get("reason"),
+                    "run_root": None,
+                    "run_result_sha256": None,
+                }
+            )
     for path, result in zip(campaigns, campaign_results):
         for item in result["cases"]:
             record = dict(item)
@@ -910,6 +923,12 @@ def audit(repo: Path, protocol_path: Path, checkpoint: Path) -> int:
         result = root / "result.json"
         check(f"{name}_result", result.is_file() and file_sha256(result) == evidence[f"{name}_result_sha256"])
     for item in manifest.get("cases", []):
+        if item.get("run_root") is None:
+            check(
+                f"{item['case_id']}:blocked_record",
+                item.get("classification") == "adapter_or_oracle_invalid",
+            )
+            continue
         root = Path(item["run_root"])
         result = root / "run_result.json"
         check(f"{item['case_id']}:run_result", result.is_file() and file_sha256(result) == item["run_result_sha256"])
