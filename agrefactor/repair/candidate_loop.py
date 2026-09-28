@@ -754,7 +754,11 @@ class BoundedCandidateRepairLoop:
                     )
                 )
                 prior_summaries.append(
-                    "The previous response violated the candidate replacement contract."
+                    _candidate_model_failure_summary(
+                        attempt_number,
+                        CandidateRepairAttemptStatus.RESPONSE_REJECTED,
+                        exc,
+                    )
                 )
                 if self._budget_exhausted():
                     return self._result(
@@ -785,7 +789,11 @@ class BoundedCandidateRepairLoop:
                     )
                 )
                 prior_summaries.append(
-                    "The previous provider call did not produce a validated candidate."
+                    _candidate_model_failure_summary(
+                        attempt_number,
+                        CandidateRepairAttemptStatus.PROVIDER_ERROR,
+                        exc,
+                    )
                 )
                 if self._budget_exhausted():
                     return self._result(
@@ -897,7 +905,6 @@ class BoundedCandidateRepairLoop:
                 prompt_manifest=prompt_manifest,
                 )
             )
-            prior_summaries.append(validation_result.summary)
             assert validation_result.feedback is not None
             assert validation_result.route_decision is not None
             assert validation_result.failure_state is not None
@@ -921,6 +928,12 @@ class BoundedCandidateRepairLoop:
                     last_proposal,
                     attempts,
                 )
+            prior_summaries.append(
+                _candidate_validation_failure_summary(
+                    attempt_number,
+                    validation_result,
+                )
+            )
             if self._budget_exhausted():
                 return self._result(
                     CandidateRepairStopReason.BUDGET_EXHAUSTED,
@@ -984,6 +997,90 @@ class BoundedCandidateRepairLoop:
             attempts=tuple(attempts),
             budget_usage=self._safe_snapshot(),
         )
+
+
+def _candidate_model_failure_summary(
+    attempt: int,
+    status: CandidateRepairAttemptStatus,
+    error: Exception,
+) -> str:
+    return "\n".join(
+        (
+            f"Attempt {attempt}",
+            f"status: {status.value}",
+            f"error type: {type(error).__name__}",
+            "error: " + _compact_history_text(str(error), limit=2000),
+        )
+    )
+
+
+def _candidate_validation_failure_summary(
+    attempt: int,
+    result: CandidateValidationResult,
+) -> str:
+    feedback = result.feedback
+    route = result.route_decision
+    if (
+        feedback is None
+        or route is None
+        or result.failure_state is None
+        or feedback.metadata.get("evidence_view") != "agent_safe"
+        or route.metadata.get("evidence_view") != "agent_safe"
+    ):
+        raise ValueError(
+            "candidate failure history requires agent_safe validation feedback"
+        )
+
+    selected_ids = set(route.selected_feedback_ids)
+    selected = tuple(
+        item
+        for item in feedback.items
+        if item.feedback_id in selected_ids
+    )
+    owners = ", ".join(
+        sorted({item.owner.value for item in selected})
+    )
+    lines = [
+        f"Attempt {attempt}",
+        f"stage: {result.failure_state.value}",
+        f"owner: {owners}",
+        f"route action: {route.action.value}",
+        "status: validation_failed",
+        "summary: " + _compact_history_text(result.summary, limit=1000),
+        "selected feedback items:",
+    ]
+    for item in selected:
+        lines.append(
+            "- "
+            f"stage={item.stage.value}; "
+            f"category={item.category.value}; "
+            f"owner={item.owner.value}; "
+            "summary="
+            + _compact_history_text(item.summary, limit=1000)
+        )
+
+    diagnostics = [
+        item.detail for item in selected if item.detail
+    ]
+    if feedback.source_evidence:
+        diagnostics.append(
+            json.dumps(
+                feedback.source_evidence,
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+    if diagnostics:
+        lines.append("tool diagnostic excerpts:")
+        lines.extend(
+            "- " + _compact_history_text(item, limit=2000)
+            for item in diagnostics
+        )
+    return "\n".join(lines)
+
+
+def _compact_history_text(value: str, *, limit: int) -> str:
+    return " ".join(str(value).split())[:limit]
 
 
 def _build_prompt(

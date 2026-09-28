@@ -274,6 +274,7 @@ class R5CandidatePromptFactory:
             task,
             candidate,
         )
+        frozen_interface = response_contract.interface_header
         inputs = CandidateRepairPromptInputs(
             task=task,
             feedback=feedback,
@@ -287,8 +288,12 @@ class R5CandidatePromptFactory:
             max_attempts=1,
             family_instruction=self._request.family_instruction,
             approved_memory_snippets=self._approved_memory_snippets,
-            required_top_function=response_contract.top_function_name,
-            required_top_interface=response_contract.interface_header,
+            required_top_function=(
+                response_contract.top_function_name
+                if frozen_interface is not None
+                else None
+            ),
+            required_top_interface=frozen_interface,
         )
         stage = str(event.get("stage", "csynth"))
         if stage in {"preflight", "compile", "link", "static_check"}:

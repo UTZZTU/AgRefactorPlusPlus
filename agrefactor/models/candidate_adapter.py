@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from agrefactor.config import TaskSpec
+from agrefactor.cpp_interface import extract_top_interface
 from agrefactor.prompts import (
     LayeredPrompt,
     PromptPurpose,
@@ -46,7 +47,7 @@ _FENCE_RE = re.compile(
     re.DOTALL | re.IGNORECASE,
 )
 _PATCH_LINE_RE = re.compile(
-    r"(?m)^\s*(?:diff --git\b|@@\b|---\s+[ab]/|\+\+\+\s+[ab]/|"
+    r"(?m)^\s*(?:diff --git\b|@@(?:\s|$)|---\s+[ab]/|\+\+\+\s+[ab]/|"
     r"\*\*\*\s+(?:Begin|End) Patch\b)"
 )
 
@@ -230,10 +231,10 @@ class CandidateModelRequest:
 
 @dataclass(frozen=True, slots=True)
 class CandidateResponseContract:
-    """Deterministic response obligations for one candidate kernel."""
+    """Deterministic response-format obligations for one candidate kernel."""
 
     top_function_name: str
-    interface_header: str
+    interface_header: str | None
     current_candidate_semantic_sha256: str
 
     @classmethod
@@ -248,18 +249,15 @@ class CandidateResponseContract:
             current_candidate,
             "current_candidate",
         )
-        definitions = _find_function_definitions(
+        interface = extract_top_interface(
             current_candidate,
             task.kernel_name,
         )
-        if len(definitions) != 1:
-            raise CandidateResponseError(
-                "current candidate must contain exactly one definition "
-                f"of top function {task.kernel_name}"
-            )
         return cls(
             top_function_name=task.kernel_name,
-            interface_header=definitions[0],
+            interface_header=(
+                None if interface is None else interface.source_declaration
+            ),
             current_candidate_semantic_sha256=(
                 _semantic_sha256(current_candidate)
             ),
@@ -270,10 +268,11 @@ class CandidateResponseContract:
             self.top_function_name,
             "top_function_name",
         )
-        _validate_required_text(
-            self.interface_header,
-            "interface_header",
-        )
+        if self.interface_header is not None:
+            _validate_required_text(
+                self.interface_header,
+                "interface_header",
+            )
         if not re.fullmatch(
             r"[0-9a-f]{64}",
             self.current_candidate_semantic_sha256,
@@ -311,41 +310,6 @@ class CandidateResponseContract:
 
         if _PATCH_LINE_RE.search(proposed):
             issues.append(("patch_or_diff", "response contains patch or diff markers"))
-
-        definitions = _find_function_definitions(
-            proposed,
-            self.top_function_name,
-        )
-        if not definitions:
-            issues.append((
-                "missing_top_function",
-                "missing required top function definition: " + self.top_function_name,
-            ))
-        elif len(definitions) > 1:
-            issues.append((
-                "multiple_top_definitions",
-                "multiple definitions of required top function: " + self.top_function_name,
-            ))
-        elif definitions[0] != self.interface_header:
-            issues.append((
-                "top_interface_changed",
-                "top function interface was changed: " + self.top_function_name,
-            ))
-
-        if self.top_function_name != "main" and _find_function_definitions(
-            proposed,
-            "main",
-        ):
-            issues.append(("defines_main", "candidate replacement must not define main"))
-
-        if (
-            _semantic_sha256(proposed)
-            == self.current_candidate_semantic_sha256
-        ):
-            issues.append((
-                "semantic_unchanged",
-                "candidate replacement is semantically unchanged",
-            ))
 
         return tuple(issues)
 
@@ -782,241 +746,6 @@ def _extract_complete_cpp_replacement(response_text: str) -> str:
             reason_codes=("patch_or_diff",),
         )
     return code
-
-
-def _mask_non_code(source: str) -> str:
-    result: list[str] = []
-    index = 0
-    state = "normal"
-    quote = ""
-
-    while index < len(source):
-        char = source[index]
-        next_char = source[index + 1] if index + 1 < len(source) else ""
-
-        if state == "normal":
-            if char == "/" and next_char == "/":
-                result.extend((" ", " "))
-                index += 2
-                state = "line_comment"
-                continue
-            if char == "/" and next_char == "*":
-                result.extend((" ", " "))
-                index += 2
-                state = "block_comment"
-                continue
-            if char in {'"', "'"}:
-                quote = char
-                result.append(char)
-                index += 1
-                state = "literal"
-                continue
-            result.append(char)
-            index += 1
-            continue
-
-        if state == "line_comment":
-            if char == "\n":
-                result.append("\n")
-                state = "normal"
-            else:
-                result.append(" ")
-            index += 1
-            continue
-
-        if state == "block_comment":
-            if char == "*" and next_char == "/":
-                result.extend((" ", " "))
-                index += 2
-                state = "normal"
-                continue
-            result.append("\n" if char == "\n" else " ")
-            index += 1
-            continue
-
-        if state == "literal":
-            if char == "\\":
-                result.append(" ")
-                if index + 1 < len(source):
-                    result.append(" ")
-                index += 2
-                continue
-            if char == quote:
-                result.append(char)
-                index += 1
-                state = "normal"
-                continue
-            result.append("\n" if char == "\n" else " ")
-            index += 1
-
-    return "".join(result)
-
-
-def _strip_comments(source: str) -> str:
-    output: list[str] = []
-    index = 0
-    state = "normal"
-    quote = ""
-
-    while index < len(source):
-        char = source[index]
-        next_char = source[index + 1] if index + 1 < len(source) else ""
-
-        if state == "normal":
-            if char == "/" and next_char == "/":
-                output.extend((" ", " "))
-                index += 2
-                state = "line_comment"
-                continue
-            if char == "/" and next_char == "*":
-                output.extend((" ", " "))
-                index += 2
-                state = "block_comment"
-                continue
-            output.append(char)
-            if char in {'\"', "'"}:
-                quote = char
-                state = "literal"
-            index += 1
-            continue
-
-        if state == "line_comment":
-            if char == "\n":
-                output.append("\n")
-                state = "normal"
-            else:
-                output.append(" ")
-            index += 1
-            continue
-
-        if state == "block_comment":
-            if char == "*" and next_char == "/":
-                output.extend((" ", " "))
-                index += 2
-                state = "normal"
-                continue
-            output.append("\n" if char == "\n" else " ")
-            index += 1
-            continue
-
-        output.append(char)
-        if char == "\\" and index + 1 < len(source):
-            output.append(source[index + 1])
-            index += 2
-            continue
-        if char == quote:
-            state = "normal"
-        index += 1
-
-    return "".join(output)
-
-
-def _find_matching_parenthesis(source: str, opening: int) -> int | None:
-    depth = 0
-    for index in range(opening, len(source)):
-        char = source[index]
-        if char == "(":
-            depth += 1
-        elif char == ")":
-            depth -= 1
-            if depth == 0:
-                return index
-    return None
-
-
-def _find_definition_terminator(source: str, start: int) -> int | None:
-    paren_depth = 0
-    bracket_depth = 0
-    for index in range(start, len(source)):
-        char = source[index]
-        if char == "(":
-            paren_depth += 1
-        elif char == ")":
-            paren_depth -= 1
-        elif char == "[":
-            bracket_depth += 1
-        elif char == "]":
-            bracket_depth -= 1
-        elif paren_depth == 0 and bracket_depth == 0:
-            if char == "{":
-                return index
-            if char == ";":
-                return None
-    return None
-
-
-def _segment_start(source: str, name_index: int) -> int:
-    positions = [
-        source.rfind(delimiter, 0, name_index)
-        for delimiter in (";", "{", "}")
-    ]
-    return max(positions) + 1
-
-
-def _canonicalize_interface(header: str) -> str:
-    without_comments = _strip_comments(header)
-    lines = [
-        line
-        for line in without_comments.splitlines()
-        if not line.lstrip().startswith("#")
-    ]
-    normalized = re.sub(r"\s+", " ", " ".join(lines)).strip()
-    normalized = re.sub(
-        r"\s*([(),\[\]*&<>:=])\s*",
-        r"\1",
-        normalized,
-    )
-    return normalized
-
-
-def _find_function_definitions(
-    source: str,
-    function_name: str,
-) -> tuple[str, ...]:
-    _validate_required_text(source, "source")
-    _validate_required_text(function_name, "function_name")
-    structural = _mask_non_code(source)
-    pattern = re.compile(rf"\b{re.escape(function_name)}\b")
-    definitions: list[str] = []
-
-    for match in pattern.finditer(structural):
-        cursor = match.end()
-        while cursor < len(structural) and structural[cursor].isspace():
-            cursor += 1
-        if cursor >= len(structural) or structural[cursor] != "(":
-            continue
-
-        start = _segment_start(structural, match.start())
-        prefix = structural[start : match.start()]
-        if prefix.count("(") != prefix.count(")"):
-            continue
-        if prefix.count("[") != prefix.count("]"):
-            continue
-        if not re.search(r"[A-Za-z_]\w*", prefix):
-            continue
-        if re.search(
-            r"\b(?:if|for|while|switch|return|sizeof|decltype)\s*$",
-            prefix,
-        ):
-            continue
-
-        closing = _find_matching_parenthesis(structural, cursor)
-        if closing is None:
-            continue
-        terminator = _find_definition_terminator(
-            structural,
-            closing + 1,
-        )
-        if terminator is None:
-            continue
-
-        canonical = _canonicalize_interface(
-            source[start:terminator]
-        )
-        if canonical:
-            definitions.append(canonical)
-
-    return tuple(definitions)
 
 
 def _semantic_sha256(source: str) -> str:

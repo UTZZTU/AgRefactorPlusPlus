@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from agrefactor.cpp_interface import extract_top_interface
+
 
 CSYNTH_CHECK_TIMEOUT = 300  # seconds for `vitis-run --mode hls` on the empty stub
 
@@ -20,61 +22,13 @@ CSYNTH_CHECK_TIMEOUT = 300  # seconds for `vitis-run --mode hls` on the empty st
 # ---- sig extraction / lint ----
 
 def extract_hls_decl_from_tb(tb_code: str, hls_name: str) -> str:
-    """Line-based extraction of the verbatim `_hls(...)` declaration line(s).
-
-    Walks back from a line containing `<hls_name>(` to a line that looks like
-    a return-type-start (rejects `#define`/`typedef`/comments). Then walks
-    forward until parens are balanced.
-    """
-    lines = tb_code.splitlines()
-    name_re = re.compile(rf'\b{re.escape(hls_name)}\s*\(')
-    candidates = [i for i, ln in enumerate(lines) if name_re.search(ln)]
-
-    def is_decl_start(line: str) -> bool:
-        s = line.lstrip()
-        if not s or s.startswith(('#', '//', '/*', '*')):
-            return False
-        if s.startswith(('typedef ', 'using ', 'namespace ', 'struct ', 'class ', 'enum ')):
-            return False
-        return True
-
-    for hit in candidates:
-        start = hit
-        while start >= 0 and not is_decl_start(lines[start]):
-            start -= 1
-        if start < 0:
-            continue
-        # collect forward, balance parens
-        depth = 0
-        seen_open = False
-        end = start
-        for j in range(start, len(lines)):
-            for ch in lines[j]:
-                if ch == '(':
-                    depth += 1; seen_open = True
-                elif ch == ')':
-                    depth -= 1
-            end = j
-            if seen_open and depth == 0:
-                break
-        sig = "\n".join(lines[start:end + 1])
-        # trim trailing ;/{ and content beyond the closing ')'
-        nm = re.search(rf'\b{re.escape(hls_name)}\s*\(', sig)
-        if not nm:
-            continue
-        idx = nm.end() - 1
-        depth = 0; close = -1
-        for k in range(idx, len(sig)):
-            if sig[k] == '(':
-                depth += 1
-            elif sig[k] == ')':
-                depth -= 1
-                if depth == 0:
-                    close = k; break
-        if close < 0:
-            continue
-        return sig[:close + 1].strip()
-    return ""
+    """Return a compiler-resolved declaration, or empty when unknown."""
+    if not isinstance(tb_code, str) or not isinstance(hls_name, str):
+        return ""
+    interface = extract_top_interface(tb_code, hls_name, require_definition=False)
+    if interface is None or not interface.source_declaration:
+        return ""
+    return interface.source_declaration.strip().rstrip(";").strip() + ";"
 
 
 @dataclass

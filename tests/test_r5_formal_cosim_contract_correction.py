@@ -123,13 +123,14 @@ class R5FormalCosimContractCorrectionTests(unittest.TestCase):
             instruction.index("Preserve the numerical algorithm"),
         )
 
-    def test_candidate_name_mismatch_is_rejected_before_prompt(self) -> None:
-        with self.assertRaisesRegex(ValueError, "does not match"):
-            _build_external_candidate_abi_instruction(
-                public_hls_decl="int wrong_hls(int value);",
-                candidate_name="expected_hls",
-                external_tb_instruction=None,
-            )
+    def test_candidate_name_mismatch_is_left_to_real_compiler_validation(self) -> None:
+        instruction = _build_external_candidate_abi_instruction(
+            public_hls_decl="int wrong_hls(int value);",
+            candidate_name="expected_hls",
+            external_tb_instruction=None,
+        )
+        self.assertIn("int wrong_hls(int value);", instruction)
+        self.assertIn("function name", instruction)
 
     def test_refactoring_message_consumes_the_bound_instruction(self) -> None:
         source = (ROOT / "flow/tools/refactoring.py").read_text(encoding="utf-8")

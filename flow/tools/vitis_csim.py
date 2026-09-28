@@ -26,6 +26,7 @@ from flow.tools.typed_testbench_outcome import (
     build_typed_testbench_adapter,
     make_typed_outcome_identity,
     read_typed_testbench_outcome,
+    read_typed_testbench_started,
 )
 
 
@@ -40,9 +41,8 @@ _PUBLIC_DIFFERENTIAL_RUNTIME_CONTRACT_KIND = (
 )
 
 
-def _candidate_returncode_authorized(
+def _public_runtime_contract_valid(
     contract: Mapping[str, Any] | None,
-    returncode: int,
 ) -> bool:
     if not isinstance(contract, Mapping):
         return False
@@ -62,7 +62,16 @@ def _candidate_returncode_authorized(
     ):
         return False
     codes = contract.get("candidate_mismatch_returncodes")
-    return isinstance(codes, (list, tuple)) and returncode in codes
+    return isinstance(codes, (list, tuple))
+
+
+def _candidate_returncode_authorized(
+    contract: Mapping[str, Any] | None,
+    returncode: int,
+) -> bool:
+    if not _public_runtime_contract_valid(contract):
+        return False
+    return returncode in contract["candidate_mismatch_returncodes"]
 
 
 def _preflight_authorizes_candidate_runtime(
@@ -81,6 +90,64 @@ def _preflight_authorizes_candidate_runtime(
         and isinstance(authority.get("evidence_sha256"), str)
         and len(authority.get("evidence_sha256")) == 64
     )
+
+
+def _original_isolation_evidence(
+    *,
+    original_code: str,
+    testbench_code: str,
+    candidate_code: str,
+    candidate_top_function: str,
+    identity: Mapping[str, str],
+    budget: BudgetManager | None,
+) -> dict[str, Any]:
+    """Re-run the frozen Public inputs against only the Original implementation."""
+
+    from flow.tools.tb_coverage import check_original_execution
+    from flow.inflight_tb.checks import extract_hls_decl_from_tb
+
+    evidence = {
+        "status": "unknown",
+        "authority": "original_only_runtime",
+        "original_sha256": __import__("hashlib").sha256(
+            original_code.encode("utf-8")
+        ).hexdigest(),
+        "candidate_sha256": __import__("hashlib").sha256(
+            candidate_code.encode("utf-8")
+        ).hexdigest(),
+        "testbench_sha256": __import__("hashlib").sha256(
+            testbench_code.encode("utf-8")
+        ).hexdigest(),
+        "suite_id_sha256": identity.get("suite_id_sha256"),
+    }
+    declaration = extract_hls_decl_from_tb(
+        testbench_code,
+        candidate_top_function,
+    )
+    if not declaration:
+        evidence["reason_code"] = "candidate_interface_unknown"
+        return evidence
+    result = check_original_execution(
+        original_code,
+        testbench_code,
+        declaration,
+        candidate_top_function,
+        budget=budget,
+    )
+    evidence.update(
+        status=(
+            "passed"
+            if result.get("status") == "ok"
+            else "failed"
+        ),
+        reason_code=str(result.get("status") or "unknown"),
+        failure_owner=str(result.get("failure_owner") or "unknown"),
+        run_returncode=result.get("run_returncode"),
+        failure_evidence_source=str(
+            result.get("failure_evidence_source") or "unknown"
+        ),
+    )
+    return evidence
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -508,10 +575,12 @@ def run_vitis_csim(
         }
 
     typed_outcome_path: Path = material["typed_outcome_path"]
-    if typed_outcome_path.exists():
-        if typed_outcome_path.is_symlink() or not typed_outcome_path.is_file():
-            raise ValueError(f"unsafe stale native CSIM outcome path: {typed_outcome_path}")
-        typed_outcome_path.unlink()
+    started_outcome_path = Path(str(typed_outcome_path) + ".started")
+    for stale in (typed_outcome_path, started_outcome_path):
+        if stale.exists():
+            if stale.is_symlink() or not stale.is_file():
+                raise ValueError(f"unsafe stale native CSIM outcome path: {stale}")
+            stale.unlink()
 
     _write_json(invocation_path, invocation)
     command = command_resolution["command"]
@@ -548,8 +617,15 @@ def run_vitis_csim(
         typed_outcome_path,
         expected_identity=material["typed_outcome_identity"],
     )
+    started = read_typed_testbench_started(
+        started_outcome_path,
+        expected_identity=material["typed_outcome_identity"],
+    )
     invocation["typed_outcome"] = (
         typed if typed is not None else {"status": "missing_or_invalid"}
+    )
+    invocation["testbench_started"] = (
+        started if started is not None else {"status": "missing_or_invalid"}
     )
     diagnostic = _diagnostic(root, result)
     if execution["timeout"]:
@@ -594,6 +670,39 @@ def run_vitis_csim(
             }
             _write_json(invocation_path, invocation)
             return "csim_failed", diagnostic
+        if (
+            typed is None
+            and started is not None
+            and _public_runtime_contract_valid(runtime_contract)
+            and _preflight_authorizes_candidate_runtime(
+                preflight_authority,
+                material["typed_outcome_identity"],
+            )
+        ):
+            isolation = _original_isolation_evidence(
+                original_code=cv["orig_code"],
+                testbench_code=cv["testbench"],
+                candidate_code=cv["curr_code"],
+                candidate_top_function=top_kernel,
+                identity=material["typed_outcome_identity"],
+                budget=budget,
+            )
+            invocation["original_isolation"] = isolation
+            if isolation.get("status") == "passed":
+                invocation["runtime_classification"] = {
+                    "status": "failed",
+                    "failure_kind": "candidate_csim_abnormal_termination",
+                    "failure_owner": "candidate",
+                    "owner_authority": "differential_isolation_proven",
+                    "reason_code": "public_csim_candidate_abnormal_termination",
+                    "testbench_returncode": None,
+                    "preflight_evidence_sha256": preflight_authority.get(
+                        "evidence_sha256"
+                    ),
+                    "original_isolation": isolation,
+                }
+                _write_json(invocation_path, invocation)
+                return "csim_failed", diagnostic
         invocation["runtime_classification"] = {
             "status": "failed",
             "failure_kind": "ownership_unknown",

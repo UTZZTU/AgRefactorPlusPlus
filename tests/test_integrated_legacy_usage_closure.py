@@ -478,7 +478,7 @@ class IntegratedLegacyUsageClosureTests(unittest.TestCase):
             {"CNY": "0.2"},
         )
 
-    def test_repairer_records_usage_before_response_rejection(self):
+    def test_repairer_records_usage_before_real_preflight(self):
         provider = FakeProvider(
             text="```cpp\nint main() { return 0; }\n```"
         )
@@ -492,10 +492,8 @@ class IntegratedLegacyUsageClosureTests(unittest.TestCase):
             ),
             budget=budget,
         )
-        with self.assertRaises(
-            repairer_module.TestbenchRepairResponseError
-        ):
-            repairer.repair(self.make_request())
+        repaired = repairer.repair(self.make_request())
+        self.assertIn("int main", repaired)
         self.assertEqual(budget.snapshot().llm_calls, 1)
         self.assertEqual(budget.snapshot().tokens, 150)
 

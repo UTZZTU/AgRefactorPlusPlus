@@ -279,7 +279,7 @@ class R5CCampaignTests(unittest.TestCase):
         self.assertEqual(result.case_results[1]["status"], "passed")
         self.assertTrue(marker_exists)
 
-    def test_private_global_auto_primary_is_not_launched(self):
+    def test_private_global_auto_primary_reaches_real_execution(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "monobit_like.cpp"
@@ -314,15 +314,16 @@ class R5CCampaignTests(unittest.TestCase):
                 ),
                 artifact_root=root / "artifacts",
             ).run()
+            marker_exists = marker.is_file()
 
         self.assertEqual(
             result.case_results[0]["status"],
-            "ineligible",
+            "passed",
         )
-        self.assertFalse(
+        self.assertTrue(
             result.case_results[0]["tool_launch_observed"]
         )
-        self.assertFalse(marker.exists())
+        self.assertTrue(marker_exists)
 
     def test_original_csynth_false_skips_explicit_io_primary(self):
         with tempfile.TemporaryDirectory() as directory:

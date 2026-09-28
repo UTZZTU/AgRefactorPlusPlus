@@ -1,7 +1,12 @@
-import os, concurrent.futures, argparse, copy, hashlib, re  # type: ignore
+import os, concurrent.futures, argparse, copy, hashlib, json, re  # type: ignore
 from autogen.agentchat.group import ContextVariables  # type: ignore
 from typing import Optional, Dict, Any
 import flow.tools as tools
+from flow.tools.input_domain import (
+    generate_input_domain_contract,
+    input_domain_sha256,
+    normalize_input_domain_contract,
+)
 from flow.rag.rag_integration import KnowledgeManager
 from flow.base_agent import reset_agrefactorpp_usage_registry, print_agrefactorpp_usage_summary
 from agrefactor.runtime.prompt_evidence import reset_model_prompt_evidence
@@ -10,6 +15,7 @@ from agrefactor.compat.legacy_refactor import (
     build_effective_legacy_llm_config,
 )
 from agrefactor.runtime.budget import BudgetManager
+from agrefactor.reference_source import isolate_reference_program_entry
 from agrefactor.testing import (
     build_openai_compatible_testbench_repairer,
 )
@@ -108,13 +114,6 @@ def _build_external_candidate_abi_instruction(
     if not isinstance(candidate_name, str) or not candidate_name.strip():
         raise ValueError("candidate_name must not be empty")
     declaration = public_hls_decl.strip().rstrip(";") + ";"
-    if not re.search(
-        rf"\b{re.escape(candidate_name.strip())}\s*\(",
-        declaration,
-    ):
-        raise ValueError(
-            "Public Candidate declaration does not match candidate_name"
-        )
     parts = [
         "The external Public Testbench is the authoritative Candidate ABI.",
         "Emit exactly one top-level Candidate definition matching this "
@@ -146,6 +145,7 @@ def _build_model_data_boundary(
     event_order,
     public_hls_decl: str,
     hidden_generation_enabled: bool,
+    input_domain_contract_sha256: str = "",
 ):
     order = list(event_order)
     public_index = order.index("public_generation") if "public_generation" in order else -1
@@ -177,13 +177,22 @@ def _build_model_data_boundary(
         "public_repair_hidden_inputs": [],
         "candidate_repair_hidden_inputs": [],
         "hidden_generation_inputs": (
-            ["original_source", "public_hls_decl"]
+            [
+                "original_source",
+                "public_hls_decl",
+                *(
+                    ["input_domain_contract"]
+                    if input_domain_contract_sha256
+                    else []
+                ),
+            ]
             if hidden_generation_enabled
             else []
         ),
         "hidden_generation_enabled": hidden_generation_enabled,
         "hidden_generation_after_candidate": hidden_after_candidate,
         "public_hls_decl_sha256": _sha256_text(public_hls_decl),
+        "input_domain_contract_sha256": input_domain_contract_sha256,
         "hidden_testbench_exposed_to_generation_model": False,
     }
 
@@ -256,7 +265,7 @@ def hls_refactor_with_rag(
     budget: Optional[BudgetManager] = None,
     generation_only: bool = False,
     enable_testbench_repair: bool = False,
-    max_testbench_repair_attempts: int = 2,
+    max_testbench_repair_attempts: int = 3,
     testbench_repair_model: Optional[str] = None,
     testbench_repair_effective_config: (
         Optional[EffectiveModelConfig]
@@ -279,6 +288,7 @@ def hls_refactor_with_rag(
     golden_tb_cache_dir: Optional[str] = None,
     golden_tb_cache_key: Optional[str] = None,  # if None, defaults to kernel_name in make_golden_hidden_tb
     use_cached_tb_as_public: bool = False,  # Skip TB gen entirely; use cached hidden TB as the agent's testbench.
+    input_domain_contract: Optional[Dict[str, Any]] = None,
 ):
     reset_agrefactorpp_usage_registry()
     reset_model_prompt_evidence()
@@ -531,9 +541,31 @@ def hls_refactor_with_rag(
     
     with open(kernel_path, "r", encoding="utf-8") as f:
         source_code = f.read()
+    reference_code = isolate_reference_program_entry(source_code)
+
+    if input_domain_contract is None:
+        input_domain_contract = generate_input_domain_contract(
+            orig_code=source_code,
+            kernel_name=kernel_name,
+            llm_config=public_tb_llm_config,
+            budget=budget,
+        )
+    else:
+        input_domain_contract = normalize_input_domain_contract(
+            input_domain_contract,
+            source_code=source_code,
+            kernel_name=kernel_name,
+        )
+    input_domain_contract_sha256 = input_domain_sha256(input_domain_contract)
+    with open(
+        os.path.join(output_dir, "input_domain_contract.json"),
+        "w",
+        encoding="utf-8",
+    ) as contract_file:
+        json.dump(input_domain_contract, contract_file, ensure_ascii=False, indent=2)
 
     cv = ContextVariables(data={
-        "orig_code": source_code,     # original source code
+        "orig_code": reference_code,  # in-process reference source
         "kernel_name": kernel_name,   # kernel function name
         "hetero": "",                 # whether heterogeneous programming is used
         "curr_code": source_code,     # current code
@@ -566,6 +598,10 @@ def hls_refactor_with_rag(
         "generation_event_order": [],
         "public_hls_decl_verbatim": "",
         "public_hls_decl_sha256": "",
+        "public_runtime_contract": None,
+        "public_runtime_contract_sha256": "",
+        "input_domain_contract": copy.deepcopy(input_domain_contract),
+        "input_domain_contract_sha256": input_domain_contract_sha256,
         "model_data_boundary": {},
         "test_generation_profile": (
             resolved_test_generation_profile
@@ -648,6 +684,7 @@ def hls_refactor_with_rag(
                     public_tb_target,
                     budget,
                     public_tb_trajectories,
+                    input_domain_contract,
                 )
             else:
                 tb_future = executor.submit(
@@ -684,6 +721,26 @@ def hls_refactor_with_rag(
         )
     cv["public_hls_decl_verbatim"] = public_hls_decl
     cv["public_hls_decl_sha256"] = _sha256_text(public_hls_decl)
+    if not external_testbench:
+        cv["public_runtime_contract"] = (
+            tools.tb_optimizer.generate_public_runtime_contract(
+                orig_code=cv["orig_code"],
+                testbench_code=cv["testbench"],
+                candidate_top_function=cv["new_kernel_name"],
+                frozen_hls_decl=public_hls_decl,
+                llm_config=public_tb_llm_config,
+                budget=budget,
+                input_domain_contract=cv["input_domain_contract"],
+            )
+        )
+        cv["public_runtime_contract_sha256"] = _sha256_text(
+            json.dumps(
+                cv["public_runtime_contract"],
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
     tools.general.save_context("tbgen_and_identifying", cv, output_dir)
 
     debug_print(debug, "Planning")
@@ -720,6 +777,7 @@ def hls_refactor_with_rag(
                 cache_key=golden_tb_cache_key,
                 budget=budget,
                 artifact_root=cv["hidden_tb_artifact_dir"],
+                input_domain_contract=cv["input_domain_contract"],
             )
         except tools.tb_optimizer.TestbenchGenerationExhausted as exc:
             return _finish_test_generation_exhaustion(
@@ -735,6 +793,7 @@ def hls_refactor_with_rag(
         event_order=cv["generation_event_order"],
         public_hls_decl=cv["public_hls_decl_verbatim"],
         hidden_generation_enabled=enable_hidden_tb_eval,
+        input_domain_contract_sha256=cv["input_domain_contract_sha256"],
     )
     if not cv["model_data_boundary"]["complete"]:
         raise RuntimeError(

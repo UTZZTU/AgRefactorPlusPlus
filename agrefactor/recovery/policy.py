@@ -80,8 +80,8 @@ class RecoveryLimits:
     tool_retries_per_stage: int = 1
     testbench_preflight_repairs: int = 3
     refactor_candidate_repairs_total: int = 3
-    candidate_public_csim_repairs: int = 1
-    candidate_public_cosim_repairs: int = 1
+    candidate_public_csim_repairs: int = 3
+    candidate_public_cosim_repairs: int = 3
     testbench_public_csim_repairs: int = 1
     testbench_public_cosim_repairs: int = 1
     optimize_recoveries_per_root: int = 1

@@ -12,21 +12,30 @@ import os
 import tempfile
 import hashlib
 import re
+import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 
 from autogen.agentchat.group import ContextVariables  # type: ignore
+from agrefactor.config import EvaluationSplit, TestSuiteSpec
+from agrefactor.cpp_interface import (
+    extract_top_interface,
+    interfaces_equivalent,
+)
 from flow.base_agent import HLSAgentLoader
 import flow.tools as tools
-from flow.tools.tb_coverage import measure_coverage, annotate_uncovered_source
+from flow.tools.tb_coverage import (
+    annotate_uncovered_source,
+    check_original_execution,
+    measure_coverage,
+)
 
-# Reuse the line-based regex extractor from the new inflight package.
+# Reuse the compiler-backed interface extractor from the inflight package.
 from flow.inflight_tb.checks import extract_hls_decl_from_tb as _extract_seed_hls_decl  # noqa: E402
 
 
 AGENT_YAML = "flow/agents/testbench_coverage.yaml"
 AGENT_NAME = "tb_engineer"
 SYNTH_CHECK_TIMEOUT = 300  # seconds for csynth on empty stub
-
 # Maximum number of uncovered lines to enumerate explicitly in the prompt;
 # beyond this we just include the annotated source. Keeps prompts bounded.
 MAX_LISTED_UNCOVERED = 60
@@ -234,18 +243,6 @@ def extract_hls_decl_from_testbench(
 
 
 
-_FORWARD_DECL_RE = re.compile(
-    r'^\s*(?:extern\s+"C"\s+)?'
-    r'(?:[A-Za-z_]\w*(?:::\w+)*(?:\s*[*&]\s*|\s+))+'
-    r'(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*;',
-    re.MULTILINE,
-)
-_DEFINE_LINE_RE = re.compile(
-    r"^\s*#define\s+[A-Za-z_]\w*[^\n]*$",
-    re.MULTILINE,
-)
-
-
 def _normalize_declaration(value: str) -> str:
     return re.sub(
         r"\s+",
@@ -254,38 +251,92 @@ def _normalize_declaration(value: str) -> str:
     ) + ";"
 
 
-def _extract_public_macros(testbench_code: str) -> Tuple[str, ...]:
+def public_runtime_contract_depth_ports(
+    *,
+    testbench_code: str,
+    candidate_top_function: str,
+    frozen_hls_decl: str,
+) -> Tuple[str, ...]:
+    """Return pointer/array Candidate ports that require COSIM depths."""
+
+    if not isinstance(testbench_code, str):
+        raise TypeError("testbench_code must be a string")
+    if not isinstance(candidate_top_function, str) or not (
+        candidate_top_function.strip()
+    ):
+        raise ValueError("candidate_top_function must not be empty")
+    if not isinstance(frozen_hls_decl, str) or not frozen_hls_decl.strip():
+        raise ValueError("frozen_hls_decl must not be empty")
+
+    candidate = candidate_top_function.strip()
+    interface = extract_top_interface(
+        frozen_hls_decl,
+        candidate,
+        require_definition=False,
+    )
+    if interface is None:
+        return ()
     return tuple(
-        match.group(0).strip()
-        for match in _DEFINE_LINE_RE.finditer(testbench_code)
-    )
-
-
-def _function_definition_count(
-    source: str,
-    function_name: str,
-) -> int:
-    pattern = re.compile(
-        rf"^\s*(?:extern\s+\"C\"\s+)?"
-        rf"(?:[A-Za-z_]\w*(?:::\w+)*(?:\s*[*&]\s*|\s+))+"
-        rf"{re.escape(function_name)}\s*"
-        rf"\([^;{{}}]*\)\s*\{{",
-        re.MULTILINE,
-    )
-    return len(pattern.findall(source))
-
-
-def _call_count_without_declarations(
-    source: str,
-    function_name: str,
-) -> int:
-    body = _FORWARD_DECL_RE.sub("", source)
-    return len(
-        re.findall(
-            rf"\b{re.escape(function_name)}\s*\(",
-            body,
+        sorted(
+            parameter.name
+            for parameter in interface.parameters
+            if parameter.pointer_like
         )
     )
+
+
+def validate_public_runtime_contract(
+    value: Dict[str, Any],
+    *,
+    testbench_code: str,
+    candidate_top_function: str,
+    frozen_hls_decl: str,
+) -> Dict[str, Any]:
+    """Normalize a generated contract and bind it to the frozen Public ABI."""
+
+    try:
+        suite = TestSuiteSpec(
+            suite_id="generated-public-contract",
+            split=EvaluationSplit.PUBLIC,
+            runtime_contract=value,
+        )
+    except (TypeError, ValueError) as exc:
+        raise ModelArtifactError(str(exc)) from exc
+    assert suite.runtime_contract is not None
+    contract = suite.to_dict()["runtime_contract"]
+    required = set(
+        public_runtime_contract_depth_ports(
+            testbench_code=testbench_code,
+            candidate_top_function=candidate_top_function,
+            frozen_hls_decl=frozen_hls_decl,
+        )
+    )
+
+    if not required:
+        if contract["schema_version"] != 1:
+            raise ModelArtifactError(
+                "scalar-only Public ABI must not declare COSIM depth ports"
+            )
+        return contract
+    if contract["schema_version"] != 2:
+        raise ModelArtifactError(
+            "pointer/array Public ABI requires a version 2 runtime contract"
+        )
+
+    observed = set(contract["cosim_interface_depths"])
+    unexpected = sorted(observed - required)
+    if unexpected:
+        raise ModelArtifactError(
+            "COSIM depth port(s) are not pointer or array ports in the "
+            "frozen Public Candidate ABI: " + ", ".join(unexpected)
+        )
+    missing = sorted(required - observed)
+    if missing:
+        raise ModelArtifactError(
+            "COSIM depth contract is missing required pointer/array port(s): "
+            + ", ".join(missing)
+        )
+    return contract
 
 
 def validate_testbench_top_contract(
@@ -297,63 +348,10 @@ def validate_testbench_top_contract(
 ) -> None:
     """Enforce the minimal Public black-box Testbench contract."""
 
-    issues: List[str] = []
-    if not re.search(
-        r"\b(?:int|auto)\s+main\s*\(",
-        testbench_code,
-    ):
-        issues.append("missing main(...) entry point")
-
-    for function_name in (original_name, candidate_name):
-        if _function_definition_count(
-            testbench_code,
-            function_name,
-        ):
-            issues.append(
-                "testbench must only forward-declare and call "
-                f"{function_name}; it must not define, stub, wrap, "
-                "alias, or reimplement that top"
-            )
-
-    if (
-        require_original_call
-        and _call_count_without_declarations(
-            testbench_code,
-            original_name,
-        ) < 1
-    ):
-        issues.append(
-            f"held-out testbench does not call Original top {original_name}"
-        )
-
-    if _call_count_without_declarations(
-        testbench_code,
-        candidate_name,
-    ) < 1:
-        issues.append(
-            f"testbench does not call Candidate top {candidate_name}"
-        )
-
-    declared = tuple(
-        match.group("name")
-        for match in _FORWARD_DECL_RE.finditer(testbench_code)
-    )
-    unexpected = sorted(
-        {
-            name
-            for name in declared
-            if name not in {original_name, candidate_name}
-        }
-    )
-    if unexpected:
-        issues.append(
-            "testbench has external helper declarations outside the "
-            "Original/Candidate black-box surface: "
-            + ", ".join(unexpected)
-        )
-
-    if issues:
-        raise ModelArtifactError("; ".join(issues))
+    if not isinstance(testbench_code, str) or not testbench_code.strip():
+        raise ModelArtifactError("testbench must not be empty")
+    # The staged preflight owns C++ structure, symbol, linkage, and execution
+    # checks.  A lexical approximation here must not reject valid C++.
 
 
 def validate_stub_contract(
@@ -365,54 +363,26 @@ def validate_stub_contract(
 ) -> None:
     """Require one temporary Candidate implementation with the frozen ABI."""
 
-    issues: List[str] = []
-    if re.search(r"\bmain\s*\(", stub_code):
-        issues.append("stub must not define main")
-    if _function_definition_count(stub_code, candidate_name) != 1:
-        issues.append(
-            "stub must define the Candidate top exactly once: "
-            + candidate_name
-        )
-    if _function_definition_count(stub_code, original_name):
-        issues.append(
-            "stub must not define, wrap, alias, or copy the Original top: "
-            + original_name
-        )
-
-    observed = _extract_seed_hls_decl(
-        stub_code,
-        candidate_name,
-    )
-    if not observed:
-        issues.append(
-            "stub does not expose a Candidate definition header"
-        )
-    elif _normalize_declaration(observed) != _normalize_declaration(
-        frozen_hls_decl
-    ):
-        issues.append(
-            "stub Candidate definition does not match the frozen ABI"
-        )
-
-    if issues:
-        raise ModelArtifactError("; ".join(issues))
+    if not isinstance(stub_code, str) or not stub_code.strip():
+        raise ModelArtifactError("stub must not be empty")
 
 
 def _freeze_public_contract(
     testbench_code: str,
     candidate_name: str,
 ) -> Tuple[str, Tuple[str, ...]]:
-    declaration = extract_hls_decl_from_testbench(
+    interface = extract_top_interface(
         testbench_code,
         candidate_name,
+        require_definition=False,
     )
-    if not declaration:
+    if interface is None or interface.source_declaration is None:
         raise ModelArtifactError(
-            "qualified Testbench did not expose a Candidate declaration"
+            "compiler could not derive the Candidate declaration"
         )
     return (
-        _normalize_declaration(declaration),
-        _extract_public_macros(testbench_code),
+        _normalize_declaration(interface.source_declaration),
+        (),
     )
 
 
@@ -422,21 +392,11 @@ def _validate_frozen_public_contract(
     frozen_hls_decl: str,
     frozen_macros: Tuple[str, ...],
 ) -> None:
-    observed_decl, observed_macros = _freeze_public_contract(
+    _validate_frozen_candidate_abi(
         testbench_code,
         candidate_name,
+        frozen_hls_decl,
     )
-    issues: List[str] = []
-    if observed_decl != _normalize_declaration(frozen_hls_decl):
-        issues.append(
-            "coverage-only Testbench changed the frozen Candidate ABI"
-        )
-    if observed_macros != tuple(frozen_macros):
-        issues.append(
-            "coverage-only Testbench changed frozen Public macros"
-        )
-    if issues:
-        raise ModelArtifactError("; ".join(issues))
 
 
 def _validate_frozen_candidate_abi(
@@ -444,17 +404,19 @@ def _validate_frozen_candidate_abi(
     candidate_name: str,
     frozen_hls_decl: str,
 ) -> None:
-    observed = extract_hls_decl_from_testbench(
+    observed = extract_top_interface(
         testbench_code,
         candidate_name,
+        require_definition=False,
     )
-    if not observed:
-        raise ModelArtifactError(
-            "Testbench lost the externally frozen Candidate ABI"
-        )
-    if _normalize_declaration(observed) != _normalize_declaration(
-        frozen_hls_decl
-    ):
+    frozen = extract_top_interface(
+        frozen_hls_decl,
+        candidate_name,
+        require_definition=False,
+    )
+    if observed is None or frozen is None:
+        return
+    if not interfaces_equivalent(observed, frozen):
         raise ModelArtifactError(
             "Testbench changed the externally frozen Public-derived ABI"
         )
@@ -471,6 +433,7 @@ def _coverage_action(record: Dict[str, Any]) -> str:
     return {
         "stub": "regenerate_stub",
         "testbench": "repair_testbench",
+        "original": "repair_testbench",
         "abi": "repair_abi_testbench_stub",
     }.get(owner, "repair_testbench_stub")
 
@@ -492,12 +455,35 @@ def _coverage_contract_failure(message: str) -> Dict[str, Any]:
     }
 
 
+def _failure_history(rounds: List[Dict[str, Any]]) -> str:
+    entries = []
+    for record in rounds:
+        if record.get("status") == "ok":
+            continue
+        evidence = (
+            str(record.get("compile_stderr") or "")
+            or str(record.get("run_stderr") or "")
+            or str(record.get("status") or "unknown")
+        ).strip()
+        entries.append(
+            "Round {}: status={}; owner={}; action={}; evidence={}".format(
+                record.get("round"),
+                record.get("status"),
+                record.get("failure_owner"),
+                record.get("next_action"),
+                evidence[-1200:],
+            )
+        )
+    return chr(10).join(entries)
+
+
 # -------------------------- prompt builders --------------------------
 
 def _initial_user_message(
     orig_code: str,
     kernel_name: str,
     pinned_public_hls_decl: Optional[str] = None,
+    input_domain_contract: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a black-box Testbench prompt with no held-out-derived input."""
 
@@ -534,7 +520,27 @@ def _initial_user_message(
             "types, helper functions, allocator state, or internal data "
             "structures. Use only public arguments and outputs."
         ),
+        (
+            "For every Candidate pointer or array argument, use backing "
+            "storage with one fixed capacity across every Candidate call. "
+            "The capacity must cover the largest tested access range; use "
+            "the logical length argument to select each smaller case. Do "
+            "not pass variable-sized vector storage or allocations sized "
+            "only to the current case, because RTL cosimulation dumps the "
+            "full declared interface depth on every call."
+        ),
     ]
+    if input_domain_contract is not None:
+        parts.extend(
+            [
+                "",
+                "FROZEN LEGAL INPUT-DOMAIN CONTRACT (shared by Public, Candidate, and Hidden):",
+                json.dumps(input_domain_contract, ensure_ascii=False, sort_keys=True),
+                "Every Public case must stay inside this finite range and include the maximum declared values. "
+                "Fixed backing storage must cover the declared maximum capacity; do not infer the legal range from a smaller example. "
+                "Give every Candidate declaration parameter an explicit name. Use the contract's top-level port names exactly; never emit an unnamed parameter.",
+            ]
+        )
     if pinned_public_hls_decl:
         parts.extend(
             [
@@ -600,6 +606,19 @@ def _initial_user_message(
             (
                 "Compare public outputs and observable behavior. On mismatch, "
                 "emit a useful stderr message and return non-zero."
+            ),
+            (
+                "When the Testbench exercises multiple cases, do not return "
+                "from the first mismatch. Complete every planned Original "
+                "call first, so Original-only qualification can observe a "
+                "later crash or memory error on another legal input. Accumulate "
+                "mismatches and return non-zero only after all Original and "
+                "Candidate calls for the planned cases have completed."
+            ),
+            (
+                "Keep the Original call sequence independent of Candidate "
+                "results: a Candidate mismatch must never skip a later "
+                "Original call."
             ),
             (
                 "Correctness and a meaningful golden-vs-Candidate comparison "
@@ -797,6 +816,9 @@ def _feedback_message(
     next_action: str = "",
     frozen_hls_decl: Optional[str] = None,
     frozen_macros: Tuple[str, ...] = (),
+    previous_testbench_code: str = "",
+    failure_history: str = "",
+    feedback_scope: str = "public",
 ) -> str:
     frozen_block = ""
     if frozen_hls_decl:
@@ -873,13 +895,59 @@ def _feedback_message(
                 "Produce a complete corrected Testbench. A matching Stub will "
                 "be regenerated unless a frozen compatible Stub can be reused."
             )
+        newline = chr(10)
+        testbench_block = ""
+        if previous_testbench_code:
+            testbench_block = (
+                newline * 2
+                + "THE COMPLETE TESTBENCH THAT FAILED:"
+                + newline
+                + "CPP_BLOCK"
+                + newline
+                + previous_testbench_code[-24000:]
+                + newline
+                + "END_CPP_BLOCK"
+                + newline
+                + "Inspect this exact code and the tool output yourself. "
+                + "Do not assume the reported owner is the root cause."
+                + newline
+            )
+        history_block = ""
+        if failure_history:
+            history_block = (
+                newline * 2
+                + "PREVIOUS FAILED ATTEMPTS (do not repeat them):"
+                + newline
+                + failure_history[-6000:]
+                + newline
+            )
+        scope_block = ""
+        if feedback_scope == "hidden":
+            scope_block = (
+                newline
+                + "This is Hidden-test generation before the Hidden suite is "
+                + "frozen. You may change the Hidden inputs and checks, but "
+                + "stay inside the frozen legal input range. Never modify the "
+                + "Original or Candidate source. This feedback remains inside "
+                + "Hidden generation and must not be passed to Candidate repair."
+                + newline
+            )
         return (
-            f"Round {round_idx - 1} failed with status `{prev_status}` and "
-            f"tool-backed owner `{owner_text}`.\n"
+            f"Round {round_idx - 1} failed with status [{prev_status}] and "
+            f"tool-backed owner [{owner_text}]."
+            + newline
             + diagnostic_context
-            + "Diagnostic excerpt:\n```\n"
+            + "Diagnostic excerpt:"
+            + newline
+            + "DIAGNOSTIC_BLOCK"
+            + newline
             + evidence
-            + "\n```\n"
+            + newline
+            + "END_DIAGNOSTIC_BLOCK"
+            + newline
+            + testbench_block
+            + history_block
+            + scope_block
             + instruction
             + "\nTreat Original and Candidate implementations as black boxes. "
             "Only forward-declare their tops; do not define, stub, wrap, or "
@@ -976,7 +1044,38 @@ _PROMPT_ECHO_MARKERS = (
     "Reply with one ```cpp",
     "userOriginal kernel source code",
 )
-_ARTIFACT_RESPONSE_RETRIES = 1
+_ARTIFACT_RESPONSE_RETRIES = 3
+
+
+def _input_domain_block(
+    input_domain_contract: Optional[Dict[str, Any]],
+) -> str:
+    if input_domain_contract is None:
+        return ""
+    return (
+        "\n\nFROZEN LEGAL INPUT-DOMAIN CONTRACT shared by Public, Candidate, and Hidden:\n"
+        + json.dumps(input_domain_contract, ensure_ascii=False, sort_keys=True)
+        + "\nAll generated and repaired test cases must remain inside this finite range. "
+        "Public must exercise the declared maximum values. Hidden may choose different cases, values, combinations, and call order, but must not expand the legal range. "
+        "Fixed backing storage must cover the declared maximum capacities."
+    )
+
+
+def validate_testbench_input_domain(
+    testbench_code: str,
+    candidate_name: str,
+    candidate_decl: str,
+    input_domain_contract: Optional[Dict[str, Any]],
+    *,
+    require_maximum: bool,
+) -> None:
+    """Leave arbitrary C++ input behavior to Original-backed execution."""
+
+    if input_domain_contract is not None and not isinstance(
+        input_domain_contract,
+        dict,
+    ):
+        raise ModelArtifactError("input-domain contract must be a mapping")
 
 
 def _extract_one_cpp_block(
@@ -1009,27 +1108,7 @@ def _extract_one_cpp_block(
             raise ModelArtifactError(
                 "model response contains prompt text instead of C++"
             )
-    if artifact_kind == "testbench":
-        if not re.search(r"\b(?:int|auto)\s+main\s*\(", code):
-            raise ModelArtifactError("testbench artifact must define main")
-        if required_symbol and not re.search(
-            rf"\b{re.escape(required_symbol)}\s*\(",
-            code,
-        ):
-            raise ModelArtifactError(
-                f"testbench artifact does not reference {required_symbol}"
-            )
-    elif artifact_kind in {"stub", "empty_stub"}:
-        if re.search(r"\bmain\s*\(", code):
-            raise ModelArtifactError("stub artifact must not define main")
-        if required_symbol and not re.search(
-            rf"\b{re.escape(required_symbol)}\s*\([^;{{}}]*\)\s*\{{",
-            code,
-            re.DOTALL,
-        ):
-            raise ModelArtifactError(
-                f"stub artifact must define {required_symbol}"
-            )
+    # C++ structure, symbols, declarations and linkage are compiler-owned.
     return code + "\n"
 
 
@@ -1096,6 +1175,144 @@ def _request_cpp_artifact(
     ) from last_error
 
 
+def _public_runtime_contract_prompt(
+    *,
+    orig_code: str,
+    testbench_code: str,
+    candidate_top_function: str,
+    frozen_hls_decl: str,
+    required_ports: Tuple[str, ...],
+) -> str:
+    return (
+        "Determine conservative Vitis HLS C/RTL cosimulation depths for the "
+        "frozen Candidate pointer/array interfaces used by this Public "
+        "testbench. A depth counts objects of the immediate pointee type, "
+        "not scalar values recursively contained inside that type. For "
+        "example, an int* that points to int values[64] needs depth 64, but "
+        "T (*p)[R][C] passed the address of one T[R][C] object needs depth "
+        "1, not R*C. A pointer to an array of structs similarly counts "
+        "struct objects, not their fields. Use the maximum contiguous "
+        "top-level object span used by any single Candidate call. Do not "
+        "add depths across sequential test cases or repeated calls that "
+        "reuse storage. Prefer a safe upper bound in these top-level units "
+        "when an exact bound is unclear.\n\n"
+        f"Candidate top: {candidate_top_function}\n"
+        "Frozen Candidate ABI:\n```cpp\n"
+        + frozen_hls_decl.strip()
+        + "\n```\n"
+        "Required depth port names (include each exactly once): "
+        + ", ".join(required_ports)
+        + "\n\nOriginal source:\n```cpp\n"
+        + orig_code.rstrip()
+        + "\n```\n\nPublic testbench:\n```cpp\n"
+        + testbench_code.rstrip()
+        + "\n```\n\nReturn exactly one JSON object and no Markdown or commentary:\n"
+        '{"cosim_interface_depths":{"port_name":1}}\n'
+        "Use only the required port names. Every depth must be a positive "
+        "integer. Do not change or propose Candidate code."
+    )
+
+
+def _runtime_contract_from_model_response(
+    content: str,
+    *,
+    testbench_code: str,
+    candidate_top_function: str,
+    frozen_hls_decl: str,
+) -> Dict[str, Any]:
+    if not isinstance(content, str):
+        raise ModelArtifactError("model response content must be a string")
+    cleaned = tools.general.strip_thinking(content).strip()
+    try:
+        payload = json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        raise ModelArtifactError(
+            "interface depth response must be one strict JSON object"
+        ) from exc
+    if not isinstance(payload, dict) or set(payload) != {
+        "cosim_interface_depths"
+    }:
+        raise ModelArtifactError(
+            "interface depth response must contain only "
+            "cosim_interface_depths"
+        )
+    return validate_public_runtime_contract(
+        {
+            "schema_version": 2,
+            "kind": "public_differential_self_check_v1",
+            "candidate_mismatch_returncodes": [1],
+            "cosim_interface_depths": payload["cosim_interface_depths"],
+        },
+        testbench_code=testbench_code,
+        candidate_top_function=candidate_top_function,
+        frozen_hls_decl=frozen_hls_decl,
+    )
+
+
+def generate_public_runtime_contract(
+    *,
+    orig_code: str,
+    testbench_code: str,
+    candidate_top_function: str,
+    frozen_hls_decl: str,
+    llm_config: Optional[Dict[str, Any]] = None,
+    budget: Any = None,
+    input_domain_contract: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Generate and validate the Public COSIM depth contract."""
+
+    required_ports = public_runtime_contract_depth_ports(
+        testbench_code=testbench_code,
+        candidate_top_function=candidate_top_function,
+        frozen_hls_decl=frozen_hls_decl,
+    )
+    if not required_ports:
+        return {
+            "schema_version": 1,
+            "kind": "public_differential_self_check_v1",
+            "candidate_mismatch_returncodes": [1],
+        }
+    loader = HLSAgentLoader(
+        AGENT_YAML,
+        llm_config_override=llm_config,
+        budget=budget,
+    )
+    agent = loader.load_agent(AGENT_NAME)
+    message = _public_runtime_contract_prompt(
+        orig_code=orig_code,
+        testbench_code=testbench_code,
+        candidate_top_function=candidate_top_function,
+        frozen_hls_decl=frozen_hls_decl,
+        required_ports=required_ports,
+    )
+    first_turn = True
+    last_error: Exception | None = None
+    for attempt in range(_ARTIFACT_RESPONSE_RETRIES + 1):
+        try:
+            raw = _agent_run_once(agent, message, first_turn)
+            return _runtime_contract_from_model_response(
+                raw,
+                testbench_code=testbench_code,
+                candidate_top_function=candidate_top_function,
+                frozen_hls_decl=frozen_hls_decl,
+            )
+        except ModelArtifactError as exc:
+            last_error = exc
+            if attempt >= _ARTIFACT_RESPONSE_RETRIES:
+                break
+            first_turn = False
+            message = (
+                "Your previous interface depth response was invalid: "
+                f"{exc}. Return exactly one JSON object with only "
+                "cosim_interface_depths. Include every required pointer/"
+                "array port exactly once with a positive integer depth. "
+                "Do not return Candidate code or commentary."
+            )
+    raise ModelArtifactError(
+        "model did not return a valid Public runtime contract"
+    ) from last_error
+
+
 def _ensure_original_forward_declaration(
     stub_code: str,
     orig_code: str,
@@ -1120,318 +1337,6 @@ def _ensure_original_forward_declaration(
     return declaration.rstrip() + ";\n\n" + stub_code.lstrip()
 
 
-_SIZE_PARAMETER_NAMES = {
-    "n", "len", "length", "size", "count",
-    "num", "num_items", "num_elements",
-}
-
-
-def _obvious_capacity_conflicts(
-    orig_code: str,
-    tb_code: str,
-    kernel_name: str,
-) -> List[str]:
-    # Deliberately recognizes only simple direct calls and fixed arrays.
-    declaration = _extract_seed_hls_decl(orig_code, kernel_name)
-    if not declaration or "(" not in declaration:
-        return []
-
-    params = declaration.split("(", 1)[1].rsplit(")", 1)[0].split(",")
-    size_index: Optional[int] = None
-    pointer_indices: List[int] = []
-    for index, parameter in enumerate(params):
-        match = re.search(r"([A-Za-z_]\w*)\s*$", parameter.strip())
-        if not match:
-            continue
-        name = match.group(1).lower()
-        if size_index is None and (
-            name in _SIZE_PARAMETER_NAMES
-            or name.endswith(("_size", "_count", "_length"))
-        ):
-            size_index = index
-        if "*" in parameter or "[" in parameter:
-            pointer_indices.append(index)
-    if size_index is None or not pointer_indices:
-        return []
-
-    values: Dict[str, int] = {}
-
-    def resolve(token: str) -> Optional[int]:
-        token = re.sub(r"[uUlL]+$", "", token.strip().strip("()"))
-        if re.fullmatch(r"[+-]?\d+", token):
-            return int(token)
-        return values.get(token)
-
-    pairs = re.findall(
-        r"(?m)^\s*#\s*define\s+([A-Za-z_]\w*)\s+"
-        r"([A-Za-z_]\w*|[+-]?\d+[uUlL]*)\s*$",
-        tb_code,
-    ) + re.findall(
-        r"\b(?:const\s+)?(?:unsigned\s+|signed\s+)?"
-        r"(?:int|long|size_t|std::size_t)\s+([A-Za-z_]\w*)\s*=\s*"
-        r"([A-Za-z_]\w*|[+-]?\d+[uUlL]*)\s*;",
-        tb_code,
-    )
-    for _ in range(2):
-        for name, raw in pairs:
-            value = resolve(raw)
-            if value is not None:
-                values[name] = value
-
-    capacities: Dict[str, int] = {}
-    for name, raw in re.findall(
-        r"(?m)^\s*(?:const\s+)?(?:[\w:<>]+\s+)+"
-        r"([A-Za-z_]\w*)\s*\[\s*"
-        r"([A-Za-z_]\w*|[+-]?\d+[uUlL]*)\s*\]",
-        tb_code,
-    ):
-        value = resolve(raw)
-        if value is not None and value >= 0:
-            capacities[name] = value
-
-    errors: List[str] = []
-    for call in re.findall(
-        rf"\b{re.escape(kernel_name)}\s*\(([^()]*)\)\s*;",
-        tb_code,
-    ):
-        arguments = [item.strip() for item in call.split(",")]
-        if size_index >= len(arguments):
-            continue
-        requested = resolve(arguments[size_index])
-        if requested is None or requested < 0:
-            continue
-        for index in pointer_indices:
-            if index >= len(arguments):
-                continue
-            argument = arguments[index].lstrip("&*").strip()
-            capacity = capacities.get(argument)
-            if capacity is not None and requested > capacity:
-                errors.append(
-                    f"{kernel_name} requests {requested} elements but "
-                    f"array {argument} has fixed capacity {capacity}"
-                )
-    return sorted(set(errors))
-
-
-def _obvious_linkage_conflicts(
-    orig_code: str,
-    tb_code: str,
-    stub_code: str,
-    kernel_name: str,
-) -> List[str]:
-    hls_name = f"{kernel_name}_hls"
-
-    def extern_c(declaration: str) -> bool:
-        return bool(
-            re.search(r'\bextern\s+"C"', declaration or "")
-        )
-
-    original_decl = _extract_seed_hls_decl(orig_code, kernel_name)
-    tb_original_decl = _extract_seed_hls_decl(tb_code, kernel_name)
-    tb_hls_decl = _extract_seed_hls_decl(tb_code, hls_name)
-    stub_hls_decl = _extract_seed_hls_decl(stub_code, hls_name)
-
-    errors: List[str] = []
-    if (
-        original_decl
-        and tb_original_decl
-        and extern_c(original_decl) != extern_c(tb_original_decl)
-    ):
-        errors.append(
-            f"testbench changes C/C++ language linkage of original "
-            f"{kernel_name}"
-        )
-    if (
-        tb_hls_decl
-        and stub_hls_decl
-        and extern_c(tb_hls_decl) != extern_c(stub_hls_decl)
-    ):
-        errors.append(
-            f"stub changes C/C++ language linkage of {hls_name} "
-            "relative to the testbench declaration"
-        )
-    return errors
-
-
-def _obvious_persistent_state_markers(orig_code: str) -> List[str]:
-    # Return only obvious mutable file-scope or function-static state.
-    source = re.sub(r"/\*.*?\*/", "", orig_code, flags=re.DOTALL)
-    markers: List[str] = []
-    depth = 0
-    ignored = (
-        "#",
-        "typedef ",
-        "using ",
-        "extern ",
-        "const ",
-        "constexpr ",
-        "struct ",
-        "class ",
-        "enum ",
-        "union ",
-        "namespace ",
-        "template ",
-        "static_assert",
-    )
-
-    for lineno, raw in enumerate(source.splitlines(), start=1):
-        line = raw.split("//", 1)[0].strip()
-        if not line:
-            continue
-
-        if (
-            depth == 0
-            and line.endswith(";")
-            and "(" not in line
-            and not line.startswith(ignored)
-            and not re.search(r"\b(?:const|constexpr)\b", line)
-            and re.match(
-                r"^(?:static\s+)?"
-                r"(?:unsigned\s+|signed\s+|long\s+|short\s+|volatile\s+)*"
-                r"[\w:<>]+\s+.+;$",
-                line,
-            )
-        ):
-            markers.append(
-                f"line {lineno}: mutable file-scope declaration"
-            )
-        elif (
-            depth > 0
-            and line.endswith(";")
-            and re.search(r"\bstatic\b", line)
-            and not re.search(r"\b(?:const|constexpr)\b", line)
-        ):
-            markers.append(
-                f"line {lineno}: mutable function-static declaration"
-            )
-
-        depth = max(0, depth + line.count("{") - line.count("}"))
-
-    return markers[:8]
-
-
-def _obvious_state_safety_conflicts(
-    orig_code: str,
-    tb_code: str,
-    stub_code: str,
-    kernel_name: str,
-) -> List[str]:
-    markers = _obvious_persistent_state_markers(orig_code)
-    if not markers:
-        return []
-
-    call_re = re.compile(rf"\b{re.escape(kernel_name)}\s*\(")
-
-    def direct_call_positions(code: str) -> Tuple[str, List[int]]:
-        source = re.sub(r"/\*.*?\*/", "", code, flags=re.DOTALL)
-        positions: List[int] = []
-        for match in call_re.finditer(source):
-            line_start = source.rfind("\n", 0, match.start()) + 1
-            prefix = source[line_start:match.start()]
-            if re.fullmatch(
-                r"\s*(?:extern\s+\"C\"\s+)?"
-                r"(?:[\w:<>,*&]+\s+)+",
-                prefix,
-            ):
-                continue
-            positions.append(match.start())
-        return source, positions
-
-    def matching_close(
-        source: str,
-        start: int,
-        opening: str,
-        closing: str,
-    ) -> Optional[int]:
-        depth = 0
-        for index in range(start, len(source)):
-            if source[index] == opening:
-                depth += 1
-            elif source[index] == closing:
-                depth -= 1
-                if depth == 0:
-                    return index
-        return None
-
-    def call_is_in_obvious_loop(
-        source: str,
-        positions: List[int],
-    ) -> bool:
-        for loop in re.finditer(r"\b(?:for|while)\s*\(", source):
-            opening = source.find("(", loop.start())
-            closing = matching_close(source, opening, "(", ")")
-            if closing is None:
-                continue
-            body_start = closing + 1
-            while (
-                body_start < len(source)
-                and source[body_start].isspace()
-            ):
-                body_start += 1
-            if body_start >= len(source):
-                continue
-            if source[body_start] == "{":
-                body_end = matching_close(
-                    source,
-                    body_start,
-                    "{",
-                    "}",
-                )
-            else:
-                body_end = source.find(";", body_start)
-            if body_end is None or body_end < 0:
-                continue
-            if any(body_start <= pos <= body_end for pos in positions):
-                return True
-
-        for loop in re.finditer(r"\bdo\b", source):
-            body_start = loop.end()
-            while (
-                body_start < len(source)
-                and source[body_start].isspace()
-            ):
-                body_start += 1
-            if body_start >= len(source):
-                continue
-            if source[body_start] == "{":
-                body_end = matching_close(
-                    source,
-                    body_start,
-                    "{",
-                    "}",
-                )
-            else:
-                body_end = source.find(";", body_start)
-            if body_end is None or body_end < 0:
-                continue
-            if any(body_start <= pos <= body_end for pos in positions):
-                return True
-        return False
-
-    errors: List[str] = []
-    state_hint = markers[0]
-    _stub_source, stub_positions = direct_call_positions(stub_code)
-    tb_source, tb_positions = direct_call_positions(tb_code)
-
-    if stub_positions:
-        errors.append(
-            f"stub delegates to stateful original {kernel_name}; "
-            f"{state_hint}"
-        )
-    if call_is_in_obvious_loop(tb_source, tb_positions):
-        errors.append(
-            f"testbench calls stateful original {kernel_name} inside "
-            f"an obvious loop without a verified reset; {state_hint}"
-        )
-    elif len(tb_positions) > 1:
-        errors.append(
-            f"testbench calls stateful original {kernel_name} "
-            f"{len(tb_positions)} times without a verified reset; "
-            f"{state_hint}"
-        )
-    return errors
-
-
 def _measure_qualified_coverage(
     orig_code: str,
     tb_code: str,
@@ -1441,8 +1346,26 @@ def _measure_qualified_coverage(
     *,
     require_original_execution: bool = False,
 ) -> Dict[str, Any]:
-    # Keep the text-heuristic helpers for later reference, but do not let
-    # capacity, linkage, or persistent-state guesses block real tools.
+    # First qualify the exact generated inputs against the Original with a
+    # no-op Candidate and sanitizers.  The model receives the raw Testbench
+    # and tool evidence when this fails; no inferred root cause is inserted.
+    candidate_name = f"{kernel_name}_hls"
+    candidate_decl = extract_hls_decl_from_testbench(tb_code, candidate_name)
+    if candidate_decl:
+        original_check = check_original_execution(
+            orig_code,
+            tb_code,
+            candidate_decl,
+            candidate_name,
+            budget=budget,
+        )
+        if original_check.get("status") != "ok":
+            original_check.setdefault("qualification_errors", [])
+            original_check["qualification_errors"].append(
+                "Original-only qualification failed before differential coverage."
+            )
+            return original_check
+
     result = measure_coverage(
         orig_code,
         tb_code,
@@ -1606,6 +1529,7 @@ def run_trajectory(
     emit_final_text: bool = True,
     budget: Any = None,
     artifact_root: Optional[str] = None,
+    input_domain_contract: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if isinstance(K, bool) or not isinstance(K, int) or K < 1:
         raise ValueError("K must be a positive integer")
@@ -1635,20 +1559,50 @@ def run_trajectory(
         *,
         first_turn: bool,
     ) -> str:
-        value = _request_cpp_artifact(
-            agent,
-            message,
-            first_turn=first_turn,
-            artifact_kind="testbench",
-            required_symbol=hls_name,
-        )
-        validate_testbench_top_contract(
-            value,
-            kernel_name,
-            hls_name,
-            require_original_call=external_abi_frozen,
-        )
-        return value
+        domain_block = _input_domain_block(input_domain_contract)
+        if domain_block and "FROZEN LEGAL INPUT-DOMAIN CONTRACT" not in message:
+            message += domain_block
+        current_message = message
+        current_first_turn = first_turn
+        last_error: Exception | None = None
+        for attempt in range(_ARTIFACT_RESPONSE_RETRIES + 1):
+            try:
+                value = _request_cpp_artifact(
+                    agent,
+                    current_message,
+                    first_turn=current_first_turn,
+                    artifact_kind="testbench",
+                    required_symbol=hls_name,
+                )
+                validate_testbench_top_contract(
+                    value,
+                    kernel_name,
+                    hls_name,
+                    require_original_call=external_abi_frozen,
+                )
+                declaration = extract_hls_decl_from_testbench(value, hls_name)
+                validate_testbench_input_domain(
+                    value,
+                    hls_name,
+                    declaration,
+                    input_domain_contract,
+                    require_maximum=not external_abi_frozen,
+                )
+                return value
+            except ModelArtifactError as exc:
+                last_error = exc
+                if attempt >= _ARTIFACT_RESPONSE_RETRIES:
+                    break
+                current_first_turn = False
+                current_message = (
+                    "The previous Testbench violated the frozen input-domain contract: "
+                    f"{exc}. Generate a complete replacement with simple, directly auditable Candidate calls. "
+                    "Every Candidate forward-declaration parameter must have an explicit name matching the frozen contract port name; never omit parameter names."
+                    + domain_block
+                )
+        raise ModelArtifactError(
+            "model did not return a Testbench compatible with the frozen input domain"
+        ) from last_error
 
     def request_stub(
         testbench_code: str,
@@ -1663,32 +1617,45 @@ def run_trajectory(
             raise ModelArtifactError(
                 "Testbench does not expose a Candidate declaration"
             )
-        value = _request_cpp_artifact(
-            agent,
-            (
-                message
-                if message is not None
-                else _stub_request_message(
+        current_message = (
+            message
+            if message is not None
+            else _stub_request_message(kernel_name, declaration)
+        )
+        last_error: Exception | None = None
+        for attempt in range(_ARTIFACT_RESPONSE_RETRIES + 1):
+            try:
+                value = _request_cpp_artifact(
+                    agent,
+                    current_message,
+                    first_turn=False,
+                    artifact_kind="stub",
+                    required_symbol=hls_name,
+                )
+                value = _ensure_original_forward_declaration(
+                    value,
+                    orig_code,
+                    kernel_name,
+                )
+                validate_stub_contract(
+                    value,
+                    original_name=kernel_name,
+                    candidate_name=hls_name,
+                    frozen_hls_decl=declaration,
+                )
+                return value, _normalize_declaration(declaration)
+            except ModelArtifactError as exc:
+                last_error = exc
+                if attempt >= _ARTIFACT_RESPONSE_RETRIES:
+                    break
+                current_message = _stub_request_message(
                     kernel_name,
                     declaration,
+                    failure_excerpt=str(exc),
                 )
-            ),
-            first_turn=False,
-            artifact_kind="stub",
-            required_symbol=hls_name,
-        )
-        value = _ensure_original_forward_declaration(
-            value,
-            orig_code,
-            kernel_name,
-        )
-        validate_stub_contract(
-            value,
-            original_name=kernel_name,
-            candidate_name=hls_name,
-            frozen_hls_decl=declaration,
-        )
-        return value, _normalize_declaration(declaration)
+        raise ModelArtifactError(
+            "model did not return a Stub matching the frozen Candidate ABI"
+        ) from last_error
 
     initial_testbench_contract_repaired = False
     initial_testbench_contract_error = ""
@@ -1698,6 +1665,7 @@ def run_trajectory(
                 orig_code,
                 kernel_name,
                 pinned_public_hls_decl=pinned_hls_decl,
+                input_domain_contract=input_domain_contract,
             ),
             first_turn=True,
         )
@@ -1775,11 +1743,12 @@ def run_trajectory(
         abi_decl=current_decl,
     )
 
-    # K=1 is the lightweight profile's single primary generation round.
-    # It must not become a coverage-refinement loop, but a tool-backed failure
-    # classification must still be consumable. Permit exactly one bounded
-    # recovery for recoverable ownership actions, reusing the Testbench only
-    # for Stub-owned failures and preserving every externally frozen ABI.
+    # Lightweight generation keeps one successful round, but an invalid
+    # generated Testbench gets three bounded correction rounds. Reusing the
+    # normal round machinery preserves the exact tool diagnostic and history.
+    lightweight_mode = K == 1
+    if lightweight_mode and rounds[-1].get("status") != "ok":
+        K = 4
     if K == 1:
         previous = rounds[-1]
         reported_action = _coverage_action(previous)
@@ -1844,6 +1813,13 @@ def run_trajectory(
                         frozen_hls_decl or None
                     ),
                     frozen_macros=frozen_macros,
+                    previous_testbench_code=str(
+                        previous.get("tb_code") or ""
+                    ),
+                    failure_history=_failure_history(rounds),
+                    feedback_scope=(
+                        "hidden" if external_abi_frozen else "public"
+                    ),
                 )
                 if reported_action == "repair_abi_testbench_stub":
                     original_decl = _extract_seed_hls_decl(
@@ -1935,9 +1911,11 @@ def run_trajectory(
         ):
             break
 
-        action = _coverage_action(previous)
+        reported_action = _coverage_action(previous)
+        action = reported_action
         if (
-            external_abi_frozen
+            lightweight_mode
+            and external_abi_frozen
             and action == "repair_abi_testbench_stub"
         ):
             action = "repair_testbench_stub"
@@ -1989,6 +1967,13 @@ def run_trajectory(
                         next_action=action,
                         frozen_hls_decl=frozen_hls_decl,
                         frozen_macros=frozen_macros,
+                    previous_testbench_code=str(
+                        previous.get("tb_code") or ""
+                    ),
+                    failure_history=_failure_history(rounds),
+                    feedback_scope=(
+                        "hidden" if external_abi_frozen else "public"
+                    ),
                     ),
                     first_turn=False,
                 )
@@ -2050,6 +2035,13 @@ def run_trajectory(
                         frozen_hls_decl or None
                     ),
                     frozen_macros=frozen_macros,
+                    previous_testbench_code=str(
+                        previous.get("tb_code") or ""
+                    ),
+                    failure_history=_failure_history(rounds),
+                    feedback_scope=(
+                        "hidden" if external_abi_frozen else "public"
+                    ),
                 ),
                 first_turn=False,
             )
@@ -2097,8 +2089,7 @@ def run_trajectory(
             stub_code, current_decl = request_stub(testbench_code)
 
         elif action == "repair_testbench_stub":
-            testbench_code = request_testbench(
-                _feedback_message(
+            repair_message = _feedback_message(
                     round_index,
                     previous.get("cov_pct") or 0.0,
                     previous.get("uncovered_lines", []),
@@ -2118,9 +2109,46 @@ def run_trajectory(
                         frozen_hls_decl or None
                     ),
                     frozen_macros=frozen_macros,
-                ),
+                    previous_testbench_code=str(
+                        previous.get("tb_code") or ""
+                    ),
+                    failure_history=_failure_history(rounds),
+                    feedback_scope=(
+                        "hidden" if external_abi_frozen else "public"
+                    ),
+                )
+
+            if reported_action == "repair_abi_testbench_stub":
+                original_decl = _extract_seed_hls_decl(
+                    orig_code,
+                    kernel_name,
+                )
+                repair_message += (
+                    chr(10) * 2
+                    + "This is a link/ABI failure during held-out qualification. "
+                    + "The Candidate ABI remains externally frozen and MUST NOT "
+                    + "change. Re-inspect the Original top declaration and "
+                    + "preserve its exact C/C++ language linkage, return type, "
+                    + "name, parameter types/order, and qualifiers."
+                )
+                if original_decl:
+                    repair_message += (
+                        chr(10) * 2
+                        + "EXACT ORIGINAL TOP DECLARATION FROM SOURCE:"
+                        + chr(10)
+                        + original_decl.strip().rstrip(";")
+                        + ";"
+                    )
+            testbench_code = request_testbench(
+                repair_message,
                 first_turn=False,
             )
+            if external_abi_frozen:
+                _validate_frozen_candidate_abi(
+                    testbench_code,
+                    hls_name,
+                    frozen_hls_decl,
+                )
             stub_code, current_decl = request_stub(testbench_code)
 
         coverage = _measure_qualified_coverage(
@@ -2181,6 +2209,23 @@ def run_trajectory(
             frozen_public_hls_decl=frozen_hls_decl,
             frozen_public_macros=list(frozen_macros),
             abi_decl=current_decl,
+            lightweight_bounded_recovery=(
+                lightweight_mode and round_index > 1
+            ),
+            lightweight_bounded_recovery_reported_action=(
+                reported_action if lightweight_mode else None
+            ),
+            lightweight_bounded_stub_recovery=(
+                lightweight_mode and action == "regenerate_stub"
+            ),
+            lightweight_bounded_testbench_recovery=(
+                lightweight_mode
+                and action in {
+                    "repair_testbench",
+                    "repair_testbench_stub",
+                    "repair_abi_testbench_stub",
+                }
+            ),
         )
 
     return _finalize_trajectory(
@@ -2482,6 +2527,7 @@ def optimize_tb_public(
     budget: Any = None,
     M: int = 1,
     artifact_root: Optional[str] = None,
+    input_domain_contract: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Generate Public evidence across one or more independent trajectories."""
 
@@ -2501,6 +2547,7 @@ def optimize_tb_public(
                 emit_final_text=True,
                 budget=budget,
                 artifact_root=artifact_root,
+                input_domain_contract=input_domain_contract,
             )
         ]
     else:
@@ -2520,6 +2567,7 @@ def optimize_tb_public(
                     emit_final_text=True,
                     budget=budget,
                     artifact_root=artifact_root,
+                    input_domain_contract=input_domain_contract,
                 ): index
                 for index in range(M)
             }
@@ -2718,6 +2766,9 @@ def optimize_tb_seeded(
             k, prev_cov, prev["uncovered_lines"], annotated, prev_status,
             prev_compile_stderr=prev.get("compile_stderr", ""),
             prev_run_stderr=prev.get("run_stderr", ""),
+            previous_testbench_code=str(prev.get("tb_code") or ""),
+            failure_history=_failure_history(rounds),
+            feedback_scope="hidden",
         )
         # Append a hard reminder to preserve the signature so the round-1 stub stays compatible.
         fb_msg += (
@@ -2783,6 +2834,7 @@ def gen_tb_with_coverage(
     target_pct: float = 80.0,
     budget: Any = None,
     M: int = 1,
+    input_domain_contract: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, str, str]:
     """Coverage-enhanced Public generation with no held-out input channel."""
 
@@ -2799,6 +2851,7 @@ def gen_tb_with_coverage(
         budget=budget,
         M=M,
         artifact_root=artifact_root,
+        input_domain_contract=input_domain_contract,
     )
     cv["public_testbench_coverage"] = {
         "schema_version": 1,
@@ -2835,6 +2888,7 @@ def make_golden_hidden_tb(
     cache_key: Optional[str] = None,
     budget: Any = None,
     artifact_root: Optional[str] = None,
+    input_domain_contract: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if not isinstance(pinned_public_hls_decl, str) or not (
         pinned_public_hls_decl.strip()
@@ -2848,10 +2902,27 @@ def make_golden_hidden_tb(
     public_decl_sha = hashlib.sha256(
         normalized_public_decl.encode("utf-8")
     ).hexdigest()
+    domain_sha = (
+        hashlib.sha256(
+            json.dumps(
+                input_domain_contract,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if input_domain_contract is not None
+        else ""
+    )
     orig_sha = hashlib.sha256(orig_code.encode("utf-8")).hexdigest()
     cache_key = cache_key or kernel_name
     if cache_dir is not None:
-        cached = _load_golden_cache(cache_dir, cache_key, orig_sha)
+        cached = _load_golden_cache(
+            cache_dir,
+            cache_key,
+            orig_sha,
+            expected_domain_sha=domain_sha,
+        )
         if (
             cached is not None
             and cached.get("synth_ok")
@@ -2876,6 +2947,7 @@ def make_golden_hidden_tb(
                 emit_final_text=False,
                 budget=budget,
                 artifact_root=artifact_root,
+                input_domain_contract=input_domain_contract,
             ): index
             for index in range(M)
         }
@@ -2927,6 +2999,7 @@ def make_golden_hidden_tb(
         "hidden_cov": best["best_cov"],
         "public_hls_decl": normalized_public_decl,
         "public_hls_decl_sha256": public_decl_sha,
+        "input_domain_contract_sha256": domain_sha,
         "best_trajectory": best.get("trajectory_idx", -1),
         "best_round": best["best_round"],
         "synth_ok": True,
@@ -2946,7 +3019,12 @@ def _golden_cache_path(cache_dir: str, kernel_name: str) -> str:
     return os.path.join(cache_dir, f"{kernel_name}.json")
 
 
-def _load_golden_cache(cache_dir: str, kernel_name: str, expected_sha: str) -> Optional[Dict[str, Any]]:
+def _load_golden_cache(
+    cache_dir: str,
+    kernel_name: str,
+    expected_sha: str,
+    expected_domain_sha: str = "",
+) -> Optional[Dict[str, Any]]:
     path = _golden_cache_path(cache_dir, kernel_name)
     if not os.path.isfile(path):
         return None
@@ -2956,6 +3034,8 @@ def _load_golden_cache(cache_dir: str, kernel_name: str, expected_sha: str) -> O
     except Exception:
         return None
     if data.get("orig_sha256") != expected_sha:
+        return None
+    if expected_domain_sha and data.get("input_domain_contract_sha256") != expected_domain_sha:
         return None
     return data
 

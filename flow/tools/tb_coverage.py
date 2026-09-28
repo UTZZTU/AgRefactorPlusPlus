@@ -20,6 +20,10 @@ import subprocess
 import tempfile
 from typing import Any, Optional
 
+from agrefactor.cpp_interface import extract_top_interface
+
+from agrefactor.reference_source import isolate_reference_program_entry
+
 SOURCES = ["testbench.cpp", "orig_code.cpp", "refactor_code.cpp"]
 
 # Match coverage script: drop -D__SYNTHESIS__ (HLS headers trip up gcc).
@@ -38,6 +42,19 @@ XILINX_INCLUDE_FALLBACK = "/mnt/software/xilinx/Vitis/2019.2/include"
 COMPILE_TIMEOUT = 180
 RUN_TIMEOUT = 180
 GCOV_TIMEOUT = 60
+
+ORIGINAL_ONLY_COMPILE_BASE = [
+    "g++",
+    "-O0",
+    "-g",
+    "-fsanitize=address,undefined",
+    "-fno-omit-frame-pointer",
+    "-Wno-unknown-pragmas",
+    "testbench.cpp",
+    "orig_code.cpp",
+    "original_only_candidate.cpp",
+    "-o", "original_only",
+]
 
 _LINES_RE = re.compile(r"Lines executed:\s*([\d.]+)%\s+of\s+(\d+)")
 
@@ -165,6 +182,178 @@ def _finish_failure(
     return result
 
 
+def _original_only_candidate_stub(candidate_decl: str, candidate_name: str) -> str:
+    """Define a harmless Candidate body from compiler-resolved ABI facts."""
+    declaration = str(candidate_decl or "").strip().rstrip(";").strip()
+    if not declaration:
+        raise ValueError("candidate declaration is required")
+    interface = extract_top_interface(declaration + ";", candidate_name, require_definition=False)
+    body = "" if interface is not None and interface.canonical_result_type == "void" else "\n    return {};\n"
+    return declaration + " {" + body + "}\n"
+
+
+def check_original_execution(
+    orig_code: str,
+    tb_code: str,
+    candidate_decl: str,
+    candidate_name: str,
+    *,
+    budget: Any = None,
+    keep_dir: Optional[str] = None,
+) -> dict:
+    """Run the generated Testbench with a no-op Candidate and sanitizers.
+
+    A non-zero return caused only by the Testbench comparing against the
+    no-op is recorded as an observation; sanitizer output, a signal, or a
+    timeout is a real Original-side failure.
+    """
+    result = {
+        "status": "",
+        "original_only": True,
+        "run_returncode": None,
+        "compile_stderr": "",
+        "run_stderr": "",
+        "run_stdout": "",
+        "failure_owner": "none",
+        "next_action": "continue_validation",
+        "failure_evidence_source": "none",
+    }
+    if keep_dir is not None:
+        os.makedirs(keep_dir, exist_ok=True)
+        ctx = _NullCtx(keep_dir)
+    else:
+        ctx = tempfile.TemporaryDirectory(prefix="tb_orig_only_")
+
+    with ctx as tmp_s:
+        tmp = tmp_s if isinstance(tmp_s, str) else tmp_s
+        files = {
+            "orig_code.cpp": isolate_reference_program_entry(orig_code),
+            "testbench.cpp": tb_code,
+            "original_only_candidate.cpp": _original_only_candidate_stub(
+                candidate_decl,
+                candidate_name,
+            ),
+        }
+        for name, content in files.items():
+            with open(os.path.join(tmp, name), "w", encoding="utf-8") as file:
+                file.write(content)
+
+        compiled = False
+        for include_flag in (None, f"-I{XILINX_INCLUDE_FALLBACK}"):
+            cmd = list(ORIGINAL_ONLY_COMPILE_BASE)
+            if include_flag is not None:
+                cmd.insert(1, include_flag)
+            try:
+                _consume_tool_launch(budget, compile_calls=1)
+                completed = subprocess.run(
+                    cmd,
+                    cwd=tmp,
+                    capture_output=True,
+                    text=True,
+                    timeout=COMPILE_TIMEOUT,
+                )
+            except subprocess.TimeoutExpired:
+                result.update(
+                    status="compile_timeout",
+                    failure_owner="toolchain",
+                    next_action="repair_testbench",
+                    failure_evidence_source="original-only g++ timeout",
+                )
+                return result
+            if completed.returncode == 0:
+                compiled = True
+                break
+            result["compile_stderr"] = completed.stderr[-4000:]
+
+        if not compiled:
+            owner = _classify_compile_failure_owner(result["compile_stderr"])
+            result.update(
+                status="compile_failed",
+                failure_owner=owner,
+                next_action=(
+                    "repair_testbench"
+                    if owner in {"testbench", "unknown", "abi"}
+                    else "review_original"
+                ),
+                failure_evidence_source="original-only g++ diagnostics",
+            )
+            return result
+
+        try:
+            _consume_tool_launch(budget, csim_calls=1)
+            env = dict(os.environ)
+            env["ASAN_OPTIONS"] = "detect_leaks=0:abort_on_error=1"
+            env["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"
+            completed = subprocess.run(
+                ["./original_only"],
+                cwd=tmp,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=RUN_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired as exc:
+            result.update(
+                status="original_run_timeout",
+                run_stderr=str(exc),
+                failure_owner="original",
+                next_action="repair_testbench",
+                failure_evidence_source="original-only timeout",
+            )
+            return result
+
+        stderr = (completed.stderr or "")[-3000:]
+        stdout = (completed.stdout or "")[-1000:]
+        result["run_returncode"] = completed.returncode
+        result["run_stdout"] = stdout
+        result["run_stderr"] = (
+            stderr + (chr(10) + "[stdout]" + chr(10) + stdout if stdout else "")
+        )[-4000:]
+        sanitizer_markers = (
+            "AddressSanitizer",
+            "UndefinedBehaviorSanitizer",
+            "runtime error:",
+            "heap-buffer-overflow",
+            "stack-buffer-overflow",
+            "use-after-free",
+            "SEGV",
+        )
+        crashed = (
+            completed.returncode < 0
+            or any(marker in stderr for marker in sanitizer_markers)
+        )
+        if crashed:
+            result.update(
+                status="original_run_failed",
+                failure_owner="original",
+                next_action="repair_testbench",
+                failure_evidence_source="original-only sanitizer/runtime",
+            )
+            return result
+
+        result.update(
+            status="ok",
+            failure_owner="none",
+            next_action="continue_validation",
+            failure_evidence_source="original-only runtime completed",
+        )
+        return result
+
+
+def _classify_run_failure_owner(stderr: str) -> tuple[str, str | None]:
+    """Use explicit golden-side evidence before the default stub route."""
+    lowered = str(stderr or "").lower()
+    golden_markers = (
+        "golden reference left",
+        "golden=",
+        "reference output",
+        "original output",
+    )
+    if any(marker in lowered for marker in golden_markers):
+        return "testbench", "repair_testbench"
+    return "stub", "regenerate_stub"
+
+
 def measure_coverage(
     orig_code: str,
     tb_code: str,
@@ -269,11 +458,12 @@ def measure_coverage(
             res["run_returncode"] = completed.returncode
             res["run_stderr"] = completed.stderr[-2000:]
             if completed.returncode != 0:
+                owner, action = _classify_run_failure_owner(completed.stderr)
                 return _finish_failure(
                     res,
                     status="run_failed",
-                    owner="stub",
-                    action="regenerate_stub",
+                    owner=owner,
+                    action=action,
                     evidence_source="program return code",
                 )
         except subprocess.TimeoutExpired:

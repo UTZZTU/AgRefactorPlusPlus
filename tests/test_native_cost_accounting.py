@@ -659,7 +659,7 @@ class NativeCostAccountingTests(unittest.TestCase):
             observed[0].usage.estimated_cost
         )
 
-    def test_adapter_records_enriched_response_before_contract_failure(self):
+    def test_adapter_records_enriched_response_before_real_validation(self):
         provider = FakeProvider(
             model_usage(),
             response_text=f"```cpp\n{CURRENT}\n```",
@@ -668,8 +668,8 @@ class NativeCostAccountingTests(unittest.TestCase):
             provider,
             snapshot=pricing_snapshot(),
         )
-        with self.assertRaises(CandidateResponseError):
-            model_adapter.generate(candidate_request())
+        result = model_adapter.generate(candidate_request())
+        self.assertEqual(result.candidate_code.strip(), CURRENT.strip())
         self.assertEqual(len(model_adapter.responses), 1)
         self.assertIsNotNone(
             model_adapter.last_response.usage.estimated_cost

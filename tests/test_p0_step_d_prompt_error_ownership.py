@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 
 from agrefactor.testing import model_testbench_repairer
 from flow.tools import tb_coverage, tb_optimizer, testbench
+from agrefactor.product.source_bootstrap import _public_candidate_parameter_names
 
 
 ORIGINAL_NAME = "process_top"
@@ -57,6 +58,37 @@ def coverage(
 
 
 class StepDPromptContractTests(unittest.TestCase):
+    def test_lightweight_generation_uses_bounded_cpp_artifact_request(self):
+        agent = Mock()
+        response = Mock()
+        response.messages = [{"content": "instruction"}]
+        agent.run.return_value = response
+        loader = Mock()
+        loader.load_agent.return_value = agent
+        cv = {
+            "kernel_name": ORIGINAL_NAME,
+            "curr_code": "void process_top(){}\n",
+        }
+        with patch.object(
+            testbench,
+            "HLSAgentLoader",
+            return_value=loader,
+        ), patch.object(
+            tb_optimizer,
+            "_request_cpp_artifact",
+            return_value=TB_ONE,
+        ) as request_artifact, patch.object(
+            tb_coverage,
+            "check_original_execution",
+            return_value={"status": "ok"},
+        ):
+            generated, instruction, name = testbench.gen_tb_prior(cv)
+
+        request_artifact.assert_called_once()
+        self.assertEqual(generated, TB_ONE)
+        self.assertEqual(instruction, "instruction")
+        self.assertEqual(name, CANDIDATE_NAME)
+
     def test_lightweight_prompt_uses_black_box_surface(self):
         message = testbench._build_testbench_request(
             "void process_top(){}\n",
@@ -67,6 +99,53 @@ class StepDPromptContractTests(unittest.TestCase):
         self.assertIn("implementation-private globals", message)
         self.assertIn("Correctness", message)
         self.assertIn("priority over testcase count or coverage", message)
+        self.assertIn(
+            "one fixed capacity across every Candidate call",
+            message,
+        )
+        self.assertIn("full declared interface depth", message)
+        self.assertIn("complete every planned Original call", message)
+
+    def test_lightweight_public_repairs_original_execution_failure(self):
+        agent = Mock()
+        response = Mock()
+        response.messages = [{"content": "instruction"}]
+        agent.run.return_value = response
+        loader = Mock()
+        loader.load_agent.return_value = agent
+        cv = {
+            "kernel_name": ORIGINAL_NAME,
+            "curr_code": "void process_top(){}\n",
+        }
+        failed = {
+            "status": "original_run_failed",
+            "compile_stderr": "",
+            "run_stderr": "AddressSanitizer: heap-buffer-overflow at orig_code.cpp:12",
+            "run_stdout": "",
+        }
+        with patch.object(
+            testbench,
+            "HLSAgentLoader",
+            return_value=loader,
+        ), patch.object(
+            tb_optimizer,
+            "_request_cpp_artifact",
+            side_effect=[TB_ONE, TB_TWO],
+        ) as request_artifact, patch.object(
+            tb_coverage,
+            "check_original_execution",
+            side_effect=[failed, {"status": "ok"}],
+        ) as original_check:
+            generated, instruction, name = testbench.gen_tb_prior(cv)
+
+        self.assertEqual(generated, TB_TWO)
+        self.assertEqual(name, CANDIDATE_NAME)
+        self.assertEqual(original_check.call_count, 2)
+        self.assertEqual(request_artifact.call_count, 2)
+        repair_prompt = request_artifact.call_args_list[1].args[1]
+        self.assertIn(TB_ONE.strip(), repair_prompt)
+        self.assertIn("heap-buffer-overflow", repair_prompt)
+        self.assertIn("must not be modified", repair_prompt)
 
     def test_lightweight_instruction_is_public_only(self):
         message = testbench._build_instruction_request(
@@ -132,7 +211,17 @@ class StepDPromptContractTests(unittest.TestCase):
 
 
 class StepDStructuralContractTests(unittest.TestCase):
-    def test_repair_contract_rejects_external_private_helper(self):
+    def test_source_bootstrap_interface_parser_handles_template_parameters(self):
+        declaration = (
+            'template <typename T> struct stream {}; '
+            'void process_top_hls('
+            'stream<stream<int> > &input, int *out);'
+        )
+        self.assertEqual(
+            _public_candidate_parameter_names(declaration, CANDIDATE_NAME),
+            ("input", "out"),
+        )
+    def test_repair_contract_defers_external_helper_to_preflight(self):
         contract = model_testbench_repairer.TestbenchRepairContract(
             required_top_function_names=(
                 ORIGINAL_NAME,
@@ -146,71 +235,131 @@ class StepDStructuralContractTests(unittest.TestCase):
             "int main(){process_top();process_top_hls();return 0;}\n"
         )
         issues = contract.validate(proposed)
-        self.assertTrue(any("external helper declarations" in item for item in issues))
+        self.assertEqual(issues, ())
 
-    def test_testbench_contract_rejects_candidate_definition(self):
-        with self.assertRaisesRegex(
-            tb_optimizer.ModelArtifactError,
-            "must not define",
-        ):
-            tb_optimizer.validate_testbench_top_contract(
-                "void process_top();\n"
-                "void process_top_hls(){}\n"
-                "int main(){process_top_hls();return 0;}\n",
-                ORIGINAL_NAME,
-                CANDIDATE_NAME,
-            )
+    def test_testbench_contract_defers_candidate_definition_to_linker(self):
+        tb_optimizer.validate_testbench_top_contract(
+            "void process_top();\n"
+            "void process_top_hls(){}\n"
+            "int main(){process_top_hls();return 0;}\n",
+            ORIGINAL_NAME,
+            CANDIDATE_NAME,
+        )
 
-    def test_testbench_contract_rejects_original_definition(self):
-        with self.assertRaisesRegex(
-            tb_optimizer.ModelArtifactError,
-            "must not define",
-        ):
-            tb_optimizer.validate_testbench_top_contract(
-                "void process_top(){}\n"
-                "void process_top_hls();\n"
-                "int main(){process_top_hls();return 0;}\n",
-                ORIGINAL_NAME,
-                CANDIDATE_NAME,
-            )
+    def test_testbench_contract_defers_original_definition_to_linker(self):
+        tb_optimizer.validate_testbench_top_contract(
+            "void process_top(){}\n"
+            "void process_top_hls();\n"
+            "int main(){process_top_hls();return 0;}\n",
+            ORIGINAL_NAME,
+            CANDIDATE_NAME,
+        )
 
-    def test_testbench_contract_rejects_external_helper_declaration(self):
-        with self.assertRaisesRegex(
-            tb_optimizer.ModelArtifactError,
-            "external helper declarations",
-        ):
-            tb_optimizer.validate_testbench_top_contract(
-                "void process_top();\n"
-                "void process_top_hls();\n"
-                "void internal_reset();\n"
-                "int main(){process_top_hls();return 0;}\n",
-                ORIGINAL_NAME,
-                CANDIDATE_NAME,
-            )
+    def test_testbench_contract_defers_external_helper_to_preflight(self):
+        tb_optimizer.validate_testbench_top_contract(
+            "void process_top();\n"
+            "void process_top_hls();\n"
+            "void internal_reset();\n"
+            "int main(){process_top_hls();return 0;}\n",
+            ORIGINAL_NAME,
+            CANDIDATE_NAME,
+        )
 
-    def test_stub_contract_rejects_main(self):
-        with self.assertRaisesRegex(
-            tb_optimizer.ModelArtifactError,
-            "must not define main",
-        ):
-            tb_optimizer.validate_stub_contract(
-                STUB + "int main(){return 0;}\n",
-                original_name=ORIGINAL_NAME,
-                candidate_name=CANDIDATE_NAME,
-                frozen_hls_decl=FROZEN_DECL,
-            )
+    def test_testbench_contract_allows_local_constructor_syntax(self):
+        tb_optimizer.validate_testbench_top_contract(
+            "#include <string>\n"
+            "void process_top();\n"
+            "void process_top_hls();\n"
+            "int main(){std::string qry(255, 'a');process_top_hls();return 0;}\n",
+            ORIGINAL_NAME,
+            CANDIDATE_NAME,
+        )
 
-    def test_stub_contract_rejects_abi_drift(self):
-        with self.assertRaisesRegex(
-            tb_optimizer.ModelArtifactError,
-            "frozen ABI",
-        ):
-            tb_optimizer.validate_stub_contract(
-                "int process_top_hls(int x){return x;}\n",
-                original_name=ORIGINAL_NAME,
-                candidate_name=CANDIDATE_NAME,
-                frozen_hls_decl=FROZEN_DECL,
-            )
+    def test_testbench_contract_defers_weak_main_to_compiler(self):
+        code = (
+            "void process_top();\n"
+            "void process_top_hls();\n"
+            "__attribute__((weak)) int main(){"
+            "process_top();process_top_hls();return 0;}\n"
+        )
+        tb_optimizer.validate_testbench_top_contract(
+            code,
+            ORIGINAL_NAME,
+            CANDIDATE_NAME,
+        )
+        repair_contract = model_testbench_repairer.TestbenchRepairContract(
+            required_top_function_names=(ORIGINAL_NAME, CANDIDATE_NAME)
+        )
+        self.assertEqual(repair_contract.validate(code), ())
+
+    def test_testbench_contract_ignores_comments_and_disabled_code(self):
+        code = (
+            "void process_top();\n"
+            "void process_top_hls();\n"
+            "/* void commented_helper(); */\n"
+            "#if 0\nvoid disabled_helper();\n#endif\n"
+            "int main(){process_top();process_top_hls();return 0;}\n"
+        )
+        tb_optimizer.validate_testbench_top_contract(
+            code, ORIGINAL_NAME, CANDIDATE_NAME,
+        )
+
+    def test_testbench_contract_defers_process_control_to_real_tools(self):
+        tb_optimizer.validate_testbench_top_contract(
+            "void process_top();\nvoid process_top_hls();\n"
+            "int main(){process_top();if(fork()==0)process_top_hls();return 0;}\n",
+            ORIGINAL_NAME,
+            CANDIDATE_NAME,
+        )
+
+    def test_testbench_contract_ignores_process_words_in_text(self):
+        tb_optimizer.validate_testbench_top_contract(
+            "void process_top();\nvoid process_top_hls();\n"
+            "// fork();\n"
+            "int main(){const char *message=\"system()\";"
+            "process_top();process_top_hls();return message[0]==0;}\n",
+            ORIGINAL_NAME,
+            CANDIDATE_NAME,
+        )
+
+    def test_repair_contract_allows_local_constructor_and_ignores_comments(self):
+        contract = model_testbench_repairer.TestbenchRepairContract(
+            required_top_function_names=(ORIGINAL_NAME, CANDIDATE_NAME),
+        )
+        code = (
+            "#include <string>\n"
+            "void process_top();\nvoid process_top_hls();\n"
+            "/* void commented_helper(); */\n"
+            "int main(){std::string qry(255, 'a');"
+            "process_top();process_top_hls();return 0;}\n"
+        )
+        self.assertEqual(contract.validate(code), ())
+
+    def test_repair_contract_defers_process_control_to_real_tools(self):
+        contract = model_testbench_repairer.TestbenchRepairContract(
+            required_top_function_names=(ORIGINAL_NAME, CANDIDATE_NAME),
+        )
+        code = (
+            "void process_top();\nvoid process_top_hls();\n"
+            "int main(){process_top();if(fork()==0)process_top_hls();return 0;}\n"
+        )
+        self.assertEqual(contract.validate(code), ())
+
+    def test_stub_contract_defers_main_to_linker(self):
+        tb_optimizer.validate_stub_contract(
+            STUB + "int main(){return 0;}\n",
+            original_name=ORIGINAL_NAME,
+            candidate_name=CANDIDATE_NAME,
+            frozen_hls_decl=FROZEN_DECL,
+        )
+
+    def test_stub_contract_defers_abi_drift_to_linker(self):
+        tb_optimizer.validate_stub_contract(
+            "int process_top_hls(int x){return x;}\n",
+            original_name=ORIGINAL_NAME,
+            candidate_name=CANDIDATE_NAME,
+            frozen_hls_decl=FROZEN_DECL,
+        )
 
 
 class StepDErrorOwnershipTests(unittest.TestCase):
@@ -219,6 +368,14 @@ class StepDErrorOwnershipTests(unittest.TestCase):
             "testbench.cpp:12:3: error: missing symbol"
         )
         self.assertEqual(owner, "testbench")
+
+    def test_golden_side_run_failure_owns_testbench(self):
+        owner, action = tb_coverage._classify_run_failure_owner(
+            "[TB] WARNING: the golden reference left the fallback port unwritten.\n"
+            "[TB] FAIL fallback[0]: golden=-999 candidate=0\n"
+        )
+        self.assertEqual(owner, "testbench")
+        self.assertEqual(action, "repair_testbench")
 
     def test_compile_diagnostic_owns_stub_error(self):
         owner = tb_coverage._classify_compile_failure_owner(

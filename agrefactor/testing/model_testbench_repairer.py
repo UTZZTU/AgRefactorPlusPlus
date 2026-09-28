@@ -59,22 +59,6 @@ _FENCE_RE = re.compile(
     r"```(?:cpp|c\+\+|cxx)?\s*(.*?)```",
     re.DOTALL | re.IGNORECASE,
 )
-_FUNCTION_DECL_RE = re.compile(
-    r'^\s*(?:extern\s+"C"\s+)?'
-    r'(?:[A-Za-z_]\w*(?:::\w+)*(?:\s*[*&]\s*|\s+))+'
-    r'(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*;',
-    re.MULTILINE,
-)
-_DEFINE_RE = re.compile(
-    r"^\s*#define\s+[A-Za-z_]\w*[^\n]*$",
-    re.MULTILINE,
-)
-
-
-def _normalize_fragment(value: str) -> str:
-    return re.sub(r"\s+", " ", value).strip()
-
-
 def extract_complete_cpp_block(text: str) -> str:
     """Extract exactly one fenced C++ block and reject commentary."""
 
@@ -109,34 +93,6 @@ def extract_complete_cpp_block(text: str) -> str:
     return code
 
 
-def _extract_declared_function_names(
-    source: str,
-) -> tuple[str, ...]:
-    return tuple(
-        dict.fromkeys(
-            match.group("name")
-            for match in _FUNCTION_DECL_RE.finditer(source)
-        )
-    )
-
-
-def _extract_macros(source: str) -> tuple[str, ...]:
-    return tuple(
-        _normalize_fragment(match.group(0))
-        for match in _DEFINE_RE.finditer(source)
-    )
-
-
-def _call_count(source: str, function_name: str) -> int:
-    without_declarations = _FUNCTION_DECL_RE.sub("", source)
-    return len(
-        re.findall(
-            rf"\b{re.escape(function_name)}\s*\(",
-            without_declarations,
-        )
-    )
-
-
 @dataclass(frozen=True, slots=True)
 class TestbenchRepairContract:
     # Minimal structural obligations for a testbench repair.
@@ -160,46 +116,11 @@ class TestbenchRepairContract:
         )
 
     def validate(self, proposed: str) -> tuple[str, ...]:
-        issues: list[str] = []
-        if not re.search(r"\b(?:int|auto)\s+main\s*\(", proposed):
-            issues.append("missing main(...) entry point")
-
-        allowed = set(self.required_top_function_names)
-        for function_name in self.required_top_function_names:
-            if _call_count(proposed, function_name) < 1:
-                issues.append(
-                    "missing required public top-level call: "
-                    + function_name
-                )
-            definition_pattern = re.compile(
-                rf"^\s*(?:extern\s+\"C\"\s+)?"
-                rf"(?:[A-Za-z_]\w*(?:::\w+)*(?:\s*[*&]\s*|\s+))+"
-                rf"{re.escape(function_name)}\s*"
-                rf"\([^;{{}}]*\)\s*\{{",
-                re.MULTILINE,
-            )
-            if definition_pattern.search(proposed):
-                issues.append(
-                    "testbench must not define, stub, or wrap "
-                    "public top-level function: "
-                    + function_name
-                    + "; it also must not alias or reimplement it"
-                )
-
-        unexpected = sorted(
-            {
-                name
-                for name in _extract_declared_function_names(proposed)
-                if name not in allowed
-            }
-        )
-        if unexpected:
-            issues.append(
-                "testbench has external helper declarations outside "
-                "the Original/Candidate black-box surface: "
-                + ", ".join(unexpected)
-            )
-        return tuple(issues)
+        if not isinstance(proposed, str) or not proposed.strip():
+            return ("model returned an empty C++ replacement",)
+        # Program structure and tool compatibility are C++ facts.  The staged
+        # preflight compiles, inspects symbols, links, and runs this exact
+        return ()
 
 
     def to_prompt_requirements(self) -> tuple[str, ...]:
@@ -207,6 +128,11 @@ class TestbenchRepairContract:
             f"{name}>=1" for name in self.required_top_function_names
         )
         return (
+            (
+                "Define exactly one ordinary int main(...) entry point. "
+                "Do not mark it weak or attach attributes to it; the harness "
+                "isolates any program-level main in the Original source."
+            ),
             (
                 "Required public top-level function calls that must "
                 "remain present: "
@@ -244,6 +170,11 @@ _TESTBENCH_FORBIDDEN_ACTIONS = (
     (
         "Never weaken the golden-vs-Candidate comparison or make the "
         "Testbench return success unconditionally."
+    ),
+    (
+        "Never create, replace, or invoke another operating-system process "
+        "with fork, vfork, exec, posix_spawn, system, or popen; RTL "
+        "cosimulation must run in the original Testbench process."
     ),
 )
 

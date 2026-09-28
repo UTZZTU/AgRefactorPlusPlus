@@ -214,7 +214,7 @@ class R4ExistingOrchestratorIntegrationTests(unittest.TestCase):
         self.assertEqual(provider.calls, [])
         self.assertEqual(context.budget.snapshot().llm_calls, 0)
 
-    def test_real_candidate_adapter_preserves_safe_response_reason_codes(self):
+    def test_real_candidate_adapter_defers_unchanged_source_to_validation(self):
         m = helpers()
         baseline, request, _, _ = self._run_main(m)
         event = baseline.metadata["diagnostic_events"][0]
@@ -230,26 +230,17 @@ class R4ExistingOrchestratorIntegrationTests(unittest.TestCase):
             ),
             budget=context.budget,
         )
-        with self.assertRaises(R4MutationFailure) as raised:
-            mutation.mutate(
-                candidate=m.P1,
-                event=event,
-                advisory={
-                    "suspected_owner": "candidate",
-                    "suspected_failure_class": "unsupported_construct",
-                    "calibration_verified": True,
-                },
-                task=context.task,
-            )
-        self.assertEqual(
-            raised.exception.reason,
-            "provider_or_response_contract_failure",
+        result = mutation.mutate(
+            candidate=m.P1,
+            event=event,
+            advisory={
+                "suspected_owner": "candidate",
+                "suspected_failure_class": "unsupported_construct",
+                "calibration_verified": True,
+            },
+            task=context.task,
         )
-        self.assertEqual(
-            raised.exception.detail_codes,
-            ("semantic_unchanged",),
-        )
-        self.assertTrue(raised.exception.provider_call_observed)
+        self.assertEqual(result.strip(), m.P1.strip())
         self.assertEqual(len(provider.calls), 1)
         self.assertEqual(context.budget.snapshot().llm_calls, 1)
 

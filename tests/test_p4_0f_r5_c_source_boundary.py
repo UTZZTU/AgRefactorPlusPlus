@@ -50,7 +50,7 @@ class R5CSourceBoundaryTests(unittest.TestCase):
             "OriginalCsynthEvidence",
         )
 
-    def test_auto_private_global_is_rejected_before_model(self):
+    def test_auto_private_global_is_advisory_before_model(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "monobit_like.cpp"
@@ -62,7 +62,7 @@ class R5CSourceBoundaryTests(unittest.TestCase):
                 plan=build_test_source_plan(),
             )
         self.assertIsNotNone(report)
-        self.assertFalse(report.execution_allowed)
+        self.assertTrue(report.execution_allowed)
         self.assertEqual(
             report.boundary.private_global_dependencies,
             ("state",),
@@ -259,7 +259,7 @@ class R5CSourceBoundaryTests(unittest.TestCase):
             )
         self.assertIsNone(report)
 
-    def test_run_source_command_persists_typed_prelaunch_rejection(self):
+    def test_run_source_command_reaches_credential_check_after_advisory(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "monobit_like.cpp"
@@ -310,16 +310,16 @@ class R5CSourceBoundaryTests(unittest.TestCase):
 
         self.assertEqual(
             rejection["reason_code"],
-            "auto_public_tests_private_global_dependency",
+            "model_credential_missing_prelaunch",
         )
         self.assertFalse(rejection["provider_call_observed"])
         self.assertEqual(
             captured.exception.rejection["kind"],
-            "refactor_eligibility_rejected",
+            "selected_credential_missing",
         )
         self.assertEqual(
             eligibility["execution_status"],
-            "rejected",
+            "allowed",
         )
         self.assertIn(
             "refactor_eligibility.json",

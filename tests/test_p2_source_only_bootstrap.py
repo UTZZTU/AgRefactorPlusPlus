@@ -59,6 +59,11 @@ PUBLIC_HLS_DECL = 'extern "C" int top_hls(int);'
 PUBLIC_HLS_DECL_SHA256 = sha256(
     PUBLIC_HLS_DECL.encode("utf-8")
 ).hexdigest()
+PUBLIC_RUNTIME_CONTRACT = {
+    "schema_version": 1,
+    "kind": "public_differential_self_check_v1",
+    "candidate_mismatch_returncodes": [1],
+}
 
 
 def make_model_data_boundary(include_hidden: bool):
@@ -113,6 +118,15 @@ class FakeGenerationAdapter:
                 "public_hls_decl_sha256": (
                     PUBLIC_HLS_DECL_SHA256
                 ),
+                "public_runtime_contract": PUBLIC_RUNTIME_CONTRACT,
+                "public_runtime_contract_sha256": sha256(
+                    json.dumps(
+                        PUBLIC_RUNTIME_CONTRACT,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest(),
                 "model_data_boundary": make_model_data_boundary(
                     self.include_hidden
                 ),
@@ -351,6 +365,41 @@ class P2SourceOnlyBootstrapTests(unittest.TestCase):
                 "top_hls",
             )
             self.assertEqual(len(formal.task.test_suites), 2)
+            public_suite = next(
+                suite
+                for suite in formal.task.test_suites
+                if suite.split is EvaluationSplit.PUBLIC
+            )
+            self.assertEqual(
+                public_suite.to_dict()["runtime_contract"],
+                PUBLIC_RUNTIME_CONTRACT,
+            )
+            contract_evidence = json.loads(
+                (
+                    layout.artifact_root
+                    / "bootstrap"
+                    / "public_runtime_contract.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                contract_evidence["runtime_contract"],
+                PUBLIC_RUNTIME_CONTRACT,
+            )
+            self.assertEqual(
+                contract_evidence["runtime_contract_sha256"],
+                sha256(
+                    json.dumps(
+                        PUBLIC_RUNTIME_CONTRACT,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest(),
+            )
+            self.assertEqual(
+                contract_evidence["public_testbench_sha256"],
+                sha256((PUBLIC.rstrip() + "\n").encode("utf-8")).hexdigest(),
+            )
             self.assertEqual(
                 {
                     suite.split

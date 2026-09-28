@@ -1,0 +1,11 @@
+llm_config: &model_config {}
+agents:
+  input_domain_planner:
+    description: freeze a finite legal input-domain contract from the original HLS interface.
+    llm_config: *model_config
+    system_message: |
+      You define the legal input range for a refactoring run. Inspect only the original source and its top-level signature.
+      Return strict JSON only, with exactly two keys: dimensions and buffers.
+      dimensions maps a symbolic dimension to {port, min, max}; buffers maps each pointer/array port to {extent, max_elements}.
+      Every referenced port must exist in the top signature. Use finite integer bounds, min <= max, and make max_elements exactly the product of the dimension maxima (or 1 when extent is empty).
+      Do not mention or invent test cases, Candidate code, implementation-private state, or hidden data.

@@ -49,6 +49,10 @@ from agrefactor.config import (
     validate_repair_attempts,
     validate_test_generation_count,
 )
+from agrefactor.cpp_interface import (
+    extract_global_variables,
+    extract_top_interface,
+)
 from agrefactor.evaluation import TestbenchPreflight
 from agrefactor.evidence import (
     audit_testbench_semantic_revision,
@@ -97,6 +101,7 @@ from agrefactor.runtime.budget_profile import (
 )
 from agrefactor.runtime.r5_profile import R5Arm, resolve_r5_profile
 from agrefactor.runtime.r5_binding import R5RuntimeBinding
+from agrefactor.reference_source import isolate_reference_program_entry
 
 from .run_output import (
     capture_product_streams,
@@ -211,6 +216,17 @@ def _sha256_text(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
 
 
+def _sha256_json(value: Mapping[str, Any]) -> str:
+    return _sha256_text(
+        json.dumps(
+            dict(value),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+
+
 def _sha256_file(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest()
 
@@ -318,7 +334,7 @@ def build_test_source_plan(
 def _public_candidate_parameter_names(
     testbench_code: str,
     candidate_top_function: str,
-) -> tuple[str, ...]:
+) -> tuple[str, ...] | None:
     """Read named parameters from the Public Candidate declaration."""
 
     if not isinstance(testbench_code, str):
@@ -327,62 +343,27 @@ def _public_candidate_parameter_names(
         "candidate_top_function",
         candidate_top_function,
     )
-    match = re.search(
-        rf'^\s*(?:extern\s+"C"\s+)?[^#\n;{{}}]*'
-        rf'\b{re.escape(candidate)}\s*\('
-        rf'(?P<parameters>[^;{{}}]*)\)\s*;',
+    interface = extract_top_interface(
         testbench_code,
-        flags=re.MULTILINE,
+        candidate,
+        require_definition=False,
     )
-    if match is None:
-        raise ValueError(
-            "Public test does not declare the Candidate top interface: "
-            + candidate
-        )
-    parameters = match.group("parameters").strip()
-    if not parameters or parameters == "void":
-        return ()
-    names: list[str] = []
-    for raw_parameter in parameters.split(","):
-        parameter = raw_parameter.split("=", 1)[0].strip()
-        name_match = re.search(
-            r"\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*$",
-            parameter,
-        )
-        if name_match is None:
-            raise ValueError(
-                "Public Candidate interface has an unnamed or unsupported "
-                "parameter"
-            )
-        names.append(name_match.group(1))
-    if len(names) != len(set(names)):
-        raise ValueError("Public Candidate interface repeats a parameter name")
-    return tuple(names)
+    if interface is None:
+        return None
+    return tuple(parameter.name for parameter in interface.parameters)
 
 
-def _public_candidate_global_names(testbench_code: str) -> tuple[str, ...]:
-    """Read explicitly declared global Candidate ports from a Public test."""
+def _public_candidate_global_names(
+    testbench_code: str,
+) -> tuple[str, ...] | None:
+    """Read compiler-observed file-scope pointer and array declarations."""
 
-    if not isinstance(testbench_code, str):
-        raise TypeError("testbench_code must be a string")
-    names: list[str] = []
-    for match in re.finditer(
-        r'^\s*extern\s+(?!")(?P<declaration>[^#\n;(){}]+)\s*;',
-        testbench_code,
-        flags=re.MULTILINE,
-    ):
-        declaration = match.group("declaration").strip()
-        if "," in declaration or "=" in declaration:
-            continue
-        name_match = re.search(
-            r"\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*$",
-            declaration,
-        )
-        if name_match is not None:
-            names.append(name_match.group(1))
-    if len(names) != len(set(names)):
-        raise ValueError("Public Candidate ABI repeats a global port name")
-    return tuple(names)
+    variables = extract_global_variables(testbench_code)
+    if variables is None:
+        return None
+    return tuple(
+        variable.name for variable in variables if variable.pointer_like
+    )
 
 
 def _load_public_test_contracts(
@@ -429,25 +410,25 @@ def _load_public_test_contracts(
                     f"Public test not found: {public_path}"
                 )
             public_code = public_path.read_text(encoding="utf-8")
-            interface_names = set(
-                _public_candidate_parameter_names(
-                    public_code,
-                    candidate_top_function,
+            parameter_names = _public_candidate_parameter_names(
+                public_code,
+                candidate_top_function,
+            )
+            if parameter_names is not None:
+                interface_names = set(parameter_names)
+                global_names = _public_candidate_global_names(public_code)
+                if global_names is not None:
+                    interface_names.update(global_names)
+                depth_ports = set(
+                    suite.runtime_contract["cosim_interface_depths"]
                 )
-            )
-            interface_names.update(
-                _public_candidate_global_names(public_code)
-            )
-            depth_ports = set(
-                suite.runtime_contract["cosim_interface_depths"]
-            )
-            missing_ports = sorted(depth_ports - interface_names)
-            if missing_ports:
-                raise ValueError(
-                    "COSIM interface depth port(s) are absent from the "
-                    "Public Candidate ABI: "
-                    + ", ".join(missing_ports)
-                )
+                missing_ports = sorted(depth_ports - interface_names)
+                if missing_ports:
+                    raise ValueError(
+                        "COSIM interface depth port(s) are absent from the "
+                        "Public Candidate ABI: "
+                        + ", ".join(missing_ports)
+                    )
         result.append(suite.runtime_contract)
     return tuple(result)
 
@@ -1214,7 +1195,7 @@ def _prepare_public_testbench(
     effective_model_config: EffectiveModelConfig,
     budget: BudgetManager,
     work_dir: Path,
-    max_repair_attempts: int = 2,
+    max_repair_attempts: int = 3,
     original_top_function: str | None = None,
     candidate_top_function: str | None = None,
     suite_id: str = "public-readiness",
@@ -1240,6 +1221,21 @@ def _prepare_public_testbench(
         task=task,
         original_top_function=original_top_function,
         candidate_top_function=candidate_top_function,
+    )
+
+    # This preparation stage owns the Public Testbench.  If the Testbench
+    # and Original compiled cleanly but the temporary Candidate is the only
+    # failing component, defer that failure to formal Candidate repair instead
+    # of stopping before the repair-aware validation has started.
+    final_preflight = result.final_preflight
+    candidate_only_failure = (
+        final_preflight.failure_owner.value == "candidate"
+        and final_preflight.next_action == "repair_candidate"
+        and all(
+            step.status.value == "passed"
+            or step.component.value == "candidate"
+            for step in final_preflight.substeps
+        )
     )
 
     prompt_evidence: list[dict[str, Any]] = []
@@ -1320,9 +1316,14 @@ def _prepare_public_testbench(
 
     semantic_revision = None
     semantic_audit = None
-    result_status = result.status.value
+    result_status = "passed" if candidate_only_failure else result.status.value
     result_code = result.testbench_code
-    result_reason = result.reason
+    result_reason = (
+        "Public Testbench passed its own preflight; Candidate-owned failure "
+        "was deferred to formal Candidate repair."
+        if candidate_only_failure
+        else result.reason
+    )
     if result.repair_attempts_used > 0 and result.status.value == "passed":
         semantic_revision = build_testbench_semantic_revision(
             testbench_code,
@@ -1663,9 +1664,11 @@ class SourceBootstrapPhase:
             bootstrap_root / "model_data_boundary.json",
             model_data_boundary,
         )
-        original_code = _read_code(
-            self._request.source_path,
-            "source file",
+        original_code = isolate_reference_program_entry(
+            _read_code(
+                self._request.source_path,
+                "source file",
+            )
         )
         candidate_code = generated["candidate_code"]
         candidate_top = generated["candidate_top"]
@@ -1680,6 +1683,14 @@ class SourceBootstrapPhase:
             bootstrap_root / "initial_candidate.cpp",
             candidate_code,
         )
+        if generated["input_domain_contract"] is not None:
+            _atomic_json(
+                bootstrap_root / "input_domain_contract.json",
+                {
+                    "contract": generated["input_domain_contract"],
+                    "sha256": generated["input_domain_contract_sha256"],
+                },
+            )
         actual_generation_prompts = get_model_prompt_evidence()
         if actual_generation_prompts.get("actual_call_count", 0) > 0:
             generation_prompt_sha = str(
@@ -1857,7 +1868,20 @@ class SourceBootstrapPhase:
             original_code=original_code,
             preflight_testbench_code=preflight_code,
             suite_testbench_codes=suite_codes,
-            prompt_public_testbench_code=preflight_code,
+            prompt_public_testbench_code=(
+                preflight_code
+                + (
+                    "\n/* FROZEN LEGAL INPUT-DOMAIN CONTRACT: "
+                    + json.dumps(
+                        generated["input_domain_contract"],
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                    + "\nEvery repaired Candidate must support the entire range, including maximum values. */\n"
+                    if generated["input_domain_contract"] is not None
+                    else ""
+                )
+            ),
             max_attempts=self._request.max_candidate_repairs,
             family_instruction=(
                 self._request.effective_model_config.family_instruction
@@ -2581,6 +2605,22 @@ class SourceBootstrapPhase:
             context_variables,
             "public_hls_decl_sha256",
         )
+        public_runtime_contract = _mapping_get(
+            context_variables,
+            "public_runtime_contract",
+        )
+        public_runtime_contract_sha256 = _mapping_get(
+            context_variables,
+            "public_runtime_contract_sha256",
+        )
+        input_domain_contract = _mapping_get(
+            context_variables,
+            "input_domain_contract",
+        )
+        input_domain_contract_sha256 = _mapping_get(
+            context_variables,
+            "input_domain_contract_sha256",
+        )
         model_data_boundary = _mapping_get(
             context_variables,
             "model_data_boundary",
@@ -2610,6 +2650,42 @@ class SourceBootstrapPhase:
         copied_boundary = json.loads(
             json.dumps(dict(model_data_boundary), sort_keys=True)
         )
+        copied_runtime_contract = None
+        if public_runtime_contract is not None:
+            if not isinstance(public_runtime_contract, Mapping):
+                raise ValueError(
+                    "generation-only backend returned an invalid Public "
+                    "runtime contract"
+                )
+            copied_runtime_contract = json.loads(
+                json.dumps(
+                    dict(public_runtime_contract),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            if (
+                not isinstance(public_runtime_contract_sha256, str)
+                or not public_runtime_contract_sha256.strip()
+            ):
+                raise ValueError(
+                    "generation-only backend returned no Public runtime "
+                    "contract hash"
+                )
+            if (
+                _sha256_json(copied_runtime_contract)
+                != public_runtime_contract_sha256
+            ):
+                raise ValueError(
+                    "Public runtime contract hash does not match contract"
+                )
+        if input_domain_contract is not None:
+            if not isinstance(input_domain_contract, Mapping):
+                raise ValueError("generation-only backend returned an invalid input-domain contract")
+            if not isinstance(input_domain_contract_sha256, str) or not input_domain_contract_sha256.strip():
+                raise ValueError("generation-only backend returned no input-domain contract hash")
+            if _sha256_json(dict(input_domain_contract)) != input_domain_contract_sha256:
+                raise ValueError("input-domain contract hash does not match contract")
 
         return {
             "candidate_code": candidate,
@@ -2626,6 +2702,22 @@ class SourceBootstrapPhase:
             ),
             "public_hls_decl": public_hls_decl,
             "public_hls_decl_sha256": public_hls_decl_sha256,
+            "public_runtime_contract": copied_runtime_contract,
+            "public_runtime_contract_sha256": (
+                public_runtime_contract_sha256
+                if copied_runtime_contract is not None
+                else ""
+            ),
+            "input_domain_contract": (
+                json.loads(json.dumps(dict(input_domain_contract), ensure_ascii=False, sort_keys=True))
+                if isinstance(input_domain_contract, Mapping)
+                else None
+            ),
+            "input_domain_contract_sha256": (
+                input_domain_contract_sha256
+                if isinstance(input_domain_contract_sha256, str)
+                else ""
+            ),
             "model_data_boundary": copied_boundary,
         }
 
@@ -2724,6 +2816,45 @@ class SourceBootstrapPhase:
                     and self._request.public_test_contracts
                 ):
                     runtime_contract = self._request.public_test_contracts[index - 1]
+                elif (
+                    split is EvaluationSplit.PUBLIC
+                    and selection.mode is TestSourceSelectionMode.AUTO
+                ):
+                    raw_contract = generated.get("public_runtime_contract")
+                    if not isinstance(raw_contract, Mapping):
+                        raise ValueError(
+                            "auto Public generation produced no runtime contract"
+                        )
+                    from flow.tools.tb_optimizer import (
+                        validate_public_runtime_contract,
+                    )
+
+                    runtime_contract = validate_public_runtime_contract(
+                        dict(raw_contract),
+                        testbench_code=code,
+                        candidate_top_function=str(generated["candidate_top"]),
+                        frozen_hls_decl=str(generated["public_hls_decl"]),
+                    )
+                    runtime_contract_sha = _sha256_json(runtime_contract)
+                    if runtime_contract_sha != generated.get(
+                        "public_runtime_contract_sha256"
+                    ):
+                        raise ValueError(
+                            "auto Public runtime contract changed after "
+                            "generation"
+                        )
+                    _atomic_json(
+                        bootstrap_root / "public_runtime_contract.json",
+                        {
+                            "schema_version": 1,
+                            "runtime_contract": runtime_contract,
+                            "runtime_contract_sha256": runtime_contract_sha,
+                            "public_testbench_sha256": digest,
+                            "public_hls_decl_sha256": generated[
+                                "public_hls_decl_sha256"
+                            ],
+                        },
+                    )
                 suite = TestSuiteSpec(
                     suite_id=suite_id,
                     suite_version="1",

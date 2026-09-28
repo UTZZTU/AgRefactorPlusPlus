@@ -118,11 +118,14 @@ class RecoveryPolicyTests(unittest.TestCase):
             timeout_class="public_testbench_protocol_wait",
         )).allowed)
 
-    def test_ledger_enforces_stage_limit(self):
-        ledger = RecoveryLedger()
-        ledger.reserve(req(), restart_reserve={})
-        with self.assertRaises(RecoveryDeniedError):
-            ledger.reserve(req(), restart_reserve={})
+    def test_ledger_enforces_candidate_stage_limit(self):
+        for stage in (RecoveryStage.PUBLIC_CSIM, RecoveryStage.PUBLIC_COSIM):
+            with self.subTest(stage=stage):
+                ledger = RecoveryLedger()
+                for _ in range(3):
+                    ledger.reserve(req(stage=stage), restart_reserve={})
+                with self.assertRaises(RecoveryDeniedError):
+                    ledger.reserve(req(stage=stage), restart_reserve={})
 
     def test_ledger_checks_restart_budget(self):
         ledger = RecoveryLedger()

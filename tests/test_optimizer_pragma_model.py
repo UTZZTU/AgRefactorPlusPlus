@@ -734,7 +734,7 @@ class PragmaGenerationAndIntegrationTests(unittest.TestCase):
             with self.assertRaises(CandidateResponseError):
                 generator.generate(execution_request(hyp))
 
-    def test_generator_rejects_changed_top_interface(self):
+    def test_generator_defers_changed_top_interface_to_qualifier(self):
         changed = REWRITE.replace("void top(int *a, int n)", "void top(int *a, long n)")
         with tempfile.TemporaryDirectory() as directory:
             hyp = provider_hypothesis(Path(directory) / "analysis")
@@ -749,8 +749,8 @@ class PragmaGenerationAndIntegrationTests(unittest.TestCase):
                 budget=budget,
                 artifacts=artifacts,
             )
-            with self.assertRaises(CandidateResponseError):
-                generator.generate(execution_request(hyp))
+            result = generator.generate(execution_request(hyp))
+            self.assertEqual(result.candidate_code, changed.strip())
 
     def test_generator_rejects_non_pragma_request(self):
         with tempfile.TemporaryDirectory() as directory:

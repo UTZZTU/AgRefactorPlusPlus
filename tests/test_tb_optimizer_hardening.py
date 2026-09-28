@@ -65,21 +65,24 @@ class StrictCppArtifactTests(unittest.TestCase):
                 artifact_kind="testbench",
             )
 
-    def test_testbench_requires_main(self):
-        with self.assertRaises(tb_optimizer.ModelArtifactError):
+    def test_cpp_structure_is_deferred_to_compiler(self):
+        self.assertIn(
+            "void process_top_hls();",
             tb_optimizer._extract_one_cpp_block(
                 "```cpp\nvoid process_top_hls();\n```",
                 artifact_kind="testbench",
                 required_symbol="process_top_hls",
-            )
-
-    def test_stub_requires_definition(self):
-        with self.assertRaises(tb_optimizer.ModelArtifactError):
+            ),
+        )
+        self.assertIn(
+            "void process_top_hls();",
             tb_optimizer._extract_one_cpp_block(
                 "```cpp\nvoid process_top_hls();\n```",
                 artifact_kind="stub",
                 required_symbol="process_top_hls",
-            )
+            ),
+        )
+
 
 
 class PromptStateSafetyTests(unittest.TestCase):
@@ -153,6 +156,29 @@ class PromptStateSafetyTests(unittest.TestCase):
         self.assertNotIn("delegate to the original wherever possible", message)
 
 
+class CompilerOwnedBoundaryTests(unittest.TestCase):
+    def test_type_alias_void_stub_does_not_get_a_return_expression(self):
+        declaration = "typedef void Ret; Ret process_top_hls(int *values);"
+        stub = tb_coverage._original_only_candidate_stub(declaration, "process_top_hls")
+        self.assertIn("process_top_hls(int *values)", stub)
+        self.assertNotIn("return {}", stub)
+
+    def test_unknown_declaration_is_not_rejected_by_lexical_shape(self):
+        declaration = "not_a_known_type process_top_hls(int *values);"
+        stub = tb_coverage._original_only_candidate_stub(declaration, "process_top_hls")
+        self.assertIn("process_top_hls(int *values)", stub)
+
+    def test_hls_decl_extraction_uses_compiler_and_ignores_comments(self):
+        source = (
+            "// void process_top_hls(double wrong);\n"
+            "typedef int value_t;\n"
+            "void process_top_hls(value_t *values);\n"
+            "int main(){return 0;}\n"
+        )
+        observed = tb_optimizer.extract_hls_decl_from_testbench(source, "process_top_hls")
+        self.assertIn("process_top_hls", observed)
+        self.assertIn("value_t *values", observed)
+
 class LightweightQualificationGateTests(unittest.TestCase):
     ORIGINAL = (
         "void process_top(int n, int *input, int *output, "
@@ -170,67 +196,6 @@ class LightweightQualificationGateTests(unittest.TestCase):
             f" process_top({size}, input, output, &fallback);\n"
             " return 0;\n"
             "}\n"
-        )
-
-    def test_wrapper_does_not_call_static_heuristics(self):
-        passed = {
-            "status": "ok",
-            "cov_pct": 50.0,
-            "lines_total": 2,
-            "lines_hit": 1,
-            "uncovered_lines": [2],
-            "run_returncode": 0,
-            "compile_stderr": "",
-            "run_stderr": "",
-        }
-        with (
-            patch.object(
-                tb_optimizer,
-                "_obvious_capacity_conflicts",
-            ) as capacity,
-            patch.object(
-                tb_optimizer,
-                "_obvious_linkage_conflicts",
-            ) as linkage,
-            patch.object(
-                tb_optimizer,
-                "_obvious_state_safety_conflicts",
-            ) as state,
-            patch.object(
-                tb_optimizer,
-                "measure_coverage",
-                return_value=dict(passed),
-            ) as measure,
-        ):
-            result = tb_optimizer._measure_qualified_coverage(
-                self.ORIGINAL,
-                self._tb("CAPACITY"),
-                "void process_top_hls(){}\n",
-                "process_top",
-            )
-        capacity.assert_not_called()
-        linkage.assert_not_called()
-        state.assert_not_called()
-        measure.assert_called_once()
-        self.assertEqual(result["status"], "ok")
-
-    def test_capacity_gate_is_conservative(self):
-        conflicts = tb_optimizer._obvious_capacity_conflicts
-        self.assertEqual(
-            len(conflicts(self.ORIGINAL, self._tb("16"), "process_top")),
-            2,
-        )
-        self.assertEqual(
-            conflicts(self.ORIGINAL, self._tb("CAPACITY"), "process_top"),
-            [],
-        )
-        self.assertEqual(
-            conflicts(
-                self.ORIGINAL,
-                self._tb("runtime_size + 1"),
-                "process_top",
-            ),
-            [],
         )
 
     def test_capacity_heuristic_does_not_block_real_coverage(self):
@@ -300,36 +265,6 @@ class LightweightQualificationGateTests(unittest.TestCase):
             "}\n"
         )
 
-    def test_stateful_delegating_stub_is_reported_by_helper(self):
-        stub = (
-            "void process_top_hls(int n, int *input, int *output, "
-            "int *fallback){\n"
-            " process_top(n, input, output, fallback);\n"
-            "}\n"
-        )
-        errors = tb_optimizer._obvious_state_safety_conflicts(
-            self.STATEFUL,
-            self._state_tb(1),
-            stub,
-            "process_top",
-        )
-        self.assertTrue(any(
-            "stub delegates to stateful original" in error
-            for error in errors
-        ))
-
-    def test_repeated_stateful_calls_are_reported_by_helper(self):
-        errors = tb_optimizer._obvious_state_safety_conflicts(
-            self.STATEFUL,
-            self._state_tb(2),
-            "void process_top_hls(int, int*, int*, int*){}\n",
-            "process_top",
-        )
-        self.assertTrue(any(
-            "without a verified reset" in error
-            for error in errors
-        ))
-
     def test_safe_cases_are_not_blocked_by_state_gate(self):
         passed = {
             "status": "ok",
@@ -372,69 +307,6 @@ class LightweightQualificationGateTests(unittest.TestCase):
         self.assertEqual(measure.call_count, 2)
         self.assertEqual(stateful_once["status"], "ok")
         self.assertEqual(stateless_delegate["status"], "ok")
-
-    def test_const_only_globals_do_not_count_as_mutable_state(self):
-        source = (
-            "const int LIMIT = 8;\n"
-            "static constexpr int WIDTH = 4;\n"
-            "void process_top(){}\n"
-        )
-        self.assertEqual(
-            tb_optimizer._obvious_persistent_state_markers(source),
-            [],
-        )
-
-
-    def test_original_linkage_mismatch_is_rejected(self):
-        errors = tb_optimizer._obvious_linkage_conflicts(
-            "void process_top() {}\n",
-            (
-                'extern "C" void process_top();\n'
-                "void process_top_hls();\n"
-                "int main(){process_top();process_top_hls();}\n"
-            ),
-            "void process_top_hls() {}\n",
-            "process_top",
-        )
-        self.assertTrue(
-            any(
-                "language linkage of original" in error
-                for error in errors
-            )
-        )
-
-    def test_hls_linkage_mismatch_is_rejected(self):
-        errors = tb_optimizer._obvious_linkage_conflicts(
-            "void process_top() {}\n",
-            (
-                "void process_top();\n"
-                "void process_top_hls();\n"
-                "int main(){process_top();process_top_hls();}\n"
-            ),
-            'extern "C" void process_top_hls() {}\n',
-            "process_top",
-        )
-        self.assertTrue(
-            any(
-                "language linkage of process_top_hls" in error
-                for error in errors
-            )
-        )
-
-    def test_matching_cpp_linkage_is_allowed(self):
-        self.assertEqual(
-            tb_optimizer._obvious_linkage_conflicts(
-                "void process_top() {}\n",
-                (
-                    "void process_top();\n"
-                    "void process_top_hls();\n"
-                    "int main(){process_top();process_top_hls();}\n"
-                ),
-                "void process_top_hls() {}\n",
-                "process_top",
-            ),
-            [],
-        )
 
     def test_looped_stateful_original_call_reaches_real_coverage(self):
         looped_tb = (

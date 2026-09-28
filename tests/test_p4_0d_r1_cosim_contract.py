@@ -56,13 +56,16 @@ class P40DR1CosimContractTests(unittest.TestCase):
             base_identity=self._identity(testbench),
         )
         self.assertIn(
-            "int agrefactor_public_testbench_main()",
+            "#define main agrefactor_public_testbench_main",
             instrumented,
         )
-        self.assertNotIn("int main()", instrumented)
+        self.assertIn("int main()", instrumented)
         self.assertIn(
-            "const int testbench_status = "
-            "agrefactor_public_testbench_main();",
+            "const no_args_main no_args = static_cast<no_args_main>",
+            wrapper,
+        )
+        self.assertIn(
+            "testbench_status = no_args();",
             wrapper,
         )
         self.assertIn(
@@ -76,7 +79,7 @@ class P40DR1CosimContractTests(unittest.TestCase):
         self.assertIn('\\"schema_version\\":2', wrapper)
         self.assertNotIn("failure_owner", wrapper)
         self.assertEqual(evidence["schema_version"], 2)
-        self.assertEqual(evidence["main_contract"], "no_args")
+        self.assertEqual(evidence["main_contract"], "compiler_dispatched")
         self.assertTrue(evidence["records_only_raw_returncode"])
         self.assertTrue(evidence["atomic_replace"])
 
@@ -90,11 +93,11 @@ class P40DR1CosimContractTests(unittest.TestCase):
             base_identity=self._identity(testbench),
         )
         self.assertIn(
-            "agrefactor_public_testbench_main(int argc, char **argv)",
+            "#define main agrefactor_public_testbench_main",
             instrumented,
         )
         self.assertIn(
-            "agrefactor_public_testbench_main(argc, argv)",
+            "testbench_status = argc_argv(argc, argv);",
             wrapper,
         )
         combined = (
@@ -110,9 +113,9 @@ class P40DR1CosimContractTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, combined)
         self.assertEqual(evidence["hidden_input_count"], 0)
-        self.assertEqual(evidence["main_contract"], "argc_argv")
+        self.assertEqual(evidence["main_contract"], "compiler_dispatched")
 
-    def test_unsupported_or_ambiguous_main_fails_closed(self) -> None:
+    def test_entry_shape_is_left_to_compiler_and_runtime(self) -> None:
         for testbench in (
             "int helper(){return 0;}",
             "int main(double x){return 0;}",
@@ -120,11 +123,16 @@ class P40DR1CosimContractTests(unittest.TestCase):
             "int main(int,char**){return 0;}",
         ):
             with self.subTest(testbench=testbench):
-                with self.assertRaises(ValueError):
-                    _build_typed_outcome_adapter(
-                        testbench,
-                        base_identity=self._identity(testbench),
-                    )
+                instrumented, wrapper, evidence = _build_typed_outcome_adapter(
+                    testbench,
+                    base_identity=self._identity(testbench),
+                )
+                self.assertIn(
+                    "#define main agrefactor_public_testbench_main",
+                    instrumented,
+                )
+                self.assertEqual(evidence["main_contract"], "compiler_dispatched")
+
 
     def test_tcl_compiles_instrumented_testbench_and_wrapper(self) -> None:
         profile = default_target_profile()

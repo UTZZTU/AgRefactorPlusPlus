@@ -72,6 +72,12 @@ WEAK_TESTBENCH = (
     'extern "C" int top_hls(int);\n'
     'int main() { (void)top(7); (void)top_hls(7); return 0; }\n'
 )
+REWRITTEN_TESTBENCH = (
+    'extern "C" int top(int);\n'
+    'extern "C" int top_hls(int);\n'
+    'int main() { int actual = top_hls(9); int expected = top(9); '
+    'return actual != expected ? 1 : 0; }\n'
+)
 
 
 class _UnusedProvider(ModelProvider):
@@ -252,10 +258,10 @@ class R1RuntimeRecoveryTests(unittest.TestCase):
         self.assertEqual(repairer.calls, [])
         self.assertEqual(result.metadata["runtime_testbench_authorization"], "review_required_provided")
 
-    def test_semantic_weakening_is_blocked_before_revalidation(self):
+    def test_semantic_delta_is_revalidated_by_real_execution(self):
         with tempfile.TemporaryDirectory() as temp:
             task = _task()
-            repairer = _Repairer(WEAK_TESTBENCH)
+            repairer = _Repairer(REWRITTEN_TESTBENCH)
             factory = _ScenarioFactory(Path(temp) / "work")
             with patch.object(
                 integration,
@@ -265,10 +271,13 @@ class R1RuntimeRecoveryTests(unittest.TestCase):
                 result = CandidateRepairValidationOrchestrator(
                     model_adapter=_adapter(), handler_factory=factory
                 ).run(_context(task, temp), _request(), validation_id="r1-validation")
-        self.assertEqual(result.status, CandidateRepairOrchestrationStatus.REPAIR_NOT_APPLICABLE)
-        self.assertEqual(len(factory.requests), 1)
-        self.assertTrue(result.metadata["testbench_semantic_audit"]["has_errors"])
-        self.assertEqual(result.metadata["runtime_testbench_recovery_status"], "blocked_semantic_weakening")
+        self.assertEqual(result.status, CandidateRepairOrchestrationStatus.ACCEPTED)
+        self.assertEqual(len(factory.requests), 2)
+        self.assertFalse(result.metadata["testbench_semantic_audit"]["has_errors"])
+        self.assertEqual(
+            result.metadata["runtime_testbench_revalidation"]["final_state"],
+            "accepted",
+        )
 
 
 class R1EvidenceContractTests(unittest.TestCase):
@@ -286,7 +295,7 @@ class R1EvidenceContractTests(unittest.TestCase):
             "forbidden_hidden",
         )
 
-    def test_semantic_auditor_rejects_oracle_removal_without_source_persistence(self):
+    def test_semantic_auditor_reports_but_does_not_block_textual_weakening(self):
         revision = build_testbench_semantic_revision(
             FIXED_TESTBENCH,
             WEAK_TESTBENCH,
@@ -297,9 +306,24 @@ class R1EvidenceContractTests(unittest.TestCase):
             candidate_top_function="top_hls",
         )
         audit = audit_testbench_semantic_revision(revision)
-        self.assertTrue(audit.has_critical)
+        self.assertFalse(audit.has_errors)
+        self.assertTrue(audit.findings)
         self.assertNotIn(FIXED_TESTBENCH, json.dumps(revision))
         self.assertFalse(revision["source_content_persisted"])
+
+    def test_semantic_auditor_allows_real_validation_of_structural_rewrite(self):
+        revision = build_testbench_semantic_revision(
+            FIXED_TESTBENCH,
+            REWRITTEN_TESTBENCH,
+            suite_id="public-r1",
+            split="public",
+            source_kind="generated",
+            original_top_function="top",
+            candidate_top_function="top_hls",
+        )
+        audit = audit_testbench_semantic_revision(revision)
+        self.assertFalse(audit.has_errors)
+        self.assertTrue(audit.findings)
 
     def test_diagnostic_event_rejects_hidden_and_has_no_success_authority(self):
         report = _report(ValidationState.PREFLIGHT, failing=True)

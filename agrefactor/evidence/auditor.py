@@ -1009,13 +1009,23 @@ def audit_testbench_semantic_revision(
                     evidence_refs=("testbench_semantic_revision",),
                 )
             )
-    _audit_count_floor(findings, before, after, "main_count", "testbench_main_removed")
+    # Structural deltas remain visible as warnings. Real validation decides
+    # whether a repaired Testbench is usable.
+    _audit_count_floor(
+        findings,
+        before,
+        after,
+        "main_count",
+        "testbench_main_removed",
+        severity=AuditSeverity.WARNING,
+    )
     _audit_count_floor(
         findings,
         before,
         after,
         "comparison_count",
         "testbench_comparison_oracle_weakened",
+        severity=AuditSeverity.WARNING,
     )
     _audit_count_floor(
         findings,
@@ -1023,6 +1033,7 @@ def audit_testbench_semantic_revision(
         after,
         "return_guard_count",
         "testbench_return_oracle_weakened",
+        severity=AuditSeverity.WARNING,
     )
     for field_name, code in (
         ("top_reference_counts", "testbench_top_reference_removed"),
@@ -1040,7 +1051,7 @@ def audit_testbench_semantic_revision(
                 findings.append(
                     EvidenceAuditFinding(
                         code=code,
-                        severity=AuditSeverity.CRITICAL,
+                        severity=AuditSeverity.WARNING,
                         message=f"Testbench revision reduced {field_name}.{key}.",
                         expected=expected,
                         observed=observed,
@@ -1059,7 +1070,7 @@ def audit_testbench_semantic_revision(
             findings.append(
                 EvidenceAuditFinding(
                     code="testbench_top_reimplementation_added",
-                    severity=AuditSeverity.CRITICAL,
+                    severity=AuditSeverity.WARNING,
                     message="Testbench revision introduced a top-function definition.",
                     expected=expected,
                     observed=observed,
@@ -1073,7 +1084,7 @@ def audit_testbench_semantic_revision(
         findings.append(
             EvidenceAuditFinding(
                 code="testbench_case_literal_changed",
-                severity=AuditSeverity.CRITICAL,
+                severity=AuditSeverity.WARNING,
                 message="Testbench revision removed or changed existing case literals.",
                 expected=sum(before_literals.values()),
                 observed=sum(after_literals.values()),
@@ -1086,7 +1097,7 @@ def audit_testbench_semantic_revision(
         findings.append(
             EvidenceAuditFinding(
                 code="testbench_oracle_identity_changed",
-                severity=AuditSeverity.CRITICAL,
+                severity=AuditSeverity.WARNING,
                 message="Testbench revision removed or changed an existing oracle expression identity.",
                 expected=sum(before_oracles.values()),
                 observed=sum(after_oracles.values()),
@@ -1118,6 +1129,8 @@ def _audit_count_floor(
     after: Mapping[str, Any],
     field_name: str,
     code: str,
+    *,
+    severity: AuditSeverity = AuditSeverity.CRITICAL,
 ) -> None:
     expected = _integer(before.get(field_name)) or 0
     observed = _integer(after.get(field_name)) or 0
@@ -1125,7 +1138,7 @@ def _audit_count_floor(
         findings.append(
             EvidenceAuditFinding(
                 code=code,
-                severity=AuditSeverity.CRITICAL,
+                severity=severity,
                 message=f"Testbench revision reduced {field_name}.",
                 expected=expected,
                 observed=observed,

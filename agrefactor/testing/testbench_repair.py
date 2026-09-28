@@ -599,6 +599,13 @@ class TestbenchRepairLoop:
                     reason=stop_reason,
                     repair_attempts_used=repair_attempts_used,
                 )
+            if attempt_number < self._max_repair_attempts:
+                prior_attempt_summaries.append(
+                    self._preflight_failure_summary(
+                        attempt_number,
+                        latest,
+                    )
+                )
 
         reason = (
             "testbench remained invalid after "
@@ -668,6 +675,36 @@ class TestbenchRepairLoop:
             )
         compact = " ".join(str(error).split())
         return prefix + compact[:2000]
+
+    @staticmethod
+    def _preflight_failure_summary(
+        attempt_number: int,
+        preflight: TestbenchPreflightResult,
+    ) -> str:
+        lines = [
+            f"Attempt {attempt_number}",
+            f"preflight status: {preflight.status.value}",
+            f"failure kind: {preflight.failure_kind.value}",
+            f"failure owner: {preflight.failure_owner.value}",
+            f"next action: {preflight.next_action}",
+        ]
+        if preflight.stderr:
+            label = (
+                "run stderr"
+                if preflight.stage.value == "run"
+                else "compile stderr"
+            )
+            lines.append(
+                f"{label}: "
+                + " ".join(preflight.stderr.split())[:2000]
+            )
+        for step in preflight.substeps:
+            if step.stderr:
+                lines.append(
+                    f"{step.substage.value} stderr: "
+                    + " ".join(step.stderr.split())[:2000]
+                )
+        return "\n".join(lines)
 
     @staticmethod
     def _non_repairable_reason(

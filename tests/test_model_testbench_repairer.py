@@ -300,7 +300,7 @@ class ModelTestbenchRepairerTests(unittest.TestCase):
         self.assertIn(prior[0], user)
         self.assertEqual(prompt.manifest["prior_attempt_count"], 1)
 
-    def test_contract_allows_helper_and_macro_cleanup_but_requires_tops(
+    def test_contract_defers_program_structure_to_staged_preflight(
         self,
     ) -> None:
         helper_heavy = BROKEN_TB.replace(
@@ -338,13 +338,7 @@ class ModelTestbenchRepairerTests(unittest.TestCase):
             "",
         )
         issues = contract.validate(weakened)
-        self.assertTrue(
-            any(
-                "missing required public top-level call: process_top_hls"
-                in issue
-                for issue in issues
-            )
-        )
+        self.assertEqual(issues, ())
 
     def test_contract_allows_linkage_correction(self) -> None:
         contract = TestbenchRepairContract.from_request(make_request())
@@ -355,7 +349,7 @@ class ModelTestbenchRepairerTests(unittest.TestCase):
             (),
         )
 
-    def test_contract_rejects_top_function_stub(self) -> None:
+    def test_contract_defers_top_function_stub_to_linker(self) -> None:
         contract = TestbenchRepairContract.from_request(make_request())
         stubbed = FIXED_TB.replace(
             'extern "C" void process_top(int, int *, int *);',
@@ -365,13 +359,7 @@ class ModelTestbenchRepairerTests(unittest.TestCase):
             ),
         )
 
-        issues = contract.validate(stubbed)
-        self.assertTrue(
-            any(
-                "must not define, stub, or wrap" in issue
-                for issue in issues
-            )
-        )
+        self.assertEqual(contract.validate(stubbed), ())
 
     def test_model_adapter_uses_registry_and_merges_parameters(self) -> None:
         provider = FakeProvider(
@@ -437,7 +425,7 @@ class ModelTestbenchRepairerTests(unittest.TestCase):
             repairer.last_prompt.messages,
         )
 
-    def test_model_adapter_rejects_weakened_response(self) -> None:
+    def test_model_adapter_defers_weakened_response_to_preflight(self) -> None:
         weakened = FIXED_TB.replace(
             "process_top_hls(N, input, candidate);",
             "",
@@ -450,8 +438,10 @@ class ModelTestbenchRepairerTests(unittest.TestCase):
             model_name="repair-model",
         )
 
-        with self.assertRaises(TestbenchRepairResponseError):
-            repairer.repair(make_request())
+        self.assertEqual(
+            repairer.repair(make_request()).strip(),
+            weakened.strip(),
+        )
 
     def test_model_adapter_rejects_multiple_code_blocks(self) -> None:
         provider = FakeProvider(

@@ -14,6 +14,7 @@ from typing import Any, Protocol
 
 from agrefactor.config import (
     DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
+    DEFAULT_TESTBENCH_REPAIR_ATTEMPTS,
     DEFAULT_COSIM_TIMEOUT_S,
     EvaluationSplit,
     TaskSpec,
@@ -1226,7 +1227,7 @@ class CandidateRepairValidationOrchestrator:
         loop = TestbenchRepairLoop(
             preflight=TestbenchPreflight(),
             repairer=repairer,
-            max_repair_attempts=1,
+            max_repair_attempts=DEFAULT_TESTBENCH_REPAIR_ATTEMPTS,
         )
         work_root = getattr(
             self._handler_factory,

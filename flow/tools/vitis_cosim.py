@@ -18,6 +18,7 @@ from flow.tools.typed_testbench_outcome import (
     read_typed_testbench_outcome,
 )
 from agrefactor.config import TargetProfile, resolve_target_profile
+from agrefactor.vitis_interface import discover_top_io
 from agrefactor.runtime.budget import (
     BudgetExceededError,
     BudgetManager,
@@ -246,40 +247,6 @@ def _cosim_argv_value(path: Path) -> str:
     return value
 
 _WRAPPED_MAIN_NAME = "agrefactor_public_testbench_main"
-_MAIN_DEFINITION_RE = re.compile(
-    r"(?m)^(?P<indent>[ \t]*)(?P<return_type>int|auto)[ \t]+"
-    r"main[ \t]*\((?P<params>[^)]*)\)"
-    r"(?P<suffix>[ \t]*(?:->[ \t]*int[ \t]*)?\{)"
-)
-
-
-def _main_call_contract(parameters: str) -> tuple[str, str, str]:
-    cleaned = re.sub(r"\s+", " ", parameters.strip())
-    if cleaned in {"", "void"}:
-        return (
-            "no_args",
-            f"int {_WRAPPED_MAIN_NAME}();",
-            f"{_WRAPPED_MAIN_NAME}()",
-        )
-    parts = [part.strip() for part in cleaned.split(",")]
-    if (
-        len(parts) == 2
-        and re.search(r"\bint\b", parts[0])
-        and re.search(r"\bchar\b", parts[1])
-        and ("*" in parts[1] or "[" in parts[1])
-    ):
-        return (
-            "argc_argv",
-            f"int {_WRAPPED_MAIN_NAME}(int, char **);",
-            f"{_WRAPPED_MAIN_NAME}(argc, argv)",
-        )
-    raise ValueError(
-        "Public Testbench main signature is unsupported by the deterministic "
-        "COSIM typed-outcome adapter; expected main(), main(void), or "
-        "main(int, char **)."
-    )
-
-
 def _build_typed_outcome_adapter(
     testbench_code: str,
     *,
@@ -934,6 +901,50 @@ def run_vitis_cosim(
     invocation["typed_outcome"] = (
         typed if typed is not None else {"status": "missing_or_invalid"}
     )
+    synthesized_interface = discover_top_io(root, expected_top=top)
+    interface_contract_mismatch = False
+    if synthesized_interface is None:
+        invocation["synthesized_interface"] = {"status": "unknown"}
+    else:
+        actual_depth_ports = set(synthesized_interface.maxi_pointer_ports)
+        declared_depth_ports = set(interface_depths)
+        interface_contract_mismatch = (
+            actual_depth_ports != declared_depth_ports
+        )
+        invocation["synthesized_interface"] = {
+            "status": "observed",
+            "top_name": synthesized_interface.top_name,
+            "evidence_path": synthesized_interface.evidence_path,
+            "maxi_pointer_ports": sorted(actual_depth_ports),
+            "contract_depth_ports": sorted(declared_depth_ports),
+            "contract_matches": not interface_contract_mismatch,
+            "ports": [
+                {
+                    "source_name": port.source_name,
+                    "source_type": port.source_type,
+                    "is_pointer": port.is_pointer,
+                    "bit_width": port.bit_width,
+                    "size_or_depth": port.size_or_depth,
+                    "hardware_interface": port.hardware_interface,
+                    "hardware_name": port.hardware_name,
+                }
+                for port in synthesized_interface.ports
+            ],
+        }
+
+    if interface_contract_mismatch:
+        return _finalize_result(
+            invocation_path,
+            invocation,
+            status="failed",
+            failure_kind="runtime_contract_interface_mismatch",
+            failure_owner="testbench",
+            reason_code="cosim_depth_ports_do_not_match_synthesized_interface",
+            timed_out=timed_out,
+            returncode=returncode,
+            version_probe_launched=True,
+            cosim_launched=True,
+        )
 
     post_completion_pass = (
         timed_out

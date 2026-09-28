@@ -361,6 +361,50 @@ class TestbenchRepairLoopTests(unittest.TestCase):
         self.assertEqual(result.repair_attempts_used, 2)
         self.assertEqual(len(repairer.requests), 2)
 
+    def test_third_repair_receives_both_prior_preflight_failures(
+        self,
+    ) -> None:
+        broken_one = BROKEN_TB.replace(
+            "extern node *root;",
+            "extern unknown_one *root;",
+        )
+        broken_two = BROKEN_TB.replace(
+            "extern node *root;",
+            "extern unknown_two *root;",
+        )
+        repairer = RecordingRepairer(
+            [broken_one, broken_two, VALID_TB]
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.make_loop(
+                repairer,
+                attempts=3,
+            ).run(
+                work_dir=directory,
+                testbench_code=BROKEN_TB,
+                original_code=ORIGINAL,
+                candidate_code=CANDIDATE,
+            )
+
+        self.assertTrue(result.succeeded)
+        self.assertEqual(
+            repairer.requests[0].prior_attempt_summaries,
+            (),
+        )
+        self.assertEqual(
+            len(repairer.requests[2].prior_attempt_summaries),
+            2,
+        )
+        first, second = repairer.requests[2].prior_attempt_summaries
+        self.assertIn("Attempt 1", first)
+        self.assertIn("preflight status: failed", first)
+        self.assertIn("failure owner: testbench", first)
+        self.assertIn("next action: repair_testbench", first)
+        self.assertIn("unknown_one", first)
+        self.assertIn("Attempt 2", second)
+        self.assertIn("unknown_two", second)
+
 
     def test_explicit_task_is_forwarded_to_repair_request(
         self,

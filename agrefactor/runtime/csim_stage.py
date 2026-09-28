@@ -188,20 +188,81 @@ def _native_candidate_runtime_classification(
             if isinstance(contract, Mapping)
             else None
         )
-        contract_authorizes = (
+        version = (
+            contract.get("schema_version")
+            if isinstance(contract, Mapping)
+            else None
+        )
+        base_fields = {
+            "schema_version",
+            "kind",
+            "candidate_mismatch_returncodes",
+        }
+        expected_fields = (
+            base_fields
+            if version == 1
+            else (
+                base_fields | {"cosim_interface_depths"}
+                if version == 2
+                else None
+            )
+        )
+        contract_valid = (
             isinstance(contract, Mapping)
-            and contract.get("schema_version") == 1
+            and expected_fields is not None
+            and set(contract) == expected_fields
             and contract.get("kind") == "public_differential_self_check_v1"
+            and (
+                version == 1
+                or isinstance(
+                    contract.get("cosim_interface_depths"),
+                    Mapping,
+                )
+            )
             and isinstance(codes, (list, tuple))
+        )
+        contract_authorizes = (
+            contract_valid
             and isinstance(returncode, int)
             and not isinstance(returncode, bool)
             and returncode in codes
         )
+        owner_authority = value.get("owner_authority")
+        candidate_failure = (
+            (
+                value.get("failure_kind")
+                == "candidate_csim_functional_failure"
+                and owner_authority == "deterministic_proven"
+            )
+            or (
+                value.get("failure_kind")
+                == "candidate_csim_abnormal_termination"
+                and owner_authority == "differential_isolation_proven"
+            )
+        )
+        candidate_failure = (
+            candidate_failure and value.get("failure_owner") == "candidate"
+        )
+        returncode_authorized = (
+            (
+                value.get("failure_kind")
+                == "candidate_csim_functional_failure"
+                and contract_authorizes
+            )
+            or (
+                value.get("failure_kind")
+                == "candidate_csim_abnormal_termination"
+                and contract_valid
+                and returncode is None
+                and isinstance(value.get("original_isolation"), Mapping)
+                and value["original_isolation"].get("status") == "passed"
+                and value["original_isolation"].get("authority")
+                == "original_only_runtime"
+            )
+        )
         if (
-            value.get("failure_kind") == "candidate_csim_functional_failure"
-            and value.get("failure_owner") == "candidate"
-            and value.get("owner_authority") == "deterministic_proven"
-            and contract_authorizes
+            candidate_failure
+            and returncode_authorized
             and isinstance(value.get("preflight_evidence_sha256"), str)
             and len(value.get("preflight_evidence_sha256")) == 64
         ):

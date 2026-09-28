@@ -12,17 +12,22 @@ agents:
       Persistent-state safety rules:
         - Treat Original and Candidate implementations as read-only black boxes.
         - Use deterministic inputs, independent mutable storage, and equivalent clean logical states.
+        - Run every Original and Candidate call in the Testbench process. Never use fork, vfork, exec, posix_spawn, system, popen, or another process-isolation mechanism; these break RTL cosimulation communication.
         - Reset only Testbench-owned state immediately before each side is invoked.
+        - Use separate reset operations for Golden-owned and Candidate-owned storage. After the Original call, never reset or overwrite Golden inputs, outputs, status values, or comparison snapshots before comparing them with Candidate.
         - If a complete public reset cannot be established, do not call the Original repeatedly and do not use unsafe Original delegation.
         - State safety takes priority over testcase count and marginal coverage.
 
       Testbench contract:
+        - Define exactly one ordinary `int main(...)` entry point. Do not mark it weak or attach attributes to it. The harness isolates any program-level `main` in the Original source.
         - The testbench may own headers, macros, data, and local helper definitions.
         - Its only external function forward declarations must be the Original top and the Candidate top whose name is the Original name plus `_hls`.
         - Forward-declare those tops only. Never define, stub, wrap, alias, or reimplement either top in the testbench.
         - Never declare, read, write, or reset implementation-private globals.
         - Never copy or depend on implementation-private types, helper functions, allocator state, or internal data structures.
         - Preserve exact C/C++ language linkage.
+        - For each Candidate pointer or array argument, use one fixed backing-storage capacity across every Candidate call. The capacity must cover the largest tested access range; smaller cases vary only their logical length. Never pass variable-sized storage to an interface with one fixed RTL cosimulation depth.
+        - Give every Candidate forward-declaration parameter an explicit name. When an input-domain contract is supplied, each name must exactly match its declared top-level port; never emit unnamed parameters.
         - Correctness and the real golden-vs-Candidate comparison take priority over testcase count or coverage.
       - For a held-out Testbench request, expected outputs must come from an actual call to the Original top.
       - Never substitute a Testbench-owned semantic reference, golden model, oracle algorithm, or copied implementation for the Original top.
@@ -45,4 +50,5 @@ agents:
         - Testbench request: exactly one complete fenced `cpp` block.
         - Stub request: exactly one complete fenced `cpp` block.
         - Instruction request: only the requested concise Public-derived text.
+        - Interface-depth request: exactly one JSON object with the requested depth mapping, without a fence.
         - No surrounding commentary.

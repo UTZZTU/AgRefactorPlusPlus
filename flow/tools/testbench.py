@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, Optional
 
 from autogen.agentchat.group import ContextVariables  # type: ignore
@@ -8,12 +9,16 @@ from flow.base_agent import HLSAgentLoader
 import flow.tools as tools
 
 
+_ORIGINAL_EXECUTION_REPAIRS = 3
+
+
 def _build_testbench_request(
     original_code: str,
     kernel_name: str,
+    input_domain_contract: Optional[Dict[str, Any]] = None,
 ) -> str:
     hls_name = f"{kernel_name}_hls"
-    return (
+    request = (
         "Original kernel source code:\n"
         f"```cpp\n{original_code.rstrip()}\n```\n\n"
         f"Original golden top: {kernel_name}\n"
@@ -32,11 +37,28 @@ def _build_testbench_request(
         "Candidate calls, preserve exact C/C++ language linkage, and keep "
         "each side in an equivalent clean logical state. Correctness and a "
         "real golden-vs-Candidate comparison take priority over testcase "
-        "count or coverage. On mismatch, emit a useful stderr message and "
-        "return non-zero; otherwise return zero.\n\n"
+        "count or coverage. For every Candidate pointer or array argument, "
+        "use backing storage with one fixed capacity across every Candidate "
+        "call. That capacity must cover the largest tested access range; "
+        "smaller cases vary only the logical length. Do not pass variable-"
+        "sized vector storage or allocations sized only to the current case, "
+        "because RTL cosimulation dumps the full declared interface depth on "
+        "every call. When exercising multiple cases, complete every planned "
+        "Original call even if an earlier comparison fails. Accumulate "
+        "mismatches and return non-zero only after all planned cases finish, "
+        "so a Candidate mismatch cannot skip a later Original call. On "
+        "mismatch, emit a useful stderr message and return non-zero; otherwise "
+        "return zero.\n\n"
         "Reply with exactly one complete ```cpp ... ``` block and no "
         "commentary."
     )
+    if input_domain_contract is not None:
+        request += (
+            "\n\nFROZEN LEGAL INPUT-DOMAIN CONTRACT shared by Public, Candidate, and Hidden:\n"
+            + json.dumps(input_domain_contract, ensure_ascii=False, sort_keys=True)
+            + "\nEvery Public case must remain inside this range and include its maximum values; fixed storage must cover the declared capacities. Preserve the contract's top-level port names in the Candidate declaration."
+        )
+    return request
 
 
 def _build_instruction_request(
@@ -54,6 +76,42 @@ def _build_instruction_request(
     )
 
 
+def _original_execution_repair_request(
+    *,
+    original_code: str,
+    kernel_name: str,
+    testbench_code: str,
+    result: Dict[str, Any],
+    input_domain_contract: Optional[Dict[str, Any]],
+) -> str:
+    evidence = "\n".join(
+        str(result.get(field) or "").strip()
+        for field in ("compile_stderr", "run_stderr", "run_stdout")
+        if str(result.get(field) or "").strip()
+    )
+    return (
+        "The generated Public Testbench failed Original-only execution "
+        "qualification. The Original source must not be modified. Inspect the "
+        "complete failing Testbench and the real tool output below, determine "
+        "which generated inputs trigger the Original failure, and return one "
+        "complete replacement Public Testbench. Keep all replacement inputs "
+        "inside the frozen legal input-domain contract and still exercise its "
+        "declared maximums. Complete every planned Original call before "
+        "returning a mismatch, and do not let Candidate results skip a later "
+        "Original call.\n\n"
+        "PREVIOUS PUBLIC TESTBENCH:\n```cpp\n"
+        + testbench_code.rstrip()
+        + "\n```\n\nREAL TOOL OUTPUT:\n```text\n"
+        + (evidence[-12000:] or "(no detailed tool output)")
+        + "\n```\n\n"
+        + _build_testbench_request(
+            original_code,
+            kernel_name,
+            input_domain_contract,
+        )
+    )
+
+
 def gen_tb_prior(
     cv: ContextVariables,
     llm_config: Optional[Dict[str, Any]] = None,
@@ -67,23 +125,14 @@ def gen_tb_prior(
     agent = loader.load_agent("tb_creator")
     kernel_name = str(cv["kernel_name"])
     hls_name = f"{kernel_name}_hls"
-    response = agent.run(
-        message=_build_testbench_request(
+    tb = tools.tb_optimizer._request_cpp_artifact(
+        agent,
+        _build_testbench_request(
             str(cv["curr_code"]),
             kernel_name,
+            cv.get("input_domain_contract"),
         ),
-        max_turns=1,
-    )
-    response.process()
-    messages = getattr(response, "messages", None)
-    if not isinstance(messages, list) or not messages:
-        raise RuntimeError("testbench agent returned no messages")
-    terminal = messages[-1]
-    if not isinstance(terminal, dict):
-        raise RuntimeError("testbench agent terminal message is invalid")
-    raw = terminal.get("content")
-    tb = tools.tb_optimizer._extract_one_cpp_block(
-        raw,
+        first_turn=True,
         artifact_kind="testbench",
         required_symbol=hls_name,
     )
@@ -92,6 +141,87 @@ def gen_tb_prior(
         kernel_name,
         hls_name,
     )
+    candidate_decl = tools.tb_optimizer.extract_hls_decl_from_testbench(
+        tb,
+        hls_name,
+    )
+    try:
+        tools.tb_optimizer.validate_testbench_input_domain(
+            tb,
+            hls_name,
+            candidate_decl,
+            cv.get("input_domain_contract"),
+            require_maximum=True,
+        )
+    except tools.tb_optimizer.ModelArtifactError as exc:
+        tb = tools.tb_optimizer._request_cpp_artifact(
+            agent,
+            (
+                "The previous Public Testbench violated the frozen input-domain contract: "
+                f"{exc}. Generate a complete replacement with simple, directly auditable Candidate calls.\n\n"
+                + _build_testbench_request(
+                    str(cv["curr_code"]),
+                    kernel_name,
+                    cv.get("input_domain_contract"),
+                )
+            ),
+            first_turn=False,
+            artifact_kind="testbench",
+            required_symbol=hls_name,
+        )
+        tools.tb_optimizer.validate_testbench_top_contract(tb, kernel_name, hls_name)
+        tools.tb_optimizer.validate_testbench_input_domain(
+            tb,
+            hls_name,
+            tools.tb_optimizer.extract_hls_decl_from_testbench(tb, hls_name),
+            cv.get("input_domain_contract"),
+            require_maximum=True,
+        )
+
+    for repair_index in range(_ORIGINAL_EXECUTION_REPAIRS + 1):
+        candidate_decl = tools.tb_optimizer.extract_hls_decl_from_testbench(
+            tb,
+            hls_name,
+        )
+        original_result = tools.tb_coverage.check_original_execution(
+            str(cv["curr_code"]),
+            tb,
+            candidate_decl,
+            hls_name,
+            budget=budget,
+        )
+        if original_result.get("status") == "ok":
+            break
+        if repair_index >= _ORIGINAL_EXECUTION_REPAIRS:
+            raise tools.tb_optimizer.ModelArtifactError(
+                "Public Testbench still fails Original-only execution after "
+                f"{_ORIGINAL_EXECUTION_REPAIRS} repair attempts"
+            )
+        tb = tools.tb_optimizer._request_cpp_artifact(
+            agent,
+            _original_execution_repair_request(
+                original_code=str(cv["curr_code"]),
+                kernel_name=kernel_name,
+                testbench_code=tb,
+                result=original_result,
+                input_domain_contract=cv.get("input_domain_contract"),
+            ),
+            first_turn=False,
+            artifact_kind="testbench_repair",
+            required_symbol=hls_name,
+        )
+        tools.tb_optimizer.validate_testbench_top_contract(
+            tb,
+            kernel_name,
+            hls_name,
+        )
+        tools.tb_optimizer.validate_testbench_input_domain(
+            tb,
+            hls_name,
+            tools.tb_optimizer.extract_hls_decl_from_testbench(tb, hls_name),
+            cv.get("input_domain_contract"),
+            require_maximum=True,
+        )
 
     response = agent.run(
         message=_build_instruction_request(kernel_name, hls_name),

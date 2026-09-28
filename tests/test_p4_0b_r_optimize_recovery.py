@@ -667,7 +667,7 @@ class P40BROptimizeRecoveryTests(unittest.TestCase):
             self.assertIn("parent_source_fallback", result.reason_codes)
             self.assertEqual(validator.requests, [])
 
-    def test_coordinator_semantic_unchanged_is_response_rejected(self):
+    def test_coordinator_semantic_unchanged_reaches_validator(self):
         report, route = _feedback(
             FeedbackStage.COMPILE,
             FeedbackCategory.SYNTAX_ERROR,
@@ -699,9 +699,9 @@ class P40BROptimizeRecoveryTests(unittest.TestCase):
             result = coordinator.recover(_recovery_request())
             self.assertIs(
                 result.status,
-                OptimizeRecoveryStatus.RESPONSE_REJECTED,
+                OptimizeRecoveryStatus.VALIDATED,
             )
-            self.assertEqual(validator.requests, [])
+            self.assertEqual(len(validator.requests), 1)
 
     def test_coordinator_csynth_uses_csynth_prompt(self):
         report, route = _feedback(

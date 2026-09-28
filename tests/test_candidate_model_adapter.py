@@ -186,13 +186,11 @@ class CandidateResponseContractTests(unittest.TestCase):
             contract.extract_and_validate("AGREFACTOR_ABSTAIN")
         self.assertEqual(captured.exception.reason_codes, ("explicit_abstention",))
 
-    def test_contract_exposes_safe_reason_codes(self):
+    def test_interface_changes_are_deferred_to_real_tools(self):
         contract = CandidateResponseContract.from_candidate(TASK, CURRENT)
         changed = REPAIRED.replace("const int *input", "int *input")
-        with self.assertRaises(CandidateResponseError) as captured:
-            contract.extract_and_validate(f"```cpp\n{changed}\n```")
-        self.assertEqual(captured.exception.reason_codes, ("top_interface_changed",))
-        self.assertNotIn("candidate_top", repr(captured.exception.reason_codes))
+        proposed = contract.extract_and_validate(f"```cpp\n{changed}\n```")
+        self.assertEqual(proposed.strip(), changed.strip())
 
     def test_rejects_leading_think_block(self):
         contract = CandidateResponseContract.from_candidate(TASK, CURRENT)
@@ -251,53 +249,52 @@ class CandidateResponseContractTests(unittest.TestCase):
                         f"```cpp\n{marker}\n{REPAIRED}\n```"
                     )
 
-    def test_rejects_missing_or_renamed_top_function(self):
+    def test_top_function_shape_is_deferred_to_real_tools(self):
         contract = CandidateResponseContract.from_candidate(TASK, CURRENT)
         for proposed in (
             "int helper() { return 0; }",
             REPAIRED.replace("candidate_top", "renamed_top"),
         ):
             with self.subTest(proposed=proposed[:30]):
-                with self.assertRaises(CandidateResponseError):
+                self.assertEqual(
                     contract.extract_and_validate(
                         f"```cpp\n{proposed}\n```"
-                    )
+                    ).strip(),
+                    proposed.strip(),
+                )
 
-    def test_rejects_changed_top_interface(self):
+    def test_changed_top_interface_is_deferred_to_real_tools(self):
         contract = CandidateResponseContract.from_candidate(TASK, CURRENT)
         changed = REPAIRED.replace(
             "const int *input",
             "int *input",
         )
-        with self.assertRaisesRegex(
-            CandidateResponseError,
-            "interface was changed",
-        ):
-            contract.extract_and_validate(f"```cpp\n{changed}\n```")
+        self.assertEqual(
+            contract.extract_and_validate(f"```cpp\n{changed}\n```").strip(),
+            changed.strip(),
+        )
 
-    def test_rejects_duplicate_top_definition(self):
+    def test_duplicate_top_definition_is_deferred_to_real_tools(self):
         contract = CandidateResponseContract.from_candidate(TASK, CURRENT)
         duplicate = REPAIRED + "\n" + REPAIRED
-        with self.assertRaisesRegex(
-            CandidateResponseError,
-            "multiple definitions",
-        ):
+        self.assertEqual(
             contract.extract_and_validate(
                 f"```cpp\n{duplicate}\n```"
-            )
+            ).strip(),
+            duplicate.strip(),
+        )
 
-    def test_rejects_candidate_main_definition(self):
+    def test_candidate_main_definition_is_deferred_to_real_tools(self):
         contract = CandidateResponseContract.from_candidate(TASK, CURRENT)
         with_main = REPAIRED + "\nint main() { return 0; }\n"
-        with self.assertRaisesRegex(
-            CandidateResponseError,
-            "must not define main",
-        ):
+        self.assertEqual(
             contract.extract_and_validate(
                 f"```cpp\n{with_main}\n```"
-            )
+            ).strip(),
+            with_main.strip(),
+        )
 
-    def test_rejects_unchanged_or_whitespace_only_candidate(self):
+    def test_unchanged_candidate_is_deferred_to_real_tools(self):
         contract = CandidateResponseContract.from_candidate(TASK, CURRENT)
         variants = (
             CURRENT,
@@ -309,13 +306,12 @@ class CandidateResponseContractTests(unittest.TestCase):
         )
         for proposed in variants:
             with self.subTest(size=len(proposed)):
-                with self.assertRaisesRegex(
-                    CandidateResponseError,
-                    "semantically unchanged",
-                ):
+                self.assertEqual(
                     contract.extract_and_validate(
                         f"```cpp\n{proposed}\n```"
-                    )
+                    ).strip(),
+                    proposed.strip(),
+                )
 
     def test_multiline_interface_is_preserved(self):
         contract = CandidateResponseContract.from_candidate(TASK, CURRENT)
@@ -492,19 +488,18 @@ class CandidateModelAdapterTests(unittest.TestCase):
         )
         json.dumps(payload, sort_keys=True)
 
-    def test_adapter_records_response_before_contract_rejection(self):
+    def test_adapter_defers_unchanged_response_to_real_validation(self):
         provider = FakeProvider(f"```cpp\n{CURRENT}\n```")
         adapter = CandidateModelAdapter(
             registry=make_registry(provider),
             model_name="candidate-repair-model",
         )
 
-        with self.assertRaises(CandidateResponseError):
-            adapter.generate(make_request())
+        result = adapter.generate(make_request())
 
         self.assertEqual(len(adapter.prompts), 1)
         self.assertEqual(len(adapter.responses), 1)
-        self.assertEqual(adapter.results, ())
+        self.assertEqual(adapter.results, (result,))
 
     def test_adapter_rejects_non_model_response(self):
         provider = FakeProvider(

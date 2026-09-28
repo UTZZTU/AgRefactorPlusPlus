@@ -24,6 +24,8 @@ def refactor_code(
         f"Here is the plan you can refer to:\n{cv['plan']}\n\n"
         f"Here is the instructions you must follow, they specify the signature and constraints of the new kernel:\n{cv['tb_aligned_instruction']}\n\n"
         f"{cv['new_kernel_name']} is the new kernel name you must use to replace the original kernel {cv['kernel_name']}\n\n"
+        f"The frozen legal input-domain contract is:\n{cv.get('input_domain_contract', {})}\n"
+        "Your loops, local arrays, and fixed buffers must support the entire contract range, including its maximum values. Do not treat the largest Public example as the legal upper bound.\n\n"
     )
     if hetero_enabled:
         msg_heterorefactor = (
@@ -31,6 +33,8 @@ def refactor_code(
             f"Here is the plan you can refer to:\n{cv['plan_hetero']}\n\n"
             f"Here is the instructions you must follow, they specify the signature and constraints of the new kernel:\n{cv['tb_aligned_instruction']}\n\n"
             f"{cv['new_kernel_name']} is the new kernel name you must use to replace the original kernel {cv['kernel_name']}\n\n"
+            f"The frozen legal input-domain contract is:\n{cv.get('input_domain_contract', {})}\n"
+            "Your loops, local arrays, and fixed buffers must support the entire contract range, including its maximum values. Do not treat the largest Public example as the legal upper bound.\n\n"
         )
 
     def run_worker(worker, message):

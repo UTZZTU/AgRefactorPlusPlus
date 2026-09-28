@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from agrefactor.cli import build_parser
 from agrefactor.config import EvaluationSplit, TestSuiteSpec, resolve_target_profile
@@ -11,6 +12,14 @@ from agrefactor.product.source_bootstrap import _load_public_test_contracts
 from flow.tools.vitis_cosim import (
     _candidate_returncode_authorized as cosim_authorized,
     make_vitis_cosim_tcl,
+)
+from flow.tools.tb_optimizer import (
+    ModelArtifactError,
+    _initial_user_message,
+    _public_runtime_contract_prompt,
+    generate_public_runtime_contract,
+    public_runtime_contract_depth_ports,
+    validate_public_runtime_contract,
 )
 from flow.tools.vitis_csim import (
     _candidate_returncode_authorized as csim_authorized,
@@ -30,6 +39,173 @@ V2 = {
 
 
 class P40FPrR1CCosimDepthContractTests(unittest.TestCase):
+    def test_runtime_depth_prompt_uses_immediate_pointee_units(self):
+        prompt = _public_runtime_contract_prompt(
+            orig_code="void top(unsigned char (*state)[4][4]);",
+            testbench_code=(
+                "void top_hls(unsigned char (*state)[4][4]);\n"
+                "int main(){unsigned char state[4][4]{}; "
+                "top_hls(&state); return 0;}\n"
+            ),
+            candidate_top_function="top_hls",
+            frozen_hls_decl=(
+                "void top_hls(unsigned char (*state)[4][4]);"
+            ),
+            required_ports=("state",),
+        )
+        self.assertIn("immediate pointee type", prompt)
+        self.assertIn("needs depth 1, not R*C", prompt)
+        self.assertIn("Do not add depths across sequential test cases", prompt)
+
+    def test_public_prompt_requires_fixed_capacity_pointer_storage(self):
+        prompt = _initial_user_message(
+            "void top(int n, int* data);",
+            "top",
+        )
+        self.assertIn(
+            "one fixed capacity across every Candidate call",
+            prompt,
+        )
+        self.assertIn("full declared interface depth", prompt)
+
+    def test_model_generated_depth_contract_retries_json_only(self):
+        class Response:
+            def __init__(self, content):
+                self.messages = [{"content": content}]
+
+            def process(self):
+                return None
+
+        class Agent:
+            def __init__(self):
+                self.responses = iter(
+                    [
+                        "```json\n{}\n```",
+                        '{"cosim_interface_depths":{"input":64}}',
+                    ]
+                )
+                self.calls = 0
+
+            def run(self, **_kwargs):
+                self.calls += 1
+                return Response(next(self.responses))
+
+        agent = Agent()
+        with patch(
+            "flow.tools.tb_optimizer.HLSAgentLoader"
+        ) as loader:
+            loader.return_value.load_agent.return_value = agent
+            contract = generate_public_runtime_contract(
+                orig_code="int top(const int* input);",
+                testbench_code=(
+                    "int top_hls(const int* input);\n"
+                    "int main(){int x[64]={}; return top_hls(x);}\n"
+                ),
+                candidate_top_function="top_hls",
+                frozen_hls_decl="int top_hls(const int* input);",
+            )
+
+        self.assertEqual(agent.calls, 2)
+        self.assertEqual(
+            contract["cosim_interface_depths"],
+            {"input": 64},
+        )
+
+    def test_public_abi_depth_ports_exclude_scalars(self):
+        testbench = (
+            "extern int shared[64];\n"
+            "int top_hls(const int* input, int output[32], int count);\n"
+            "int main(){return 0;}\n"
+        )
+        self.assertEqual(
+            public_runtime_contract_depth_ports(
+                testbench_code=testbench,
+                candidate_top_function="top_hls",
+                frozen_hls_decl=(
+                    "int top_hls(const int* input, "
+                    "int output[32], int count);"
+                ),
+            ),
+            ("input", "output"),
+        )
+
+    def test_public_abi_depth_ports_support_pointer_to_array_parameters(self):
+        declaration = (
+            "void des_crypt_hls(unsigned char (*in)[8], "
+            "unsigned char (*out)[8], unsigned char (*key)[16][6]);"
+        )
+        self.assertEqual(
+            public_runtime_contract_depth_ports(
+                testbench_code=declaration + "\nint main(){return 0;}\n",
+                candidate_top_function="des_crypt_hls",
+                frozen_hls_decl=declaration,
+            ),
+            ("in", "key", "out"),
+        )
+
+    def test_generated_contract_requires_every_pointer_or_array_port(self):
+        testbench = (
+            "int top_hls(const int* input, int* output, int count);\n"
+            "int main(){return 0;}\n"
+        )
+        with self.assertRaisesRegex(
+            ModelArtifactError,
+            "missing required",
+        ):
+            validate_public_runtime_contract(
+                {
+                    **V2,
+                    "cosim_interface_depths": {"input": 32},
+                },
+                testbench_code=testbench,
+                candidate_top_function="top_hls",
+                frozen_hls_decl=(
+                    "int top_hls(const int* input, int* output, int count);"
+                ),
+            )
+
+    def test_generated_contract_rejects_scalar_or_unknown_port(self):
+        testbench = (
+            "int top_hls(const int* input, int count);\n"
+            "int main(){return 0;}\n"
+        )
+        for depths in (
+            {"input": 32, "count": 1},
+            {"input": 32, "guessed": 1},
+        ):
+            with self.subTest(depths=depths):
+                with self.assertRaisesRegex(
+                    ModelArtifactError,
+                    "not pointer or array",
+                ):
+                    validate_public_runtime_contract(
+                        {
+                            **V2,
+                            "cosim_interface_depths": depths,
+                        },
+                        testbench_code=testbench,
+                        candidate_top_function="top_hls",
+                        frozen_hls_decl=(
+                            "int top_hls(const int* input, int count);"
+                        ),
+                    )
+
+    def test_scalar_only_public_abi_uses_v1_contract(self):
+        contract = validate_public_runtime_contract(
+            {
+                "schema_version": 1,
+                "kind": "public_differential_self_check_v1",
+                "candidate_mismatch_returncodes": [1],
+            },
+            testbench_code=(
+                "int top_hls(int value);\n"
+                "int main(){return top_hls(1);}\n"
+            ),
+            candidate_top_function="top_hls",
+            frozen_hls_decl="int top_hls(int value);",
+        )
+        self.assertEqual(contract["schema_version"], 1)
+
     def test_v1_round_trip_unchanged(self):
         suite = TestSuiteSpec(
             suite_id="v1",

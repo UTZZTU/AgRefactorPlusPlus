@@ -40,6 +40,7 @@ from flow.tools.typed_testbench_outcome import (
     build_typed_testbench_adapter,
     make_typed_outcome_identity,
     read_typed_testbench_outcome,
+    read_typed_testbench_started,
 )
 from flow.tools.vitis_csim import run_vitis_csim
 from flow.tools.vitis_cosim import run_vitis_cosim
@@ -80,6 +81,11 @@ RUNTIME_CONTRACT = {
     "schema_version": 1,
     "kind": "public_differential_self_check_v1",
     "candidate_mismatch_returncodes": [1],
+}
+RUNTIME_CONTRACT_V2 = {
+    **RUNTIME_CONTRACT,
+    "schema_version": 2,
+    "cosim_interface_depths": {"input": 1},
 }
 HISTORICAL_RUN_ID = "p4_0f_r5_e_20260806T172137Z_60901"
 HISTORICAL_ARCHIVE_SHA256 = (
@@ -204,6 +210,25 @@ def _write_preflight_fixture(root: Path, *, candidate=CANDIDATE_CSIM_FAULT, good
 
 
 class TypedBoundaryContractTests(unittest.TestCase):
+    def test_adapter_accepts_main_brace_on_next_line(self):
+        code = TESTBENCH.replace("int main() {", "int main()\n{")
+        identity = make_typed_outcome_identity(
+            phase="public_csim",
+            suite_id="public-main",
+            candidate_code=CANDIDATE_CSIM_FAULT,
+            testbench_code=code,
+            execution_id="0123456789abcdef0123456789abcdef",
+        )
+        instrumented, wrapper, metadata = build_typed_testbench_adapter(
+            code,
+            wrapped_main_name="agrefactor_test_main",
+            base_identity=identity,
+            allowed_phases=("public_csim",),
+        )
+        self.assertIn("agrefactor_test_main", instrumented)
+        self.assertIn("int main(int argc, char **argv)", wrapper)
+        self.assertEqual(metadata["main_contract"], "compiler_dispatched")
+
     def test_runtime_contract_is_explicit_public_and_strict(self):
         suite = TestSuiteSpec(
             suite_id="public-main",
@@ -329,18 +354,86 @@ class TypedBoundaryContractTests(unittest.TestCase):
         self.assertNotIn("failure_kind", payload)
         self.assertFalse(any(outcome.parent.glob("*.tmp")))
 
+    def test_wrapper_records_started_identity_before_testbench_aborts(self):
+        compiler = shutil.which("g++") or shutil.which("c++")
+        if compiler is None:
+            self.skipTest("C++ compiler unavailable")
+        source = "#include <cstdlib>\nint main() { std::abort(); }\n"
+        identity = make_typed_outcome_identity(
+            phase="public_native_vitis_csim",
+            suite_id="public-main",
+            candidate_code=CANDIDATE_CSIM_FAULT,
+            testbench_code=source,
+        )
+        instrumented, wrapper, _ = build_typed_testbench_adapter(
+            source,
+            wrapped_main_name="agrefactor_test_main",
+            base_identity=identity,
+            allowed_phases=("public_native_vitis_csim",),
+        )
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / "tb.cpp").write_text(instrumented, encoding="utf-8")
+            (root / "wrapper.cpp").write_text(wrapper, encoding="utf-8")
+            executable = root / "runner"
+            subprocess.run(
+                [compiler, "-std=c++17", "tb.cpp", "wrapper.cpp", "-o", str(executable)],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            outcome = root / "outcome.json"
+            completed = subprocess.run(
+                [
+                    str(executable),
+                    str(outcome),
+                    identity["execution_id"],
+                    identity["phase"],
+                ],
+                cwd=root,
+                check=False,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertFalse(outcome.exists())
+            started = read_typed_testbench_started(
+                Path(str(outcome) + ".started"),
+                expected_identity=identity,
+            )
+        self.assertIsNotNone(started)
+        self.assertEqual(started["status"], "started")
+
 
 class NativeCsimDeterministicAuthorityTests(unittest.TestCase):
-    def _run(self, *, code=1, contract=RUNTIME_CONTRACT, preflight=None, write_outcome=True):
+    def _run(
+        self,
+        *,
+        code=1,
+        contract=RUNTIME_CONTRACT,
+        preflight=None,
+        write_outcome=True,
+        write_started=False,
+        isolation=None,
+    ):
         def run_cmd(work_dir, _command, _timelimit):
             root = Path(work_dir)
+            invocation = json.loads(
+                (root / "csim_invocation.json").read_text(encoding="utf-8")
+            )
+            identity = invocation["typed_outcome_identity"]
             if write_outcome:
-                invocation = json.loads(
-                    (root / "csim_invocation.json").read_text(encoding="utf-8")
-                )
-                identity = invocation["typed_outcome_identity"]
                 (root / "agrefactor_csim_outcome.json").write_text(
                     json.dumps(_raw_payload(identity, returncode=code)) + "\n",
+                    encoding="utf-8",
+                )
+            if write_started:
+                started = {
+                    "schema_version": 2,
+                    **identity,
+                    "status": "started",
+                }
+                (root / "agrefactor_csim_outcome.json.started").write_text(
+                    json.dumps(started) + "\n",
                     encoding="utf-8",
                 )
             return {
@@ -355,6 +448,17 @@ class NativeCsimDeterministicAuthorityTests(unittest.TestCase):
                 patch("flow.tools.vitis_csim.resolve_csynth_command", _resolution),
                 patch("flow.tools.vitis_csim.probe_csynth_version", _verification),
                 patch("flow.tools.general.run_cmd", side_effect=run_cmd),
+                patch(
+                    "flow.tools.vitis_csim._original_isolation_evidence",
+                    return_value=(
+                        isolation
+                        if isolation is not None
+                        else {
+                            "status": "unknown",
+                            "authority": "original_only_runtime",
+                        }
+                    ),
+                ),
             ):
                 return run_vitis_csim(
                     raw,
@@ -392,7 +496,33 @@ class NativeCsimDeterministicAuthorityTests(unittest.TestCase):
                 status, _ = self._run(code=code)
                 self.assertEqual(status, "csim_execution_failed")
 
-    def test_deterministic_native_authority_flows_through_existing_router(self):
+    def test_abnormal_exit_without_started_marker_remains_unknown(self):
+        status, _ = self._run(
+            code=139,
+            write_outcome=False,
+            write_started=False,
+            isolation={
+                "status": "passed",
+                "authority": "original_only_runtime",
+            },
+        )
+        self.assertEqual(status, "csim_execution_failed")
+
+    def test_abnormal_exit_when_original_also_fails_remains_unknown(self):
+        status, _ = self._run(
+            code=139,
+            write_outcome=False,
+            write_started=True,
+            isolation={
+                "status": "failed",
+                "authority": "original_only_runtime",
+                "reason_code": "original_run_failed",
+                "failure_owner": "original",
+            },
+        )
+        self.assertEqual(status, "csim_execution_failed")
+
+    def test_v2_deterministic_native_authority_flows_through_existing_router(self):
         task = TaskSpec(
             task_id="r5-e-r1-native-route",
             kernel_path="candidate.cpp",
@@ -402,7 +532,7 @@ class NativeCsimDeterministicAuthorityTests(unittest.TestCase):
                 TestSuiteSpec(
                     suite_id="public-main",
                     split=EvaluationSplit.PUBLIC,
-                    runtime_contract=RUNTIME_CONTRACT,
+                    runtime_contract=RUNTIME_CONTRACT_V2,
                 ),
             ),
         )
@@ -433,8 +563,13 @@ class NativeCsimDeterministicAuthorityTests(unittest.TestCase):
                 identity = json.loads(
                     (root / "csim_invocation.json").read_text(encoding="utf-8")
                 )["typed_outcome_identity"]
-                (root / "agrefactor_csim_outcome.json").write_text(
-                    json.dumps(_raw_payload(identity, returncode=1)),
+                started = {
+                    "schema_version": 2,
+                    **identity,
+                    "status": "started",
+                }
+                (root / "agrefactor_csim_outcome.json.started").write_text(
+                    json.dumps(started),
                     encoding="utf-8",
                 )
                 return {
@@ -448,12 +583,21 @@ class NativeCsimDeterministicAuthorityTests(unittest.TestCase):
                 patch("flow.tools.vitis_csim.resolve_csynth_command", _resolution),
                 patch("flow.tools.vitis_csim.probe_csynth_version", _verification),
                 patch("flow.tools.general.run_cmd", side_effect=run_cmd),
+                patch(
+                    "flow.tools.vitis_csim._original_isolation_evidence",
+                    return_value={
+                        "status": "passed",
+                        "authority": "original_only_runtime",
+                        "reason_code": "ok",
+                        "failure_owner": "none",
+                    },
+                ),
             ):
                 report = handler(context)
         self.assertEqual(report.items[0].owner, FeedbackOwner.CANDIDATE)
         self.assertEqual(
             report.items[0].metadata.get("owner_authority"),
-            "deterministic_proven",
+            "differential_isolation_proven",
         )
         coordinated = ValidationFeedbackCoordinator(task).coordinate(
             report,

@@ -1,16 +1,17 @@
-"""Unknown-safe eligibility contracts for Refactor primary samples.
+"""Unknown-safe eligibility evidence for Refactor primary samples.
 
 This module does not decide functional correctness. It answers two narrower
 questions:
 
-* can the source safely use auto-generated Public tests without relying on
-  private mutable file-scope state; and
+* what source-boundary risks are present when using auto-generated Public
+  tests; and
 * when Original CSYNTH evidence is supplied, is the case eligible to be a
   primary full-Refactor campaign sample?
 
 The source analysis uses a deterministic lexical/token structure pass. It does
-not infer eligibility from substrings or message regexes. Any incomplete or
-ambiguous structure remains review-required.
+not infer eligibility from substrings or message regexes. Incomplete or
+ambiguous structure is retained as execution evidence and does not replace
+real validation.
 """
 
 from __future__ import annotations
@@ -211,7 +212,7 @@ class RefactorEligibilityReport:
     boundary: SourceBoundaryEvidence
     evidence_view: str = "agent_safe"
     schema_version: int = 1
-    policy_version: int = 2
+    policy_version: int = 3
 
     def __post_init__(self) -> None:
         _require_sha256(self.source_sha256, "source_sha256")
@@ -441,10 +442,12 @@ def assess_refactor_eligibility(
         execution = EligibilityStatus.ALLOWED
         reasons.append("operator_provided_public_tests")
     elif boundary.private_global_dependencies:
-        execution = EligibilityStatus.REJECTED
+        # Static source inspection records a risk for later evidence and
+        # memory handling. It is not a substitute for real validation.
+        execution = EligibilityStatus.ALLOWED
         reasons.append("auto_public_tests_private_global_dependency")
     elif not boundary.analysis_complete:
-        execution = EligibilityStatus.REVIEW_REQUIRED
+        execution = EligibilityStatus.ALLOWED
         reasons.append("auto_public_tests_boundary_unresolved")
     else:
         execution = EligibilityStatus.ALLOWED

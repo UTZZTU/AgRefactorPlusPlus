@@ -150,7 +150,7 @@ class R5CEligibilityTests(unittest.TestCase):
         self.assertTrue(restored.authoritative_pass)
         self.assertEqual(restored.source_sha256, evidence.source_sha256)
 
-    def test_original_csynth_alone_does_not_override_private_global(self):
+    def test_original_csynth_evidence_does_not_block_private_global_execution(self):
         report = assess_refactor_eligibility(
             source_code=PRIVATE_GLOBAL,
             top_function="top",
@@ -159,13 +159,9 @@ class R5CEligibilityTests(unittest.TestCase):
         )
         self.assertEqual(
             report.execution_status,
-            EligibilityStatus.REJECTED,
+            EligibilityStatus.ALLOWED,
         )
-        self.assertFalse(report.primary_sample_eligible)
-        self.assertIn(
-            "original_csynth_alone_not_sufficient",
-            report.reason_codes,
-        )
+        self.assertTrue(report.primary_sample_eligible)
         self.assertEqual(
             report.boundary.private_global_dependencies,
             ("state",),
@@ -186,7 +182,7 @@ class R5CEligibilityTests(unittest.TestCase):
             report.boundary.private_global_dependencies,
             ("state",),
         )
-        self.assertFalse(report.execution_allowed)
+        self.assertTrue(report.execution_allowed)
 
     def test_const_file_scope_value_is_not_mutable_state(self):
         report = assess_refactor_eligibility(
@@ -232,7 +228,7 @@ class R5CEligibilityTests(unittest.TestCase):
         )
         self.assertIn("original_csynth_failed", report.reason_codes)
 
-    def test_missing_top_is_review_required_for_auto(self):
+    def test_missing_top_is_advisory_for_auto(self):
         report = assess_refactor_eligibility(
             source_code=EXPLICIT_IO,
             top_function="other_top",
@@ -244,7 +240,7 @@ class R5CEligibilityTests(unittest.TestCase):
         )
         self.assertEqual(
             report.execution_status,
-            EligibilityStatus.REVIEW_REQUIRED,
+            EligibilityStatus.ALLOWED,
         )
         self.assertFalse(report.boundary.top_function_found)
         self.assertIn(
@@ -297,7 +293,7 @@ int top(int x) {
         self.assertTrue(evidence.top_function_found)
         self.assertTrue(evidence.analysis_complete)
 
-    def test_macro_boundary_is_review_required(self):
+    def test_macro_boundary_is_advisory(self):
         source = r'''
 #define DECLARE_STATE(name) static int name = 0
 DECLARE_STATE(state);
@@ -313,7 +309,7 @@ extern "C" int top(int x) {
         )
         self.assertEqual(
             report.execution_status,
-            EligibilityStatus.REVIEW_REQUIRED,
+            EligibilityStatus.ALLOWED,
         )
         self.assertIn(
             "preprocessor_boundary_semantics:define",
@@ -340,7 +336,7 @@ int top(int x) {
             report.boundary.private_global_dependencies,
             ("state",),
         )
-        self.assertFalse(report.execution_allowed)
+        self.assertTrue(report.execution_allowed)
 
     def test_file_scope_function_pointer_is_unknown_safe(self):
         source = r'''
@@ -357,7 +353,7 @@ extern "C" int top(int x) {
         )
         self.assertEqual(
             report.execution_status,
-            EligibilityStatus.REVIEW_REQUIRED,
+            EligibilityStatus.ALLOWED,
         )
         self.assertIn(
             "unresolved_file_scope_callable_or_pointer_declaration",

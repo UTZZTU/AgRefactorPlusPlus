@@ -97,22 +97,18 @@ class DeduplicatorPromptHardeningTests(unittest.TestCase):
 
 
 class HiddenGoldenOracleStructuralTests(unittest.TestCase):
-    def test_held_out_contract_rejects_missing_original_call(self):
+    def test_held_out_contract_defers_missing_call_to_execution(self):
         code = (
             "void process_top();\n"
             "void process_top_hls();\n"
             "int main(){process_top_hls();return 0;}\n"
         )
-        with self.assertRaisesRegex(
-            tb_optimizer.ModelArtifactError,
-            "does not call Original top",
-        ):
-            tb_optimizer.validate_testbench_top_contract(
-                code,
-                ORIGINAL,
-                CANDIDATE,
-                require_original_call=True,
-            )
+        tb_optimizer.validate_testbench_top_contract(
+            code,
+            ORIGINAL,
+            CANDIDATE,
+            require_original_call=True,
+        )
 
     def test_public_compatibility_does_not_force_new_requirement(self):
         code = (

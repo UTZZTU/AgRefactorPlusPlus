@@ -233,6 +233,50 @@ class P0PublicTestbenchRepairRoutingTests(unittest.TestCase):
                 5,
             )
 
+    def test_candidate_only_preflight_failure_is_deferred_to_formal_repair(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            original_code = (
+                "void process_top(int *in, int *out) { out[0] = in[0]; }\n"
+            )
+            candidate_code = (
+                "void process_top_hls(int *in, int *out) { missing(); }\n"
+            )
+            public_code = (
+                "void process_top(int *in, int *out);\n"
+                "void process_top_hls(int *in, int *out);\n"
+                "int main() { int in[1] = {7}; int a[1] = {}; int b[1] = {};"
+                " process_top(in, a); process_top_hls(in, b);"
+                " return a[0] == b[0] ? 0 : 1; }\n"
+            )
+            result = module._prepare_public_testbench(
+                task=TaskSpec(
+                    task_id="candidate-deferred",
+                    kernel_path="candidate.cpp",
+                    kernel_name="process_top_hls",
+                    mode=RunMode.REFACTOR,
+                ),
+                testbench_code=public_code,
+                original_code=original_code,
+                candidate_code=candidate_code,
+                effective_model_config=resolve_model_runtime(
+                    "deepseek-v4-flash"
+                ).effective_config,
+                budget=BudgetManager(
+                    BudgetLimits(
+                        max_llm_calls=1,
+                        max_tool_calls=8,
+                        max_compile_calls=8,
+                    )
+                ),
+                work_dir=root / "repair",
+                max_repair_attempts=1,
+            )
+
+            self.assertTrue(result.succeeded)
+            self.assertEqual(result.repair_attempts_used, 0)
+            self.assertIn("deferred", result.reason)
+
     def test_prompt_identity_aggregates_testbench_repair_call(self):
         phase = object.__new__(module.SourceBootstrapPhase)
         phase._last_formal_phase = None

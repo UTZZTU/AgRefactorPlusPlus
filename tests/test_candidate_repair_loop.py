@@ -39,6 +39,7 @@ ORIGINAL = 'extern "C" int original_top(int x) { return x + 1; }\n'
 INITIAL = 'extern "C" int candidate_top(int x) { return x; }\n'
 PROPOSAL_1 = 'extern "C" int candidate_top(int x) { return x + 1; }\n'
 PROPOSAL_2 = 'extern "C" int candidate_top(int x) { return x + 2; }\n'
+PROPOSAL_3 = 'extern "C" int candidate_top(int x) { return x + 3; }\n'
 PUBLIC_TB = (
     'extern "C" int original_top(int);\n'
     'extern "C" int candidate_top(int);\n'
@@ -91,6 +92,7 @@ def make_feedback(
     visible=True,
     report_id="candidate-report",
     summary="candidate failure",
+    detail="operator detail must not drive routing",
 ):
     metadata = {"evidence_view": view}
     if state in {ValidationState.PUBLIC_EVALUATION, ValidationState.HIDDEN_EVALUATION}:
@@ -115,7 +117,7 @@ def make_feedback(
                 ),
                 owner=owner,
                 summary=summary,
-                detail="operator detail must not drive routing",
+                detail=detail,
                 source="test",
             ),
         ),
@@ -251,6 +253,7 @@ def failed_result(
     view="agent_safe",
     action=FeedbackRouteAction.REPAIR_CANDIDATE,
     summary="validation still fails",
+    detail="operator detail must not drive routing",
 ):
     report = make_feedback(
         state,
@@ -258,6 +261,7 @@ def failed_result(
         view=view,
         report_id=f"next-{state.value}",
         summary=summary,
+        detail=detail,
         visible=(False if state is ValidationState.HIDDEN_EVALUATION else True),
     )
     route = make_route(report, action=action)
@@ -469,21 +473,21 @@ class BoundedCandidateRepairLoopTests(unittest.TestCase):
         self.assertEqual(budget.snapshot().tokens, 0)
         self.assertEqual(budget.snapshot().cost_usd, 0.0)
 
-    def test_invalid_response_keeps_real_usage(self):
+    def test_non_cpp_text_reaches_real_validator_and_keeps_usage(self):
         provider = SequenceProvider(["commentary outside a block"])
         loop, budget = self.make_loop(provider, RecordingValidator([]))
         result = loop.run(make_request(max_attempts=1))
-        self.assertIs(result.attempts[0].status, CandidateRepairAttemptStatus.RESPONSE_REJECTED)
+        self.assertIs(result.attempts[0].status, CandidateRepairAttemptStatus.VALIDATOR_ERROR)
         self.assertEqual(budget.snapshot().llm_calls, 1)
         self.assertEqual(budget.snapshot().tokens, 15)
         self.assertAlmostEqual(budget.snapshot().cost_usd, 0.01)
 
-    def test_unchanged_response_counts_attempt_and_usage(self):
+    def test_unchanged_response_reaches_validator_and_counts_usage(self):
         provider = SequenceProvider([fenced(INITIAL)])
         loop, budget = self.make_loop(provider, RecordingValidator([]))
         result = loop.run(make_request(max_attempts=1))
         self.assertEqual(len(result.attempts), 1)
-        self.assertIs(result.attempts[0].status, CandidateRepairAttemptStatus.RESPONSE_REJECTED)
+        self.assertIs(result.attempts[0].status, CandidateRepairAttemptStatus.VALIDATOR_ERROR)
         self.assertEqual(budget.snapshot().llm_calls, 1)
         self.assertEqual(budget.snapshot().tokens, 15)
 
@@ -532,6 +536,127 @@ class BoundedCandidateRepairLoopTests(unittest.TestCase):
         self.assertEqual(result.attempts[1].input_candidate, PROPOSAL_1.strip())
         self.assertEqual(result.last_validated_candidate, PROPOSAL_2.strip())
         self.assertIn("validation still fails", provider.calls[1][1].messages[0].content + provider.calls[1][1].messages[1].content)
+
+    def test_third_attempt_keeps_compile_and_csynth_failures(self):
+        provider = SequenceProvider(
+            [fenced(PROPOSAL_1), fenced(PROPOSAL_2), fenced(PROPOSAL_3)]
+        )
+        validator = RecordingValidator(
+            [
+                failed_result(
+                    ValidationState.PREFLIGHT,
+                    summary="first compile failure",
+                    detail="compile diagnostic marker",
+                ),
+                failed_result(
+                    ValidationState.CSYNTH,
+                    summary="second synthesis failure",
+                    detail="synthesis diagnostic marker",
+                ),
+                passed_result(),
+            ]
+        )
+        loop, _ = self.make_loop(provider, validator)
+
+        result = loop.run(
+            make_request(
+                state=ValidationState.PREFLIGHT,
+                max_attempts=3,
+            )
+        )
+
+        self.assertTrue(result.succeeded)
+        prompt = "\n".join(
+            message.content for message in provider.calls[2][1].messages
+        )
+        self.assertIn("Attempt 1", prompt)
+        self.assertIn("stage: preflight", prompt)
+        self.assertIn("compile diagnostic marker", prompt)
+        self.assertIn("Attempt 2", prompt)
+        self.assertIn("stage: csynth", prompt)
+        self.assertIn("synthesis diagnostic marker", prompt)
+        self.assertEqual(
+            validator.calls[2].required_prefix,
+            (
+                ValidationState.PREFLIGHT,
+                ValidationState.PUBLIC_EVALUATION,
+                ValidationState.CSYNTH,
+            ),
+        )
+
+    def test_raw_invalid_code_reaches_validation_and_next_attempt(self):
+        provider = SequenceProvider(
+            [
+                "commentary outside a block",
+                fenced(PROPOSAL_1),
+                fenced(PROPOSAL_2),
+            ]
+        )
+        validator = RecordingValidator(
+            [
+                failed_result(
+                    summary="candidate validation marker",
+                    detail="candidate tool marker",
+                ),
+                passed_result(),
+            ]
+        )
+        loop, _ = self.make_loop(provider, validator)
+
+        result = loop.run(make_request(max_attempts=3))
+
+        self.assertTrue(result.succeeded)
+        self.assertEqual(len(provider.calls), 2)
+        prompt = "\n".join(
+            message.content for message in provider.calls[1][1].messages
+        )
+        self.assertIn("Attempt 1", prompt)
+        self.assertIn("candidate validation marker", prompt)
+        self.assertIn("candidate tool marker", prompt)
+
+    def test_provider_error_and_empty_response_both_reach_third_attempt(self):
+        provider = SequenceProvider(
+            [
+                RuntimeError("provider unavailable marker"),
+                "",
+                fenced(PROPOSAL_1),
+            ]
+        )
+        loop, _ = self.make_loop(
+            provider,
+            RecordingValidator([passed_result()]),
+        )
+
+        result = loop.run(make_request(max_attempts=3))
+
+        self.assertTrue(result.succeeded)
+        prompt = "\n".join(
+            message.content for message in provider.calls[2][1].messages
+        )
+        self.assertIn("Attempt 1", prompt)
+        self.assertIn("status: provider_error", prompt)
+        self.assertIn("RuntimeError", prompt)
+        self.assertIn("provider unavailable marker", prompt)
+        self.assertIn("Attempt 2", prompt)
+        self.assertIn("status: provider_error", prompt)
+        self.assertIn("ValueError", prompt)
+        self.assertIn("text must not be empty", prompt)
+
+    def test_history_truncates_one_diagnostic_without_dropping_attempt(self):
+        marker = "first diagnostic marker "
+        result = failed_result(
+            summary="first summary marker",
+            detail=marker + ("x" * 2500) + " first diagnostic tail",
+        )
+
+        summary = candidate_loop_module._candidate_validation_failure_summary(
+            1,
+            result,
+        )
+
+        self.assertIn("Attempt 1", summary)
+        self.assertIn(marker.strip(), summary)
+        self.assertNotIn("first diagnostic tail", summary)
 
     def test_terminal_toolchain_feedback_stops_without_second_model(self):
         provider = SequenceProvider([fenced(PROPOSAL_1), fenced(PROPOSAL_2)])
