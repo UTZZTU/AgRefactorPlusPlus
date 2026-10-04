@@ -1,21 +1,21 @@
 # AgRefactor 通用证据、诊断目录与归责机制修复计划
 
-状态：实施中。P1/P3/P5/P6 已完成核心改动和对应回归；P2/P4/P7 正在集成核验，尚未真实重跑案例。
+状态：已完成（2026-10-05）。P0-P9 已按本计划执行；通用修复、聚焦回归、三个案例真实重跑和文档收尾均有 artifacts 证据。
 
-执行基线：服务器 `/data/AgRefactor`，分支 `research-roadmap-v2.3`，HEAD `0530dc4f914777fd831b88e59b52bec4aa3b4cc3`。此提交和代码基线 `c42f5b6c92aa37a4b8c307300724fe95347b7bf1` 已推送 GitHub；本次新修复尚未提交。
+执行基线：服务器 `/data/AgRefactor`，分支 `research-roadmap-v2.3`，当前 HEAD `2b543c3`（已推送 GitHub）。本轮还保留服务器既有 `.orig/.rej`、备份和历史运行 artifacts，不清理它们。
 
 | 阶段 | 当前状态 | 已有证据 / 待完成 |
 | --- | --- | --- |
-| P0 | 基线已保存，盘点中 | 工作树清单、历史 artifact 索引已保存；继续核对正式与 legacy 路径 |
+| P0 | 已完成 | 工作树清单、历史 artifact 索引和正式/legacy 路径已核对 |
 | P1 | 核心完成 | JSON 目录可校验，支持新增细分类映射现有 FeedbackCategory，禁止直接 owner/route |
-| P2 | 集成中 | CSYNTH 已迁移；compile/link/coverage 分类和历史回放正在核验 |
+| P2 | 核心完成 | CSYNTH、compile/link/coverage 的证据归责和历史回放已核验；未知 owner 不再被固定文本强制覆盖 |
 | P3 | 核心完成 | 超时、非零退出、旧报告/旧日志、Hidden 缺覆盖证据回归通过 |
-| P4 | 集成中 | 实际编译单元/源码 hash 归责已接入；模板生成桥行级 provenance 正在补齐 |
+| P4 | 核心完成 | 编译单元/provenance 归责、Candidate/Original 语言 linkage 冻结和 typed execution evidence 已接入 |
 | P5 | 核心完成 | 新编号和裸 ERROR 保留 unknown 事件，诊断 ID / 指纹进入现有 safe projection |
-| P6 | 已确认配置 | 原文件外部入口是 `chacah20_stream`；只改 registry top，不改源码 |
-| P7 | 进行中 | 通用正反例、既有 fixture 和历史日志回放尚未全部完成 |
-| P8 | 未开始 | P0-P7 验收后按既定顺序真实运行三个案例 |
-| P9 | 进行中 | 本文同步记录进度，维护说明与最终证据待补齐 |
+| P6 | 已完成 | `src/info.json`、继承清单、stage3 protocol 和 R5.1 registry 已统一为真实入口 `chacah20_stream`；未改源码函数名 |
+| P7 | 已完成 | 聚焦回归 103 项通过；R5.1 registry/inheritance 审计无失败；历史回放 issues=0 |
+| P8 | 已完成 | `chacah20_stream`、`encode_one_block` accepted；`mm_chain_dp_orig` 因 Original-only qualification 运行证据不足保持 `unknown/review_unknown` |
+| P9 | 已完成 | 计划、诊断目录维护说明和三例真实运行结论已按最终 artifacts 收尾 |
 
 本文是后续工作的主计划。它承接 `APP_FAILURE_GENERAL_MECHANISM_REPAIR_DESIGN_2026-10-03.md`，将其中的通用机制问题扩展到整个主流程的诊断解析、执行状态、责任归属和规则维护基础。后续修复和验证应按本文顺序推进；如果执行中发现新的问题，先判断它是否属于本文定义的通用机制，再决定是否扩大范围。
 
@@ -41,7 +41,7 @@
 - 不为了让某个案例通过而添加单案例重写、静态绿灯或绕过测试；
 - 不在本阶段实现自动记忆、经验库或模型持续学习服务。
 
-服务器基线以 `/data/AgRefactor` 为准。正式授权实施时 HEAD 为 `0530dc4f914777fd831b88e59b52bec4aa3b4cc3`，生产代码无未提交修改；历史 `.orig/.rej`、备份与一次性运行脚本均保留。此前草稿经重新审查后才逐项采纳，不能将草稿视为已经完成。
+服务器基线以 `/data/AgRefactor` 为准。当前 HEAD 为 `2b543c3`（已推送 GitHub）；生产代码无未提交修改；历史 `.orig/.rej`、备份与一次性运行脚本均保留。此前草稿经重新审查后才逐项采纳，不能将草稿视为已经完成。
 
 ## 2. 当前主流程和本次工作的接入点
 
@@ -451,6 +451,30 @@ cd /data/AgRefactor
 - 三个案例的真实运行结论；
 - 未修复的工具能力和外部依赖边界。
 
+### 本轮实施记录（2026-10-04）
+
+本轮已推送的相关提交为 `7b98c15`、`3f6653e` 和 `2b543c3`。`7b98c15` 将描述性 evidence authority 通过显式白名单归一化为现有 `RecoveryAuthority`，未知字符串保持 `unknown`，修复了 Candidate loop 将合法证据字符串直接构造为 enum 而导致的流程崩溃。`3f6653e` 完成了两项通用修复：
+
+- ABI 提取保留 C/C++ language linkage，冻结 Candidate/Original 声明时纳入 linkage 比较；Hidden qualification 不再用丢失 `extern "C"` 的声明去验证真实 Candidate。
+- CSIM adapter 在构造 `FeedbackItem` 前投影 typed execution evidence，保留 `tool_launched`、`physical_tool_launched`、`evidence_complete` 和 `repair_eligible`，因此证据充分的 Candidate CSIM 失败仍会进入原有 Candidate repair。该提交同时同步了入口配置和由 `src/info.json` 生成的 registry/inheritance 元数据。
+
+聚焦回归共 103 项通过；R5.1 registry audit 报告 `AUDIT_FAILURES=0`，inheritance audit 报告 `FAILURES=0`。未把完整历史 `unittest discover` 的旧 fixture 失败误报成计划通过。
+
+当前真实运行 artifacts：
+
+- `chacah20_stream`：`/data/agrefactor_runs/general_evidence_catalog_p8_20261004_r4/chacah20_stream`。入口使用真实源函数 `chacah20_stream`；CSIM、CSYNTH、COSIM 和 Hidden 均完成，最终 `accepted=true`。预算为 CSIM 900 秒、CSYNTH 2700 秒、COSIM 4500 秒；未发生 API 或工具超时。
+- `mm_chain_dp_orig`：`/data/agrefactor_runs/general_evidence_catalog_p8_20261004_r2/mm_chain_dp_orig`。编译成功，但 Hidden Original-only qualification 运行返回 1；artifact 同时记录多组 Original/Testbench 输出不匹配和 `orig_code.cpp:523` 的 UBSan 空指针。`failure_owner=unknown`、`owner_authority=runtime_not_isolated`、`next_action=review_unknown`，没有进入 Candidate repair。这是 qualification/Original 依赖证据不足，不能归责 Candidate 或 Toolchain。
+- `encode_one_block`：`/data/agrefactor_runs/evidence_catalog_p8_20261004/encode_one_block`。初始 Preflight 的 16 个 Candidate 编译错误均有 `tool_launched=true`、`evidence_complete=true`，进入既有 `repair_candidate`；第 1 次 Candidate 修复后，Public CSIM、CSYNTH、Public COSIM、Hidden 全部完成，最终 `accepted=true`。CSYNTH 的 138 条 `HLS 200-880` 仅为非阻塞 warning，保持 `owner=unknown`，没有被错误升级为修复动作。预算为 CSIM 900 秒、CSYNTH 2700 秒、COSIM 4500 秒；实际 elapsed 2374.48 秒，compile/csim/csynth/cosim/LLM/tool 调用分别为 17/6/4/1/21/34。此前 `/data/agrefactor_runs/general_evidence_catalog_p8_20261004_r2/encode_one_block` 暴露的 CSIM typed evidence 丢失问题已由通用投影修复，本次真实重跑验证了修复生效。
+
+
+### P8/P9 最终收尾记录（2026-10-05）
+
+- `chacah20_stream`：`/data/agrefactor_runs/general_evidence_catalog_p8_20261004_r4/chacah20_stream`，五阶段均完成，`accepted=true`；入口、C/C++ linkage 和 Hidden ABI qualification 使用同一份冻结合同，没有案例专用放行。
+- `encode_one_block`：`/data/agrefactor_runs/evidence_catalog_p8_20261004/encode_one_block`，首轮 Candidate Preflight 证据充分而进入既有 Candidate repair；一次修复后五阶段完成并 `accepted=true`。真实 COSIM 的 Vitis HLS 总耗时约 13 分 41 秒，未发生 API 或工具超时。
+- `mm_chain_dp_orig`：`/data/agrefactor_runs/general_evidence_catalog_p8_20261004_r2/mm_chain_dp_orig`，Original-only qualification 编译返回 0 但运行返回 1，出现多组输出不匹配和 `orig_code.cpp:523` UBSan 空指针；由于 Original/Testbench runtime 未隔离，最终 `owner=unknown`、`owner_authority=runtime_not_isolated`、`next_action=review_unknown`。该结论保留证据边界，没有强行归责 Candidate 或 Toolchain。
+- 服务器 HEAD 仍为 `2b543c3`，工作树只保留历史 `.orig/.rej`、备份和一次性运行 artifacts；`git diff --check` 无输出。目录/投影/CSIM 回归共 28 项再次通过；此前聚焦回归 103 项、R5.1 registry `AUDIT_FAILURES=0`、inheritance `FAILURES=0` 仍有效。
+
+本次收尾没有新增案例名、函数名、HLS 编号或错误文本特判；诊断目录仍只负责 category/stage/证据需求，owner/route 由现有证据解析和状态机决定。
 ## 8. 最终完成标准
 
 本计划只有在以下条件全部满足后才算完成：
