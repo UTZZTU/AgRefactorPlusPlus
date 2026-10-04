@@ -818,11 +818,11 @@ class BoundedCandidateRepairLoop:
                             stage=recovery_stage,
                             evidence_view="agent_safe",
                             owner_authority=RecoveryAuthority(
-                                route.metadata.get("owner_authority", "deterministic_proven")
+                                route.metadata.get("owner_authority", "unknown")
                             ),
                             lineage_id=request.task.task_id,
-                            physical_tool_launched=True,
-                            evidence_complete=True,
+                            physical_tool_launched=(route.metadata.get("physical_tool_launched") is True),
+                            evidence_complete=(route.metadata.get("evidence_complete") is True),
                             advisory_mode=str(
                                 route.metadata.get("advisory_mode", "off")
                             ),
@@ -1306,7 +1306,13 @@ def _validate_repair_context(
             and feedback.metadata.get("evaluation_split") == EvaluationSplit.PUBLIC.value
             and feedback.metadata.get("feedback_visible_to_agent") is True
         )
-        if item.owner is not FeedbackOwner.CANDIDATE and not qualified_unknown:
+        candidate_proven = (
+            item.owner is FeedbackOwner.CANDIDATE
+            and item.metadata.get("owner_authority") not in {None, "unknown"}
+            and item.metadata.get("evidence_complete") is True
+            and item.metadata.get("tool_launched") is True
+        )
+        if not candidate_proven and not qualified_unknown:
             raise ValueError("selected feedback must be candidate-owned")
         if item.stage not in allowed_stages:
             raise ValueError("selected feedback stage does not match failure state")

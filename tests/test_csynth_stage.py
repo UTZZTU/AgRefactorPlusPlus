@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -67,6 +68,7 @@ def write_invocation(
     timeout=False,
     verification_status="matched",
     budget_resource=None,
+    source_role="candidate",
 ):
     path = Path(directory)
     path.mkdir(parents=True, exist_ok=True)
@@ -109,12 +111,49 @@ def write_invocation(
         "command": "/private/bin/vitis-run",
         "resolved_executable": "/private/bin/vitis-run",
     }
+    source = path / "candidate_top.cpp"
+    source.write_text(CANDIDATE, encoding="utf-8")
+    if source_role is not None:
+        payload["compile_units"] = [source.name]
+        payload["source_provenance"] = {
+            source.name: {
+                "path": str(source.resolve()),
+                "role": source_role,
+                "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+            }
+        }
+    if execution_status == "completed" and returncode == 0 and not timeout:
+        report = path / "csynth/solution/syn/report/candidate_top_csynth.rpt"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("current synthesis report\n", encoding="utf-8")
+        payload["expected_report"] = artifact_identity(report)
     (
         path / "csynth_invocation.json"
     ).write_text(
         json.dumps(payload),
         encoding="utf-8",
     )
+
+
+def artifact_identity(path: Path) -> dict:
+    return {
+        "path": str(path.resolve()),
+        "exists": True,
+        "size_bytes": path.stat().st_size,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "produced_by_current_invocation": True,
+    }
+
+
+def write_log(directory, text: str) -> None:
+    root = Path(directory)
+    log = root / "csynth/solution/solution.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(text, encoding="utf-8")
+    invocation_path = root / "csynth_invocation.json"
+    payload = json.loads(invocation_path.read_text(encoding="utf-8"))
+    payload["diagnostic_log"] = artifact_identity(log)
+    invocation_path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 class CsynthValidationStageHandlerTests(
@@ -195,20 +234,10 @@ class CsynthValidationStageHandlerTests(
                     work_dir,
                     returncode=1,
                 )
-                log = (
-                    Path(work_dir)
-                    / "csynth"
-                    / "solution"
-                    / "solution.log"
-                )
-                log.parent.mkdir(
-                    parents=True,
-                    exist_ok=True,
-                )
-                log.write_text(
+                write_log(
+                    work_dir,
                     "candidate_top.cpp:3:2: error: "
                     "use of undeclared identifier 'missing'\n",
-                    encoding="utf-8",
                 )
                 return "csynth_failed", "generic failure"
 
@@ -246,6 +275,30 @@ class CsynthValidationStageHandlerTests(
                 selected[0].category,
                 FeedbackCategory.UNDECLARED_SYMBOL,
             )
+
+    def test_candidate_diagnostic_without_provenance_cannot_route_repair(self):
+        with tempfile.TemporaryDirectory() as directory:
+            def executor(work_dir, variables, timelimit, *, budget):
+                write_invocation(work_dir, returncode=1, source_role=None)
+                write_log(work_dir, "candidate_top.cpp:3:2: error: use of undeclared identifier 'missing'\n")
+                return "csynth_failed", "generic failure"
+            report = self.handler(directory, executor)(make_context())
+        self.assertTrue(report.blocking)
+        diagnostic = report.items[0]
+        self.assertEqual(diagnostic.owner, FeedbackOwner.UNKNOWN)
+        self.assertFalse(diagnostic.metadata["repair_eligible"])
+
+    def test_candidate_source_changed_after_launch_cannot_route_repair(self):
+        with tempfile.TemporaryDirectory() as directory:
+            def executor(work_dir, variables, timelimit, *, budget):
+                write_invocation(work_dir, returncode=1)
+                write_log(work_dir, "candidate_top.cpp:3:2: error: use of undeclared identifier 'missing'\n")
+                (Path(work_dir) / "candidate_top.cpp").write_text("int different_source;\n", encoding="utf-8")
+                return "csynth_failed", "generic failure"
+            report = self.handler(directory, executor)(make_context())
+        self.assertTrue(report.blocking)
+        self.assertEqual(report.items[0].owner, FeedbackOwner.UNKNOWN)
+        self.assertFalse(report.items[0].metadata["repair_eligible"])
 
     def test_budget_exception_is_normalized(self):
         with tempfile.TemporaryDirectory() as directory:

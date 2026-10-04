@@ -24,6 +24,13 @@ def item(
     severity=FeedbackSeverity.ERROR,
     owner=FeedbackOwner.UNKNOWN,
 ) -> FeedbackItem:
+    metadata = {}
+    if owner is FeedbackOwner.CANDIDATE:
+        metadata = {
+            "owner_authority": "deterministic_proven",
+            "evidence_complete": True,
+            "tool_launched": True,
+        }
     return FeedbackItem(
         feedback_id=f"report.{suffix}",
         stage=stage,
@@ -33,6 +40,7 @@ def item(
         summary=f"feedback {suffix}",
         detail="safe diagnostic",
         source="test",
+        metadata=metadata,
     )
 
 
@@ -163,7 +171,7 @@ class FeedbackRouterTests(unittest.TestCase):
             FeedbackRouteAction.FIX_TOOLCHAIN,
         )
 
-    def test_toolchain_category_fallback(self) -> None:
+    def test_toolchain_category_without_owner_requires_review(self) -> None:
         decision = self.route(
             report(
                 item(
@@ -179,10 +187,10 @@ class FeedbackRouterTests(unittest.TestCase):
 
         self.assertEqual(
             decision.action,
-            FeedbackRouteAction.FIX_TOOLCHAIN,
+            FeedbackRouteAction.REVIEW_UNKNOWN,
         )
 
-    def test_toolchain_timeout_fallback(self) -> None:
+    def test_toolchain_timeout_without_owner_requires_review(self) -> None:
         decision = self.route(
             report(
                 item(
@@ -197,7 +205,7 @@ class FeedbackRouterTests(unittest.TestCase):
 
         self.assertEqual(
             decision.action,
-            FeedbackRouteAction.FIX_TOOLCHAIN,
+            FeedbackRouteAction.REVIEW_UNKNOWN,
         )
 
     def test_configuration_owner_routes_configuration(
@@ -516,6 +524,11 @@ class FeedbackRouterTests(unittest.TestCase):
                         severity=FeedbackSeverity.ERROR,
                         owner=FeedbackOwner.CANDIDATE,
                         summary="undeclared identifier",
+                        metadata={
+                            "owner_authority": "deterministic_proven",
+                            "evidence_complete": True,
+                            "tool_launched": True,
+                        },
                     ),
                 ),
                 metadata={

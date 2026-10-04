@@ -1,3 +1,4 @@
+import hashlib
 import unittest
 
 from agrefactor.evaluation import (
@@ -36,6 +37,13 @@ def completed_invocation(returncode: int = 0) -> dict:
             "status": "completed",
             "returncode": returncode,
             "timeout": False,
+        },
+        "expected_report": {
+            "path": "/tmp/csynth/solution/syn/report/generic_top_csynth.rpt",
+            "exists": True,
+            "size_bytes": len(b"current synthesis report\n"),
+            "sha256": hashlib.sha256(b"current synthesis report\n").hexdigest(),
+            "produced_by_current_invocation": True,
         },
     }
 
@@ -88,6 +96,19 @@ class CsynthFeedbackComposerTests(unittest.TestCase):
             report.metadata["composed_item_count"],
             0,
         )
+
+    def test_missing_report_facts_are_not_suppressed_by_empty_diagnostics(self) -> None:
+        invocation = completed_invocation()
+        invocation.pop("expected_report")
+        report = self.composer.compose(
+            invocation_report=self.adapter.to_operator_report(
+                invocation=invocation, report_id="missing-report", legacy_status="succeeded",
+            ),
+            diagnostic_report=self.diagnostic_report(""),
+            report_id="combined",
+        )
+        self.assertTrue(report.blocking)
+        self.assertEqual(report.items[0].owner, FeedbackOwner.UNKNOWN)
 
     def test_success_with_pipeline_warning_keeps_warning(
         self,

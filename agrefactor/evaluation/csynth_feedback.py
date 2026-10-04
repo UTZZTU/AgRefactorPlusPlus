@@ -138,6 +138,7 @@ class CsynthFeedbackAdapter:
             legacy_status == "succeeded"
             and completion["command_completion_proven"]
             and completion["returncode"] == 0
+            and self._report_proven(invocation)
         ):
             return None
 
@@ -174,6 +175,7 @@ class CsynthFeedbackAdapter:
             "budget_checkpoint": budget.get("checkpoint"),
             "budget_resource": budget.get("resource"),
             "top_kernel": invocation.get("top_kernel"),
+            "report_identity_proven": self._report_proven(invocation),
         }
 
         return FeedbackItem(
@@ -352,6 +354,19 @@ class CsynthFeedbackAdapter:
         return ", ".join(parts)
 
     @staticmethod
+    def _report_proven(invocation: Mapping[str, Any]) -> bool:
+        report = invocation.get("expected_report")
+        if not isinstance(report, Mapping):
+            return False
+        size = report.get("size_bytes")
+        return (
+            report.get("produced_by_current_invocation") is True
+            and report.get("exists") is True
+            and isinstance(size, int) and not isinstance(size, bool) and size > 0
+            and invocation.get("artifact_report_verified", True) is True
+        )
+
+    @staticmethod
     def _completion_facts(
         execution: Mapping[str, Any],
     ) -> dict[str, Any]:
@@ -366,21 +381,13 @@ class CsynthFeedbackAdapter:
             and execution.get("timeout") is not True
         )
         return {
-            "tool_launched": execution.get("status") not in {
-                None,
-                "not_started",
-                "blocked_by_budget",
-                "blocked_before_csynth",
-                "configuration_error",
-            },
+            "tool_launched": execution.get("status") in {"completed", "timeout", "execution_error"},
             "process_exit_observed": completed,
             "command_completion_proven": completed,
             "evidence_complete": completed,
             "returncode_valid": valid_returncode,
             "returncode": returncode if valid_returncode else None,
-            "owner_authority": (
-                "tool_completed" if completed else "unknown"
-            ),
+            "owner_authority": "unknown",
         }
 
     @staticmethod

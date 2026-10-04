@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from dataclasses import replace
 from pathlib import Path
@@ -16,6 +17,7 @@ from agrefactor.evidence import (
 from .csynth_diagnostics import CsynthDiagnosticParser
 from .csynth_feedback import CsynthFeedbackAdapter
 from .csynth_feedback_composer import CsynthFeedbackComposer
+from .owner_evidence import resolve_source_owner
 
 
 class CsynthArtifactFeedbackEvaluator:
@@ -76,6 +78,9 @@ class CsynthArtifactFeedbackEvaluator:
         )
 
         invocation = self._read_json_object(invocation_path)
+        invocation["artifact_report_verified"] = self._verify_artifact(
+            root, invocation.get("expected_report")
+        )
         diagnostic_text, diagnostic_loading = (
             self._read_diagnostic_text(diagnostic_path)
         )
@@ -106,6 +111,7 @@ class CsynthArtifactFeedbackEvaluator:
             combined,
             invocation=invocation,
             legacy_status=legacy_status,
+            work_dir=root,
         )
 
         source_evidence = dict(combined.source_evidence)
@@ -155,6 +161,7 @@ class CsynthArtifactFeedbackEvaluator:
         *,
         invocation: dict[str, Any],
         legacy_status: str | None,
+        work_dir: Path,
     ) -> FeedbackReport:
         execution = invocation.get("execution")
         execution = execution if isinstance(execution, dict) else {}
@@ -170,39 +177,68 @@ class CsynthArtifactFeedbackEvaluator:
         )
         evidence_consistent = True
         if legacy_status == "succeeded":
-            evidence_consistent = completed and returncode == 0
+            evidence_consistent = (completed and returncode == 0
+                                   and invocation.get("artifact_report_verified") is True)
         elif legacy_status == "timeout":
             evidence_consistent = execution.get("timeout") is True
         elif legacy_status == "csynth_failed":
-            evidence_consistent = not (completed and returncode == 0)
+            evidence_consistent = not (completed and returncode == 0
+                                      and invocation.get("artifact_report_verified") is True)
+        source_roles = {}
+        units = invocation.get("compile_units", [])
+        source_files = invocation.get("source_files", [])
+        provenance = invocation.get("source_provenance", {})
+        if isinstance(provenance, dict) and isinstance(units, list) and isinstance(source_files, list):
+            for source_file, identity in provenance.items():
+                if (source_file in units and source_file in source_files
+                        and isinstance(identity, dict)
+                        and CsynthArtifactFeedbackEvaluator._verify_source(work_dir, source_file, identity)):
+                    source_roles[source_file] = identity.get("role", "unknown")
+        diagnostics = [item for item in report.items
+                       if item.source == "csynth_diagnostic" and item.blocking]
+        ownership = resolve_source_owner(
+            [item.metadata for item in diagnostics],
+            source_roles=source_roles, compile_units=source_roles,
+            work_dir=work_dir, execution=execution,
+        )
+        log_current = CsynthArtifactFeedbackEvaluator._verify_artifact(
+            work_dir, invocation.get("diagnostic_log")
+        )
+        owner_proven = (completed and returncode != 0 and evidence_consistent and log_current
+                        and ownership.evidence_complete)
         facts = {
-            "tool_launched": execution.get("status") not in {
-                None,
-                "not_started",
-                "blocked_by_budget",
-                "blocked_before_csynth",
-                "configuration_error",
-            },
+            "tool_launched": execution.get("status") in {"completed", "timeout", "execution_error"},
             "process_exit_observed": completed,
             "command_completion_proven": completed,
-            "evidence_complete": completed,
+            "evidence_complete": owner_proven,
             "evidence_consistent": evidence_consistent,
             "owner_authority": (
-                "tool_completed"
-                if completed and evidence_consistent
+                ownership.owner_authority
+                if owner_proven
                 else "unknown"
             ),
+            "repair_eligible": owner_proven and ownership.owner == "candidate",
+            "report_identity_proven": invocation.get("artifact_report_verified") is True,
         }
         items = []
         for item in report.items:
             metadata = dict(item.metadata)
             metadata.update(facts)
-            if (
-                item.source == "csynth_diagnostic"
-                and (not completed or not evidence_consistent)
-            ):
-                metadata["failure_reason"] = "command_completion_not_proven"
-                item = replace(item, owner=FeedbackOwner.UNKNOWN)
+            if item.source == "csynth_diagnostic":
+                effective_owner = FeedbackOwner(ownership.owner) if owner_proven else FeedbackOwner.UNKNOWN
+                if not owner_proven:
+                    metadata["failure_reason"] = (
+                        "command_completion_not_proven" if not completed
+                        else "inconsistent_execution_evidence" if not evidence_consistent
+                        else "diagnostic_identity_not_proven" if not log_current
+                        else ownership.reason
+                    )
+                item = replace(item, owner=effective_owner)
+            else:
+                metadata["owner_authority"] = (
+                    "invocation_contract" if item.owner is not FeedbackOwner.UNKNOWN else "unknown"
+                )
+                metadata["evidence_complete"] = item.owner is not FeedbackOwner.UNKNOWN
             items.append(replace(item, metadata=metadata))
         report_metadata = dict(report.metadata)
         report_metadata.update(facts)
@@ -217,6 +253,28 @@ class CsynthArtifactFeedbackEvaluator:
             items=tuple(items),
             metadata=report_metadata,
         )
+
+    @staticmethod
+    def _verify_source(root: Path, source_file: str, identity: dict[str, Any]) -> bool:
+        path = (root / source_file).resolve()
+        if not path.is_relative_to(root) or not path.is_file():
+            return False
+        if identity.get("path") != str(path):
+            return False
+        return identity.get("sha256") == hashlib.sha256(path.read_bytes()).hexdigest()
+
+    @staticmethod
+    def _verify_artifact(root: Path, identity: Any) -> bool:
+        if not isinstance(identity, dict) or identity.get("produced_by_current_invocation") is not True:
+            return False
+        raw_path = identity.get("path")
+        if not isinstance(raw_path, str):
+            return False
+        path = Path(raw_path).resolve()
+        if not path.is_relative_to(root) or not path.is_file():
+            return False
+        return (path.stat().st_size > 0 and identity.get("size_bytes") == path.stat().st_size
+                and identity.get("sha256") == hashlib.sha256(path.read_bytes()).hexdigest())
 
     @staticmethod
     def _work_dir(

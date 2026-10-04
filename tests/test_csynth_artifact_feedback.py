@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -45,6 +46,16 @@ def invocation_payload(
     }
 
 
+def artifact_identity(path: Path) -> dict:
+    return {
+        "path": str(path.resolve()),
+        "exists": True,
+        "size_bytes": path.stat().st_size,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "produced_by_current_invocation": True,
+    }
+
+
 class CsynthArtifactFeedbackEvaluatorTests(
     unittest.TestCase
 ):
@@ -53,12 +64,32 @@ class CsynthArtifactFeedbackEvaluatorTests(
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 
-    def write_invocation(self, payload=None) -> None:
+    def write_invocation(self, payload=None, *, source_role=None) -> None:
         value = (
             invocation_payload()
             if payload is None
             else payload
         )
+        value["work_dir"] = str(self.root.resolve())
+        execution = value["execution"]
+        if (execution["status"] == "completed" and execution["returncode"] == 0
+                and not execution["timeout"]):
+            report = self.root / "csynth/solution/syn/report/top_hls_csynth.rpt"
+            report.parent.mkdir(parents=True, exist_ok=True)
+            report.write_text("current synthesis report\n", encoding="utf-8")
+            value["expected_report"] = artifact_identity(report)
+        if source_role is not None:
+            source = self.root / "top_hls.cpp"
+            source.write_text("void top_hls() {}\n", encoding="utf-8")
+            value["source_files"] = [source.name]
+            value["compile_units"] = [source.name]
+            value["source_provenance"] = {
+                source.name: {
+                    "path": str(source.resolve()),
+                    "role": source_role,
+                    "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                }
+            }
         (self.root / "csynth_invocation.json").write_text(
             json.dumps(value),
             encoding="utf-8",
@@ -73,6 +104,10 @@ class CsynthArtifactFeedbackEvaluatorTests(
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
+        invocation_path = self.root / "csynth_invocation.json"
+        value = json.loads(invocation_path.read_text(encoding="utf-8"))
+        value["diagnostic_log"] = artifact_identity(path)
+        invocation_path.write_text(json.dumps(value), encoding="utf-8")
         return path
 
     def evaluate(
@@ -186,7 +221,7 @@ class CsynthArtifactFeedbackEvaluatorTests(
             str((self.root / "csynth" / "solution" / "solution.log").resolve()),
         )
 
-    def test_completed_recursive_diagnostic_retains_toolchain_owner(self) -> None:
+    def test_completed_recursive_diagnostic_without_provenance_has_unknown_owner(self) -> None:
         self.write_invocation(invocation_payload(returncode=1))
         self.write_log(
             "ERROR: [HLS 214-139] Recursive function calls are not supported "
@@ -201,8 +236,22 @@ class CsynthArtifactFeedbackEvaluatorTests(
         )
 
         self.assertEqual(diagnostic.category, FeedbackCategory.UNSUPPORTED_CONSTRUCT)
-        self.assertEqual(diagnostic.owner, FeedbackOwner.TOOLCHAIN)
+        self.assertEqual(diagnostic.owner, FeedbackOwner.UNKNOWN)
         self.assertTrue(diagnostic.metadata["command_completion_proven"])
+
+    def test_completed_recursive_diagnostic_with_valid_candidate_provenance_is_repairable(self) -> None:
+        self.write_invocation(invocation_payload(returncode=1), source_role="candidate")
+        self.write_log(
+            "ERROR: [HLS 214-139] Recursive function calls are not supported "
+            "(top_hls.cpp:10:1)"
+        )
+        report = self.evaluate(status="csynth_failed", owner=FeedbackOwner.TOOLCHAIN)
+        diagnostic = report.items[0]
+        self.assertEqual(diagnostic.category, FeedbackCategory.UNSUPPORTED_CONSTRUCT)
+        self.assertEqual(diagnostic.owner, FeedbackOwner.CANDIDATE)
+        self.assertTrue(diagnostic.metadata["repair_eligible"])
+        self.assertTrue(diagnostic.metadata["evidence_complete"])
+        self.assertEqual(diagnostic.metadata["owner_authority"], "source_compile_unit")
 
     def test_conflicting_legacy_success_downgrades_diagnostic_owner(self) -> None:
         self.write_invocation(invocation_payload(returncode=1))
@@ -362,7 +411,7 @@ class CsynthArtifactFeedbackEvaluatorTests(
         )
         self.assertTrue(loading["exists"])
 
-    def test_owner_context_is_forwarded(self) -> None:
+    def test_caller_owner_without_provenance_is_not_forwarded(self) -> None:
         self.write_invocation(
             invocation_payload(returncode=1)
         )
@@ -378,8 +427,87 @@ class CsynthArtifactFeedbackEvaluatorTests(
 
         self.assertEqual(
             report.items[0].owner,
-            FeedbackOwner.ORIGINAL,
+            FeedbackOwner.UNKNOWN,
         )
+
+    def test_verified_original_manifest_overrides_candidate_caller(self) -> None:
+        self.write_invocation(invocation_payload(returncode=1), source_role="original")
+        self.write_log("top_hls.cpp:4:2: error: use of undeclared identifier 'N'")
+        diagnostic = self.evaluate(status="csynth_failed").items[0]
+        self.assertEqual(diagnostic.owner, FeedbackOwner.ORIGINAL)
+        self.assertFalse(diagnostic.metadata["repair_eligible"])
+
+    def test_source_changed_after_invocation_cannot_be_owned(self) -> None:
+        self.write_invocation(invocation_payload(returncode=1), source_role="candidate")
+        self.write_log("top_hls.cpp:4:2: error: use of undeclared identifier 'N'")
+        (self.root / "top_hls.cpp").write_text("void different_source() {}\n", encoding="utf-8")
+        diagnostic = self.evaluate(status="csynth_failed").items[0]
+        self.assertEqual(diagnostic.owner, FeedbackOwner.UNKNOWN)
+        self.assertFalse(diagnostic.metadata["repair_eligible"])
+
+    def test_log_changed_after_invocation_cannot_be_owned(self) -> None:
+        self.write_invocation(invocation_payload(returncode=1), source_role="candidate")
+        log = self.write_log("top_hls.cpp:4:2: error: use of undeclared identifier 'N'")
+        log.write_text(log.read_text(encoding="utf-8") + "\nINFO: another invocation\n", encoding="utf-8")
+        diagnostic = self.evaluate(status="csynth_failed").items[0]
+        self.assertEqual(diagnostic.owner, FeedbackOwner.UNKNOWN)
+        self.assertEqual(diagnostic.metadata["failure_reason"], "diagnostic_identity_not_proven")
+
+    def test_compiled_sources_and_provenance_must_agree(self) -> None:
+        self.write_invocation(invocation_payload(returncode=1), source_role="candidate")
+        self.write_log("top_hls.cpp:4:2: error: use of undeclared identifier 'N'")
+        path = self.root / "csynth_invocation.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["compile_units"] = ["some_other.cpp"]
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        diagnostic = self.evaluate(status="csynth_failed").items[0]
+        self.assertEqual(diagnostic.owner, FeedbackOwner.UNKNOWN)
+        self.assertFalse(diagnostic.metadata["evidence_complete"])
+
+    def test_unknown_error_without_source_remains_unknown_with_candidate_manifest(self) -> None:
+        self.write_invocation(invocation_payload(returncode=1), source_role="candidate")
+        self.write_log("ERROR: [HLS 999-123] new synthesis failure")
+        diagnostic = self.evaluate(status="csynth_failed").items[0]
+        self.assertEqual(diagnostic.owner, FeedbackOwner.UNKNOWN)
+        self.assertEqual(diagnostic.category, FeedbackCategory.UNKNOWN)
+        self.assertTrue(diagnostic.blocking)
+
+    def test_zero_exit_with_error_log_and_missing_report_cannot_prove_candidate_failure(self) -> None:
+        self.write_invocation(source_role="candidate")
+        report_path = self.root / "csynth/solution/syn/report/top_hls_csynth.rpt"
+        report_path.unlink()
+        self.write_log("top_hls.cpp:4:2: error: use of undeclared identifier 'N'")
+        diagnostic = self.evaluate(status="csynth_failed").items[0]
+        self.assertEqual(diagnostic.owner, FeedbackOwner.UNKNOWN)
+        self.assertFalse(diagnostic.metadata["repair_eligible"])
+
+    def test_same_basename_in_unlisted_dependency_cannot_prove_candidate_owner(self) -> None:
+        self.write_invocation(invocation_payload(returncode=1), source_role="candidate")
+        dependency = self.root / "dependency/top_hls.cpp"
+        dependency.parent.mkdir()
+        dependency.write_text("int dependency_value;\n", encoding="utf-8")
+        self.write_log("dependency/top_hls.cpp:4:2: error: use of undeclared identifier 'N'")
+        diagnostic = self.evaluate(status="csynth_failed").items[0]
+        self.assertEqual(diagnostic.owner, FeedbackOwner.UNKNOWN)
+        self.assertFalse(diagnostic.metadata["repair_eligible"])
+
+    def test_success_requires_report_file_and_current_report_identity(self) -> None:
+        for tamper in ("missing", "changed", "stale"):
+            with self.subTest(tamper=tamper):
+                self.write_invocation()
+                path = self.root / "csynth_invocation.json"
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                report_path = Path(payload["expected_report"]["path"])
+                if tamper == "missing":
+                    report_path.unlink()
+                elif tamper == "changed":
+                    report_path.write_text("other invocation report\n", encoding="utf-8")
+                else:
+                    payload["expected_report"]["produced_by_current_invocation"] = False
+                    path.write_text(json.dumps(payload), encoding="utf-8")
+                report = self.evaluate()
+                self.assertTrue(report.blocking)
+                self.assertFalse(report.metadata["report_identity_proven"])
 
     def test_malformed_invocation_json_is_rejected(
         self,

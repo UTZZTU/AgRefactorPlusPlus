@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Mapping
-from pathlib import PurePath
+import hashlib
+import json
 import re
 from typing import Any
 
+from agrefactor.evaluation.diagnostic_catalog import DiagnosticCatalog, load_catalog
 from agrefactor.evidence import (
     FeedbackCategory,
     FeedbackItem,
@@ -20,7 +22,7 @@ from agrefactor.evidence import (
 
 _MESSAGE_LINE_RE = re.compile(
     r"^\s*(?P<severity>"
-    r"CRITICAL WARNING|WARNING|ERROR|FATAL"
+    r"CRITICAL WARNING|WARNING|ERROR|FATAL ERROR|FATAL"
     r")\s*:\s*"
     r"(?:\[(?P<family>[A-Za-z][A-Za-z0-9_-]*)\s+"
     r"(?P<code>\d+(?:-\d+)*)\]\s*)?"
@@ -57,80 +59,29 @@ def _source_position(value: str) -> int | None:
     position = int(value)
     return position if position > 0 else None
 
-_UNDECLARED_IDENTIFIER_RE = re.compile(
-    r"\buse of undeclared identifier\b",
-    flags=re.IGNORECASE,
-)
-_EXPECTED_TOKEN_RE = re.compile(
-    r"\bexpected\b\s+.+",
-    flags=re.IGNORECASE,
-)
-_INVALID_GOTO_RE = re.compile(
-    r"\bcannot jump from this goto statement to its label\b",
-    flags=re.IGNORECASE,
-)
-_S_AXILITE_BUNDLE_RE = re.compile(
-    r"\bVitis kernel mode requires that all s_axilite ports "
-    r"must be bundled into one bundle\b",
-    flags=re.IGNORECASE,
-)
-_CARRIED_DEPENDENCE_RE = re.compile(
-    r"\bII Violation\b.*"
-    r"\bUnable to enforce a carried dependence constraint\b",
-    flags=re.IGNORECASE,
-)
-_LOOP_EXIT_SCHEDULING_RE = re.compile(
-    r"\bUnable to schedule the loop exit test\b.*"
-    r"\bin the first pipeline iteration\b",
-    flags=re.IGNORECASE,
-)
-_AGGREGATE_SOURCE_SYNTHESIS_RE = re.compile(
-    r"\bEncountered problem during source synthesis\b",
-    flags=re.IGNORECASE,
-)
-_SYN_CHECK_FAIL_RE = re.compile(
-    r"^Syn check fail!$",
-    flags=re.IGNORECASE,
-)
 _GLOBAL_VARIABLE_DEFINITION_RE = re.compile(
     r"\bGlobal variable\s+['\"](?P<symbol>[A-Za-z_][A-Za-z0-9_]*)['\"]"
     r"\s+must have definition\b",
     flags=re.IGNORECASE,
 )
-_UNSUPPORTED_DYNAMIC_ALLOCATION_RE = re.compile(
-    r"\bUndefined function operator\s+(?:new|delete)\s*\[\]",
-    flags=re.IGNORECASE,
-)
-_UNSUPPORTED_STRUCT_POINTER_ARGUMENT_RE = re.compile(
-    r"\bStruct type with pointer type inside on top function argument is not supported\b",
-    flags=re.IGNORECASE,
-)
-_UNSUPPORTED_POINTER_TO_POINTER_RE = re.compile(
-    r"\bPointer to pointer is not supported\b",
-    flags=re.IGNORECASE,
-)
-_UNSUPPORTED_RECURSIVE_FUNCTION_RE = re.compile(
-    r"\bRecursive function calls are not supported\b",
-    flags=re.IGNORECASE,
-)
-
-
 class CsynthDiagnosticParser:
     """Parse reviewed Vitis diagnostics into operator feedback.
 
-    The parser recognizes only exact, stable message forms observed in
-    the local Vitis HLS 2023.2 corpus. Every explicit error that passes
-    the structural gate is retained. An unrecognized error is emitted
+    The catalog recognizes reviewed message forms. Every explicit
+    error is retained. An unrecognized error is emitted
     as blocking ``UNKNOWN`` feedback rather than discarded or guessed.
 
     Ordinary warnings are retained in source evidence but not emitted.
     Only reviewed high-value warnings are converted to feedback items.
-    This parser does not execute csynth and is not connected to prompts
-    or state transitions by this commit.
+    This parser classifies diagnostics without executing CSYNTH or
+    choosing a repair route.
     """
 
     source = "csynth_diagnostic"
-    parser_version = 2
+    parser_version = 3
+
+    def __init__(self, catalog: DiagnosticCatalog | None = None) -> None:
+        self._catalog = catalog or load_catalog()
 
     def parse_text(
         self,
@@ -158,6 +109,7 @@ class CsynthDiagnosticParser:
         parsed = []
         ignored_warning_count = 0
         rejected_severity_line_count = 0
+        rejected_severity_lines = []
 
         for line_number, raw_line in enumerate(
             text.splitlines(),
@@ -170,19 +122,63 @@ class CsynthDiagnosticParser:
             if record is None:
                 if self._looks_like_severity_line(raw_line):
                     rejected_severity_line_count += 1
+                    if len(rejected_severity_lines) < 100:
+                        rejected_severity_lines.append({
+                            "input_line": line_number,
+                            "raw_line": raw_line.strip()[:4000],
+                        })
                 continue
 
             category, summary, rule, confidence = self._classify(
                 record
             )
+            catalog_rule = self._catalog.match(record)
             record.update(
                 {
                     "category": category.value,
                     "summary": summary,
                     "parser_rule": rule,
                     "classification_confidence": confidence,
+                    "diagnostic_id": (
+                        catalog_rule.diagnostic_id
+                        if catalog_rule is not None
+                        else "unknown_fallback"
+                    ),
+                    "category_id": (
+                        catalog_rule.category_id
+                        if catalog_rule is not None
+                        else "unknown"
+                    ),
+                    "catalog_stage": (
+                        catalog_rule.stage.value
+                        if catalog_rule is not None
+                        else FeedbackStage.CSYNTH.value
+                    ),
+                    "evidence_requirements": (
+                        list(catalog_rule.evidence_requirements)
+                        if catalog_rule is not None
+                        else ["raw_diagnostic"]
+                    ),
+                    "allowed_actions": (
+                        list(catalog_rule.allowed_actions)
+                        if catalog_rule is not None
+                        else ["review_unknown"]
+                    ),
+                    "owner_policy": (
+                        catalog_rule.owner_policy
+                        if catalog_rule is not None
+                        else "resolve_from_evidence"
+                    ),
                 }
             )
+            record["evidence_fingerprint"] = hashlib.sha256(json.dumps({
+                "stage": record["catalog_stage"],
+                "code": record["message_id"],
+                "message": record["message"],
+                "file": record["file"],
+                "line": record["line"],
+                "column": record["column"],
+            }, sort_keys=True).encode("utf-8")).hexdigest()
 
             if (
                 record["raw_severity"] == "WARNING"
@@ -248,6 +244,7 @@ class CsynthDiagnosticParser:
             source_evidence={
                 "diagnostics": emitted_records,
                 "duplicates": duplicates,
+                "rejected_severity_lines": rejected_severity_lines,
             },
             metadata={
                 "parser_version": self.parser_version,
@@ -265,6 +262,8 @@ class CsynthDiagnosticParser:
                 "rejected_severity_line_count": (
                     rejected_severity_line_count
                 ),
+                "diagnostic_parse_complete": rejected_severity_line_count == 0,
+                "evidence_complete": False,
             },
         )
 
@@ -324,12 +323,6 @@ class CsynthDiagnosticParser:
             )
             message = message[: location_match.start()].strip()
 
-        # A bare severity label without either a Vitis message ID or a
-        # source location is too weak. This excludes unittest headings
-        # such as ``ERROR: test_name`` from a synthesis log corpus.
-        if family is None and file_name is None:
-            return None
-
         normalized_family = (
             family.upper() if family is not None else None
         )
@@ -353,8 +346,8 @@ class CsynthDiagnosticParser:
             "column": source_column,
         }
 
-    @staticmethod
     def _classify(
+        self,
         record: Mapping[str, Any],
     ) -> tuple[
         FeedbackCategory,
@@ -362,141 +355,15 @@ class CsynthDiagnosticParser:
         str,
         str,
     ]:
-        message = str(record["message"])
-        message_id = record.get("message_id")
-
-        if _UNDECLARED_IDENTIFIER_RE.search(message):
+        match = self._catalog.classify(record)
+        if match is not None:
+            category, summary, rule, confidence = match
             return (
-                FeedbackCategory.UNDECLARED_SYMBOL,
-                "HLS source uses an undeclared identifier",
-                "undeclared_identifier",
-                "high",
+                FeedbackCategory(category),
+                summary,
+                rule,
+                confidence,
             )
-
-        if _INVALID_GOTO_RE.search(message):
-            return (
-                FeedbackCategory.SYNTAX_ERROR,
-                "HLS source contains an invalid goto control flow",
-                "invalid_goto_control_flow",
-                "high",
-            )
-
-        if _EXPECTED_TOKEN_RE.search(message):
-            return (
-                FeedbackCategory.SYNTAX_ERROR,
-                "HLS source contains a syntax error",
-                "expected_token",
-                "high",
-            )
-
-        if (
-            message_id == "HLS 214-133"
-            and _GLOBAL_VARIABLE_DEFINITION_RE.search(message)
-        ):
-            return (
-                FeedbackCategory.UNSUPPORTED_CONSTRUCT,
-                (
-                    "HLS source global variable lacks a "
-                    "synthesizable definition"
-                ),
-                "global_variable_requires_definition",
-                "high",
-            )
-
-        if (
-            message_id == "HLS 214-194"
-            and _UNSUPPORTED_DYNAMIC_ALLOCATION_RE.search(message)
-        ):
-            return (
-                FeedbackCategory.UNSUPPORTED_CONSTRUCT,
-                "HLS source uses unsupported dynamic memory allocation",
-                "unsupported_dynamic_memory_allocation",
-                "high",
-            )
-
-        if (
-            message_id == "HLS 214-298"
-            and _UNSUPPORTED_STRUCT_POINTER_ARGUMENT_RE.search(message)
-        ):
-            return (
-                FeedbackCategory.UNSUPPORTED_CONSTRUCT,
-                "Vitis HLS does not support pointer members in top-level struct arguments",
-                "unsupported_struct_pointer_argument",
-                "high",
-            )
-
-        if (
-            message_id == "HLS 214-134"
-            and _UNSUPPORTED_POINTER_TO_POINTER_RE.search(message)
-        ):
-            return (
-                FeedbackCategory.UNSUPPORTED_CONSTRUCT,
-                "Vitis HLS does not support pointer-to-pointer constructs",
-                "unsupported_pointer_to_pointer",
-                "high",
-            )
-
-        if (
-            message_id == "HLS 214-139"
-            and _UNSUPPORTED_RECURSIVE_FUNCTION_RE.search(message)
-        ):
-            return (
-                FeedbackCategory.UNSUPPORTED_CONSTRUCT,
-                "Vitis HLS does not support recursive function calls",
-                "unsupported_recursive_function",
-                "high",
-            )
-
-        if _S_AXILITE_BUNDLE_RE.search(message):
-            return (
-                FeedbackCategory.INVALID_CONFIGURATION,
-                "AXI-Lite control ports use inconsistent bundles",
-                "s_axilite_bundle_mismatch",
-                "high",
-            )
-
-        if (
-            message_id == "HLS 200-880"
-            and _CARRIED_DEPENDENCE_RE.search(message)
-        ):
-            return (
-                FeedbackCategory.PIPELINE_DEPENDENCY,
-                (
-                    "Pipeline initiation interval is limited by "
-                    "a carried dependence"
-                ),
-                "pipeline_carried_dependence",
-                "high",
-            )
-
-        if (
-            message_id == "HLS 200-878"
-            and _LOOP_EXIT_SCHEDULING_RE.search(message)
-        ):
-            return (
-                FeedbackCategory.UNKNOWN,
-                (
-                    "CSYNTH could not schedule a loop exit test "
-                    "in the first pipeline iteration"
-                ),
-                "loop_exit_scheduling",
-                "partial",
-            )
-
-        if (
-            _AGGREGATE_SOURCE_SYNTHESIS_RE.search(message)
-            or (
-                message_id == "HLS 214-135"
-                and _SYN_CHECK_FAIL_RE.fullmatch(message)
-            )
-        ):
-            return (
-                FeedbackCategory.UNKNOWN,
-                "Vitis reported a source synthesis failure",
-                "aggregate_source_synthesis",
-                "aggregate",
-            )
-
         return (
             FeedbackCategory.UNKNOWN,
             "Unclassified CSYNTH diagnostic",
@@ -515,27 +382,15 @@ class CsynthDiagnosticParser:
     ) -> FeedbackItem:
         category = FeedbackCategory(record["category"])
         rule = str(record["parser_rule"])
+        # The catalog classifies diagnostics only.  Ownership comes from
+        # the caller's execution evidence and is never inferred from an
+        # HLS number or unsupported-construct message.
         effective_owner = (
-            FeedbackOwner.TOOLCHAIN
-            if rule
-            in {
-                "unsupported_struct_pointer_argument",
-                "unsupported_pointer_to_pointer",
-                "unsupported_recursive_function",
-            }
-            else owner
-            if rule
-            in {
-                "undeclared_identifier",
-                "invalid_goto_control_flow",
-                "expected_token",
-                "s_axilite_bundle_mismatch",
-                "pipeline_carried_dependence",
-                "global_variable_requires_definition",
-                "unsupported_dynamic_memory_allocation",
-            }
+            owner
+            if category is not FeedbackCategory.UNKNOWN
             else FeedbackOwner.UNKNOWN
         )
+
 
         affected_symbol = None
         if rule == "global_variable_requires_definition":
@@ -545,11 +400,18 @@ class CsynthDiagnosticParser:
             if match is not None:
                 affected_symbol = match.group("symbol")
 
+        try:
+            item_stage = FeedbackStage(
+                str(record.get("catalog_stage", FeedbackStage.CSYNTH.value))
+            )
+        except ValueError:
+            item_stage = FeedbackStage.CSYNTH
+
         return FeedbackItem(
             feedback_id=(
                 f"{report_id}.diagnostic.{item_index}"
             ),
-            stage=FeedbackStage.CSYNTH,
+            stage=item_stage,
             category=category,
             severity=self._feedback_severity(
                 str(record["raw_severity"])
@@ -569,6 +431,20 @@ class CsynthDiagnosticParser:
                 "column": record["column"],
                 "input_line": record["input_line"],
                 "parser_rule": rule,
+                "diagnostic_id": record.get(
+                    "diagnostic_id", "unknown_fallback"
+                ),
+                "category_id": record.get("category_id", "unknown"),
+                "evidence_fingerprint": record["evidence_fingerprint"],
+                "evidence_requirements": record.get(
+                    "evidence_requirements", ["raw_diagnostic"]
+                ),
+                "allowed_actions": record.get(
+                    "allowed_actions", ["review_unknown"]
+                ),
+                "owner_policy": record.get(
+                    "owner_policy", "resolve_from_evidence"
+                ),
                 "classification_confidence": record[
                     "classification_confidence"
                 ],
@@ -639,8 +515,8 @@ class CsynthDiagnosticParser:
         record: Mapping[str, Any],
     ) -> tuple[Any, ...]:
         file_name = record.get("file")
-        basename = (
-            PurePath(str(file_name)).name
+        source_path = (
+            str(file_name).replace("\\", "/")
             if file_name
             else None
         )
@@ -651,7 +527,7 @@ class CsynthDiagnosticParser:
         return (
             record["raw_severity"],
             message,
-            basename,
+            source_path,
             record.get("line"),
             record.get("column"),
         )

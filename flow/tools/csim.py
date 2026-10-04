@@ -299,16 +299,17 @@ def run_csim(
         _write_json(invocation_path, invocation)
         raise
 
+    compile_timed_out = bool(compile_res.get("timeout", False))
     invocation["compile_execution"] = {
-        "status": "completed",
+        "status": "timeout" if compile_timed_out else "completed",
         "returncode": compile_res.get("returncode"),
-        "timeout": bool(compile_res.get("timeout", False)),
+        "timeout": compile_timed_out,
         "stdout": _bounded_text(compile_res.get("stdout")),
         "stderr": _bounded_text(compile_res.get("stderr")),
     }
     _write_json(invocation_path, invocation)
 
-    if compile_res["returncode"] != 0:
+    if compile_timed_out or compile_res.get("returncode") != 0:
         invocation["simulation_execution"]["status"] = (
             "skipped_after_compile_failure"
         )
@@ -374,16 +375,17 @@ def run_csim(
         _write_json(invocation_path, invocation)
         raise
 
+    simulation_timed_out = bool(run_res.get("timeout", False))
     invocation["simulation_execution"] = {
-        "status": "completed",
+        "status": "timeout" if simulation_timed_out else "completed",
         "returncode": run_res.get("returncode"),
-        "timeout": bool(run_res.get("timeout", False)),
+        "timeout": simulation_timed_out,
         "stdout": _bounded_text(run_res.get("stdout")),
         "stderr": _bounded_text(run_res.get("stderr")),
     }
     _write_json(invocation_path, invocation)
 
-    if run_res["returncode"] != 0:
+    if simulation_timed_out or run_res.get("returncode") != 0:
         # Merge stdout+stderr so the csim_fixer sees all diagnostic output,
         # even when the TB prints mismatch info to stdout instead of stderr
         # (violating testbench.yaml convention but common in practice).

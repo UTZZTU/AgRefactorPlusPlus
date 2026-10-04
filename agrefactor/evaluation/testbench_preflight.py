@@ -6,9 +6,11 @@ import re
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from agrefactor.evidence import (
+    FeedbackCategory,
+    FeedbackStage,
     TestbenchDiagnostic,
     TestbenchFailureKind,
     TestbenchFailureOwner,
@@ -21,6 +23,8 @@ from agrefactor.runtime.budget import (
     BudgetManager,
     BudgetUsage,
 )
+from agrefactor.evaluation.owner_evidence import resolve_source_owner
+from agrefactor.evaluation.diagnostic_catalog import load_catalog
 
 
 # Compatibility minimum for staged execution without explicit top names.
@@ -83,7 +87,7 @@ def _blocked_budget_evidence(
 
 
 _DIAGNOSTIC_RE = re.compile(
-    r"^(?P<file>.*?):(?P<line>\d+):(?P<column>\d+):\s+"
+    r"^(?P<file>.*?):(?P<line>\d+):(?:(?P<column>\d+):)?\s+"
     r"(?:fatal error|error):\s+(?P<message>.*)$"
 )
 
@@ -302,24 +306,18 @@ def infer_linkage_mismatch(
 
 
 def classify_compile_failure(stderr: str) -> TestbenchFailureKind:
-    lowered = stderr.lower()
-    if "does not name a type" in lowered or "unknown type name" in lowered:
-        return TestbenchFailureKind.UNDECLARED_TYPE
-    if (
-        "was not declared in this scope" in lowered
-        or "use of undeclared identifier" in lowered
-        or "undeclared" in lowered
-    ):
-        return TestbenchFailureKind.UNDECLARED_SYMBOL
-    if (
-        "undefined reference to" in lowered
-        or "ld returned" in lowered
-        or "linker command failed" in lowered
-    ):
-        return TestbenchFailureKind.LINK_ERROR
-    if "error:" in lowered:
-        return TestbenchFailureKind.SYNTAX_ERROR
-    return TestbenchFailureKind.UNKNOWN
+    catalog = load_catalog()
+    match = catalog.match(stderr, stage=FeedbackStage.LINK)
+    if match is None:
+        match = catalog.match(stderr, stage=FeedbackStage.COMPILE)
+    if match is None:
+        return TestbenchFailureKind.UNKNOWN
+    return {
+        FeedbackCategory.UNDECLARED_TYPE: TestbenchFailureKind.UNDECLARED_TYPE,
+        FeedbackCategory.UNDECLARED_SYMBOL: TestbenchFailureKind.UNDECLARED_SYMBOL,
+        FeedbackCategory.LINK_ERROR: TestbenchFailureKind.LINK_ERROR,
+        FeedbackCategory.SYNTAX_ERROR: TestbenchFailureKind.SYNTAX_ERROR,
+    }.get(match.category, TestbenchFailureKind.UNKNOWN)
 
 
 def parse_compiler_diagnostics(
@@ -342,7 +340,10 @@ def parse_compiler_diagnostics(
                 message=message,
                 file=match.group("file"),
                 line=int(match.group("line")),
-                column=int(match.group("column")),
+                column=(
+                    int(match.group("column"))
+                    if match.group("column") is not None else None
+                ),
                 raw=line,
             )
         )
@@ -351,25 +352,23 @@ def parse_compiler_diagnostics(
 
 def infer_failure_owner(
     diagnostics: tuple[TestbenchDiagnostic, ...],
+    *,
+    source_roles: Mapping[str, str] | None = None,
+    work_dir: str | Path | None = None,
+    execution: Mapping[str, Any] | None = None,
 ) -> TestbenchFailureOwner:
-    owners: set[TestbenchFailureOwner] = set()
-
-    for diagnostic in diagnostics:
-        if not diagnostic.file:
-            continue
-        name = Path(diagnostic.file).name
-        if name == "testbench.cpp":
-            owners.add(TestbenchFailureOwner.TESTBENCH)
-        elif name == "orig_code.cpp":
-            owners.add(TestbenchFailureOwner.ORIGINAL)
-        elif name == "refactor_code.cpp":
-            owners.add(TestbenchFailureOwner.CANDIDATE)
-        else:
-            owners.add(TestbenchFailureOwner.UNKNOWN)
-
-    if len(owners) == 1:
-        return next(iter(owners))
-    return TestbenchFailureOwner.UNKNOWN
+    if not source_roles or work_dir is None:
+        return TestbenchFailureOwner.UNKNOWN
+    evidence = resolve_source_owner(
+        diagnostics,
+        source_roles=source_roles,
+        work_dir=work_dir,
+        execution=execution,
+    )
+    try:
+        return TestbenchFailureOwner(evidence.owner)
+    except ValueError:
+        return TestbenchFailureOwner.UNKNOWN
 
 
 class TestbenchPreflight:
@@ -609,7 +608,16 @@ class TestbenchPreflight:
                 ),
             )
 
-        owner = infer_failure_owner(diagnostics)
+        owner = infer_failure_owner(
+            diagnostics,
+            source_roles={
+                "testbench.cpp": "testbench",
+                "orig_code.cpp": "original",
+                "refactor_code.cpp": "candidate",
+            },
+            work_dir=directory,
+            execution=invocation["execution"],
+        )
 
         if kind is TestbenchFailureKind.LINK_ERROR:
             linkage_mismatches = infer_linkage_mismatch(
@@ -662,11 +670,16 @@ class TestbenchPreflight:
             message=message,
             raw=message,
         )
+        owner = (
+            TestbenchFailureOwner.TOOLCHAIN
+            if kind is TestbenchFailureKind.COMPILER_NOT_FOUND
+            else TestbenchFailureOwner.UNKNOWN
+        )
         return TestbenchPreflightResult(
             status=TestbenchPreflightStatus.ERROR,
             stage=TestbenchStage.COMPILE_LINK,
             failure_kind=kind,
-            failure_owner=TestbenchFailureOwner.TOOLCHAIN,
+            failure_owner=owner,
             return_code=None,
             command=tuple(command),
             diagnostics=(diagnostic,),

@@ -58,7 +58,7 @@
       "source_family": "app",
       "source_path": "src/app/libsodium/chacha20_stream.cpp",
       "source_sha256": "262b7034844bebac7adda219a66db30481ac21d23a59b57461c5889969f98d58",
-      "top": "chacha20_encrypt_bytes",
+      "top": "chacah20_stream",
       "upstream": {
         "admission": "quarantine",
         "checked_in_copy_matches_upstream_commit": "unverified",

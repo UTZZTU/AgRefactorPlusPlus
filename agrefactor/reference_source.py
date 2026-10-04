@@ -15,6 +15,7 @@ def isolate_reference_program_entry(
     source_path=None,
     include_dirs: tuple[str, ...] = (),
     compile_flags: tuple[str, ...] = (),
+    source_provenance: list[dict] | None = None,
 ) -> str:
     """Rename an Original program entry without changing the selected top."""
 
@@ -27,6 +28,14 @@ def isolate_reference_program_entry(
         + source_code.rstrip()
         + "\n#undef main\n"
     )
+    source_lines = len(source_code.rstrip().splitlines())
+    if source_provenance is not None:
+        source_provenance.append({
+            "line_start": 2,
+            "line_end": source_lines + 1,
+            "owner": "original",
+            "authority": "original_source",
+        })
     if top_function is None:
         return prepared
     context = dict(source_path=source_path, include_dirs=include_dirs, compile_flags=compile_flags)
@@ -81,9 +90,19 @@ def isolate_reference_program_entry(
         after.append(f"{loops}{name}{indices} = {expression}{indices};")
     call = f"{implementation}({', '.join(arguments)})"
     body = [*before, (call + ";") if interface.canonical_result_type == "void" else ("return " + call + ";"), *after]
-    return (
+    bridged = (
         f"#define {top_function} {implementation}\n" + prepared
         + f"#undef {top_function}\n" + "\n".join(aliases)
         + f"\nagrefactor_reference_result {top_function}({', '.join(parameters)}) {{\n"
         + "\n".join(body) + "\n}\n"
     )
+    if source_provenance is not None:
+        source_provenance[-1]["line_start"] += 1
+        source_provenance[-1]["line_end"] += 1
+        source_provenance.append({
+            "line_start": source_lines + 5,
+            "line_end": len(bridged.splitlines()),
+            "owner": "testbench" if template and testbench_code else "unknown",
+            "authority": "testbench_template_contract" if template and testbench_code else "generated_reference_bridge",
+        })
+    return bridged

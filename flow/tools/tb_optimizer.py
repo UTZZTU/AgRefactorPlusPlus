@@ -1494,8 +1494,7 @@ def _measure_qualified_coverage(
     if (result.get("status") == "run_failed" and result.get("failure_owner") == "unknown"
             and candidate_decl and original_check.get("status") == "ok"):
         # Safe Original execution does not qualify the comparison logic.
-        # Keep both generated artifacts eligible while ownership is unknown.
-        result["next_action"] = "repair_testbench_stub"
+        # Keep ownership unknown; do not silently select a repair target.
         result["original_qualification_status"] = "passed"
     lines_total = result.get("lines_total")
     lines_hit = result.get("lines_hit")
@@ -1620,13 +1619,29 @@ def _append_round(
             (
                 "continue_validation"
                 if cov.get("status") == "ok"
-                else "repair_testbench_stub"
+                else (
+                    "repair_testbench"
+                    if cov.get("failure_owner") == "testbench"
+                    else "regenerate_stub"
+                    if cov.get("failure_owner") == "stub"
+                    else "review_unknown"
+                )
             ),
         ),
         "failure_evidence_source": cov.get(
             "failure_evidence_source",
             "legacy coverage result",
         ),
+        **{
+            key: cov[key]
+            for key in (
+                "owner_authority", "evidence_complete", "ownership_evidence",
+                "executions", "source_roles", "compile_units", "source_spans",
+                "diagnostic_classification", "original_entry_observed",
+                "original_entry_executed",
+            )
+            if key in cov
+        },
         **extra,
     }
     rounds.append(record)

@@ -1,5 +1,12 @@
 from .csynth_artifact_feedback import CsynthArtifactFeedbackEvaluator
 from .csynth_diagnostics import CsynthDiagnosticParser
+from .diagnostic_catalog import (
+    DiagnosticCatalog,
+    DiagnosticCatalogError,
+    DiagnosticMatch,
+    DiagnosticRule,
+    load_catalog,
+)
 from .csynth_feedback import CsynthFeedbackAdapter
 from .csynth_feedback_composer import CsynthFeedbackComposer
 from .csynth_feedback_view import CsynthFeedbackViewAdapter
@@ -55,6 +62,11 @@ __all__ = [
     "CsimSuiteEvaluator",
     "CsynthArtifactFeedbackEvaluator",
     "CsynthDiagnosticParser",
+    "DiagnosticCatalog",
+    "DiagnosticCatalogError",
+    "DiagnosticMatch",
+    "DiagnosticRule",
+    "load_catalog",
     "CsynthFeedbackAdapter",
     "CsynthFeedbackComposer",
     "CsynthFeedbackViewAdapter",

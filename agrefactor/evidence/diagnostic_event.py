@@ -38,6 +38,11 @@ _DIAGNOSTIC_ALLOWED_FIELDS = _DIAGNOSTIC_REQUIRED_FIELDS | frozenset(
         "line",
         "column",
         "occurrence_count",
+        "diagnostic_id",
+        "category_id",
+        "evidence_fingerprint",
+        "owner_authority",
+        "evidence_complete",
     }
 )
 
@@ -188,6 +193,9 @@ def _normalize_diagnostic_items(
             "diagnostic_code",
             "parser_rule",
             "classification_confidence",
+            "diagnostic_id",
+            "category_id",
+            "owner_authority",
         ):
             value = raw.get(name)
             if value is not None:
@@ -196,6 +204,15 @@ def _normalize_diagnostic_items(
                     f"diagnostic_items[{index}].{name}",
                     max_length=160,
                 )
+        fingerprint = raw.get("evidence_fingerprint")
+        if fingerprint is not None:
+            if not isinstance(fingerprint, str) or not _SHA256.fullmatch(fingerprint):
+                raise ValueError("invalid diagnostic evidence fingerprint")
+            item["evidence_fingerprint"] = fingerprint
+        if "evidence_complete" in raw:
+            if not isinstance(raw["evidence_complete"], bool):
+                raise TypeError("diagnostic evidence_complete must be a boolean")
+            item["evidence_complete"] = raw["evidence_complete"]
         source_file = raw.get("source_file")
         if source_file is not None:
             source_file = _safe_diagnostic_text(
@@ -237,6 +254,11 @@ def _project_feedback_item(item: Any) -> dict[str, Any]:
         "line": metadata.get("line"),
         "column": metadata.get("column"),
         "occurrence_count": metadata.get("occurrence_count"),
+        "diagnostic_id": metadata.get("diagnostic_id"),
+        "category_id": metadata.get("category_id"),
+        "evidence_fingerprint": metadata.get("evidence_fingerprint"),
+        "owner_authority": metadata.get("owner_authority"),
+        "evidence_complete": metadata.get("evidence_complete"),
     }
     return {
         key: item_value
@@ -380,6 +402,7 @@ class DiagnosticEventProjector:
             raise ValueError("DiagnosticEvent requires blocking feedback")
         owners = {_safe_code(item.owner.value) for item in items}
         owner = next(iter(owners)) if len(owners) == 1 else "mixed"
+        authorities = {str(item.metadata.get("owner_authority", "unknown")) for item in items}
         classes = tuple(_safe_code(item.category.value) for item in items)
         severities = tuple(_safe_code(item.severity.value) for item in items)
         evidence_refs = (
@@ -433,8 +456,10 @@ class DiagnosticEventProjector:
             toolchain_identity=toolchain_identity,
             candidate_sha256=candidate_sha,
             public_suite_identities=suites,
-            physical_tool_launched=bool(report.metadata.get("physical_execution", True)),
-            evidence_complete=bool(report.metadata.get("evidence_complete", True)),
+            physical_tool_launched=(report.metadata.get("physical_execution") is True
+                                    or all(item.metadata.get("tool_launched") is True for item in items)),
+            evidence_complete=(report.metadata.get("evidence_complete") is True
+                               or all(item.metadata.get("evidence_complete") is True for item in items)),
             context_signature=context_signature,
             created_at=created_at or datetime.now(timezone.utc).isoformat(),
             diagnostic_items=diagnostic_items,
@@ -445,7 +470,7 @@ class DiagnosticEventProjector:
                 "blocking_item_count": len(items),
                 "diagnostic_item_count": len(diagnostic_items),
                 "diagnostic_items_truncated": len(items) > len(diagnostic_items),
-                "owner_authority": "deterministic_typed_feedback",
+                "owner_authority": next(iter(authorities)) if len(authorities) == 1 else "mixed",
                 "context_signature_includes_diagnostic_items": True,
             },
         )
@@ -534,7 +559,7 @@ class DiagnosticEventProjector:
             candidate_sha256=candidate_sha,
             public_suite_identities=suites,
             physical_tool_launched=bool(typed.get("tool_launched") or typed.get("cosim_launched")),
-            evidence_complete=bool(typed.get("evidence_complete", evidence_sha is not None)),
+            evidence_complete=(typed.get("evidence_complete") is True),
             context_signature=context_signature,
             created_at=created_at or datetime.now(timezone.utc).isoformat(),
             source_kind="typed_runtime_outcome",

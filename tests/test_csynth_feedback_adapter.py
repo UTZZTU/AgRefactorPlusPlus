@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import unittest
 
 from agrefactor.evaluation import CsynthFeedbackAdapter
@@ -38,6 +39,13 @@ def base_invocation() -> dict:
             "returncode": 0,
             "timeout": False,
         },
+        "expected_report": {
+            "path": "/tmp/run/csynth/solution/syn/report/top_hls_csynth.rpt",
+            "exists": True,
+            "size_bytes": len(b"current synthesis report\n"),
+            "sha256": hashlib.sha256(b"current synthesis report\n").hexdigest(),
+            "produced_by_current_invocation": True,
+        },
     }
 
 
@@ -76,6 +84,28 @@ class CsynthFeedbackAdapterTests(unittest.TestCase):
         self.assertEqual(report.items[0].owner, FeedbackOwner.UNKNOWN)
         self.assertTrue(report.metadata["command_completion_proven"])
         self.assertTrue(report.metadata["evidence_complete"])
+
+    def test_success_requires_expected_report_facts(self) -> None:
+        for evidence in (None, {"exists": False}, {"exists": True, "size_bytes": 0,
+                                                   "produced_by_current_invocation": True}):
+            with self.subTest(evidence=evidence):
+                invocation = base_invocation()
+                invocation["expected_report"] = evidence
+                report = self.adapter.to_operator_report(invocation=invocation, report_id="missing-report", legacy_status="succeeded")
+                self.assertTrue(report.blocking)
+                self.assertEqual(report.items[0].owner, FeedbackOwner.UNKNOWN)
+
+    def test_success_rejects_stale_or_unverified_report_facts(self) -> None:
+        for tamper in ("stale", "unverified"):
+            with self.subTest(tamper=tamper):
+                invocation = base_invocation()
+                if tamper == "stale":
+                    invocation["expected_report"]["produced_by_current_invocation"] = False
+                else:
+                    invocation["artifact_report_verified"] = False
+                report = self.adapter.to_operator_report(invocation=invocation, report_id="stale-report", legacy_status="succeeded")
+                self.assertTrue(report.blocking)
+                self.assertEqual(report.items[0].owner, FeedbackOwner.UNKNOWN)
 
     def test_launch_error_remains_toolchain_owned_without_completion(self) -> None:
         invocation = base_invocation()

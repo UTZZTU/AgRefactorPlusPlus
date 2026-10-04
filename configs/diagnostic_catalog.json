@@ -1,0 +1,251 @@
+{
+  "schema_version": 1,
+  "categories": {
+    "invalid_configuration": {
+      "description": "The tool reports an invalid synthesis configuration.",
+      "evidence_requirements": ["tool_launched", "execution_completed"],
+      "allowed_actions": ["review_unknown", "fix_configuration"]
+    },
+    "link_error": {
+      "description": "The compiler or linker reports a link failure.",
+      "evidence_requirements": ["compile_unit_provenance", "tool_launched"],
+      "allowed_actions": ["repair_candidate_if_proven", "repair_testbench_if_proven", "review_unknown"]
+    },
+    "missing_dependency": {
+      "feedback_category": "invalid_configuration",
+      "description": "The compiler cannot resolve a source or header dependency.",
+      "evidence_requirements": ["compile_unit_provenance", "tool_launched"],
+      "allowed_actions": ["review_unknown", "fix_configuration"]
+    },
+    "pipeline_dependency": {
+      "description": "A scheduling or pipeline dependence diagnostic.",
+      "evidence_requirements": ["tool_launched", "execution_completed"],
+      "allowed_actions": ["review_unknown", "repair_candidate_if_proven"]
+    },
+    "syntax_error": {
+      "description": "The compiler reports a source syntax error.",
+      "evidence_requirements": ["source_location", "tool_launched"],
+      "allowed_actions": ["repair_candidate_if_proven", "review_unknown"]
+    },
+    "undeclared_symbol": {
+      "description": "The compiler reports an undeclared source symbol.",
+      "evidence_requirements": ["source_location", "tool_launched"],
+      "allowed_actions": ["repair_candidate_if_proven", "review_unknown"]
+    },
+    "undeclared_type": {
+      "description": "The compiler reports an undeclared type.",
+      "evidence_requirements": ["source_location", "compile_unit_provenance", "tool_launched"],
+      "allowed_actions": ["repair_candidate_if_proven", "repair_testbench_if_proven", "review_unknown"]
+    },
+    "unsupported_construct": {
+      "description": "The diagnostic identifies a construct with restricted synthesis support.",
+      "evidence_requirements": ["tool_launched", "execution_completed"],
+      "allowed_actions": ["review_unknown", "repair_candidate_if_proven"]
+    },
+    "unknown": {
+      "description": "The diagnostic has no reviewed classification.",
+      "evidence_requirements": ["raw_diagnostic"],
+      "allowed_actions": ["review_unknown"]
+    }
+  },
+  "rules": [
+    {
+      "id": "hls_214_133_global_definition",
+      "match": {"hls_codes": ["HLS 214-133"], "patterns": ["\\bGlobal variable\\s+['\"](?P<symbol>[A-Za-z_][A-Za-z0-9_]*)['\"]\\s+must have definition\\b"]},
+      "stage": "csynth",
+      "category": "unsupported_construct",
+      "summary": "HLS source global variable lacks a synthesizable definition",
+      "parser_rule": "global_variable_requires_definition",
+      "confidence": "high",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 200
+    },
+    {
+      "id": "hls_214_194_dynamic_allocation",
+      "match": {"hls_codes": ["HLS 214-194"], "patterns": ["\\bUndefined function operator\\s+(?:new|delete)\\s*\\[\\]" ]},
+      "stage": "csynth",
+      "category": "unsupported_construct",
+      "summary": "HLS source uses unsupported dynamic memory allocation",
+      "parser_rule": "unsupported_dynamic_memory_allocation",
+      "confidence": "high",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 190
+    },
+    {
+      "id": "hls_214_298_struct_pointer_argument",
+      "match": {"hls_codes": ["HLS 214-298"], "patterns": ["\\bStruct type with pointer type inside on top function argument is not supported\\b"]},
+      "stage": "csynth",
+      "category": "unsupported_construct",
+      "summary": "Vitis HLS does not support pointer members in top-level struct arguments",
+      "parser_rule": "unsupported_struct_pointer_argument",
+      "confidence": "high",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 180
+    },
+    {
+      "id": "hls_214_134_pointer_to_pointer",
+      "match": {"hls_codes": ["HLS 214-134"], "patterns": ["\\bPointer to pointer is not supported\\b"]},
+      "stage": "csynth",
+      "category": "unsupported_construct",
+      "summary": "Vitis HLS reports an unsupported pointer-to-pointer construct",
+      "parser_rule": "unsupported_pointer_to_pointer",
+      "confidence": "high",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 170
+    },
+    {
+      "id": "hls_214_139_recursive_function",
+      "match": {"hls_codes": ["HLS 214-139"], "patterns": ["\\bRecursive function calls are not supported\\b"]},
+      "stage": "csynth",
+      "category": "unsupported_construct",
+      "summary": "Vitis HLS reports recursive function calls as unsupported",
+      "parser_rule": "unsupported_recursive_function",
+      "confidence": "high",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 160
+    },
+    {
+      "id": "s_axilite_bundle_mismatch",
+      "match": {"patterns": ["\\bVitis kernel mode requires that all s_axilite ports must be bundled into one bundle\\b"]},
+      "stage": "csynth",
+      "category": "invalid_configuration",
+      "summary": "AXI-Lite control ports use inconsistent bundles",
+      "parser_rule": "s_axilite_bundle_mismatch",
+      "confidence": "high",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 150
+    },
+    {
+      "id": "hls_200_880_pipeline_dependence",
+      "match": {"hls_codes": ["HLS 200-880"], "patterns": ["\\bII Violation\\b.*\\bUnable to enforce a carried dependence constraint\\b"]},
+      "stage": "csynth",
+      "category": "pipeline_dependency",
+      "summary": "Pipeline initiation interval is limited by a carried dependence",
+      "parser_rule": "pipeline_carried_dependence",
+      "confidence": "high",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 140
+    },
+    {
+      "id": "hls_200_878_loop_exit",
+      "match": {"hls_codes": ["HLS 200-878"], "patterns": ["\\bUnable to schedule the loop exit test\\b.*\\bin the first pipeline iteration\\b"]},
+      "stage": "csynth",
+      "category": "unknown",
+      "summary": "CSYNTH could not schedule a loop exit test in the first pipeline iteration",
+      "parser_rule": "loop_exit_scheduling",
+      "confidence": "partial",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 130
+    },
+    {
+      "id": "aggregate_source_synthesis_failure",
+      "match": {"patterns": ["\\bEncountered problem during source synthesis\\b"]},
+      "stage": "csynth",
+      "category": "unknown",
+      "summary": "Vitis reported a source synthesis failure",
+      "parser_rule": "aggregate_source_synthesis",
+      "confidence": "aggregate",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 20
+    },
+    {
+      "id": "hls_214_135_syn_check_failure",
+      "match": {"hls_codes": ["HLS 214-135"], "patterns": ["^Syn check fail!$"]},
+      "stage": "csynth",
+      "category": "unknown",
+      "summary": "Vitis reported a source synthesis failure",
+      "parser_rule": "aggregate_source_synthesis",
+      "confidence": "aggregate",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 10
+    },
+    {
+      "id": "undeclared_identifier",
+      "match": {"patterns": ["\\buse of undeclared identifier\\b"]},
+      "stage": "csynth",
+      "category": "undeclared_symbol",
+      "summary": "HLS source uses an undeclared identifier",
+      "parser_rule": "undeclared_identifier",
+      "confidence": "high",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 300
+    },
+    {
+      "id": "invalid_goto_control_flow",
+      "match": {"patterns": ["\\bcannot jump from this goto statement to its label\\b"]},
+      "stage": "csynth",
+      "category": "syntax_error",
+      "summary": "HLS source contains an invalid goto control flow",
+      "parser_rule": "invalid_goto_control_flow",
+      "confidence": "high",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 290
+    },
+    {
+      "id": "expected_token",
+      "match": {"patterns": ["\\bexpected\\b\\s+.+"]},
+      "stage": "csynth",
+      "category": "syntax_error",
+      "summary": "HLS source contains a syntax error",
+      "parser_rule": "expected_token",
+      "confidence": "high",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 280
+    },
+    {
+      "id": "compile_link_error",
+      "match": {"patterns": ["\\bundefined reference to\\b", "\\bld returned\\b", "\\blinker command failed\\b", "\\bmultiple definition\\b", "\\bcollect2:"]},
+      "stage": "link",
+      "category": "link_error",
+      "summary": "Compiler or linker reported a link error",
+      "parser_rule": "link_error",
+      "confidence": "partial",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 250
+    },
+    {
+      "id": "compile_missing_dependency",
+      "match": {"patterns": ["\\bfile not found\\b", "\\bno such file or directory\\b", "\\bcannot open source file\\b", "没有那个文件", "找不到"]},
+      "stage": "compile",
+      "category": "missing_dependency",
+      "summary": "Compiler could not resolve a required source or dependency",
+      "parser_rule": "missing_dependency",
+      "confidence": "partial",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 240
+    },
+    {
+      "id": "compile_undeclared_type",
+      "match": {"patterns": ["\\bdoes not name a type\\b", "\\bunknown type name\\b"]},
+      "stage": "compile",
+      "category": "undeclared_type",
+      "summary": "Compiler reports an undeclared type",
+      "parser_rule": "undeclared_type",
+      "confidence": "high",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 300
+    },
+    {
+      "id": "compile_undeclared_symbol",
+      "match": {"patterns": ["\\bwas not declared in this scope\\b", "\\buse of undeclared identifier\\b", "\\bundeclared\\b"]},
+      "stage": "compile",
+      "category": "undeclared_symbol",
+      "summary": "Compiler reports an undeclared symbol",
+      "parser_rule": "undeclared_symbol",
+      "confidence": "high",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 290
+    },
+    {
+      "id": "compile_syntax_error",
+      "match": {"patterns": ["\\berror:"]},
+      "stage": "compile",
+      "category": "unknown",
+      "summary": "Compiler reports an unclassified source error",
+      "parser_rule": "unclassified_compile_error",
+      "confidence": "partial",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 10
+    }
+  ]
+}

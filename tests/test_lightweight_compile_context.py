@@ -17,15 +17,19 @@ class LightweightCompileContextTests(unittest.TestCase):
         source = 'int origin(int x){return x+1;}'
         for driver, expected in [
             ('int origin(int); int trial(int); int main(){return origin(2)!=trial(2);}', 'ok'),
-            ('int origin(int); int trial(int); int main(){return 0;}', 'original_execution_unknown'),
+            ('int origin(int); int trial(int); int main(){return 0;}', 'qualification_failed'),
         ]:
             result = tb_coverage.check_original_execution(
                 source, driver, 'int trial(int);', 'trial', required_original_entry='origin',
             )
             self.assertEqual(result['status'], expected, result)
             self.assertEqual(result['original_entry_executed'], expected == 'ok')
+            if expected == 'qualification_failed':
+                self.assertTrue(result['original_entry_observed'])
+                self.assertEqual(result['failure_owner'], 'testbench')
+                self.assertEqual(result['next_action'], 'repair_testbench')
 
-    def test_qualified_original_and_unknown_mismatch_preserve_joint_recovery(self):
+    def test_qualified_original_and_unknown_mismatch_preserve_unknown(self):
         failure = {'status': 'run_failed', 'failure_owner': 'unknown', 'next_action': 'review_unknown', 'run_stderr': 'different values'}
         with patch.object(tb_optimizer, 'check_original_execution', return_value={'status': 'ok'}), \
              patch.object(tb_optimizer, 'measure_coverage', return_value=failure) as measure:
@@ -34,7 +38,7 @@ class LightweightCompileContextTests(unittest.TestCase):
             )
         self.assertEqual(measure.call_args.kwargs['original_name'], 'origin')
         self.assertEqual(result['failure_owner'], 'unknown')
-        self.assertEqual(result['next_action'], 'repair_testbench_stub')
+        self.assertEqual(result['next_action'], 'review_unknown')
 
     def test_nan_comparison_failure_is_not_assumed_to_be_a_stub_error(self):
         source = '#include <cmath>\nvoid origin(float *out){*out=std::nanf("");}'
@@ -47,7 +51,7 @@ int main(){float a=0,b=0;origin(&a);origin_hls(&b);return a==b ? 0 : 1;}'''
         )
         self.assertEqual(result['status'], 'run_failed', result)
         self.assertEqual(result['failure_owner'], 'unknown', result)
-        self.assertEqual(result['next_action'], 'repair_testbench_stub', result)
+        self.assertEqual(result['next_action'], 'review_unknown', result)
 
     def test_entry_facts_distinguish_missing_member_template_and_unknown(self):
         sources = [

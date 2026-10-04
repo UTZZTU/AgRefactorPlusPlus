@@ -26,6 +26,13 @@ _SAFE_ITEM_KEYS = frozenset(
         "preflight_reason_code",
         "failed_component",
         "fallback_item",
+        "owner_authority",
+        "evidence_complete",
+        "tool_launched",
+        "physical_tool_launched",
+        "process_exit_observed",
+        "command_completion_proven",
+        "returncode_valid",
     }
 )
 _SAFE_REPORT_KEYS = frozenset(
@@ -40,6 +47,13 @@ _SAFE_REPORT_KEYS = frozenset(
         "failed_component",
         "substep_count",
         "duration_s",
+        "owner_authority",
+        "evidence_complete",
+        "tool_launched",
+        "physical_tool_launched",
+        "process_exit_observed",
+        "command_completion_proven",
+        "returncode_valid",
     }
 )
 

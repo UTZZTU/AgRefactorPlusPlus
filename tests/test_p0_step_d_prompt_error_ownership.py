@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
@@ -365,11 +366,23 @@ class StepDStructuralContractTests(unittest.TestCase):
 
 
 class StepDErrorOwnershipTests(unittest.TestCase):
+    @staticmethod
+    def _compile_owner(filename, owner):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, filename).write_text(
+                "int generated(){return missing_symbol;}", encoding="utf-8",
+            )
+            completed = subprocess.run(
+                ["g++", "-c", filename], cwd=directory,
+                capture_output=True, text=True, check=False,
+            )
+            return tb_coverage._classify_compile_failure_owner(
+                completed.stderr, {filename: owner}, directory,
+                {"status": "completed", "returncode": completed.returncode, "timeout": False},
+            )
+
     def test_compile_diagnostic_owns_testbench_error(self):
-        owner = tb_coverage._classify_compile_failure_owner(
-            "generated_driver.cc:12:3: error: missing symbol",
-            {"generated_driver.cc": "testbench"},
-        )
+        owner = self._compile_owner("generated_driver.cc", "testbench")
         self.assertEqual(owner, "testbench")
 
     def test_unstructured_golden_text_keeps_ownership_unknown(self):
@@ -381,17 +394,14 @@ class StepDErrorOwnershipTests(unittest.TestCase):
         self.assertEqual(action, "review_unknown")
 
     def test_compile_diagnostic_owns_stub_error(self):
-        owner = tb_coverage._classify_compile_failure_owner(
-            "temporary_impl.cc:4:7: error: bad return",
-            {"temporary_impl.cc": "stub"},
-        )
+        owner = self._compile_owner("temporary_impl.cc", "stub")
         self.assertEqual(owner, "stub")
 
-    def test_link_diagnostic_owns_abi_error(self):
+    def test_link_diagnostic_without_abi_evidence_is_unknown(self):
         owner = tb_coverage._classify_compile_failure_owner(
             "undefined reference to `process_top_hls(int)'"
         )
-        self.assertEqual(owner, "abi")
+        self.assertEqual(owner, "unknown")
 
     def test_round_record_persists_ownership(self):
         rounds = []
@@ -598,7 +608,7 @@ class HiddenQualificationExceptionArtifactsTests(unittest.TestCase):
             passed, _ = tb_optimizer._synth_check("void trial(){}", "trial", root)
         self.assertTrue(passed)
         self.assertEqual(synth.call_args.kwargs["timelimit"], DEFAULT_CSYNTH_TIMEOUT_S)
-        self.assertEqual(DEFAULT_CSYNTH_TIMEOUT_S, 1200)
+        self.assertEqual(DEFAULT_CSYNTH_TIMEOUT_S, 2700)
 
     def test_hidden_qualification_retains_exception_chain_only_for_operator(self):
         def fail(**kwargs):

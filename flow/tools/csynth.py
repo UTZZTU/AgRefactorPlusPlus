@@ -1,4 +1,5 @@
-import json, os, re, requests, shlex, shutil, subprocess
+import hashlib
+import json, os, re, requests, shlex, shutil, subprocess, tempfile
 from collections.abc import Mapping
 from flow.base_agent import HLSAgentLoader
 from autogen.agentchat.group import ContextVariables # type: ignore
@@ -52,6 +53,14 @@ def _write_json(path: str, payload: dict[str, Any]) -> None:
             sort_keys=True,
         )
         stream.write("\n")
+
+
+def _file_sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _clean_launcher_value(
@@ -642,6 +651,24 @@ def run_csynth(
         timelimit=timelimit,
         budget=budget,
     )
+    source_roles = cv.get("csynth_source_roles")
+    if not isinstance(source_roles, Mapping):
+        source_roles = {}
+    invocation["compile_units"] = list(file_list)
+    invocation["source_provenance"] = {}
+    for source_name in file_list:
+        source_path = os.path.abspath(os.path.join(work_dir, source_name))
+        supplied_role = source_roles.get(source_name)
+        role = (
+            supplied_role.strip()
+            if isinstance(supplied_role, str) and supplied_role.strip()
+            else "unknown"
+        )
+        invocation["source_provenance"][source_name] = {
+            "path": source_path,
+            "role": role,
+            "sha256": _file_sha256(source_path),
+        }
     effective_profile_path = os.path.join(
         work_dir,
         "effective_target_profile.json",
@@ -735,15 +762,54 @@ def run_csynth(
         }
         _write_json(invocation_path, invocation)
 
+    report_path = os.path.join(
+        work_dir,
+        "csynth",
+        "solution",
+        "syn",
+        "report",
+        f"{top_kernel_name}_csynth.rpt",
+    )
+    log_path = os.path.join(work_dir, "csynth", "solution", "solution.log")
+    artifacts = (
+        ("expected_report", report_path, "archived_previous_report"),
+        ("diagnostic_log", log_path, "archived_previous_log"),
+    )
+    # Isolate prior evidence so only this invocation can populate the expected
+    # paths. Regenerated artifacts may have identical contents.
+    for name, path, archive_key in artifacts:
+        existed_before = os.path.isfile(path)
+        previous_hash = _file_sha256(path) if existed_before else None
+        archive_path = None
+        if existed_before:
+            archive_dir = tempfile.mkdtemp(
+                prefix="csynth_previous_artifact_", dir=work_dir,
+            )
+            archive_path = os.path.join(archive_dir, os.path.basename(path))
+            os.replace(path, archive_path)
+        invocation[name] = {
+            "path": path,
+            "exists_before": existed_before,
+            "sha256_before": previous_hash,
+            archive_key: archive_path,
+            "isolated_before_launch": not os.path.exists(path),
+            "produced_by_current_invocation": False,
+        }
+    _write_json(invocation_path, invocation)
+
     command = command_resolution["command"]
     print(f">>> Synthesizing in {work_dir}... <<<")
     try:
         result = tools.general.run_cmd(work_dir, command, timelimit)
     except Exception as exc:
         invocation["execution"] = {
-            "status": "launch_error",
+            "status": (
+                "launch_error" if isinstance(exc, FileNotFoundError)
+                else "execution_error"
+            ),
             "returncode": None,
             "timeout": False,
+            "executable_missing": isinstance(exc, FileNotFoundError),
             "error_type": type(exc).__name__,
             "error": str(exc)[:4000],
         }
@@ -751,35 +817,57 @@ def run_csynth(
         raise
 
     invocation["execution"] = {
-        "status": "completed",
+        "status": (
+            "timeout"
+            if result.get("timeout", False)
+            else "completed"
+        ),
         "returncode": result.get("returncode"),
         "timeout": bool(result.get("timeout", False)),
     }
     _write_json(invocation_path, invocation)
-    # Check if the synthesis tool actually ran
-    if result["returncode"] != 0 and not result.get("timeout", False):
+    if result.get("returncode") == 127 and not result.get("timeout", False):
         stderr = result.get("stderr", "")
-        if "not found" in stderr or "No such file" in stderr or result["returncode"] == 127:
-            raise RuntimeError(
-                f"CSYNTH command failed to launch: {command}\n"
-                f"stderr: {stderr[:500]}"
-            )
-    rpt_path = os.path.join(work_dir, "csynth", "solution", "syn", "report", f"{top_kernel_name}_csynth.rpt")
-    if result["timeout"]:
-        if (not os.path.exists(rpt_path)):
-            status = "timeout"
-        else:
-            status = "succeeded"
-    elif (result["returncode"] != 0) or (not os.path.exists(rpt_path)):
+        invocation["execution"].update({
+            "status": "launch_error",
+            "executable_missing": True,
+            "error": stderr[:4000],
+        })
+        _write_json(invocation_path, invocation)
+        raise RuntimeError(
+            f"CSYNTH command failed to launch: {command}\n"
+            f"stderr: {stderr[:500]}"
+        )
+    for name, path, _ in artifacts:
+        exists = os.path.isfile(path)
+        size = os.path.getsize(path) if exists else 0
+        invocation[name].update({
+            "exists": exists,
+            "size_bytes": size,
+            "sha256": _file_sha256(path) if exists else None,
+            "produced_by_current_invocation": (
+                exists and size > 0
+                and invocation[name]["isolated_before_launch"]
+            ),
+        })
+    report_current = invocation["expected_report"]["produced_by_current_invocation"]
+    if result.get("timeout", False):
+        status = "timeout"
+    elif result.get("returncode") != 0 or not report_current:
         status = "csynth_failed"
     else:
         status = "succeeded"
-    # Override status if synthesizability check passed (even on timeout/failure)
-    log_path = os.path.join(work_dir, "csynth", "solution", "solution.log")
-    if status != "succeeded" and os.path.exists(log_path):
+
+    # This marker is evidence about a sub-step only. It cannot override the
+    # process timeout, return code, or current-report identity contract.
+    synthesizability_check_finished = False
+    if invocation["diagnostic_log"]["produced_by_current_invocation"]:
         with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-            if "Finished Checking Synthesizability:" in f.read():
-                status = "succeeded"
+            synthesizability_check_finished = (
+                "Finished Checking Synthesizability:" in f.read()
+            )
+    invocation["synthesizability_check_finished"] = synthesizability_check_finished
+    _write_json(invocation_path, invocation)
     error_msg = get_error_msg(work_dir)
     return status, error_msg
 

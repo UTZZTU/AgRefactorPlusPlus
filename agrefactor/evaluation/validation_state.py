@@ -485,8 +485,10 @@ class ValidationStateMachine:
                 FeedbackRouteAction.REPAIR_ORIGINAL: RecoveryRole.ORIGINAL,
             }[action]
             stage = RecoveryStage(state.value)
+            raw_authority = decision.metadata.get("owner_authority", "unknown")
             owner_authority = RecoveryAuthority(
-                decision.metadata.get("owner_authority", "deterministic_proven")
+                raw_authority if raw_authority in {item.value for item in RecoveryAuthority}
+                else ("deterministic_proven" if raw_authority not in {None, "unknown"} else "unknown")
             )
             policy_decision = self._recovery_policy.decide(
                 RecoveryRequest(
@@ -499,10 +501,10 @@ class ValidationStateMachine:
                     owner_authority=owner_authority,
                     lineage_id=self._task.task_id,
                     physical_tool_launched=bool(
-                        decision.metadata.get("physical_tool_launched", True)
+                        decision.metadata.get("physical_tool_launched", False)
                     ),
                     evidence_complete=bool(
-                        decision.metadata.get("evidence_complete", True)
+                        decision.metadata.get("evidence_complete", False)
                     ),
                     advisory_mode=str(
                         decision.metadata.get("advisory_mode", "off")

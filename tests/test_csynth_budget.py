@@ -250,7 +250,7 @@ class CsynthBudgetTests(unittest.TestCase):
             "blocked_before_csynth",
         )
 
-    def test_launch_exception_still_counts_real_attempt(self) -> None:
+    def test_runner_exception_still_counts_real_attempt(self) -> None:
         budget = BudgetManager(
             BudgetLimits(
                 max_tool_calls=1,
@@ -272,7 +272,7 @@ class CsynthBudgetTests(unittest.TestCase):
                     with patch.object(
                         csynth.tools.general,
                         "run_cmd",
-                        side_effect=OSError("synthetic launch error"),
+                        side_effect=OSError("synthetic runner error"),
                     ):
                         with self.assertRaises(OSError):
                             csynth.run_csynth(
@@ -297,8 +297,9 @@ class CsynthBudgetTests(unittest.TestCase):
         )
         self.assertEqual(
             invocation["execution"]["status"],
-            "launch_error",
+            "execution_error",
         )
+        self.assertFalse(invocation["execution"]["executable_missing"])
 
     def test_timeout_still_counts_real_attempt(self) -> None:
         budget = BudgetManager(

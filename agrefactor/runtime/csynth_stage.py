@@ -93,7 +93,7 @@ class CsynthValidationStageHandler:
             CsynthArtifactFeedbackEvaluator | None
         ) = None,
         view_adapter: CsynthFeedbackViewAdapter | None = None,
-        owner: FeedbackOwner | str = FeedbackOwner.CANDIDATE,
+        owner: FeedbackOwner | str = FeedbackOwner.UNKNOWN,
     ) -> None:
         if not isinstance(inputs, CsynthStageInputs):
             raise TypeError(
@@ -172,6 +172,10 @@ class CsynthValidationStageHandler:
                 ),
                 "target_profile": context.task.target,
                 "csynth_extra_sources": self._inputs.extra_sources,
+                "csynth_source_roles": {
+                    f"{context.task.kernel_name}.cpp": "candidate",
+                    **{path: "original" for path in self._inputs.extra_sources},
+                },
             }
         )
         executor = (

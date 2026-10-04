@@ -308,9 +308,11 @@ def gen_tb_prior(
                     stage="public_abi_synthesis_qualification",
                     trajectories=[{
                         "trajectory_idx": 0,
+                        "synth_error": "\n\n".join(synth_failures),
                         "rounds": [{
                             "status": "synth_failed",
-                            "failure_owner": "toolchain",
+                            "failure_owner": "unknown",
+                            "next_action": "review_unknown",
                             "synth_error": "\n\n".join(synth_failures),
                         }],
                     }],
@@ -493,10 +495,12 @@ def qualify_external_public_testbench(
             trajectories=[
                 {
                     "trajectory_idx": 0,
+                    "synth_error": synth_error,
                     "rounds": [
                         {
                             "status": "synth_failed",
-                            "failure_owner": "toolchain",
+                            "failure_owner": "unknown",
+                            "next_action": "review_unknown",
                             "synth_error": synth_error,
                         }
                     ],

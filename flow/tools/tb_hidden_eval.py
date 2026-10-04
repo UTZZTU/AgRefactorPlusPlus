@@ -7,12 +7,14 @@ side product (so we can report `cov_hidden` alongside `cov_public`).
 
 failure_kind values:
     pass           - testbench returned 0; refactor is correct under hidden TB
-    mismatch       - testbench returned nonzero; refactor disagrees with golden
     compile_err    - g++ compile failed (refactor code can't even build with hidden TB)
     compile_timeout - g++ compile took > COMPILE_TIMEOUT
     run_timeout    - ./csim_cov took > RUN_TIMEOUT
-    no_gcda        - run completed but no coverage info; treat run rc as truth
-    gcov_failed    - run completed but gcov errored; treat run rc as truth
+    coverage_evidence_missing - execution completed but Original coverage
+                                qualification is unavailable
+    execution_failed - execution returned non-zero without typed mismatch proof
+    original_execution_unproven - coverage does not prove Original ran
+    inconclusive   - execution status is not recognized
 """
 
 from typing import Any, Dict, Optional
@@ -56,6 +58,18 @@ def eval_against_hidden_tb(
     status = cov.get("status")
     rc = cov.get("run_returncode")
 
+    lines_total = cov.get("lines_total")
+    lines_hit = cov.get("lines_hit")
+    original_execution_proven = (
+        isinstance(lines_total, int)
+        and not isinstance(lines_total, bool)
+        and lines_total > 0
+        and isinstance(lines_hit, int)
+        and not isinstance(lines_hit, bool)
+        and lines_hit > 0
+        and lines_hit <= lines_total
+    )
+
     if status == "compile_failed":
         kind = "compile_err"
         passed = False
@@ -65,27 +79,27 @@ def eval_against_hidden_tb(
     elif status == "run_timeout":
         kind = "run_timeout"
         passed = False
+    elif status == "run_failed":
+        kind = "execution_failed"
+        passed = False
     elif status in ("no_gcda", "gcov_failed", "missing_orig_gcov"):
-        # Run finished (we have rc) but coverage data is unavailable. Treat rc as truth.
-        if rc == 0:
-            kind = "pass"
-            passed = True
-        elif rc is None:
-            kind = "run_timeout"
-            passed = False
-        else:
-            kind = "mismatch"
-            passed = False
+        # A zero return code proves only that the program exited. Hidden
+        # qualification also requires evidence that the Original ran.
+        kind = "coverage_evidence_missing"
+        passed = False
     elif status == "ok":
-        if rc == 0:
+        if rc == 0 and original_execution_proven:
             kind = "pass"
             passed = True
+        elif rc == 0:
+            kind = "original_execution_unproven"
+            passed = False
         else:
-            kind = "mismatch"
+            kind = "execution_failed"
             passed = False
     else:
-        # Unknown status; be conservative and fail.
-        kind = "mismatch"
+        # Unknown status; do not invent a functional mismatch.
+        kind = "inconclusive"
         passed = False
 
     return {
@@ -96,6 +110,9 @@ def eval_against_hidden_tb(
         "lines_hit": cov.get("lines_hit"),
         "uncovered_lines": cov.get("uncovered_lines", []),
         "run_returncode": rc,
+        "original_execution_proven": original_execution_proven,
+        "review_required": not passed,
+        "evidence_complete": bool(passed),
         "compile_stderr": cov.get("compile_stderr", "")[-1000:],
         "run_stderr": cov.get("run_stderr", "")[-1000:],
     }

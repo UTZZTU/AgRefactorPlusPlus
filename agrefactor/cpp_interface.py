@@ -371,6 +371,10 @@ def extract_top_interface(
                     library.clang_disposeDiagnostic(diagnostic)
             if _entry_facts is not None:
                 _entry_facts["diagnostics"] = diagnostic_evidence
+            if any(diagnostic["severity"] >= 4 for diagnostic in diagnostic_evidence):
+                if _entry_facts is not None:
+                    _entry_facts.update(status="unknown", entries=[], translation_unit_complete=False)
+                return None
 
             matches: list[_CXCursor] = []
             entries: list[dict] = []

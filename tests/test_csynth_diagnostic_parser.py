@@ -189,28 +189,30 @@ class CsynthDiagnosticParserTests(unittest.TestCase):
                     "high",
                 )
 
-    def test_hls_214_298_struct_pointer_argument_is_toolchain_owned(self) -> None:
+    def test_hls_214_298_struct_pointer_argument_does_not_force_toolchain(self) -> None:
         item = self.parse(
             "ERROR: [HLS 214-298] Struct type with pointer type inside on "
             "top function argument is not supported, please disaggregate "
-            "argument 'input' manually (aes_encrypt_hls.cpp:9:0)"
+            "argument 'input' manually (aes_encrypt_hls.cpp:9:0)",
+            owner=FeedbackOwner.UNKNOWN,
         ).items[0]
 
         self.assertEqual(item.category, FeedbackCategory.UNSUPPORTED_CONSTRUCT)
-        self.assertEqual(item.owner, FeedbackOwner.TOOLCHAIN)
+        self.assertEqual(item.owner, FeedbackOwner.UNKNOWN)
         self.assertEqual(
             item.metadata["parser_rule"],
             "unsupported_struct_pointer_argument",
         )
 
-    def test_recursive_function_is_unsupported_construct(self) -> None:
+    def test_recursive_function_does_not_force_toolchain(self) -> None:
         item = self.parse(
             "ERROR: [HLS 214-139] Recursive function calls are not supported: "
-            "sort_node(node*, node*) -> sort_node(node*, node*)"
+            "sort_node(node*, node*) -> sort_node(node*, node*)",
+            owner=FeedbackOwner.UNKNOWN,
         ).items[0]
 
         self.assertEqual(item.category, FeedbackCategory.UNSUPPORTED_CONSTRUCT)
-        self.assertEqual(item.owner, FeedbackOwner.TOOLCHAIN)
+        self.assertEqual(item.owner, FeedbackOwner.UNKNOWN)
         self.assertEqual(
             item.metadata["parser_rule"],
             "unsupported_recursive_function",
@@ -220,14 +222,15 @@ class CsynthDiagnosticParserTests(unittest.TestCase):
             "high",
         )
 
-    def test_pointer_to_pointer_is_toolchain_capability(self) -> None:
+    def test_pointer_to_pointer_does_not_force_toolchain(self) -> None:
         item = self.parse(
             "ERROR: [HLS 214-134] Pointer to pointer is not supported "
             "for variable 'p' (top_hls.cpp:61:18)"
+            , owner=FeedbackOwner.UNKNOWN
         ).items[0]
 
         self.assertEqual(item.category, FeedbackCategory.UNSUPPORTED_CONSTRUCT)
-        self.assertEqual(item.owner, FeedbackOwner.TOOLCHAIN)
+        self.assertEqual(item.owner, FeedbackOwner.UNKNOWN)
         self.assertEqual(
             item.metadata["parser_rule"],
             "unsupported_pointer_to_pointer",
@@ -319,6 +322,18 @@ class CsynthDiagnosticParserTests(unittest.TestCase):
         )
         self.assertIn("HLS 999-123", item.detail)
 
+    def test_unparsed_severity_line_is_retained_as_operator_evidence(self) -> None:
+        report = self.parse("ERROR: new failure without a structured id")
+
+        self.assertEqual(len(report.items), 1)
+        self.assertEqual(report.metadata["rejected_severity_line_count"], 0)
+        self.assertEqual(report.items[0].category, FeedbackCategory.UNKNOWN)
+        self.assertTrue(report.blocking)
+        self.assertEqual(
+            report.source_evidence["diagnostics"][0]["raw_line"],
+            "ERROR: new failure without a structured id",
+        )
+
     def test_aggregate_error_is_suppressed_with_specific_error(
         self,
     ) -> None:
@@ -361,15 +376,20 @@ class CsynthDiagnosticParserTests(unittest.TestCase):
             "aggregate_source_synthesis",
         )
 
-    def test_unittest_error_heading_is_rejected(self) -> None:
+    def test_bare_error_is_retained_as_blocking_unknown(self) -> None:
         report = self.parse(
-            "ERROR: test_limit_one_allows_first_and_blocks_second"
+            "ERROR: new failure"
         )
 
-        self.assertEqual(report.items, ())
+        self.assertEqual(len(report.items), 1)
+        self.assertTrue(report.blocking)
+        self.assertEqual(report.items[0].owner, FeedbackOwner.UNKNOWN)
+        self.assertEqual(report.items[0].category, FeedbackCategory.UNKNOWN)
+        self.assertEqual(report.items[0].stage, FeedbackStage.CSYNTH)
+        self.assertEqual(len(report.items[0].metadata["evidence_fingerprint"]), 64)
         self.assertEqual(
             report.metadata["rejected_severity_line_count"],
-            1,
+            0,
         )
 
     def test_generic_source_diagnostic_is_parsed(self) -> None:

@@ -26,6 +26,12 @@ from pathlib import Path
 from agrefactor.cpp_interface import extract_top_interface, inspect_top_entry
 
 from agrefactor.reference_source import isolate_reference_program_entry
+from agrefactor.evaluation.owner_evidence import OwnerEvidence, resolve_source_owner
+from agrefactor.evaluation.diagnostic_catalog import load_catalog
+from agrefactor.evaluation.testbench_preflight import (
+    classify_compile_failure,
+    parse_compiler_diagnostics,
+)
 
 SOURCES = ["testbench.cpp", "orig_code.cpp", "refactor_code.cpp"]
 
@@ -104,14 +110,14 @@ def _consume_tool_launch(
 
 
 def _parse_gcov_n_stdout(stdout: str) -> dict[str, tuple[int, int]]:
-    """Parse `gcov -n` stdout into {basename: (lines_hit, lines_total)}."""
+    """Parse `gcov -n` stdout while preserving reported source identities."""
     out: dict[str, tuple[int, int]] = {}
     current: Optional[str] = None
     for line in stdout.splitlines():
         line = line.strip()
         m_file = re.match(r"File '([^']+)'", line)
         if m_file:
-            current = os.path.basename(m_file.group(1))
+            current = m_file.group(1)
             continue
         m = _LINES_RE.search(line)
         if m and current is not None:
@@ -166,33 +172,65 @@ _COMPILE_OWNER_ACTION = {
 def _classify_compile_failure_owner(
     stderr: str,
     source_roles: Mapping[str, str] | None = None,
+    work_dir: str | None = None,
+    execution: Mapping[str, Any] | None = None,
 ) -> str:
     """Classify a real compiler/linker failure from emitted diagnostics."""
 
+    return _compile_failure_evidence(
+        stderr, source_roles or {}, work_dir, execution
+    ).owner
+
+
+def _compile_failure_evidence(
+    stderr: str,
+    source_roles: Mapping[str, str],
+    work_dir: str | None,
+    execution: Mapping[str, Any] | None,
+    source_spans: Mapping[str, tuple[dict, ...] | list[dict]] | None = None,
+    compile_units: tuple[str, ...] | None = None,
+) -> OwnerEvidence:
+    if work_dir is None:
+        return OwnerEvidence("unknown", "insufficient_provenance", False)
     text = str(stderr or "")
-    lowered = text.lower()
-    if "file not found" in lowered or "no such file or directory" in lowered:
-        return "configuration"
-    if "undefined reference" in lowered or "multiple definition" in lowered:
-        return "abi"
+    if load_catalog().match(text, stage="link") is not None:
+        return OwnerEvidence(
+            "unknown", "unresolved_link_ownership", False, (),
+            "link diagnostics do not identify the definition or ABI owner",
+        )
+    kind = classify_compile_failure(text)
+    diagnostics = parse_compiler_diagnostics(text, default_kind=kind)
+    evidence = resolve_source_owner(
+        diagnostics,
+        source_roles=source_roles,
+        work_dir=work_dir,
+        execution=execution,
+        source_spans=source_spans,
+        compile_units=compile_units,
+    )
+    return evidence
 
-    files: set[str] = set()
-    roles = dict(source_roles or {})
-    for line in text.splitlines():
-        lowered_line = line.lower()
-        if "error:" not in lowered_line and "fatal error:" not in lowered_line:
-            continue
-        for filename, owner in roles.items():
-            if filename in line:
-                files.add(owner)
 
-    if len(files) == 1:
-        return next(iter(files))
-    if len(files) > 1:
-        return "abi"
-    if "collect2:" in lowered or "ld returned" in lowered:
-        return "abi"
-    return "unknown"
+def _record_execution(
+    result: dict,
+    *,
+    component: str,
+    command: list[str],
+    work_dir: str,
+    status: str,
+    returncode: int | None = None,
+    timeout: bool = False,
+) -> dict:
+    record = {
+        "component": component,
+        "command": list(command),
+        "work_dir": str(Path(work_dir).resolve()),
+        "status": status,
+        "returncode": returncode,
+        "timeout": timeout,
+    }
+    result.setdefault("executions", []).append(record)
+    return record
 
 
 def _entry_contract_failure(
@@ -221,10 +259,11 @@ def _entry_contract_failure(
         return "internal_linkage_entry", facts
     diagnostics = facts.get("diagnostics", ())
     if any(
-        re.search(
-            r"(?:file not found|no such file or directory|cannot open source file|没有那个文件|找不到)",
-            str(item.get("message", "")),
-            flags=re.IGNORECASE,
+        (
+            (match := load_catalog().match(
+                str(item.get("message", "")), stage="compile"
+            )) is not None
+            and match.category_id == "missing_dependency"
         )
         for item in diagnostics
         if isinstance(item, Mapping)
@@ -246,9 +285,14 @@ def _finish_failure(
     result["next_action"] = (
         action
         if action is not None
-        else _COMPILE_OWNER_ACTION.get(owner, "repair_testbench_stub")
+        else _COMPILE_OWNER_ACTION.get(owner, "review_unknown")
     )
     result["failure_evidence_source"] = evidence_source
+    result.setdefault("owner_authority", (
+        "explicit_tool_failure" if owner == "toolchain"
+        else "unknown" if owner == "unknown" else "source_compile_unit"
+    ))
+    result.setdefault("evidence_complete", owner not in {"unknown", "none"})
     return result
 
 
@@ -279,8 +323,8 @@ def check_original_execution(
     """Run the generated Testbench with a no-op Candidate and sanitizers.
 
     A non-zero return caused only by the Testbench comparing against the
-    no-op is recorded as an observation; sanitizer output, a signal, or a
-    timeout is a real Original-side failure.
+    no-op is recorded as an observation. Runtime failures still involve
+    Testbench and Stub code and do not alone prove an Original defect.
     """
     result = {
         "status": "",
@@ -292,6 +336,9 @@ def check_original_execution(
         "failure_owner": "none",
         "next_action": "continue_validation",
         "failure_evidence_source": "none",
+        "owner_authority": "unknown",
+        "evidence_complete": False,
+        "executions": [],
     }
     if keep_dir is not None:
         os.makedirs(keep_dir, exist_ok=True)
@@ -328,6 +375,8 @@ def check_original_execution(
                 diagnostic_kind=reason,
                 source_entry=entry_facts,
                 failure_evidence_source="libclang source entry contract",
+                owner_authority="source_entry_contract",
+                evidence_complete=True,
             )
             return result
         template_original = bool(
@@ -342,6 +391,7 @@ def check_original_execution(
         stub = '#include "testbench.cpp"\n'
         if declaration:
             stub += declaration.rstrip(";").strip() + " {" + body + "}\n"
+        reference_spans: list[dict] = []
         if template_original:
             # Function templates must be instantiated where their definition
             # is visible. Keep the Original and Testbench in one TU and omit
@@ -353,6 +403,7 @@ def check_original_execution(
                 source_path=os.path.join(source_root or tmp, "orig_code.cpp"),
                 include_dirs=(source_root,) if source_root else (),
                 compile_flags=compile_flags,
+                source_provenance=reference_spans,
             )
             stub = (
                 '#include "orig_code.cpp"\n'
@@ -360,7 +411,9 @@ def check_original_execution(
                 + _candidate_definition(stub)
             )
         else:
-            reference = isolate_reference_program_entry(orig_code)
+            reference = isolate_reference_program_entry(
+                orig_code, source_provenance=reference_spans,
+            )
         files = {
             "orig_code.cpp": reference,
             "testbench.cpp": tb_code,
@@ -369,6 +422,15 @@ def check_original_execution(
         for name, content in files.items():
             with open(os.path.join(tmp, name), "w", encoding="utf-8") as file:
                 file.write(content)
+        result["source_roles"] = {
+            "testbench.cpp": "testbench",
+            # The template bridge is generated into the reference file, so
+            # file-level evidence cannot distinguish it from Original code.
+            "orig_code.cpp": "unknown" if template_original else "original",
+            "original_only_candidate.cpp": "stub",
+            **{name: "configuration" for name in extra_sources},
+        }
+        result["source_spans"] = {"orig_code.cpp": reference_spans}
 
         compiled = False
         for include_flag in (None, f"-I{XILINX_INCLUDE_FALLBACK}"):
@@ -384,6 +446,14 @@ def check_original_execution(
             cmd.extend(extra_sources)
             if include_flag is not None:
                 cmd.insert(1, include_flag)
+            result["compile_units"] = {
+                "original_only_candidate.cpp": [
+                    "original_only_candidate.cpp", "testbench.cpp",
+                    *(["orig_code.cpp"] if template_original else []),
+                ],
+                **({} if template_original else {"orig_code.cpp": ["orig_code.cpp"]}),
+                **{name: [name] for name in extra_sources},
+            }
             try:
                 _consume_tool_launch(budget, compile_calls=1)
                 completed = subprocess.run(
@@ -394,31 +464,53 @@ def check_original_execution(
                     timeout=COMPILE_TIMEOUT,
                 )
             except subprocess.TimeoutExpired:
+                _record_execution(result, component="compile", command=cmd,
+                                  work_dir=tmp, status="timeout", timeout=True)
                 result.update(
                     status="compile_timeout",
-                    failure_owner="toolchain",
-                    next_action="repair_testbench",
+                    failure_owner="unknown",
+                    next_action="review_unknown",
                     failure_evidence_source="original-only g++ timeout",
                 )
                 return result
+            except FileNotFoundError as exc:
+                _record_execution(result, component="compile", command=cmd,
+                                  work_dir=tmp, status="launch_error")
+                result.update(
+                    status="compile_failed",
+                    failure_owner="toolchain",
+                    next_action="review_toolchain",
+                    compile_stderr=str(exc)[-4000:],
+                    failure_evidence_source="original-only compiler launch error",
+                )
+                return result
+            execution = _record_execution(
+                result, component="compile", command=cmd, work_dir=tmp,
+                status="completed", returncode=completed.returncode,
+            )
             if completed.returncode == 0:
                 compiled = True
                 break
-            result["compile_stderr"] = completed.stderr[-4000:]
+            result["compile_stderr"] = completed.stderr
 
         if not compiled:
-            owner = _classify_compile_failure_owner(
+            evidence = _compile_failure_evidence(
                 result["compile_stderr"],
-                {
-                    "testbench.cpp": "testbench",
-                    # For template tops, orig_code.cpp also contains the
-                    # generated bridge and its call shape comes from the
-                    # Testbench. Attribute bridge mismatches to that contract
-                    # so the existing Testbench repair loop can correct it.
-                    "orig_code.cpp": "testbench" if template_original else "original",
-                    "original_only_candidate.cpp": "stub",
-                },
+                result["source_roles"],
+                tmp,
+                execution,
+                result["source_spans"],
+                tuple({member for members in result["compile_units"].values() for member in members}),
             )
+            owner = evidence.owner
+            result["ownership_evidence"] = evidence.to_dict()
+            result["owner_authority"] = evidence.owner_authority
+            result["evidence_complete"] = evidence.evidence_complete
+            match = load_catalog().match(result["compile_stderr"], stage="link")
+            if match is None:
+                match = load_catalog().match(result["compile_stderr"], stage="compile")
+            if match is not None:
+                result["diagnostic_classification"] = match.to_metadata()
             result.update(
                 status="compile_failed",
                 failure_owner=owner,
@@ -434,6 +526,8 @@ def check_original_execution(
                     else "review_original"
                 ),
                 failure_evidence_source="original-only g++ diagnostics",
+                owner_authority=evidence.owner_authority,
+                evidence_complete=evidence.evidence_complete,
             )
             return result
 
@@ -451,14 +545,20 @@ def check_original_execution(
                 timeout=RUN_TIMEOUT,
             )
         except subprocess.TimeoutExpired as exc:
+            _record_execution(result, component="runtime", command=["./original_only"],
+                              work_dir=tmp, status="timeout", timeout=True)
             result.update(
                 status="original_run_timeout",
                 run_stderr=str(exc),
-                failure_owner="original",
-                next_action="repair_testbench",
+                failure_owner="unknown",
+                next_action="review_unknown",
                 failure_evidence_source="original-only timeout",
             )
             return result
+        _record_execution(
+            result, component="runtime", command=["./original_only"], work_dir=tmp,
+            status="completed", returncode=completed.returncode,
+        )
 
         stderr = (completed.stderr or "")[-3000:]
         stdout = (completed.stdout or "")[-1000:]
@@ -483,14 +583,17 @@ def check_original_execution(
         if crashed:
             result.update(
                 status="original_run_failed",
-                failure_owner="original",
-                next_action="repair_testbench",
+                failure_owner="unknown",
+                next_action="review_unknown",
                 failure_evidence_source="original-only sanitizer/runtime",
+                owner_authority="runtime_not_isolated",
+                evidence_complete=False,
             )
             return result
 
         if required_original_entry is not None:
             result["original_entry_executed"] = False
+            result["original_entry_observed"] = False
             expected_names = {
                 required_original_entry,
                 f"agrefactor_reference_impl_{required_original_entry}",
@@ -500,27 +603,56 @@ def check_original_execution(
                 gcov_inputs.extend(Path(tmp).glob("*-original_only_candidate.gcda"))
             for path in gcov_inputs:
                 _consume_tool_launch(budget)
-                coverage = subprocess.run(
-                    ["gcov", "--json-format", str(path)], cwd=tmp,
-                    capture_output=True, text=True, timeout=GCOV_TIMEOUT,
-                )
+                command = ["gcov", "--json-format", str(path)]
+                try:
+                    coverage = subprocess.run(
+                        command, cwd=tmp, capture_output=True,
+                        text=True, timeout=GCOV_TIMEOUT,
+                    )
+                except subprocess.TimeoutExpired:
+                    _record_execution(result, component="gcov", command=command,
+                                      work_dir=tmp, status="timeout", timeout=True)
+                    result.update(status="original_execution_unknown", failure_owner="unknown",
+                                  next_action="review_unknown", failure_evidence_source="gcov timeout")
+                    return result
+                except FileNotFoundError as exc:
+                    _record_execution(result, component="gcov", command=command,
+                                      work_dir=tmp, status="launch_error")
+                    result.update(status="gcov_failed", failure_owner="toolchain",
+                                  next_action="review_toolchain", run_stderr=str(exc),
+                                  failure_evidence_source="gcov launch error")
+                    return result
+                _record_execution(result, component="gcov", command=command, work_dir=tmp,
+                                  status="completed", returncode=coverage.returncode)
                 if coverage.returncode != 0:
                     continue
                 for report in Path(tmp).glob("*.gcov.json.gz"):
                     with gzip.open(report, "rt", encoding="utf-8") as handle:
                         facts = json.load(handle)
                     for unit in facts.get("files", []):
-                        if Path(unit.get("file", "")).name != "orig_code.cpp":
+                        unit_path = Path(str(unit.get("file", "")))
+                        if not unit_path.is_absolute():
+                            unit_path = Path(tmp) / unit_path
+                        if unit_path.resolve() != (Path(tmp) / "orig_code.cpp").resolve():
                             continue
                         for function in unit.get("functions", []):
                             name = str(function.get("demangled_name", "")).partition("(")[0]
                             name = name.rsplit("::", 1)[-1]
                             name = name.rsplit("<", 1)[0].rsplit(" ", 1)[-1]
-                            if name in expected_names and function.get("execution_count", 0) > 0:
-                                result["original_entry_executed"] = True
+                            if name in expected_names:
+                                result["original_entry_observed"] = True
+                                if function.get("execution_count", 0) > 0:
+                                    result["original_entry_executed"] = True
             if not result["original_entry_executed"]:
-                result.update(status="original_execution_unknown", failure_owner="unknown",
-                              next_action="review_unknown", failure_evidence_source="gcov function execution evidence")
+                observed = result["original_entry_observed"]
+                result.update(
+                    status="qualification_failed" if observed else "original_execution_unknown",
+                    failure_owner="testbench" if observed else "unknown",
+                    next_action="repair_testbench" if observed else "review_unknown",
+                    failure_evidence_source="gcov function execution evidence",
+                    owner_authority="original_entry_not_executed" if observed else "unknown",
+                    evidence_complete=observed,
+                )
                 return result
 
         result.update(
@@ -528,6 +660,8 @@ def check_original_execution(
             failure_owner="none",
             next_action="continue_validation",
             failure_evidence_source="original-only runtime completed",
+            owner_authority="original_only_completed",
+            evidence_complete=True,
         )
         return result
 
@@ -564,6 +698,9 @@ def measure_coverage(
         "failure_owner": "none",
         "next_action": "continue_validation",
         "failure_evidence_source": "none",
+        "owner_authority": "unknown",
+        "evidence_complete": False,
+        "executions": [],
     }
 
     if keep_dir is not None:
@@ -585,6 +722,7 @@ def measure_coverage(
         )
         refactor_contents = stub_code
         compile_sources = list(SOURCES)
+        reference_spans: list[dict] = []
         if template_original:
             # The template definition and its instantiating testbench must
             # share a translation unit. The candidate stub remains the final
@@ -596,6 +734,7 @@ def measure_coverage(
                 source_path=os.path.join(source_root or tmp, "orig_code.cpp"),
                 include_dirs=(source_root,) if source_root else (),
                 compile_flags=compile_flags,
+                source_provenance=reference_spans,
             )
             refactor_contents = (
                 '#include "orig_code.cpp"\n'
@@ -617,6 +756,21 @@ def measure_coverage(
                 encoding="utf-8",
             ) as file:
                 file.write(content)
+        res["source_roles"] = {
+            "orig_code.cpp": "unknown" if template_original else "original",
+            "testbench.cpp": "testbench",
+            "refactor_code.cpp": "stub",
+            **{name: "configuration" for name in extra_sources},
+        }
+        res["source_spans"] = {"orig_code.cpp": reference_spans} if template_original else {}
+        res["compile_units"] = {
+            name: (
+                ["refactor_code.cpp", "orig_code.cpp", "testbench.cpp"]
+                if template_original and name == "refactor_code.cpp"
+                else [name]
+            )
+            for name in (*compile_sources, *extra_sources)
+        }
 
         compiled = False
         for include_flag in (
@@ -650,28 +804,55 @@ def measure_coverage(
                     timeout=COMPILE_TIMEOUT,
                 )
             except subprocess.TimeoutExpired:
+                _record_execution(res, component="compile", command=cmd,
+                                  work_dir=tmp, status="timeout", timeout=True)
                 return _finish_failure(
                     res,
                     status="compile_timeout",
-                    owner="toolchain",
+                    owner="unknown",
+                    action="review_unknown",
                     evidence_source="g++ timeout",
                 )
+            except FileNotFoundError as exc:
+                _record_execution(res, component="compile", command=cmd,
+                                  work_dir=tmp, status="launch_error")
+                res["compile_stderr"] = str(exc)[-2000:]
+                return _finish_failure(
+                    res,
+                    status="compile_failed",
+                    owner="toolchain",
+                    action="review_toolchain",
+                    evidence_source="g++ launch error",
+                )
+            execution = _record_execution(
+                res, component="compile", command=cmd, work_dir=tmp,
+                status="completed", returncode=completed.returncode,
+            )
             if completed.returncode == 0:
                 compiled = True
                 res["compile_stderr"] = ""
                 break
-            res["compile_stderr"] = str(getattr(completed, "stderr", ""))[-2000:]
-            res["compile_stdout"] = str(getattr(completed, "stdout", ""))[-2000:]
+            res["compile_stderr"] = str(getattr(completed, "stderr", ""))
+            res["compile_stdout"] = str(getattr(completed, "stdout", ""))
 
         if not compiled:
-            owner = _classify_compile_failure_owner(
+            evidence = _compile_failure_evidence(
                 res["compile_stderr"],
-                {
-                    "testbench.cpp": "testbench",
-                    "orig_code.cpp": "original",
-                    "refactor_code.cpp": "stub",
-                },
+                res["source_roles"],
+                tmp,
+                execution,
+                res["source_spans"],
+                tuple({member for members in res["compile_units"].values() for member in members}),
             )
+            owner = evidence.owner
+            res["ownership_evidence"] = evidence.to_dict()
+            res["owner_authority"] = evidence.owner_authority
+            res["evidence_complete"] = evidence.evidence_complete
+            match = load_catalog().match(res["compile_stderr"], stage="link")
+            if match is None:
+                match = load_catalog().match(res["compile_stderr"], stage="compile")
+            if match is not None:
+                res["diagnostic_classification"] = match.to_metadata()
             return _finish_failure(
                 res,
                 status="compile_failed",
@@ -692,6 +873,10 @@ def measure_coverage(
                 timeout=RUN_TIMEOUT,
             )
             res["run_returncode"] = completed.returncode
+            _record_execution(
+                res, component="runtime", command=["./csim_cov"], work_dir=tmp,
+                status="completed", returncode=completed.returncode,
+            )
             res["run_stderr"] = completed.stderr[-2000:]
             res["run_stdout"] = completed.stdout[-2000:]
             if completed.returncode != 0:
@@ -706,11 +891,13 @@ def measure_coverage(
                     evidence_source="program return code",
                 )
         except subprocess.TimeoutExpired:
+            _record_execution(res, component="runtime", command=["./csim_cov"],
+                              work_dir=tmp, status="timeout", timeout=True)
             return _finish_failure(
                 res,
                 status="run_timeout",
-                owner="testbench",
-                action="repair_testbench",
+                owner="unknown",
+                action="review_unknown",
                 evidence_source="program timeout",
             )
 
@@ -723,8 +910,8 @@ def measure_coverage(
             return _finish_failure(
                 res,
                 status="no_gcda",
-                owner="toolchain",
-                action="review_toolchain",
+                owner="unknown",
+                action="review_unknown",
                 evidence_source="gcov artifact discovery",
             )
 
@@ -749,8 +936,8 @@ def measure_coverage(
             return _finish_failure(
                 res,
                 status="no_gcda",
-                owner="toolchain",
-                action="review_toolchain",
+                owner="unknown",
+                action="review_unknown",
                 evidence_source="gcov target discovery",
             )
 
@@ -764,35 +951,61 @@ def measure_coverage(
                 timeout=GCOV_TIMEOUT,
             )
         except subprocess.TimeoutExpired:
+            _record_execution(res, component="gcov", command=["gcov", "-n", target_gcda],
+                              work_dir=tmp, status="timeout", timeout=True)
+            return _finish_failure(
+                res,
+                status="gcov_failed",
+                owner="unknown",
+                action="review_unknown",
+                evidence_source="gcov timeout",
+            )
+        except FileNotFoundError as exc:
+            _record_execution(res, component="gcov", command=["gcov", "-n", target_gcda],
+                              work_dir=tmp, status="launch_error")
+            res["run_stderr"] = str(exc)[-2000:]
             return _finish_failure(
                 res,
                 status="gcov_failed",
                 owner="toolchain",
                 action="review_toolchain",
-                evidence_source="gcov timeout",
+                evidence_source="gcov launch error",
             )
 
+        _record_execution(
+            res, component="gcov", command=["gcov", "-n", target_gcda],
+            work_dir=tmp, status="completed", returncode=summary.returncode,
+        )
         if summary.returncode != 0:
             res["run_stderr"] = summary.stderr[-2000:]
             return _finish_failure(
                 res,
                 status="gcov_failed",
-                owner="toolchain",
-                action="review_toolchain",
+                owner="unknown",
+                action="review_unknown",
                 evidence_source="gcov diagnostics",
             )
 
         summaries = _parse_gcov_n_stdout(summary.stdout)
-        if target_source not in summaries:
+        expected_source = (Path(tmp) / target_source).resolve()
+        target_summaries = [
+            counts for source, counts in summaries.items()
+            if (
+                Path(source).resolve()
+                if Path(source).is_absolute()
+                else (Path(tmp) / source).resolve()
+            ) == expected_source
+        ]
+        if len(target_summaries) != 1:
             return _finish_failure(
                 res,
                 status="missing_orig_gcov",
-                owner="toolchain",
-                action="review_toolchain",
+                owner="unknown",
+                action="review_unknown",
                 evidence_source="gcov summary",
             )
 
-        hit, total = summaries[target_source]
+        hit, total = target_summaries[0]
         res["lines_hit"] = hit
         res["lines_total"] = total
         res["cov_pct"] = (

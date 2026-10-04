@@ -120,6 +120,7 @@ class TestbenchPreflightFeedbackAdapter:
                 ),
                 "substep_count": len(result.substeps),
                 "duration_s": result.duration_s,
+                **self._ownership_metadata(result),
             },
         )
 
@@ -181,6 +182,7 @@ class TestbenchPreflightFeedbackAdapter:
                         else result.failed_component.value
                     ),
                     "fallback_item": True,
+                    **self._ownership_metadata(result),
                 },
             ),
         )
@@ -220,8 +222,39 @@ class TestbenchPreflightFeedbackAdapter:
                     if result.failed_component is None
                     else result.failed_component.value
                 ),
+                **self._ownership_metadata(result),
             },
         )
+
+    @staticmethod
+    def _ownership_metadata(
+        result: TestbenchPreflightResult,
+    ) -> dict[str, object]:
+        completed = (
+            result.return_code is not None
+            and isinstance(result.return_code, int)
+            and not isinstance(result.return_code, bool)
+            and result.failed_component is not None
+        )
+        owner = result.failure_owner
+        return {
+            "owner_authority": (
+                "preflight_component_completed"
+                if completed and owner is not TestbenchFailureOwner.UNKNOWN
+                else "unknown"
+            ),
+            "evidence_complete": (
+                completed and owner is not TestbenchFailureOwner.UNKNOWN
+            ),
+            "tool_launched": completed,
+            "physical_tool_launched": completed,
+            "process_exit_observed": completed,
+            "command_completion_proven": completed,
+            "returncode_valid": (
+                isinstance(result.return_code, int)
+                and not isinstance(result.return_code, bool)
+            ),
+        }
 
     @staticmethod
     def _severity(

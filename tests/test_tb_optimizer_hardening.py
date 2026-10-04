@@ -408,20 +408,16 @@ class CoverageLoopHardeningTests(unittest.TestCase):
         )
 
     def test_repeated_failures_do_not_stop_configured_rounds(self):
-        failed = {
-            "status": "compile_failed",
-            "cov_pct": None,
-            "lines_total": None,
-            "lines_hit": None,
-            "uncovered_lines": [],
-            "compile_stderr": "same repeated compiler error",
-            "run_stderr": "",
-        }
         testbench = (
             "void process_top_hls();\n"
             "int main(){process_top_hls();return 0;}\n"
         )
-        stub = "void process_top_hls(){}\n"
+        stub = "void process_top_hls(){missing_function();}\n"
+        failed = tb_coverage.measure_coverage(
+            "void process_top(){}\n", testbench, stub,
+        )
+        self.assertEqual(failed["failure_owner"], "stub", failed)
+        self.assertEqual(failed["next_action"], "regenerate_stub", failed)
         loader = Mock()
         loader.load_agent.return_value = object()
 
@@ -437,9 +433,7 @@ class CoverageLoopHardeningTests(unittest.TestCase):
                 side_effect=[
                     testbench,
                     stub,
-                    testbench,
                     stub,
-                    testbench,
                     stub,
                 ],
             ) as request_artifact,
@@ -471,7 +465,7 @@ class CoverageLoopHardeningTests(unittest.TestCase):
         )
         self.assertEqual(
             [call.kwargs["artifact_kind"] for call in request_artifact.call_args_list],
-            ["testbench", "stub", "testbench", "stub", "testbench", "stub"],
+            ["testbench", "stub", "stub", "stub"],
         )
 
     def test_debug_artifacts_are_persisted(self):
@@ -514,15 +508,12 @@ class CoverageLoopHardeningTests(unittest.TestCase):
             self.assertEqual(persisted["run_returncode"], 0)
 
     def test_run_trajectory_regenerates_stub(self):
-        failed = {
-            "status": "compile_failed",
-            "cov_pct": None,
-            "lines_total": None,
-            "lines_hit": None,
-            "uncovered_lines": [],
-            "compile_stderr": "bad first stub",
-            "run_stderr": "",
-        }
+        testbench = "void process_top_hls();\nint main(){process_top_hls();return 0;}\n"
+        broken_stub = "void process_top_hls(){missing_function();}\n"
+        failed = tb_coverage.measure_coverage(
+            "void process_top(){}\n", testbench, broken_stub,
+        )
+        self.assertEqual(failed["failure_owner"], "stub", failed)
         passed = {
             "status": "ok",
             "cov_pct": 100.0,
@@ -544,11 +535,8 @@ class CoverageLoopHardeningTests(unittest.TestCase):
                 tb_optimizer,
                 "_request_cpp_artifact",
                 side_effect=[
-                    "void process_top_hls();\n"
-                    "int main(){process_top_hls();return 0;}\n",
-                    "void process_top_hls(){process_top();}\n",
-                    "void process_top_hls();\n"
-                    "int main(){process_top_hls();return 0;}\n",
+                    testbench,
+                    broken_stub,
                     "void process_top_hls(){process_top();}\n",
                     "void process_top_hls(){}\n",
                 ],
@@ -588,7 +576,7 @@ class CoverageLoopHardeningTests(unittest.TestCase):
         ]
         self.assertEqual(
             kinds,
-            ["testbench", "stub", "testbench", "stub", "empty_stub"],
+            ["testbench", "stub", "stub", "empty_stub"],
         )
         self.assertTrue(result["qualified"])
 

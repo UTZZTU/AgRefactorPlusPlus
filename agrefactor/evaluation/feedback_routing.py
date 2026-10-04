@@ -338,6 +338,26 @@ class FeedbackRouter:
 
         action = next(iter(grouped))
         selected_items = grouped[action]
+        if len(selected_items) == 1:
+            item_metadata = selected_items[0].metadata
+            evidence_values = {
+                "owner_authority": item_metadata.get("owner_authority") or (
+                    report.metadata.get("owner_authority")
+                    or ("deterministic_proven" if report.metadata.get("evidence_complete") is True else "unknown")
+                ),
+                "physical_tool_launched": item_metadata.get("physical_tool_launched", report.metadata.get("physical_execution") is True),
+                "tool_launched": item_metadata.get("tool_launched", report.metadata.get("physical_execution") is True),
+                "evidence_complete": item_metadata.get("evidence_complete", report.metadata.get("evidence_complete") is True),
+                "repair_eligible": item_metadata.get("repair_eligible", report.metadata.get("repair_eligible") is True),
+            }
+        else:
+            evidence_values = {
+            "owner_authority": "unknown",
+            "physical_tool_launched": False,
+            "tool_launched": False,
+            "evidence_complete": False,
+            "repair_eligible": False,
+            }
         return FeedbackRouteDecision(
             decision_id=normalized_decision_id,
             action=action,
@@ -354,6 +374,7 @@ class FeedbackRouter:
             advisory_feedback_ids=advisory_ids,
             metadata={
                 **common_metadata,
+                **{key: value for key, value in evidence_values.items() if value is not None},
                 "candidate_actions": candidate_actions,
             },
         )
@@ -378,21 +399,13 @@ class FeedbackRouter:
             return FeedbackRouteAction.FIX_TASK_INPUT
         if item.owner is FeedbackOwner.TESTBENCH:
             return FeedbackRouteAction.REPAIR_TESTBENCH
-        if item.owner is FeedbackOwner.CANDIDATE:
+        if (item.owner is FeedbackOwner.CANDIDATE
+                and item.metadata.get("owner_authority") not in {None, "unknown"}
+                and item.metadata.get("evidence_complete") is True
+                and item.metadata.get("tool_launched") is True):
             return FeedbackRouteAction.REPAIR_CANDIDATE
         if item.owner is FeedbackOwner.ORIGINAL:
             return FeedbackRouteAction.REPAIR_ORIGINAL
-
-        if (
-            item.category
-            is FeedbackCategory.TOOLCHAIN_FAILURE
-        ):
-            return FeedbackRouteAction.FIX_TOOLCHAIN
-        if (
-            item.stage is FeedbackStage.TOOLCHAIN
-            and item.category is FeedbackCategory.TIMEOUT
-        ):
-            return FeedbackRouteAction.FIX_TOOLCHAIN
 
         if (item.owner is FeedbackOwner.UNKNOWN
                 and item.stage in {FeedbackStage.LINK, FeedbackStage.TEST, FeedbackStage.CSIM, FeedbackStage.COSIM}

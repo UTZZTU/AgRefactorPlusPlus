@@ -56,6 +56,15 @@ _SAFE_ITEM_METADATA_KEYS = frozenset(
         "budget_checkpoint",
         "budget_resource",
         "component",
+        "diagnostic_id",
+        "category_id",
+        "evidence_fingerprint",
+        "catalog_stage",
+        "owner_policy",
+        "evidence_requirements",
+        "allowed_actions",
+        "repair_eligible",
+        "report_identity_proven",
     }
 )
 
@@ -138,6 +147,11 @@ class CsynthFeedbackViewAdapter:
                 "redacted": True,
             },
             metadata={
+                **{key: report.metadata[key] for key in (
+                    "tool_launched", "process_exit_observed", "command_completion_proven",
+                    "evidence_complete", "evidence_consistent", "owner_authority", "repair_eligible",
+                    "report_identity_proven",
+                ) if key in report.metadata},
                 "adapter_version": self.adapter_version,
                 "evidence_view": "agent_safe",
                 "source_report_id": report.report_id,

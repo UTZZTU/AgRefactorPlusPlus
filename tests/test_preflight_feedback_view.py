@@ -19,6 +19,7 @@ from agrefactor.evidence import (
     TestbenchFailureKind,
     TestbenchFailureOwner,
     TestbenchPreflightResult,
+    TestbenchPreflightComponent,
     TestbenchPreflightStatus,
     TestbenchStage,
 )
@@ -36,7 +37,14 @@ def make_result(
     diagnostics=(),
     stdout="",
     stderr="",
+    failed_component=None,
 ):
+    if failed_component is None and status is not TestbenchPreflightStatus.PASSED:
+        failed_component = {
+            TestbenchFailureOwner.TESTBENCH: TestbenchPreflightComponent.TESTBENCH,
+            TestbenchFailureOwner.CANDIDATE: TestbenchPreflightComponent.CANDIDATE,
+            TestbenchFailureOwner.ORIGINAL: TestbenchPreflightComponent.REFERENCE,
+        }.get(owner)
     return TestbenchPreflightResult(
         status=status,
         stage=TestbenchStage.COMPILE_LINK,
@@ -49,6 +57,7 @@ def make_result(
         stderr=stderr,
         artifacts=(f"{SECRET_ROOT}/preflight_binary",),
         duration_s=0.25,
+        failed_component=failed_component,
     )
 
 

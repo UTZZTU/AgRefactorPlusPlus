@@ -30,6 +30,8 @@ from agrefactor.runtime.budget import (
     BudgetUsage,
 )
 from agrefactor.cpp_interface import inspect_top_entry
+from agrefactor.evaluation.owner_evidence import resolve_source_owner
+from agrefactor.evaluation.diagnostic_catalog import load_catalog
 
 
 _COMPILE_INCREMENT = {"tool_calls": 1, "compile_calls": 1}
@@ -372,15 +374,24 @@ def _tool_error_result(
         if timed_out
         else f"{step.substage.value} failed to launch"
     )
+    explicit_tool_failure = (
+        step.failure_kind is TestbenchFailureKind.COMPILER_NOT_FOUND
+    )
+    owner = (
+        TestbenchFailureOwner.TOOLCHAIN
+        if explicit_tool_failure
+        else TestbenchFailureOwner.UNKNOWN
+    )
     reason_codes = (
-        TestbenchPreflightReasonCode.TOOLCHAIN_FAILED,
-        TestbenchPreflightReasonCode.OWNERSHIP_UNKNOWN,
+        (TestbenchPreflightReasonCode.TOOLCHAIN_FAILED,)
+        if explicit_tool_failure
+        else (TestbenchPreflightReasonCode.OWNERSHIP_UNKNOWN,)
     )
     return TestbenchPreflightResult(
         status=TestbenchPreflightStatus.ERROR,
         stage=TestbenchStage.COMPILE_LINK,
         failure_kind=step.failure_kind,
-        failure_owner=TestbenchFailureOwner.TOOLCHAIN,
+        failure_owner=owner,
         return_code=None,
         command=step.command,
         diagnostics=(
@@ -419,11 +430,35 @@ def _compile_failure_result(
     component: TestbenchPreflightComponent,
     owner: TestbenchFailureOwner,
     reason: TestbenchPreflightReasonCode,
+    invocation: dict[str, Any],
+    source_name: str,
 ) -> TestbenchPreflightResult:
     kind, diagnostics = _compiler_diagnostics(
         step.stderr,
         fallback_message=f"{component.value} compilation failed",
     )
+    execution = {
+        "status": "completed",
+        "returncode": step.return_code,
+        "timeout": False,
+    }
+    compile_members = invocation["compile_units"].get(source_name, ())
+    evidence = resolve_source_owner(
+        diagnostics,
+        source_roles=invocation["source_roles"],
+        work_dir=directory,
+        compile_units=compile_members,
+        execution=execution,
+    )
+    owner = TestbenchFailureOwner(evidence.owner)
+    invocation["ownership_evidence"] = evidence.to_dict()
+    invocation["diagnostic_classifications"] = [
+        match.to_metadata()
+        for diagnostic in diagnostics
+        if (match := load_catalog().match(
+            diagnostic.message, stage="compile"
+        )) is not None
+    ]
     substeps[-1] = replace(step, failure_kind=kind)
     return TestbenchPreflightResult(
         status=TestbenchPreflightStatus.FAILED,
@@ -447,7 +482,11 @@ def _compile_failure_result(
             ),
         ),
         duration_s=sum(item.duration_s for item in substeps),
-        reason_codes=(reason,),
+        reason_codes=(
+            (reason,)
+            if owner is not TestbenchFailureOwner.UNKNOWN
+            else (reason, TestbenchPreflightReasonCode.OWNERSHIP_UNKNOWN)
+        ),
         failed_component=component,
         substeps=tuple(substeps),
     )
@@ -756,6 +795,22 @@ def run_staged_preflight(
             *(("template_reference.cpp",) if template_reference else ()),
             *normalized_extra_sources,
         ],
+        "source_roles": {
+            "testbench.cpp": "testbench",
+            "orig_code.cpp": "original",
+            "refactor_code.cpp": "candidate",
+            **({"template_reference.cpp": "unknown"} if template_reference else {}),
+            **{name: "configuration" for name in normalized_extra_sources},
+        },
+        "compile_units": {
+            "testbench.cpp": ["testbench.cpp"],
+            "orig_code.cpp": ["orig_code.cpp"],
+            "refactor_code.cpp": ["refactor_code.cpp"],
+            "template_reference.cpp": [
+                "template_reference.cpp", "orig_code.cpp", "testbench.cpp",
+            ],
+            **{name: [name] for name in normalized_extra_sources},
+        },
         "compiler": compiler,
         "symbol_tool": os.getenv("AGREFACTOR_NM", "nm"),
         "timeout_seconds": timeout_s,
@@ -916,6 +971,8 @@ def run_staged_preflight(
                     component=component,
                     owner=owner,
                     reason=reason,
+                    invocation=invocation,
+                    source_name=source_name,
                 ),
                 invocation=invocation,
                 invocation_path=invocation_path,
