@@ -472,7 +472,7 @@ cd /data/AgRefactor
 - `chacah20_stream`：`/data/agrefactor_runs/general_evidence_catalog_p8_20261004_r4/chacah20_stream`，五阶段均完成，`accepted=true`；入口、C/C++ linkage 和 Hidden ABI qualification 使用同一份冻结合同，没有案例专用放行。
 - `encode_one_block`：`/data/agrefactor_runs/evidence_catalog_p8_20261004/encode_one_block`，首轮 Candidate Preflight 证据充分而进入既有 Candidate repair；一次修复后五阶段完成并 `accepted=true`。真实 COSIM 的 Vitis HLS 总耗时约 13 分 41 秒，未发生 API 或工具超时。
 - `mm_chain_dp_orig`：`/data/agrefactor_runs/general_evidence_catalog_p8_20261004_r2/mm_chain_dp_orig` 在 Hidden generation qualification 阶段耗尽后终止，最终 `failure_kind=testbench_generation_exhausted`、`owner=unknown`、`next_action=review_unknown`，未进入 formal Candidate repair。此前 post-P4 artifact `/data/agrefactor_runs/app_general_mechanism_post_p4_20261003/mm_chain_dp_orig` 的 CSYNTH `HLS 214-134` 诊断也保持 unknown/review_required；两者都没有足够证据强行归责 Candidate 或 Toolchain。
-- 服务器当前 HEAD 为 `917c4df`，与 `origin/research-roadmap-v2.3` 同步；tracked 工作树无修改，未跟踪内容仅为历史 `.orig/.rej`、备份、一次性脚本和运行 artifacts，`git diff --check` 无输出。最新针对目录、解析器、投影、执行状态、路由、Hidden 合同、C/C++ linkage 和编译上下文的聚焦套件共 158 项通过；此前聚焦回归 103 项、R5.1 registry `AUDIT_FAILURES=0`、inheritance `FAILURES=0` 仍有效。
+- 当前分支与 `origin/research-roadmap-v2.3` 同步；tracked 工作树无修改，未跟踪内容仅为历史 `.orig/.rej`、备份、一次性脚本和运行 artifacts，`git diff --check` 无输出。最新针对目录、解析器、投影、执行状态、路由、Hidden 合同、C/C++ linkage 和编译上下文的聚焦套件共 158 项通过；此前聚焦回归 103 项、R5.1 registry `AUDIT_FAILURES=0`、inheritance `FAILURES=0` 仍有效。
 
 本次收尾没有新增案例名、函数名、HLS 编号或错误文本特判；诊断目录仍只负责 category/stage/证据需求，owner/route 由现有证据解析和状态机决定。
 ## 8. 最终完成标准
