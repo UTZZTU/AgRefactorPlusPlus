@@ -29,6 +29,7 @@ def item(
         metadata = {
             "owner_authority": "deterministic_proven",
             "evidence_complete": True,
+            "physical_tool_launched": True,
             "tool_launched": True,
         }
     return FeedbackItem(
@@ -408,6 +409,13 @@ class FeedbackRouterTests(unittest.TestCase):
                 "report.symbol",
             },
         )
+        self.assertEqual(
+            decision.metadata["owner_authority"],
+            "deterministic_proven",
+        )
+        self.assertTrue(decision.metadata["physical_tool_launched"])
+        self.assertTrue(decision.metadata["tool_launched"])
+        self.assertTrue(decision.metadata["evidence_complete"])
 
     def test_router_uses_no_detail_or_source_evidence(
         self,

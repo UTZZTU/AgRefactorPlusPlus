@@ -338,26 +338,10 @@ class FeedbackRouter:
 
         action = next(iter(grouped))
         selected_items = grouped[action]
-        if len(selected_items) == 1:
-            item_metadata = selected_items[0].metadata
-            evidence_values = {
-                "owner_authority": item_metadata.get("owner_authority") or (
-                    report.metadata.get("owner_authority")
-                    or ("deterministic_proven" if report.metadata.get("evidence_complete") is True else "unknown")
-                ),
-                "physical_tool_launched": item_metadata.get("physical_tool_launched", report.metadata.get("physical_execution") is True),
-                "tool_launched": item_metadata.get("tool_launched", report.metadata.get("physical_execution") is True),
-                "evidence_complete": item_metadata.get("evidence_complete", report.metadata.get("evidence_complete") is True),
-                "repair_eligible": item_metadata.get("repair_eligible", report.metadata.get("repair_eligible") is True),
-            }
-        else:
-            evidence_values = {
-            "owner_authority": "unknown",
-            "physical_tool_launched": False,
-            "tool_launched": False,
-            "evidence_complete": False,
-            "repair_eligible": False,
-            }
+        evidence_values = self._aggregate_evidence(
+            selected_items,
+            report,
+        )
         return FeedbackRouteDecision(
             decision_id=normalized_decision_id,
             action=action,
@@ -378,6 +362,67 @@ class FeedbackRouter:
                 "candidate_actions": candidate_actions,
             },
         )
+
+    @staticmethod
+    def _aggregate_evidence(
+        items: Sequence[FeedbackItem],
+        report: FeedbackReport,
+    ) -> dict[str, Any]:
+        """Combine evidence for items sharing one repair direction.
+
+        A report may contain several diagnostics from the same executed
+        component. Their evidence must be preserved when the router selects
+        the common action. Aggregation is conservative: all selected items
+        must prove the boolean gates, and conflicting owner authorities are
+        downgraded to "unknown" instead of being silently merged.
+        """
+
+        if not items:
+            return {
+                "owner_authority": "unknown",
+                "physical_tool_launched": False,
+                "tool_launched": False,
+                "evidence_complete": False,
+                "repair_eligible": False,
+            }
+
+        report_physical = report.metadata.get("physical_execution") is True
+        report_complete = report.metadata.get("evidence_complete") is True
+        report_eligible = report.metadata.get("repair_eligible") is True
+        authorities = {
+            item.metadata.get("owner_authority")
+            or report.metadata.get("owner_authority")
+            or ("deterministic_proven" if report_complete else "unknown")
+            for item in items
+        }
+        non_unknown_authorities = {
+            value for value in authorities if value not in {None, "unknown"}
+        }
+        authority = (
+            next(iter(non_unknown_authorities))
+            if len(non_unknown_authorities) == 1 and len(authorities) == 1
+            else "unknown"
+        )
+
+        def all_true(field: str, fallback: bool) -> bool:
+            return all(
+                item.metadata.get(field, fallback) is True
+                for item in items
+            )
+
+        return {
+            "owner_authority": authority,
+            "physical_tool_launched": all_true(
+                "physical_tool_launched", report_physical
+            ),
+            "tool_launched": all_true("tool_launched", report_physical),
+            "evidence_complete": all_true(
+                "evidence_complete", report_complete
+            ),
+            "repair_eligible": all_true(
+                "repair_eligible", report_eligible
+            ),
+        }
 
     @staticmethod
     def _action_for_item(
