@@ -50,6 +50,37 @@ class RecoveryAuthority(str, Enum):
     UNKNOWN = "unknown"
 
 
+# Evidence producers use descriptive authority labels. Keep the conversion
+# explicit so arbitrary metadata cannot silently acquire repair authority.
+_RECOVERY_AUTHORITY_ALIASES = {
+    "deterministic_proven": RecoveryAuthority.DETERMINISTIC_PROVEN,
+    "preflight_component_completed": RecoveryAuthority.DETERMINISTIC_PROVEN,
+    "source_compile_unit": RecoveryAuthority.DETERMINISTIC_PROVEN,
+    "source_span": RecoveryAuthority.DETERMINISTIC_PROVEN,
+    "source_entry_contract": RecoveryAuthority.DETERMINISTIC_PROVEN,
+    "differential_isolation_proven": RecoveryAuthority.DETERMINISTIC_PROVEN,
+    "evaluated_case_failure": RecoveryAuthority.DETERMINISTIC_PROVEN,
+    "original_entry_not_executed": RecoveryAuthority.DETERMINISTIC_PROVEN,
+    "original_only_completed": RecoveryAuthority.DETERMINISTIC_PROVEN,
+    "public_reference_qualified": RecoveryAuthority.PUBLIC_REFERENCE_QUALIFIED,
+    "llm_advisory": RecoveryAuthority.LLM_ADVISORY,
+    "unknown": RecoveryAuthority.UNKNOWN,
+}
+
+
+def normalize_recovery_authority(value: object) -> RecoveryAuthority:
+    """Normalize evidence authority without trusting arbitrary strings."""
+
+    if isinstance(value, RecoveryAuthority):
+        return value
+    if not isinstance(value, str):
+        return RecoveryAuthority.UNKNOWN
+    return _RECOVERY_AUTHORITY_ALIASES.get(
+        value.strip().casefold(),
+        RecoveryAuthority.UNKNOWN,
+    )
+
+
 class RecoveryDecisionStatus(str, Enum):
     ALLOWED = "allowed"
     DENIED = "denied"

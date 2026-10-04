@@ -17,6 +17,7 @@ from agrefactor.recovery import (
     RecoveryRole,
     RecoveryStage,
     conservative_v1_policy,
+    normalize_recovery_authority,
 )
 
 from .feedback_routing import (
@@ -485,10 +486,8 @@ class ValidationStateMachine:
                 FeedbackRouteAction.REPAIR_ORIGINAL: RecoveryRole.ORIGINAL,
             }[action]
             stage = RecoveryStage(state.value)
-            raw_authority = decision.metadata.get("owner_authority", "unknown")
-            owner_authority = RecoveryAuthority(
-                raw_authority if raw_authority in {item.value for item in RecoveryAuthority}
-                else ("deterministic_proven" if raw_authority not in {None, "unknown"} else "unknown")
+            owner_authority = normalize_recovery_authority(
+                decision.metadata.get("owner_authority", "unknown")
             )
             policy_decision = self._recovery_policy.decide(
                 RecoveryRequest(

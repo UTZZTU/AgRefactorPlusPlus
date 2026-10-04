@@ -24,6 +24,7 @@ from .policy import (
     RecoveryRole,
     RecoveryStage,
     conservative_v1_policy,
+    normalize_recovery_authority,
     default_restart_reserve,
 )
 from .timeout import (
@@ -79,6 +80,7 @@ __all__ = [
     "RecoveryRequest",
     "RecoveryRole",
     "RecoveryStage",
+    "normalize_recovery_authority",
     "TimeoutClass",
     "TimeoutClassification",
     "TimeoutOwner",

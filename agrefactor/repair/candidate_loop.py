@@ -45,6 +45,7 @@ from agrefactor.recovery import (
     RecoveryRole,
     RecoveryStage,
     default_restart_reserve,
+    normalize_recovery_authority,
 )
 from agrefactor.runtime import BudgetExceededError, BudgetManager, BudgetUsage
 
@@ -817,7 +818,7 @@ class BoundedCandidateRepairLoop:
                             role=RecoveryRole.CANDIDATE,
                             stage=recovery_stage,
                             evidence_view="agent_safe",
-                            owner_authority=RecoveryAuthority(
+                            owner_authority=normalize_recovery_authority(
                                 route.metadata.get("owner_authority", "unknown")
                             ),
                             lineage_id=request.task.task_id,
