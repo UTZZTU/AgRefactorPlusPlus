@@ -85,6 +85,26 @@ class StrictCppArtifactTests(unittest.TestCase):
 
 
 
+class FrozenLinkageTests(unittest.TestCase):
+    def test_candidate_declaration_keeps_extern_c(self):
+        declaration = tb_optimizer.extract_hls_decl_from_testbench(
+            'extern "C" int process_top_hls(int value);',
+            "process_top_hls",
+        )
+        self.assertEqual(
+            declaration,
+            'extern "C" int process_top_hls(int value);',
+        )
+
+    def test_original_declaration_linkage_mismatch_is_explicit(self):
+        with self.assertRaisesRegex(tb_optimizer.ModelArtifactError, "language linkage"):
+            tb_optimizer._validate_original_language_linkage(
+                "int process_top(int value);",
+                'extern "C" int process_top(int value) { return value; }',
+                "process_top",
+            )
+
+
 class PromptStateSafetyTests(unittest.TestCase):
     def test_initial_prompt_requests_normal_complete_state_safe_testbench(self):
         message = tb_optimizer._initial_user_message(

@@ -51,7 +51,7 @@
     "select_colors": ["src/app/libjpeg/select_colors.cpp", "select_colors"],
     "argon2_fill_segment": ["src/app/libsodium/argon2_fill_segment.cpp", "argon2_fill_segment"],
     "blake2b_compress": ["src/app/libsodium/blake2b_compress.cpp", "blake2b_compress"],
-    "chacha20_stream": ["src/app/libsodium/chacha20_stream.cpp", "chacha20_encrypt_bytes"],
+    "chacha20_stream": ["src/app/libsodium/chacha20_stream.cpp", "chacah20_stream"],
     "mm_chain_dp_orig": ["src/app/minimap2/mm_chain_dp_orig.cpp", "mm_chain_dp_orig"]
   },
   

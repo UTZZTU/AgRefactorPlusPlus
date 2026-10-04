@@ -255,7 +255,13 @@ def extract_hls_decl_from_testbench(
     declaration = interface.source_declaration if interface is not None else ""
     if not declaration:
         return ""
-    return declaration.strip().rstrip(";") + ";"
+    declaration = declaration.strip().rstrip(";")
+    # ``clang_getCursorLinkage`` cannot distinguish C and C++ external
+    # linkage. ``cpp_interface`` records the source-level language linkage so
+    # the frozen declaration remains link-compatible with generated HLS code.
+    if interface.language_linkage == "c":
+        declaration = 'extern "C" ' + declaration
+    return declaration + ";"
 
 
 
@@ -410,20 +416,16 @@ def _freeze_public_contract(
     candidate_name: str,
     **parse_context,
 ) -> Tuple[str, Tuple[str, ...]]:
-    interface = extract_top_interface(
+    declaration = extract_hls_decl_from_testbench(
         testbench_code,
         candidate_name,
-        require_definition=False,
         **parse_context,
     )
-    if interface is None or interface.source_declaration is None:
+    if not declaration:
         raise ModelArtifactError(
             "compiler could not derive the Candidate declaration"
         )
-    return (
-        _normalize_declaration(interface.source_declaration),
-        (),
-    )
+    return (_normalize_declaration(declaration), ())
 
 
 def _validate_frozen_public_contract(
@@ -482,6 +484,38 @@ def _validate_frozen_candidate_abi(
         raise ModelArtifactError(
             "Testbench changed the externally frozen Public-derived ABI"
         )
+
+
+def _validate_original_language_linkage(
+    testbench_code: str,
+    original_code: str,
+    original_name: str,
+    **parse_context,
+) -> str:
+    """Require the Original declaration to match its definition linkage."""
+
+    observed = extract_top_interface(
+        testbench_code, original_name, require_definition=False, **parse_context
+    )
+    definition = extract_top_interface(
+        original_code, original_name, require_definition=True, **parse_context
+    )
+    if observed is None or definition is None:
+        return ""
+    if (
+        observed.language_linkage is not None
+        and definition.language_linkage is not None
+        and observed.language_linkage != definition.language_linkage
+    ):
+        raise ModelArtifactError(
+            "Testbench Original declaration language linkage does not match "
+            f"the Original definition for `{original_name}` "
+            f"(declared={observed.language_linkage}, "
+            f"defined={definition.language_linkage})"
+        )
+    return extract_hls_decl_from_testbench(
+        original_code, original_name, **parse_context
+    )
 
 
 def _coverage_action(record: Dict[str, Any]) -> str:
@@ -720,7 +754,9 @@ def _initial_hidden_testbench_contract_repair_message(
         + ";\n```\n"
         f"Forward-declare and actually call both `{kernel_name}` and "
         f"`{hls_name}`. Do not define, stub, wrap, alias, or reimplement "
-        "either top. Expected outputs must come from the actual Original "
+        "either top. Preserve the Original top's C/C++ language linkage "
+        "exactly as shown in the Original source; do not add or remove "
+        '``extern \"C\"``. Expected outputs must come from the actual Original '
         "call; do not add a local semantic oracle or depend on "
         "implementation-private state. Keep all external declarations "
         "within the Original/Candidate black-box surface.\n"
@@ -1836,6 +1872,9 @@ def run_trajectory(
                 frozen_hls_decl,
                 **parse_context,
             )
+            _validate_original_language_linkage(
+                testbench_code, orig_code, kernel_name, **parse_context
+            )
     except ModelArtifactError as exc:
         if not external_abi_frozen:
             raise
@@ -1853,6 +1892,9 @@ def run_trajectory(
             hls_name,
             frozen_hls_decl,
             **parse_context,
+        )
+        _validate_original_language_linkage(
+            testbench_code, orig_code, kernel_name, **parse_context
         )
         initial_testbench_contract_repaired = True
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -107,6 +108,10 @@ class CppFunctionInterface:
     source_start: int | None = None
     source_end: int | None = None
     linkage: int | None = None
+    # ``clang_getCursorLinkage`` reports both C and C++ external linkage as
+    # ``external``. Keep the source-level language linkage separately so an
+    # ABI declaration cannot silently lose an ``extern "C"`` requirement.
+    language_linkage: str | None = None
     global_state: tuple[CppVariable, ...] = ()
 
 
@@ -128,6 +133,12 @@ def interfaces_equivalent(
     require_parameter_names: bool = True,
 ) -> bool:
     if left.name != right.name or left.result_type != right.result_type:
+        return False
+    if (
+        left.language_linkage is not None
+        and right.language_linkage is not None
+        and left.language_linkage != right.language_linkage
+    ):
         return False
     if len(left.parameters) != len(right.parameters):
         return False
@@ -531,6 +542,84 @@ def _declaration_text(source: str, start: int, end: int) -> str | None:
     return value or None
 
 
+def _strip_cpp_comments_preserving_layout(source: str) -> str:
+    """Mask C/C++ comments without changing line/offset layout."""
+
+    def replace(match: re.Match[str]) -> str:
+        return "".join(
+            "\n" if character == "\n" else " "
+            for character in match.group(0)
+        )
+
+    return re.sub(
+        r"//[^\n]*|/\*.*?\*/",
+        replace,
+        source,
+        flags=re.DOTALL,
+    )
+
+
+def _extern_c_block_spans(source: str) -> tuple[tuple[int, int], ...]:
+    """Return balanced ``extern \"C\" { ... }`` spans."""
+
+    cleaned = _strip_cpp_comments_preserving_layout(source)
+    spans: list[tuple[int, int]] = []
+    for match in re.finditer(r'extern\s+"C"\s*\{', cleaned):
+        opening = cleaned.find("{", match.start(), match.end())
+        if opening < 0:
+            continue
+        depth = 0
+        quote: str | None = None
+        escaped = False
+        for index in range(opening, len(cleaned)):
+            character = cleaned[index]
+            if quote is not None:
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == quote:
+                    quote = None
+                continue
+            if character in {"\"", "'"}:
+                quote = character
+                continue
+            if character == "{":
+                depth += 1
+            elif character == "}":
+                depth -= 1
+                if depth == 0:
+                    spans.append((match.start(), index + 1))
+                    break
+    return tuple(spans)
+
+
+def _language_linkage_at_offset(source: str, byte_offset: int) -> str:
+    """Infer C/C++ language linkage for a compiler cursor start offset.
+
+    Clang's numeric linkage enum does not distinguish ``extern "C"`` from
+    ordinary C++ external linkage. This lexical check is intentionally limited
+    to the declaration's prefix and balanced ``extern "C"`` blocks; it does
+    not infer ownership or alter compiler-resolved types.
+    """
+
+    encoded_prefix = source.encode("utf-8")[: max(0, byte_offset)]
+    prefix = encoded_prefix.decode("utf-8", errors="replace")
+    cleaned = _strip_cpp_comments_preserving_layout(source)
+    prefix_clean = cleaned[: len(prefix)]
+    boundary = max(
+        prefix_clean.rfind(";"),
+        prefix_clean.rfind("{"),
+        prefix_clean.rfind("}"),
+    )
+    declaration_prefix = prefix_clean[boundary + 1 :]
+    if re.search(r'\bextern\s+"C"', declaration_prefix):
+        return "c"
+    if any(start <= len(prefix_clean) < end for start, end in _extern_c_block_spans(source)):
+        return "c"
+    return "cpp"
+
+
 def _interface_from_cursor(
     clang: _LibClang,
     cursor: _CXCursor,
@@ -613,6 +702,7 @@ def _interface_from_cursor(
         source_start=start,
         source_end=end,
         linkage=library.clang_getCursorLinkage(cursor),
+        language_linkage=_language_linkage_at_offset(source, start),
         global_state=_referenced_state(clang, cursor),
     )
 

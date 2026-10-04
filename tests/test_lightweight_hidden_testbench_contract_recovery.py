@@ -223,6 +223,17 @@ class FrozenCandidateAbiValidationTests(unittest.TestCase):
                     "void process_top_hls();",
                 )
 
+    def test_frozen_abi_rejects_language_linkage_drift(self) -> None:
+        with self.assertRaisesRegex(
+            tb_optimizer.ModelArtifactError,
+            "changed the externally frozen Public-derived ABI",
+        ):
+            tb_optimizer._validate_frozen_candidate_abi(
+                'int process_top_hls(int *input);',
+                "process_top_hls",
+                'extern "C" int process_top_hls(int *input);',
+            )
+
     def test_frozen_abi_can_use_testbench_source_package_types(self) -> None:
         testbench = "using value_t = int;\nvoid process_top_hls(value_t *input);\n"
         tb_optimizer._validate_frozen_candidate_abi(

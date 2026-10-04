@@ -50,11 +50,11 @@
     }
   ],
   "cohort_id": "v2.3-inheritance-first-heterorefactor-pilot-v1",
-  "cohort_sha256": "b808132a1fbf4f3b55e5b098722ae5ea95290b68c9133c13e2c0732aa570cb92",
+  "cohort_sha256": "5f101c790425b002fd5e41cf7e0ce3e45594b62967d63948033f0446bfbd4471",
   "execution_authorized": false,
   "execution_requires_owner_review": true,
   "git_history_mutations": 0,
-  "inventory_sha256": "135bc61e6277e738a6aa3d61b96406bf5718d83416666187ecbf30629103b081",
+  "inventory_sha256": "bc96db98524b93d1167d49936de51cb2896dddc619b4a850f1ef10375c3082e0",
   "memory_enabled": false,
   "provider_calls": 0,
   "r2_r4_enabled": false,

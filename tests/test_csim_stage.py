@@ -13,9 +13,12 @@ from agrefactor.evaluation import (
     ValidationFeedbackCoordinator,
     ValidationState,
 )
+from agrefactor.evaluation.csim_suite import CsimSuiteEvaluationResult
 from agrefactor.evidence import (
     FeedbackCategory,
     FeedbackOwner,
+    TestEvaluationEvidence,
+    TestEvaluationStatus,
 )
 from agrefactor.runtime import (
     BudgetExceededError,
@@ -253,6 +256,66 @@ class CsimValidationStageHandlerTests(
         self.assertEqual(
             coordinated.transition.next_state,
             ValidationState.REVIEW_REQUIRED,
+        )
+
+    def test_typed_candidate_evidence_reaches_item_and_router(self):
+        suite = TestSuiteSpec(
+            suite_id="public-native",
+            split=EvaluationSplit.PUBLIC,
+        )
+        evidence = TestEvaluationEvidence(
+            suite=suite,
+            status=TestEvaluationStatus.FAILED,
+            failed_cases=1,
+            return_code=1,
+            details={
+                "compile_execution": {
+                    "status": "completed",
+                    "returncode": 0,
+                    "timeout": False,
+                },
+                "simulation_execution": {
+                    "status": "completed",
+                    "returncode": 1,
+                    "timeout": False,
+                },
+            },
+        )
+        result = CsimSuiteEvaluationResult(
+            legacy_status="csim_failed",
+            diagnostic="candidate mismatch",
+            evidence=evidence,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            handler = CsimValidationStageHandler(
+                self.inputs(directory, {"public-native": "unused"}),
+                split=EvaluationSplit.PUBLIC,
+            )
+            report = handler._result_report(
+                result,
+                report_id="typed-candidate",
+            )
+
+        item = report.items[0]
+        self.assertEqual(item.owner, FeedbackOwner.CANDIDATE)
+        self.assertEqual(
+            item.metadata["owner_authority"],
+            "evaluated_case_failure",
+        )
+        self.assertTrue(item.metadata["tool_launched"])
+        self.assertTrue(item.metadata["evidence_complete"])
+        self.assertTrue(item.metadata["repair_eligible"])
+
+        coordinated = ValidationFeedbackCoordinator(
+            make_context((suite,)).task
+        ).coordinate(
+            report,
+            ValidationState.PUBLIC_EVALUATION,
+            coordination_id="typed-candidate-step",
+        )
+        self.assertEqual(
+            coordinated.route_action.value,
+            "repair_candidate",
         )
 
     def test_nonzero_return_without_evaluated_cases_is_not_mismatch(

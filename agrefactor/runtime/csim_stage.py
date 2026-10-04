@@ -1017,18 +1017,46 @@ class CsimValidationStageHandler:
         ):
             owner = FeedbackOwner.TOOLCHAIN
 
-        items = tuple(
-            self._copy_item(
-                item,
-                category=category,
-                owner=owner,
-                stage=stage,
-                metadata_update=metadata_update,
-            )
-            for item in report.items
+        # Project typed execution facts onto both the report and every item.
+        # The router must not have to rediscover them from raw diagnostics.
+        execution_details = result.evidence.details
+        compile_execution = execution_details.get("compile_execution")
+        simulation_execution = execution_details.get("simulation_execution")
+        launched_statuses = {"completed", "timeout", "execution_error"}
+        tool_launched = any(
+            isinstance(execution, Mapping)
+            and execution.get("status") in launched_statuses
+            for execution in (compile_execution, simulation_execution)
         )
+        if "tool_launched" not in metadata_update:
+            metadata_update["tool_launched"] = tool_launched
+        if "physical_tool_launched" not in metadata_update:
+            metadata_update["physical_tool_launched"] = (
+                tool_launched and self._inputs.execution_backend == "native_vitis"
+            )
+        authorized_failure = (
+            metadata_update.get("functional_mismatch_authorized") is True
+            or (
+                metadata_update.get("failure_kind")
+                in {
+                    "candidate_csim_functional_failure",
+                    "candidate_csim_abnormal_termination",
+                }
+                and metadata_update.get("owner_authority") not in {None, "unknown"}
+            )
+        )
+        if "evidence_complete" not in metadata_update:
+            metadata_update["evidence_complete"] = bool(
+                authorized_failure and metadata_update["tool_launched"]
+            )
+        if "repair_eligible" not in metadata_update:
+            metadata_update["repair_eligible"] = bool(
+                metadata_update["evidence_complete"]
+                and owner is FeedbackOwner.CANDIDATE
+            )
 
         metadata = dict(report.metadata)
+        metadata.update(metadata_update)
         metadata.update(
             {
                 "runtime_semantics_version": (
@@ -1044,6 +1072,17 @@ class CsimValidationStageHandler:
                 ),
             }
         )
+        items = tuple(
+            self._copy_item(
+                item,
+                category=category,
+                owner=owner,
+                stage=stage,
+                metadata_update=metadata_update,
+            )
+            for item in report.items
+        )
+
         return FeedbackReport(
             report_id=report.report_id,
             source=report.source,

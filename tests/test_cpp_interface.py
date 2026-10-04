@@ -25,6 +25,26 @@ void top(row *values, int count) { values[0][0] = count; }
         self.assertIn("int", interface.parameters[0].canonical_type)
         self.assertIn("void top(row *values, int count)", interface.source_declaration or "")
 
+    def test_preserves_source_language_linkage_for_abi_comparison(self) -> None:
+        c_decl = extract_top_interface(
+            'extern "C" int top(int value);',
+            "top",
+            require_definition=False,
+        )
+        cpp_decl = extract_top_interface(
+            "int top(int value);",
+            "top",
+            require_definition=False,
+        )
+        self.assertIsNotNone(c_decl)
+        self.assertIsNotNone(cpp_decl)
+        assert c_decl is not None and cpp_decl is not None
+        self.assertEqual(c_decl.language_linkage, "c")
+        self.assertEqual(cpp_decl.language_linkage, "cpp")
+        from agrefactor.cpp_interface import interfaces_equivalent
+        self.assertFalse(interfaces_equivalent(c_decl, cpp_decl))
+
+
     def test_reads_a_standalone_declaration_when_requested(self) -> None:
         interface = extract_top_interface(
             "int top(const int *input, int output[8]);",

@@ -3,7 +3,7 @@
     {
       "algorithm_family": "cryptography_stream_cipher",
       "alias": "chacha20_stream",
-      "ast_structural_fingerprint": "89700df650ebee259a40005bdd032fa03c65b4826defd58b016fd11a6191ecf6",
+      "ast_structural_fingerprint": "215b67a88305f30d242fd848825f047d6fb0a116e16838ed9b937999e8b4ef5c",
       "case_id": "internal-app-045476f2e21d0fd8",
       "eligibility": "quarantine",
       "exclusion_reasons": [
@@ -22,7 +22,7 @@
       "interface": {
         "call_name_count": 22,
         "top_lexically_found": true,
-        "top_signature_sha256": "0c390d9a2f1cc7933059be2eb104e05a8e779f7af33b0186c0ecc82483acab1f"
+        "top_signature_sha256": "5a5ccc24a8fe1be513fbe5f51169335421b90861f49352ec4790d2927b0f577a"
       },
       "legacy_claim_refs": [],
       "legacy_info_label": "useful",
@@ -2159,6 +2159,78 @@
       }
     },
     {
+      "algorithm_family": "machine_learning_classification",
+      "alias": "Boolean_E1_SVM",
+      "ast_structural_fingerprint": "6e062caa4864ce29d47711a4bd4f10318b00995075509ed4b46b94cad169f832",
+      "case_id": "internal-hlsrewritter-3018ce17bef83da2",
+      "eligibility": "quarantine",
+      "exclusion_reasons": [
+        "license_or_checked_in_provenance_unresolved"
+      ],
+      "execution_contract": {
+        "added_source_paths": [
+          "src/hlsrewritter/Boolean_E1_SVM/kernel.cpp"
+        ],
+        "declared_top": "svm_classify",
+        "declared_top_found_in_added_source": true,
+        "declared_top_matches_registry": true,
+        "registered_source_declared": true,
+        "status": "consistent",
+        "tcl_path": "src/hlsrewritter/Boolean_E1_SVM/vitis.tcl"
+      },
+      "history_future_partition": "history",
+      "interface": {
+        "call_name_count": 1,
+        "top_lexically_found": true,
+        "top_signature_sha256": "a6026b34212a3eaf59aebcbd941064d1e2c4c48616ff4669b98983fe74ac882e"
+      },
+      "legacy_claim_refs": [],
+      "legacy_info_label": "not_useful",
+      "nearest_duplicate_refs": [],
+      "normalized_token_sha256": "cfea09e3be2a73888966ca629626a8528fc356ee669451fb41452b961e39d623",
+      "oracles": {
+        "hidden": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "independent_public_hidden_pair": false,
+        "legacy_testbench": {
+          "path": "src/hlsrewritter/Boolean_E1_SVM/tb.cpp",
+          "present": true,
+          "sha256": "39581713bc90ee3240475c8d5c4bd56f8095b2b50504c8df6031c404e570f3fd"
+        },
+        "public": {
+          "path": null,
+          "present": false,
+          "sha256": null
+        },
+        "vitis_tcl": {
+          "path": "src/hlsrewritter/Boolean_E1_SVM/vitis.tcl",
+          "present": true,
+          "sha256": "f96bd74bb1e3a3e6f8d56003c5c46d200e75ec8af5c70a7b6a29b19764990b20"
+        }
+      },
+      "raw_source_baseline": {
+        "evidence_ref": null,
+        "status": "not_run"
+      },
+      "source_family": "hlsrewritter",
+      "source_path": "src/hlsrewritter/Boolean_E1_SVM/kernel.cpp",
+      "source_sha256": "254aec3932bafb3299f3a8673270c76f7e084198cbb8146ab79fe1433b60c0ed",
+      "top": "svm_classify",
+      "upstream": {
+        "admission": "quarantine",
+        "checked_in_copy_matches_upstream_commit": "unverified",
+        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
+        "license": "NOASSERTION",
+        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
+        "upstream_commit": null,
+        "upstream_path": null,
+        "upstream_repo": null
+      }
+    },
+    {
       "algorithm_family": "dynamic_sequence",
       "alias": "Incomplete_E1_Fibonacci",
       "ast_structural_fingerprint": "255ecbe127108a7a6ee9647001ed6f2b553f1303e32fd37ebcb3719a81566770",
@@ -2402,14 +2474,7 @@
       },
       "legacy_claim_refs": [],
       "legacy_info_label": "not_useful",
-      "nearest_duplicate_refs": [
-        {
-          "case_id": "internal-hlsrewritter-3fa90f3d2d17cbbf",
-          "level": "D1",
-          "reason": "case_file_d1_match:src/hlsrewritter/DA_E1_linear_program/kernel.cpp:src/hlsrewritter/DA_E2_binary_tree/kernel.cpp",
-          "score": 1.0
-        }
-      ],
+      "nearest_duplicate_refs": [],
       "normalized_token_sha256": "dcc5255070abb0a98cc8ae231bb3eea20bdc3b33b0e7da5ddbdbe4e7fb15c452",
       "oracles": {
         "hidden": {
@@ -2442,78 +2507,6 @@
       "source_path": "src/hlsrewritter/DA_E1_linear_program/kernel.cpp",
       "source_sha256": "1a670660c479a47fa42f9cabc3fce0804c3608a13d86b88c3b31a1cfdeef768e",
       "top": "solve",
-      "upstream": {
-        "admission": "quarantine",
-        "checked_in_copy_matches_upstream_commit": "unverified",
-        "checked_in_import_commit": "e3cb81b4ed53eec60fbf2cf5092267bda3882e82",
-        "license": "NOASSERTION",
-        "license_status": "upstream_repository_and_license_not_reconstructable_from_checked_in_metadata",
-        "upstream_commit": null,
-        "upstream_path": null,
-        "upstream_repo": null
-      }
-    },
-    {
-      "algorithm_family": "machine_learning_classification",
-      "alias": "Boolean_E1_SVM",
-      "ast_structural_fingerprint": "66b4a32a3d07f55f071cef09cb00cc5076c5ebe5ae6245a836a35f3c3efda9e4",
-      "case_id": "internal-hlsrewritter-520b65486371b57c",
-      "eligibility": "quarantine",
-      "exclusion_reasons": [
-        "license_or_checked_in_provenance_unresolved"
-      ],
-      "execution_contract": {
-        "added_source_paths": [
-          "src/hlsrewritter/Boolean_E1_SVM/kernel.cpp"
-        ],
-        "declared_top": "svm_classify",
-        "declared_top_found_in_added_source": true,
-        "declared_top_matches_registry": true,
-        "registered_source_declared": true,
-        "status": "consistent",
-        "tcl_path": "src/hlsrewritter/Boolean_E1_SVM/vitis.tcl"
-      },
-      "history_future_partition": "history",
-      "interface": {
-        "call_name_count": 1,
-        "top_lexically_found": true,
-        "top_signature_sha256": "a6026b34212a3eaf59aebcbd941064d1e2c4c48616ff4669b98983fe74ac882e"
-      },
-      "legacy_claim_refs": [],
-      "legacy_info_label": "not_useful",
-      "nearest_duplicate_refs": [],
-      "normalized_token_sha256": "35e90fe130030855645ff41fe27c1698a7f420ae7b25a58384ce7fcb60816873",
-      "oracles": {
-        "hidden": {
-          "path": null,
-          "present": false,
-          "sha256": null
-        },
-        "independent_public_hidden_pair": false,
-        "legacy_testbench": {
-          "path": "src/hlsrewritter/Boolean_E1_SVM/tb.cpp",
-          "present": true,
-          "sha256": "39581713bc90ee3240475c8d5c4bd56f8095b2b50504c8df6031c404e570f3fd"
-        },
-        "public": {
-          "path": null,
-          "present": false,
-          "sha256": null
-        },
-        "vitis_tcl": {
-          "path": "src/hlsrewritter/Boolean_E1_SVM/vitis.tcl",
-          "present": true,
-          "sha256": "f96bd74bb1e3a3e6f8d56003c5c46d200e75ec8af5c70a7b6a29b19764990b20"
-        }
-      },
-      "raw_source_baseline": {
-        "evidence_ref": null,
-        "status": "not_run"
-      },
-      "source_family": "hlsrewritter",
-      "source_path": "src/hlsrewritter/Boolean_E1_SVM/kernel.cpp",
-      "source_sha256": "ecc83629247c5e6915508eb2f946fbe9f34ca4fc133e2a9fee6125acbba5824a",
-      "top": "svm_classify",
       "upstream": {
         "admission": "quarantine",
         "checked_in_copy_matches_upstream_commit": "unverified",
@@ -4217,13 +4210,13 @@
   },
   "policy_sha256": "e50f3746b0b351d0b39e0cc6fc2c3e1a173d5cfc92a041fb7b67a16d08eb5cfa",
   "registry_id": "v2.3-r5.1-internal-dataset-registry-v1",
-  "registry_sha256": "2e792fe806b025d10a8af2f5b4cda9bbd16bf2201e05cd75b62fc7488315a90d",
+  "registry_sha256": "bf72723b38606e647c6922366e1796d9e25aed447c73e70973c16a5e121de89d",
   "schema_version": 1,
-  "source_info_sha256": "034869411fe8993cc512f549ef7f15a6b952a04952db2d9630ae4ebd3a805aa0",
+  "source_info_sha256": "98b18cbec9a2792dd150a53d92d30d76319280e9a800239dffb594b8398c7cc8",
   "summary": {
     "case_count": 57,
     "d0_case_count": 0,
-    "d1_case_count": 1,
+    "d1_case_count": 0,
     "d2_candidate_case_count": 0,
     "eligibility_counts": {
       "adapter_required": 9,

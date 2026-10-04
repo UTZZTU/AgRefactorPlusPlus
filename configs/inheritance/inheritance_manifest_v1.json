@@ -1508,7 +1508,7 @@
       ],
       "strict_efficacy_eligible": false,
       "testbench_plan": "product_generated_and_freeze_required",
-      "top": "chacha20_encrypt_bytes",
+      "top": "chacah20_stream",
       "top_source": "src/info.json"
     },
     {
@@ -4034,7 +4034,7 @@
       "inheritance_testable": true,
       "legacy_alias": "Boolean_E1_SVM",
       "legacy_label": "not_useful",
-      "normalized_token_sha256": "35e90fe130030855645ff41fe27c1698a7f420ae7b25a58384ce7fcb60816873",
+      "normalized_token_sha256": "cfea09e3be2a73888966ca629626a8528fc356ee669451fb41452b961e39d623",
       "path": "src/hlsrewritter/Boolean_E1_SVM/kernel.cpp",
       "provenance": {
         "admission": "quarantine",
@@ -4045,7 +4045,7 @@
       },
       "role_reasons": [],
       "source_family": "hlsrewritter",
-      "source_sha256": "ecc83629247c5e6915508eb2f946fbe9f34ca4fc133e2a9fee6125acbba5824a",
+      "source_sha256": "254aec3932bafb3299f3a8673270c76f7e084198cbb8146ab79fe1433b60c0ed",
       "status": "sample",
       "strict_efficacy_blockers": [
         "oracle_not_frozen",
@@ -10006,7 +10006,7 @@
     "vitis_launches": 0
   },
   "inventory_id": "v2.3-inheritance-first-stage1-v1",
-  "inventory_sha256": "135bc61e6277e738a6aa3d61b96406bf5718d83416666187ecbf30629103b081",
+  "inventory_sha256": "bc96db98524b93d1167d49936de51cb2896dddc619b4a850f1ef10375c3082e0",
   "schema_version": 1,
   "scope": "all_c_cpp_files_under_src",
   "summary": {
