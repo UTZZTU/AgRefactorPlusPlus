@@ -1,6 +1,7 @@
 import os, concurrent.futures, argparse, copy, hashlib, json, re  # type: ignore
 from autogen.agentchat.group import ContextVariables  # type: ignore
 from typing import Optional, Dict, Any
+from pathlib import Path
 import flow.tools as tools
 from flow.tools.input_domain import (
     generate_input_domain_contract,
@@ -289,6 +290,8 @@ def hls_refactor_with_rag(
     golden_tb_cache_key: Optional[str] = None,  # if None, defaults to kernel_name in make_golden_hidden_tb
     use_cached_tb_as_public: bool = False,  # Skip TB gen entirely; use cached hidden TB as the agent's testbench.
     input_domain_contract: Optional[Dict[str, Any]] = None,
+    source_package_context: Optional[list[Dict[str, str]]] = None,
+    source_package: Optional[Dict[str, Any]] = None,
 ):
     reset_agrefactorpp_usage_registry()
     reset_model_prompt_evidence()
@@ -541,11 +544,17 @@ def hls_refactor_with_rag(
     
     with open(kernel_path, "r", encoding="utf-8") as f:
         source_code = f.read()
-    reference_code = isolate_reference_program_entry(source_code)
+    package_root = (source_package or {}).get("root", str(Path(kernel_path).parent))
+    reference_context = dict(
+        top_function=kernel_name, source_path=kernel_path,
+        include_dirs=(package_root,),
+        compile_flags=tuple((target_profile or {}).get("compile_flags", ())),
+    )
+    reference_code = isolate_reference_program_entry(source_code, **reference_context)
 
     if input_domain_contract is None:
         input_domain_contract = generate_input_domain_contract(
-            orig_code=source_code,
+            orig_code=reference_code,
             kernel_name=kernel_name,
             llm_config=public_tb_llm_config,
             budget=budget,
@@ -553,7 +562,7 @@ def hls_refactor_with_rag(
     else:
         input_domain_contract = normalize_input_domain_contract(
             input_domain_contract,
-            source_code=source_code,
+            source_code=reference_code,
             kernel_name=kernel_name,
         )
     input_domain_contract_sha256 = input_domain_sha256(input_domain_contract)
@@ -567,6 +576,9 @@ def hls_refactor_with_rag(
     cv = ContextVariables(data={
         "orig_code": reference_code,  # in-process reference source
         "kernel_name": kernel_name,   # kernel function name
+        "source_package_context": list(source_package_context or []),
+        "source_package": dict(source_package or {}),
+        "max_testbench_repair_attempts": max_testbench_repair_attempts,
         "hetero": "",                 # whether heterogeneous programming is used
         "curr_code": source_code,     # current code
         "code_for_hetero": "",        # current code for hetero tool to refactor
@@ -656,8 +668,14 @@ def hls_refactor_with_rag(
             raise RuntimeError(
                 "Public Testbench did not expose a valid Candidate ABI"
             )
-        cv["testbench"] = external_testbench
         cv["new_kernel_name"] = external_candidate_name
+        tools.testbench.qualify_external_public_testbench(
+            cv,
+            external_testbench,
+            public_tb_llm_config,
+            budget,
+        )
+        cv["testbench"] = external_testbench
         cv["tb_aligned_instruction"] = (
             _build_external_candidate_abi_instruction(
                 public_hls_decl=external_public_hls_decl,
@@ -711,9 +729,15 @@ def hls_refactor_with_rag(
                 )
             cv["identified_items"], cv["items_hetero"] = identification_future.result()
     cv["generation_event_order"].append("public_generation")
+    cv["orig_code"] = isolate_reference_program_entry(
+        source_code, testbench_code=cv["testbench"], **reference_context,
+    )
     public_hls_decl = tools.tb_optimizer.extract_hls_decl_from_testbench(
         cv["testbench"],
         cv["new_kernel_name"],
+        source_path=str(Path(package_root) / "testbench.cpp"),
+        include_dirs=(package_root,),
+        compile_flags=reference_context["compile_flags"],
     )
     if not public_hls_decl:
         raise RuntimeError(
@@ -731,6 +755,9 @@ def hls_refactor_with_rag(
                 llm_config=public_tb_llm_config,
                 budget=budget,
                 input_domain_contract=cv["input_domain_contract"],
+                source_path=str(Path(package_root) / "testbench.cpp"),
+                include_dirs=(package_root,),
+                compile_flags=reference_context["compile_flags"],
             )
         )
         cv["public_runtime_contract_sha256"] = _sha256_text(
@@ -778,6 +805,13 @@ def hls_refactor_with_rag(
                 budget=budget,
                 artifact_root=cv["hidden_tb_artifact_dir"],
                 input_domain_contract=cv["input_domain_contract"],
+                source_context={
+                    "source_root": package_root,
+                    "extra_sources": tuple(str(Path(package_root) / name) for name in (source_package or {}).get("extra_sources", ())),
+                    "compile_flags": reference_context["compile_flags"],
+                    "target_profile": target_profile,
+                },
+                max_repairs=max_testbench_repair_attempts,
             )
         except tools.tb_optimizer.TestbenchGenerationExhausted as exc:
             return _finish_test_generation_exhaustion(
@@ -903,6 +937,7 @@ def hls_refactor_with_rag(
             refactor_code=cv["curr_code"],
             hidden_tb=hidden_tb,
             work_dir=hidden_eval_dir,
+            original_name=cv["kernel_name"],
         )
         cv["pass_hidden"] = eval_result["passed"]
         cv["hidden_failure_kind"] = eval_result["failure_kind"]
@@ -945,7 +980,7 @@ def main():
     parser.add_argument("--reasoning_effort", type=str, default=None, help="Reasoning effort (low/medium/high)")
     parser.add_argument("--base_url", type=str, default=None, help="Base URL for local serving endpoint")
     parser.add_argument("--enable_testbench_repair", action="store_true", default=False, help="Enable bounded testbench-only repair before synthesis")
-    parser.add_argument("--max_testbench_repair_attempts", type=int, default=2, help="Independent testbench repair budget")
+    parser.add_argument("--max_testbench_repair_attempts", type=int, default=3, help="Independent testbench repair budget")
     parser.add_argument("--testbench_repair_model", type=str, default=None, help="Optional dedicated model for testbench repair; defaults to --model")
     parser.add_argument("--testbench_repair_api_key_env", type=str, default="OPENAI_API_KEY", help="Environment variable containing the testbench repair API key")
     parser.add_argument("--external_testbench_file", type=str, default=None, help="Path to external testbench file (bypass TB generation)")

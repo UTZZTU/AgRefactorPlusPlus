@@ -16,6 +16,8 @@ from agrefactor.config import (
     DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
     DEFAULT_TESTBENCH_REPAIR_ATTEMPTS,
     DEFAULT_COSIM_TIMEOUT_S,
+    DEFAULT_CSIM_TIMEOUT_S,
+    DEFAULT_CSYNTH_TIMEOUT_S,
     EvaluationSplit,
     TaskSpec,
     validate_cosim_timeout_s,
@@ -38,6 +40,8 @@ from agrefactor.recovery import (
     DiagnosticAdvisor,
     RecoveryAction,
     RecoveryAuthority,
+    RecoveryBudgetBlockedError,
+    RecoveryDeniedError,
     RecoveryLedger,
     RecoveryPolicy,
     RecoveryRequest,
@@ -132,6 +136,7 @@ class CandidateRepairOrchestrationStatus(str, Enum):
     REPAIR_EXHAUSTED = "repair_exhausted"
     BUDGET_EXHAUSTED = "budget_exhausted"
     VALIDATOR_ERROR = "validator_error"
+    PROVIDER_ERROR = "provider_error"
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +208,7 @@ class CandidateRepairOrchestrationRequest:
     suite_testbench_codes: Mapping[str, str]
     prompt_public_testbench_code: str | None
     max_attempts: int = DEFAULT_CANDIDATE_REPAIR_ATTEMPTS
+    max_testbench_repairs: int = DEFAULT_TESTBENCH_REPAIR_ATTEMPTS
     family_instruction: str | None = None
     reference_top_function: str | None = None
     candidate_top_function: str | None = None
@@ -226,6 +232,7 @@ class CandidateRepairOrchestrationRequest:
             self.max_attempts,
             field_name="max_attempts",
         )
+        validate_repair_attempts(self.max_testbench_repairs, field_name="max_testbench_repairs")
         _optional_text(
             self.family_instruction,
             "family_instruction",
@@ -443,8 +450,8 @@ class LocalCandidateValidationHandlerFactory:
         self,
         work_root: str | os.PathLike[str],
         *,
-        csynth_timelimit: int = 300,
-        csim_timelimit: int = 60,
+        csynth_timelimit: int = DEFAULT_CSYNTH_TIMEOUT_S,
+        csim_timelimit: int = DEFAULT_CSIM_TIMEOUT_S,
         cosim_timelimit: int = DEFAULT_COSIM_TIMEOUT_S,
         cosim_policy: str = "required",
     ) -> None:
@@ -510,6 +517,11 @@ class LocalCandidateValidationHandlerFactory:
             / _safe_component(request.validation_id)
             / f"attempt_{request.attempt:03d}"
         )
+        package = request.task.source_package
+        if package is not None:
+            for stage_name in ("preflight", "csim", "csynth", "public_cosim"):
+                package.stage_into(run_dir / stage_name)
+        extra_sources = tuple(str(path) for path in package.extra_relative) if package is not None else ()
         handlers: dict[
             ValidationState,
             ValidationStageHandler,
@@ -530,6 +542,7 @@ class LocalCandidateValidationHandlerFactory:
                             request.candidate_top_function
                             or request.task.kernel_name
                         ),
+                        extra_sources=extra_sources,
                     )
                 )
             ),
@@ -539,6 +552,7 @@ class LocalCandidateValidationHandlerFactory:
                         work_dir=run_dir / "csynth",
                         candidate_code=request.candidate_code,
                         timelimit=self._csynth_timelimit,
+                        extra_sources=extra_sources,
                     )
                 )
             ),
@@ -565,6 +579,8 @@ class LocalCandidateValidationHandlerFactory:
                         or request.task.kernel_name
                     ),
                     target_profile=request.task.target,
+                    extra_sources=extra_sources,
+                    reference_top_function=request.reference_top_function,
                 ),
                 split=EvaluationSplit.PUBLIC,
             )
@@ -589,6 +605,8 @@ class LocalCandidateValidationHandlerFactory:
                     target_profile=request.task.target,
                     timelimit=self._cosim_timelimit,
                     policy=self._cosim_policy,
+                    extra_sources=extra_sources,
+                    reference_top_function=request.reference_top_function,
                 )
             )
 
@@ -607,6 +625,7 @@ class LocalCandidateValidationHandlerFactory:
                         request.suite_testbench_codes
                     ),
                     timelimit=self._csim_timelimit,
+                    extra_sources=extra_sources,
                 ),
                 split=EvaluationSplit.HIDDEN,
             )
@@ -835,7 +854,23 @@ class CandidateRepairValidationOrchestrator:
             request.family_instruction,
         )
 
-        recovery_ledger = RecoveryLedger(self._recovery_policy)
+        limits = self._recovery_policy.limits
+        candidate_limit = max(limits.refactor_candidate_repairs_total, request.max_attempts)
+        testbench_limit = max(limits.testbench_preflight_repairs, request.max_testbench_repairs)
+        recovery_ledger = RecoveryLedger(replace(
+            self._recovery_policy,
+            limits=replace(
+                limits,
+                refactor_candidate_repairs_total=candidate_limit,
+                candidate_public_csim_repairs=max(limits.candidate_public_csim_repairs, request.max_attempts),
+                candidate_public_cosim_repairs=max(limits.candidate_public_cosim_repairs, request.max_attempts),
+                testbench_preflight_repairs=testbench_limit,
+                testbench_public_csim_repairs=max(limits.testbench_public_csim_repairs, request.max_testbench_repairs),
+                testbench_public_cosim_repairs=max(limits.testbench_public_cosim_repairs, request.max_testbench_repairs),
+                total_recovery_actions=max(limits.total_recovery_actions, candidate_limit + testbench_limit),
+                validation_restarts=max(limits.validation_restarts, candidate_limit + testbench_limit),
+            ),
+        ))
         recovery_metadata: dict[str, Any] = {"diagnostic_events": []}
 
         context.trace.record(
@@ -1136,6 +1171,60 @@ class CandidateRepairValidationOrchestrator:
         ValidationExecutionOutcome,
         dict[str, Any],
     ]:
+        history: list[str] = []
+        rounds: list[dict[str, Any]] = []
+        diagnostics: list[dict[str, Any]] = []
+        used = 0
+        metadata: dict[str, Any] = {}
+        while used < request.max_testbench_repairs:
+            report = outcome.terminal_report
+            if report is None or report.metadata.get("evidence_view") != "agent_safe":
+                break
+            history.extend(
+                f"{item.stage.value}: {item.summary}; {item.detail or ''}"
+                for item in report.items if item.blocking
+            )
+            try:
+                request, outcome, metadata = self._repair_public_testbench_once(
+                    context=context, request=request, outcome=outcome,
+                    validation_id=validation_id, ledger=ledger,
+                    remaining=request.max_testbench_repairs - used,
+                    round_index=len(rounds) + 1,
+                    prior_failure_summaries=tuple(history),
+                )
+            except (RecoveryDeniedError, RecoveryBudgetBlockedError) as exc:
+                metadata = {"runtime_testbench_recovery_status": exc.reason_code}
+                break
+            repair = metadata.get("runtime_testbench_recovery", {})
+            spent = repair.get("repair_attempts_used", 0)
+            used += spent
+            rounds.append(metadata)
+            diagnostics.extend(metadata.get("diagnostic_events", []))
+            history.extend(
+                json.dumps(item, ensure_ascii=True)
+                for item in repair.get("attempts", []) if item.get("index", 0) > 0
+            )
+            decision = outcome.terminal_decision
+            if (spent == 0 or not metadata.get("runtime_testbench_revalidation")
+                    or outcome.result.final_state is not ValidationState.REPAIR_PENDING
+                    or decision is None
+                    or decision.action is not FeedbackRouteAction.REPAIR_TESTBENCH):
+                break
+        return request, outcome, {
+            **metadata,
+            "runtime_testbench_repair_attempts_used": used,
+            "runtime_testbench_recovery_rounds": rounds,
+            "diagnostic_events": diagnostics,
+        }
+
+    def _repair_public_testbench_once(
+        self, *, context: RunContext,
+        request: CandidateRepairOrchestrationRequest,
+        outcome: ValidationExecutionOutcome,
+        validation_id: str, ledger: RecoveryLedger,
+        remaining: int, round_index: int,
+        prior_failure_summaries: tuple[str, ...],
+    ) -> tuple[CandidateRepairOrchestrationRequest, ValidationExecutionOutcome, dict[str, Any]]:
         report = outcome.terminal_report
         decision = outcome.terminal_decision
         if report is None or decision is None:
@@ -1204,8 +1293,8 @@ class CandidateRepairValidationOrchestrator:
             }
 
         stage = RecoveryStage(failure_state.value)
-        ledger.reserve(
-            RecoveryRequest(
+        def reserve_repair() -> None:
+            ledger.reserve(RecoveryRequest(
                 action=RecoveryAction.REPAIR,
                 role=RecoveryRole.TESTBENCH,
                 stage=stage,
@@ -1216,18 +1305,20 @@ class CandidateRepairValidationOrchestrator:
                 evidence_complete=True,
                 advisory_mode=request.llm_advisory_mode,
                 timeout_class=decision.metadata.get("timeout_class"),
-            ),
-            budget=context.budget,
-            restart_reserve=default_restart_reserve(stage),
-        )
+                ), budget=context.budget,
+                restart_reserve=default_restart_reserve(stage),
+            )
         repairer = build_openai_compatible_testbench_repairer(
             effective_config=self._model_adapter.effective_config,
             budget=context.budget,
         )
         loop = TestbenchRepairLoop(
-            preflight=TestbenchPreflight(),
+            preflight=TestbenchPreflight(
+                extra_flags=context.task.target.compile_flags,
+                include_dirs=(Path(context.task.kernel_path).parent,),
+            ),
             repairer=repairer,
-            max_repair_attempts=DEFAULT_TESTBENCH_REPAIR_ATTEMPTS,
+            max_repair_attempts=remaining,
         )
         work_root = getattr(
             self._handler_factory,
@@ -1240,6 +1331,7 @@ class CandidateRepairValidationOrchestrator:
                 / _safe_component(validation_id)
                 / "runtime_testbench_repair"
                 / _safe_component(suite_id)
+                / f"round_{round_index:02d}"
             ),
             testbench_code=request.suite_testbench_codes[suite_id],
             original_code=request.original_code,
@@ -1252,6 +1344,8 @@ class CandidateRepairValidationOrchestrator:
             ),
             runtime_feedback=report,
             failure_state=failure_state,
+            prior_failure_summaries=prior_failure_summaries,
+            before_repair=reserve_repair,
         )
         metadata = {
             "runtime_testbench_recovery": repair.to_dict(),
@@ -1313,15 +1407,15 @@ class CandidateRepairValidationOrchestrator:
             original_code=updated.original_code,
             preflight_testbench_code=updated.preflight_testbench_code,
             suite_testbench_codes=updated.suite_testbench_codes,
-            attempt=1,
-            validation_id=f"{validation_id}.testbench.1",
+            attempt=round_index,
+            validation_id=f"{validation_id}.testbench.{round_index}",
             reference_top_function=updated.reference_top_function,
             candidate_top_function=(
                 updated.candidate_top_function or context.task.kernel_name
             ),
         )
         child = RunContext(
-            run_id=f"{context.run_id}.testbench-repair.1",
+            run_id=f"{context.run_id}.testbench-repair.{round_index}",
             task=context.task,
             budget=context.budget,
             trace=context.trace,
@@ -1330,7 +1424,7 @@ class CandidateRepairValidationOrchestrator:
             _build_handlers(self._handler_factory, plan)
         ).run_detailed(
             child,
-            validation_id=f"{validation_id}.testbench.1",
+            validation_id=f"{validation_id}.testbench.{round_index}",
         )
         metadata["runtime_testbench_revalidation"] = (
             revalidated.result.to_dict()
@@ -1372,12 +1466,12 @@ class CandidateRepairValidationOrchestrator:
                 ledger=recovery_ledger,
                 budget=context.budget,
                 candidate_requested_max=request.max_attempts,
-                runtime_testbench_local_max=1,
+                runtime_testbench_local_max=request.max_testbench_repairs,
             ).to_dict()
         )
         merged_metadata = dict(extra_metadata or {})
         repair_count = (
-            0 if repair_result is None else len(repair_result.attempts)
+            0 if repair_result is None else repair_result.repair_attempt_count
         )
         def shadow_main_snapshot() -> dict[str, Any]:
             return {
@@ -1428,6 +1522,9 @@ class CandidateRepairValidationOrchestrator:
                 ),
                 "repair_attempt_count": (
                     repair_count
+                ),
+                "provider_failure_count": (
+                    0 if repair_result is None else repair_result.provider_failure_count
                 ),
                 "candidate_validation_count": len(
                     candidate_validations
@@ -1604,6 +1701,8 @@ def _status_for_repair_result(
             CandidateRepairOrchestrationStatus.
             VALIDATOR_ERROR
         )
+    if reason is CandidateRepairStopReason.PROVIDER_EXHAUSTED:
+        return CandidateRepairOrchestrationStatus.PROVIDER_ERROR
     if reason is CandidateRepairStopReason.ATTEMPTS_EXHAUSTED:
         return (
             CandidateRepairOrchestrationStatus.

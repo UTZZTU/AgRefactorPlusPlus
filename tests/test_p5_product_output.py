@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from argparse import Namespace
 from contextlib import redirect_stdout
+from dataclasses import replace
 from decimal import Decimal
 import io
 import json
@@ -227,6 +228,98 @@ class P5ProductOutputTests(unittest.TestCase):
             self.assertEqual(summary["status"], "accepted")
             self.assertEqual(summary["usage"]["tokens"], 32418)
             self.assertEqual(summary["cost_estimation_quality"], "approximate")
+
+    def _validation_summary(self, validations, diagnostic_events=()):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            identity = self._identity(root)
+            identity["suites"][1]["evaluation_status"] = None
+            (root / "execution_identity.json").write_text(
+                json.dumps(identity), encoding="utf-8"
+            )
+            (root / "refactor" / "orchestration_result.json").write_text(
+                json.dumps({"result": {
+                    "initial_validation": validations[0],
+                    "candidate_validations": validations[1:],
+                    "metadata": {"diagnostic_events": list(diagnostic_events)},
+                }}),
+                encoding="utf-8",
+            )
+            result = replace(
+                self._result(),
+                status=RunStatus.FAILED,
+                phases=(PhaseResult(
+                    phase=RunPhase.REFACTOR,
+                    status=PhaseStatus.FAILED,
+                    metadata={"accepted": False,
+                              "last_validation_state": "review_required"},
+                ),),
+            )
+            return build_product_summary(result, artifact_root=root)
+
+    def test_terminal_csynth_failure_uses_actual_stage_and_review_route(self):
+        for kind in ("timeout", "unknown"):
+            with self.subTest(kind=kind):
+                summary = self._validation_summary([{
+                    "validation_id": "validation-1",
+                    "final_state": "review_required",
+                    "steps": [
+                        {"state": "public_evaluation", "source_blocking": False,
+                         "transition": {"kind": "advance"}},
+                        {"state": "csynth", "source_blocking": True,
+                         "route_action": "review_unknown",
+                         "transition": {"kind": "require_review"}},
+                    ],
+                }], [{"validation_id": "validation-1", "failure_classes": [kind],
+                     "owner": "unknown"}])
+                self.assertEqual(summary["status"], "rejected")
+                self.assertEqual(summary["failed_stage"], "csynth")
+                self.assertEqual(summary["validation"]["csynth"], "failed")
+                self.assertEqual(summary["reason_code"], kind)
+                self.assertEqual(summary["failure_owner"], "unknown")
+                self.assertEqual(summary["route_action"], "review_unknown")
+                self.assertTrue(summary["review_required"])
+
+    def test_public_execution_does_not_prove_csynth_success(self):
+        summary = self._validation_summary([{
+            "validation_id": "validation-1", "final_state": "review_required",
+            "steps": [{"state": "public_evaluation", "source_blocking": True,
+                       "route_action": "review_unknown"}],
+        }])
+        self.assertEqual(summary["failed_stage"], "public")
+        self.assertEqual(summary["validation"]["csynth"], "not_run")
+        self.assertTrue(summary["review_required"])
+
+    def test_latest_validation_supersedes_previous_synthesis_and_failures(self):
+        summary = self._validation_summary([
+            {"validation_id": "validation-old", "steps": [
+                {"state": "csynth", "source_blocking": False,
+                 "transition": {"kind": "advance"}},
+                {"state": "hidden_evaluation", "source_blocking": True},
+            ]},
+            {"validation_id": "validation-new", "final_state": "review_required",
+             "steps": [{"state": "preflight", "source_blocking": True,
+                        "route_action": "review_unknown"}]},
+        ], [{"validation_id": "validation-old", "owner": "candidate",
+             "failure_classes": ["functional_mismatch"]}])
+        self.assertEqual(summary["failed_stage"], "preflight")
+        self.assertEqual(summary["validation"]["csynth"], "not_run")
+        self.assertTrue(summary["review_required"])
+        self.assertEqual(summary["reason_code"], "preflight_validation_unknown")
+
+    def test_explicit_csynth_advance_remains_passed_when_later_stage_fails(self):
+        summary = self._validation_summary([{
+            "validation_id": "validation-1", "final_state": "review_required",
+            "steps": [
+                {"state": "csynth", "source_blocking": False,
+                 "transition": {"kind": "advance"}},
+                {"state": "cosim", "source_blocking": True,
+                 "route_action": "review_unknown"},
+            ],
+        }])
+        self.assertEqual(summary["failed_stage"], "public_cosim")
+        self.assertEqual(summary["validation"]["csynth"], "passed")
+        self.assertTrue(summary["review_required"])
 
     def test_summary_hides_hidden_and_operator_paths(self):
         with tempfile.TemporaryDirectory() as temp:

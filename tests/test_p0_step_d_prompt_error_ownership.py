@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
@@ -365,21 +367,23 @@ class StepDStructuralContractTests(unittest.TestCase):
 class StepDErrorOwnershipTests(unittest.TestCase):
     def test_compile_diagnostic_owns_testbench_error(self):
         owner = tb_coverage._classify_compile_failure_owner(
-            "testbench.cpp:12:3: error: missing symbol"
+            "generated_driver.cc:12:3: error: missing symbol",
+            {"generated_driver.cc": "testbench"},
         )
         self.assertEqual(owner, "testbench")
 
-    def test_golden_side_run_failure_owns_testbench(self):
+    def test_unstructured_golden_text_keeps_ownership_unknown(self):
         owner, action = tb_coverage._classify_run_failure_owner(
             "[TB] WARNING: the golden reference left the fallback port unwritten.\n"
             "[TB] FAIL fallback[0]: golden=-999 candidate=0\n"
         )
-        self.assertEqual(owner, "testbench")
-        self.assertEqual(action, "repair_testbench")
+        self.assertEqual(owner, "unknown")
+        self.assertEqual(action, "review_unknown")
 
     def test_compile_diagnostic_owns_stub_error(self):
         owner = tb_coverage._classify_compile_failure_owner(
-            "refactor_code.cpp:4:7: error: bad return"
+            "temporary_impl.cc:4:7: error: bad return",
+            {"temporary_impl.cc": "stub"},
         )
         self.assertEqual(owner, "stub")
 
@@ -471,7 +475,7 @@ class StepDErrorOwnershipTests(unittest.TestCase):
             patch.object(
                 tb_optimizer,
                 "_request_cpp_artifact",
-                side_effect=[TB_ONE, STUB, STUB],
+                side_effect=[TB_ONE, STUB, STUB, STUB, STUB, STUB],
             ) as request,
             patch.object(
                 tb_optimizer,
@@ -500,7 +504,7 @@ class StepDErrorOwnershipTests(unittest.TestCase):
         ]
         self.assertEqual(
             kinds,
-            ["testbench", "stub", "empty_stub"],
+            ["testbench", "stub", "empty_stub", "empty_stub", "empty_stub", "empty_stub"],
         )
         self.assertFalse(result["synth_ok"])
         self.assertEqual(
@@ -567,6 +571,53 @@ class StepDErrorOwnershipTests(unittest.TestCase):
             result["rounds"][1]["ownership_action"],
             "regenerate_stub",
         )
+
+
+class HiddenQualificationExceptionArtifactsTests(unittest.TestCase):
+    def test_frozen_abi_probe_can_be_repaired_without_rewriting_testbench(self):
+        first_probe = "void process_top_hls(){}"
+        second_probe = "void process_top_hls(){volatile int observed=1;}"
+        rounds = [{"status": "ok", "cov_pct": 100.0, "round": 1, "tb_code": TB_ONE, "stub_code": STUB, "frozen_public_hls_decl": FROZEN_DECL}]
+        with patch.object(tb_optimizer, "_request_cpp_artifact", side_effect=[first_probe, second_probe]) as request, patch.object(tb_optimizer, "_synth_check", side_effect=[(False, "unused port marker"), (True, "")]):
+            result = tb_optimizer._finalize_trajectory(
+                object(), rounds, False, 0,
+                expected_hls_name=CANDIDATE_NAME, orig_code="void process_top(){}",
+                emit_final_text=False, allow_abi_correction=False, synth_retry_budget=3,
+            )
+        self.assertTrue(result["synth_ok"])
+        self.assertEqual(result["frozen_public_hls_decl"], FROZEN_DECL)
+        self.assertEqual(result["best_tb"], TB_ONE)
+        self.assertEqual([call.kwargs["artifact_kind"] for call in request.call_args_list], ["empty_stub", "empty_stub"])
+        prompt = request.call_args_list[1].args[1]
+        self.assertIn("unused port marker", prompt)
+        self.assertIn(first_probe, prompt)
+
+    def test_empty_stub_synthesis_uses_shared_default_timeout(self):
+        from agrefactor.config.tool_timeouts import DEFAULT_CSYNTH_TIMEOUT_S
+        with tempfile.TemporaryDirectory() as root, patch.object(tb_optimizer.tools.csynth, "run_csynth", return_value=("succeeded", "")) as synth:
+            passed, _ = tb_optimizer._synth_check("void trial(){}", "trial", root)
+        self.assertTrue(passed)
+        self.assertEqual(synth.call_args.kwargs["timelimit"], DEFAULT_CSYNTH_TIMEOUT_S)
+        self.assertEqual(DEFAULT_CSYNTH_TIMEOUT_S, 1200)
+
+    def test_hidden_qualification_retains_exception_chain_only_for_operator(self):
+        def fail(**kwargs):
+            try:
+                raise ValueError("held-out diagnostic marker")
+            except ValueError as exc:
+                raise RuntimeError("generation failed") from exc
+
+        with tempfile.TemporaryDirectory() as root, patch.object(tb_optimizer, "run_trajectory", side_effect=fail):
+            with self.assertRaises(tb_optimizer.TestbenchGenerationExhausted) as caught:
+                tb_optimizer.make_golden_hidden_tb(
+                    "void source_top(){}", "source_top", "void trial_top();",
+                    M=1, K=1, artifact_root=root,
+                )
+            artifact = json.loads((Path(root) / "trajectory_000/exception.json").read_text())
+            self.assertEqual(artifact["evidence_view"], "operator_full")
+            self.assertEqual(artifact["error_type"], "RuntimeError")
+            self.assertIn("held-out diagnostic marker", artifact["traceback"])
+            self.assertNotIn("held-out diagnostic marker", str(caught.exception))
 
 
 if __name__ == "__main__":

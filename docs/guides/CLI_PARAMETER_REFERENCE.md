@@ -102,9 +102,9 @@ Thinking       → enabled
 |---|---:|---:|---|
 | `--max-testbench-repairs` | 3 | 1..20 | Public Testbench repair |
 | `--max-candidate-repairs` | 3 | 1..20 | Refactor Candidate repair |
-| `--csim-timeout-s` | 120 | 1..600 | 单次 CSIM |
-| `--csynth-timeout-s` | 600 | 1..3600 | 单次 CSYNTH |
-| `--cosim-timeout-s` | 900 | 1..7200 | 单次 Public RTL COSIM |
+| `--csim-timeout-s` | 900 | 1..900 | 单次 CSIM（15 分钟） |
+| `--csynth-timeout-s` | 2700 | 1..3600 | 单次 CSYNTH（45 分钟） |
+| `--cosim-timeout-s` | 4500 | 1..7200 | 单次 Public RTL COSIM（75 分钟） |
 | `--cosim-policy` | `required` | `required/off` | `off` 仅用于开发，表示未完成完整硬件验证 |
 
 当前统一资格顺序为：

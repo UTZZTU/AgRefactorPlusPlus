@@ -30,8 +30,9 @@ hidden_tests=auto
 test_generation_profile=lightweight
 max_testbench_repairs=3
 max_candidate_repairs=3
-csim_timeout_s=120
-csynth_timeout_s=600
+csim_timeout_s=900
+csynth_timeout_s=2700
+cosim_timeout_s=4500
 ```
 
 完整参数见 [CLI 参数参考](CLI_PARAMETER_REFERENCE.md)。
@@ -142,8 +143,8 @@ python -m agrefactor.cli refactor \
   kernel.cpp \
   --top process_top \
   --model deepseek-v4-flash \
-  --csim-timeout-s 120 \
-  --csynth-timeout-s 600 \
+  --csim-timeout-s 900 \
+  --csynth-timeout-s 2700 \
   --max-llm-calls 64 \
   --max-tool-calls 128 \
   --max-wall-time-s 7200

@@ -15,6 +15,7 @@ from typing import Any
 from autogen.agentchat.group import ContextVariables
 
 from agrefactor.config import (
+    DEFAULT_CSIM_TIMEOUT_S,
     EvaluationSplit,
     TargetProfile,
 )
@@ -279,10 +280,12 @@ class CsimStageInputs:
     original_code: str
     candidate_code: str
     suite_testbench_codes: Mapping[str, str]
-    timelimit: int = 60
+    timelimit: int = DEFAULT_CSIM_TIMEOUT_S
     execution_backend: str = "host_differential"
     candidate_top_function: str | None = None
     target_profile: TargetProfile | None = None
+    extra_sources: tuple[str, ...] = ()
+    reference_top_function: str | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -588,6 +591,8 @@ class CsimValidationStageHandler:
                 parents=True,
                 exist_ok=True,
             )
+            if context.task.source_package is not None:
+                context.task.source_package.stage_into(suite_work_dir)
             variables = ContextVariables(
                 data={
                     "orig_code": self._inputs.original_code,
@@ -612,6 +617,7 @@ class CsimValidationStageHandler:
                         if suite.runtime_contract is None
                         else dict(suite.runtime_contract)
                     ),
+                    "csim_extra_sources": self._inputs.extra_sources,
                     "csim_preflight_authority": (
                         _native_csim_preflight_authority(
                             self._inputs,
@@ -661,6 +667,42 @@ class CsimValidationStageHandler:
                     result,
                     report_id=component_id,
                 )
+
+                if (self._split is EvaluationSplit.PUBLIC
+                        and self._inputs.reference_top_function is not None
+                        and self._inputs.execution_backend == "native_vitis"
+                        and not result.evidence.timed_out
+                        and result.legacy_status in {"csim_failed", "csim_execution_failed"}
+                        and any(item.blocking and item.owner is FeedbackOwner.UNKNOWN for item in report.items)):
+                    invocation = self._read_invocation(suite_work_dir / "csim_invocation.json") or {}
+                    execution = invocation.get("execution", {})
+                    if execution.get("status") not in {"launch_error", "configuration_error"} and execution.get("returncode") is not None:
+                        from flow.tools.vitis_csim import _original_isolation_evidence, _write_json
+
+                        isolation = _original_isolation_evidence(
+                            original_code=self._inputs.original_code,
+                            testbench_code=self._inputs.suite_testbench_codes[suite.suite_id],
+                            candidate_code=self._inputs.candidate_code,
+                            candidate_top_function=self._inputs.candidate_top_function or context.task.kernel_name,
+                            identity={"suite_id_sha256": sha256(suite.suite_id.encode("utf-8")).hexdigest()},
+                            budget=context.budget, source_root=str(suite_work_dir),
+                            extra_sources=tuple(str(suite_work_dir / name) for name in self._inputs.extra_sources),
+                            compile_flags=context.task.target.compile_flags,
+                            original_top_function=self._inputs.reference_top_function,
+                            keep_dir=str(suite_work_dir / "original_reference_qualification"),
+                        )
+                        _write_json(suite_work_dir / "public_reference_qualification.json", isolation)
+                        if isolation.get("status") == "passed":
+                            report = FeedbackReport(
+                                report_id=report.report_id, source=report.source,
+                                items=tuple(self._copy_item(
+                                    item, stage=FeedbackStage.CSIM, category=None, owner=None,
+                                    metadata_update={"owner_authority": "public_reference_qualified",
+                                                     "repair_eligible": True, "evidence_complete": True,
+                                                     "tool_launched": True},
+                                ) if item.owner is FeedbackOwner.UNKNOWN else item for item in report.items),
+                                source_evidence=report.source_evidence, metadata=report.metadata,
+                            )
 
             component_reports.append(report)
             stop_reason = self._stop_reason(report)
@@ -901,11 +943,37 @@ class CsimValidationStageHandler:
                     stage = FeedbackStage.CSIM
                     metadata_update.update(classification)
                 else:
-                    metadata_update["owner_authority"] = "unknown"
+                    metadata_update.update(
+                        {
+                            "owner_authority": "unknown",
+                            "functional_mismatch_authorized": False,
+                            "failure_reason": (
+                                "native_nonzero_without_deterministic_runtime_evidence"
+                            ),
+                        }
+                    )
             else:
-                category = FeedbackCategory.FUNCTIONAL_MISMATCH
-                owner = FeedbackOwner.CANDIDATE
-                stage = FeedbackStage.CSIM
+                evaluated_cases = result.evidence.evaluated_cases
+                if evaluated_cases > 0:
+                    category = FeedbackCategory.FUNCTIONAL_MISMATCH
+                    owner = FeedbackOwner.CANDIDATE
+                    stage = FeedbackStage.CSIM
+                    metadata_update.update(
+                        {
+                            "functional_mismatch_authorized": True,
+                            "owner_authority": "evaluated_case_failure",
+                        }
+                    )
+                else:
+                    metadata_update.update(
+                        {
+                            "functional_mismatch_authorized": False,
+                            "owner_authority": "unknown",
+                            "failure_reason": (
+                                "nonzero_return_without_evaluated_cases"
+                            ),
+                        }
+                    )
         elif result.legacy_status == "tb_compile_failed":
             default_kind = classify_compile_failure(
                 result.diagnostic
@@ -1044,6 +1112,15 @@ class CsimValidationStageHandler:
             stage = FeedbackStage.CSIM
             summary = "CSIM simulation could not be launched"
 
+        detail = json.dumps(
+            {
+                "exception_type": exception_type,
+                "compile_execution": compile_execution,
+                "simulation_execution": simulation_execution,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )[-12000:]
         evidence_view = (
             "agent_safe"
             if self._split is EvaluationSplit.PUBLIC
@@ -1056,7 +1133,7 @@ class CsimValidationStageHandler:
             severity=FeedbackSeverity.FATAL,
             owner=owner,
             summary=summary,
-            detail=None,
+            detail=detail,
             source=self.source,
             evidence_ref=None,
             metadata={

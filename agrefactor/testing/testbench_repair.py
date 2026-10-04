@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -322,6 +322,8 @@ class TestbenchRepairLoop:
         candidate_top_function: str | None = None,
         runtime_feedback: FeedbackReport | None = None,
         failure_state: ValidationState | None = None,
+        prior_failure_summaries: tuple[str, ...] = (),
+        before_repair: Callable[[], None] | None = None,
     ) -> TestbenchRepairResult:
         root = Path(work_dir)
         root.mkdir(parents=True, exist_ok=True)
@@ -355,6 +357,7 @@ class TestbenchRepairLoop:
             budget=budget,
             original_top_function=original_top,
             candidate_top_function=candidate_top,
+            task=task,
         )
         initial_after = self._budget_snapshot(budget)
         attempts.append(
@@ -412,7 +415,7 @@ class TestbenchRepairLoop:
 
         latest = initial
         last_repair_error: str | None = None
-        prior_attempt_summaries: list[str] = []
+        prior_attempt_summaries: list[str] = list(prior_failure_summaries)
 
         for attempt_number in range(
             1,
@@ -426,13 +429,19 @@ class TestbenchRepairLoop:
                 candidate_code=candidate,
                 preflight=latest,
                 prior_attempt_summaries=tuple(
-                    prior_attempt_summaries
+                    (
+                        (self._preflight_failure_summary(0, initial),)
+                        if attempt_number > 1 and not initial.succeeded
+                        else ()
+                    ) + tuple(prior_attempt_summaries)
                 ),
                 task=task,
                 runtime_feedback=runtime_feedback,
                 failure_state=failure_state,
             )
 
+            if before_repair is not None:
+                before_repair()
             repair_attempts_used += 1
             attempt_before = self._budget_snapshot(budget)
             audit_count_before = self._audit_event_count()
@@ -550,6 +559,7 @@ class TestbenchRepairLoop:
                 budget=budget,
                 original_top_function=original_top,
                 candidate_top_function=candidate_top,
+                task=task,
             )
             observation = self._new_model_observation(
                 audit_count_before
@@ -640,12 +650,21 @@ class TestbenchRepairLoop:
         budget: BudgetManager | None,
         original_top_function: str | None,
         candidate_top_function: str | None,
+        task: TaskSpec,
     ) -> TestbenchPreflightResult:
+        work_dir = root / f"attempt_{index:02d}"
+        extra_sources: tuple[str, ...] = ()
+        if task.source_package is not None:
+            task.source_package.stage_into(work_dir)
+            extra_sources = tuple(
+                str(path) for path in task.source_package.extra_relative
+            )
         kwargs = {
-            "work_dir": root / f"attempt_{index:02d}",
+            "work_dir": work_dir,
             "testbench_code": testbench_code,
             "original_code": original_code,
             "candidate_code": candidate_code,
+            "extra_sources": extra_sources,
         }
         if original_top_function is not None:
             kwargs["original_top_function"] = original_top_function

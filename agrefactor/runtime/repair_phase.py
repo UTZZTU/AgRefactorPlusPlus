@@ -11,7 +11,7 @@ from pathlib import Path
 import tempfile
 from typing import Any
 
-from agrefactor.config import DEFAULT_COSIM_TIMEOUT_S, validate_cosim_timeout_s
+from agrefactor.config import DEFAULT_COSIM_TIMEOUT_S, DEFAULT_CSIM_TIMEOUT_S, DEFAULT_CSYNTH_TIMEOUT_S, validate_cosim_timeout_s
 from agrefactor.models import CandidateModelAdapter
 
 from .candidate_repair_integration import (
@@ -40,8 +40,8 @@ class CandidateRepairPhaseConfig:
     request: CandidateRepairOrchestrationRequest
     work_root: str | os.PathLike[str]
     artifact_root: str | os.PathLike[str]
-    csynth_timelimit: int = 300
-    csim_timelimit: int = 60
+    csynth_timelimit: int = DEFAULT_CSYNTH_TIMEOUT_S
+    csim_timelimit: int = DEFAULT_CSIM_TIMEOUT_S
     cosim_timelimit: int = DEFAULT_COSIM_TIMEOUT_S
     cosim_policy: str = "required"
     shadow_advisor: Any | None = None
@@ -471,6 +471,7 @@ class CandidateRepairPhase:
                         0,
                     )
                 ),
+                "provider_failure_count": result.metadata.get("provider_failure_count", 0),
                 "phase_artifact_manifest": (
                     "refactor/artifact_manifest.json"
                 ),
@@ -489,8 +490,8 @@ def build_candidate_repair_phase(
     request: CandidateRepairOrchestrationRequest,
     work_root: str | os.PathLike[str],
     artifact_root: str | os.PathLike[str],
-    csynth_timelimit: int = 300,
-    csim_timelimit: int = 60,
+    csynth_timelimit: int = DEFAULT_CSYNTH_TIMEOUT_S,
+    csim_timelimit: int = DEFAULT_CSIM_TIMEOUT_S,
     cosim_timelimit: int = DEFAULT_COSIM_TIMEOUT_S,
     cosim_policy: str = "required",
     handler_factory: (
@@ -530,11 +531,10 @@ def _phase_status(
         is CandidateRepairOrchestrationStatus.ACCEPTED
     ):
         return PhaseStatus.SUCCEEDED
-    if (
-        status
-        is CandidateRepairOrchestrationStatus.
-        VALIDATOR_ERROR
-    ):
+    if status in {
+        CandidateRepairOrchestrationStatus.VALIDATOR_ERROR,
+        CandidateRepairOrchestrationStatus.PROVIDER_ERROR,
+    }:
         return PhaseStatus.ERROR
     return PhaseStatus.FAILED
 

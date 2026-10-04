@@ -282,12 +282,32 @@ def build_testbench_repair_prompt(
                 name="candidate_kernel",
                 content=request.candidate_code,
             ),
+            *(
+                (
+                    PromptArtifact(
+                        name="source_package_context",
+                        content="\n\n".join(
+                            f"// {path}\n{content}"
+                            for path, content in request.task.source_package.context_files()
+                        ),
+                    ),
+                )
+                if request.task.source_package is not None
+                and request.task.source_package.context_files()
+                else ()
+            ),
         ),
         modification_scope=ModificationScope(
             editable_artifacts=("testbench",),
             read_only_artifacts=(
                 "original_program",
                 "candidate_kernel",
+                *(
+                    ("source_package_context",)
+                    if request.task.source_package is not None
+                    and request.task.source_package.context_files()
+                    else ()
+                ),
             ),
             forbidden_actions=_TESTBENCH_FORBIDDEN_ACTIONS,
         ),

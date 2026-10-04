@@ -14,13 +14,16 @@ uncovered_lines, run_returncode. status is one of:
 """
 
 import os
+import gzip
+import json
 import re
 import shutil
 import subprocess
 import tempfile
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
+from pathlib import Path
 
-from agrefactor.cpp_interface import extract_top_interface
+from agrefactor.cpp_interface import extract_top_interface, inspect_top_entry
 
 from agrefactor.reference_source import isolate_reference_program_entry
 
@@ -55,6 +58,32 @@ ORIGINAL_ONLY_COMPILE_BASE = [
     "original_only_candidate.cpp",
     "-o", "original_only",
 ]
+
+
+def _is_function_template(
+    source: str,
+    function_name: str,
+    *,
+    source_root: str | None = None,
+    compile_flags: tuple[str, ...] = (),
+) -> bool:
+    """Return compiler evidence that the Original top is a function template."""
+    facts = inspect_top_entry(
+        source,
+        function_name,
+        source_path=str(Path(source_root) / "orig_code.cpp") if source_root else None,
+        include_dirs=(source_root,) if source_root else (),
+        compile_flags=compile_flags,
+    )
+    return (
+        facts.get("status") in {"confirmed", "ambiguous"}
+        and any(item.get("kind") == "template" for item in facts.get("entries", ()))
+    )
+
+
+def _candidate_definition(stub_code: str) -> str:
+    """Remove the harness include from a stub before combined-TU assembly."""
+    return re.sub(r"(?m)^\s*#include\s+\"testbench\.cpp\"\s*\n?", "", stub_code, count=1)
 
 _LINES_RE = re.compile(r"Lines executed:\s*([\d.]+)%\s+of\s+(\d+)")
 
@@ -124,33 +153,36 @@ def _parse_gcov_file(path: str) -> dict[int, int]:
 
 
 _COMPILE_OWNER_ACTION = {
+    "configuration": "review_configuration",
     "testbench": "repair_testbench",
     "stub": "regenerate_stub",
     "original": "review_original",
     "abi": "repair_abi_testbench_stub",
     "toolchain": "review_toolchain",
-    "unknown": "repair_testbench_stub",
+    "unknown": "review_unknown",
 }
 
 
-def _classify_compile_failure_owner(stderr: str) -> str:
+def _classify_compile_failure_owner(
+    stderr: str,
+    source_roles: Mapping[str, str] | None = None,
+) -> str:
     """Classify a real compiler/linker failure from emitted diagnostics."""
 
     text = str(stderr or "")
     lowered = text.lower()
+    if "file not found" in lowered or "no such file or directory" in lowered:
+        return "configuration"
     if "undefined reference" in lowered or "multiple definition" in lowered:
         return "abi"
 
     files: set[str] = set()
+    roles = dict(source_roles or {})
     for line in text.splitlines():
         lowered_line = line.lower()
         if "error:" not in lowered_line and "fatal error:" not in lowered_line:
             continue
-        for filename, owner in (
-            ("testbench.cpp", "testbench"),
-            ("refactor_code.cpp", "stub"),
-            ("orig_code.cpp", "original"),
-        ):
+        for filename, owner in roles.items():
             if filename in line:
                 files.add(owner)
 
@@ -161,6 +193,44 @@ def _classify_compile_failure_owner(stderr: str) -> str:
     if "collect2:" in lowered or "ld returned" in lowered:
         return "abi"
     return "unknown"
+
+
+def _entry_contract_failure(
+    source: str,
+    entry_name: str | None,
+    *,
+    source_root: str | None,
+    compile_flags: tuple[str, ...],
+) -> tuple[str, dict] | None:
+    """Return a generic preflight failure for an unusable Original entry."""
+
+    if not entry_name:
+        return None
+    facts = inspect_top_entry(
+        source,
+        entry_name,
+        source_path=(
+            os.path.join(source_root, "orig_code.cpp")
+            if source_root else None
+        ),
+        include_dirs=(source_root,) if source_root else (),
+        compile_flags=compile_flags,
+    )
+    entries = facts.get("entries", ())
+    if any(entry.get("linkage") == 2 for entry in entries):
+        return "internal_linkage_entry", facts
+    diagnostics = facts.get("diagnostics", ())
+    if any(
+        re.search(
+            r"(?:file not found|no such file or directory|cannot open source file|没有那个文件|找不到)",
+            str(item.get("message", "")),
+            flags=re.IGNORECASE,
+        )
+        for item in diagnostics
+        if isinstance(item, Mapping)
+    ):
+        return "missing_external_dependency", facts
+    return None
 
 
 def _finish_failure(
@@ -200,6 +270,11 @@ def check_original_execution(
     *,
     budget: Any = None,
     keep_dir: Optional[str] = None,
+    source_root: Optional[str] = None,
+    extra_sources: tuple[str, ...] = (),
+    compile_flags: tuple[str, ...] = (),
+    required_original_entry: str | None = None,
+    original_name: str | None = None,
 ) -> dict:
     """Run the generated Testbench with a no-op Candidate and sanitizers.
 
@@ -226,13 +301,70 @@ def check_original_execution(
 
     with ctx as tmp_s:
         tmp = tmp_s if isinstance(tmp_s, str) else tmp_s
+        interface = extract_top_interface(
+            tb_code + ("\n" + candidate_decl if candidate_decl else ""), candidate_name, require_definition=False,
+            source_path=os.path.join(source_root or tmp, "testbench.cpp"),
+            include_dirs=(source_root,) if source_root else (),
+            compile_flags=compile_flags,
+        )
+        declaration = interface.source_declaration if interface is not None else candidate_decl
+        result["interface_status"] = "resolved" if interface is not None else "unknown"
+        body = "" if interface is not None and interface.canonical_result_type == "void" else "return {};"
+        original_name = original_name or (
+            candidate_name[:-4] if candidate_name.endswith("_hls") else None
+        )
+        entry_failure = _entry_contract_failure(
+            orig_code,
+            original_name,
+            source_root=source_root,
+            compile_flags=compile_flags,
+        )
+        if entry_failure is not None:
+            reason, entry_facts = entry_failure
+            result.update(
+                status="entry_contract_failed",
+                failure_owner="configuration",
+                next_action="review_configuration",
+                diagnostic_kind=reason,
+                source_entry=entry_facts,
+                failure_evidence_source="libclang source entry contract",
+            )
+            return result
+        template_original = bool(
+            original_name
+            and _is_function_template(
+                orig_code,
+                original_name,
+                source_root=source_root,
+                compile_flags=compile_flags,
+            )
+        )
+        stub = '#include "testbench.cpp"\n'
+        if declaration:
+            stub += declaration.rstrip(";").strip() + " {" + body + "}\n"
+        if template_original:
+            # Function templates must be instantiated where their definition
+            # is visible. Keep the Original and Testbench in one TU and omit
+            # the separate Original object from the compile command below.
+            reference = isolate_reference_program_entry(
+                orig_code,
+                top_function=original_name,
+                testbench_code=tb_code,
+                source_path=os.path.join(source_root or tmp, "orig_code.cpp"),
+                include_dirs=(source_root,) if source_root else (),
+                compile_flags=compile_flags,
+            )
+            stub = (
+                '#include "orig_code.cpp"\n'
+                '#include "testbench.cpp"\n'
+                + _candidate_definition(stub)
+            )
+        else:
+            reference = isolate_reference_program_entry(orig_code)
         files = {
-            "orig_code.cpp": isolate_reference_program_entry(orig_code),
+            "orig_code.cpp": reference,
             "testbench.cpp": tb_code,
-            "original_only_candidate.cpp": _original_only_candidate_stub(
-                candidate_decl,
-                candidate_name,
-            ),
+            "original_only_candidate.cpp": stub,
         }
         for name, content in files.items():
             with open(os.path.join(tmp, name), "w", encoding="utf-8") as file:
@@ -241,6 +373,15 @@ def check_original_execution(
         compiled = False
         for include_flag in (None, f"-I{XILINX_INCLUDE_FALLBACK}"):
             cmd = list(ORIGINAL_ONLY_COMPILE_BASE)
+            if required_original_entry is not None:
+                cmd.insert(1, "--coverage")
+            if template_original:
+                cmd.remove("testbench.cpp")
+                cmd.remove("orig_code.cpp")
+            else:
+                cmd.remove("testbench.cpp")
+            cmd[1:1] = [*compile_flags, *([f"-I{source_root}"] if source_root else [])]
+            cmd.extend(extra_sources)
             if include_flag is not None:
                 cmd.insert(1, include_flag)
             try:
@@ -266,13 +407,30 @@ def check_original_execution(
             result["compile_stderr"] = completed.stderr[-4000:]
 
         if not compiled:
-            owner = _classify_compile_failure_owner(result["compile_stderr"])
+            owner = _classify_compile_failure_owner(
+                result["compile_stderr"],
+                {
+                    "testbench.cpp": "testbench",
+                    # For template tops, orig_code.cpp also contains the
+                    # generated bridge and its call shape comes from the
+                    # Testbench. Attribute bridge mismatches to that contract
+                    # so the existing Testbench repair loop can correct it.
+                    "orig_code.cpp": "testbench" if template_original else "original",
+                    "original_only_candidate.cpp": "stub",
+                },
+            )
             result.update(
                 status="compile_failed",
                 failure_owner=owner,
                 next_action=(
                     "repair_testbench"
-                    if owner in {"testbench", "unknown", "abi"}
+                    if owner in {"testbench", "abi"}
+                    else "review_unknown"
+                    if owner == "unknown"
+                    else "regenerate_stub"
+                    if owner == "stub"
+                    else "review_toolchain"
+                    if owner == "toolchain"
                     else "review_original"
                 ),
                 failure_evidence_source="original-only g++ diagnostics",
@@ -331,6 +489,40 @@ def check_original_execution(
             )
             return result
 
+        if required_original_entry is not None:
+            result["original_entry_executed"] = False
+            expected_names = {
+                required_original_entry,
+                f"agrefactor_reference_impl_{required_original_entry}",
+            }
+            gcov_inputs = list(Path(tmp).glob("*-orig_code.gcda"))
+            if template_original:
+                gcov_inputs.extend(Path(tmp).glob("*-original_only_candidate.gcda"))
+            for path in gcov_inputs:
+                _consume_tool_launch(budget)
+                coverage = subprocess.run(
+                    ["gcov", "--json-format", str(path)], cwd=tmp,
+                    capture_output=True, text=True, timeout=GCOV_TIMEOUT,
+                )
+                if coverage.returncode != 0:
+                    continue
+                for report in Path(tmp).glob("*.gcov.json.gz"):
+                    with gzip.open(report, "rt", encoding="utf-8") as handle:
+                        facts = json.load(handle)
+                    for unit in facts.get("files", []):
+                        if Path(unit.get("file", "")).name != "orig_code.cpp":
+                            continue
+                        for function in unit.get("functions", []):
+                            name = str(function.get("demangled_name", "")).partition("(")[0]
+                            name = name.rsplit("::", 1)[-1]
+                            name = name.rsplit("<", 1)[0].rsplit(" ", 1)[-1]
+                            if name in expected_names and function.get("execution_count", 0) > 0:
+                                result["original_entry_executed"] = True
+            if not result["original_entry_executed"]:
+                result.update(status="original_execution_unknown", failure_owner="unknown",
+                              next_action="review_unknown", failure_evidence_source="gcov function execution evidence")
+                return result
+
         result.update(
             status="ok",
             failure_owner="none",
@@ -341,17 +533,8 @@ def check_original_execution(
 
 
 def _classify_run_failure_owner(stderr: str) -> tuple[str, str | None]:
-    """Use explicit golden-side evidence before the default stub route."""
-    lowered = str(stderr or "").lower()
-    golden_markers = (
-        "golden reference left",
-        "golden=",
-        "reference output",
-        "original output",
-    )
-    if any(marker in lowered for marker in golden_markers):
-        return "testbench", "repair_testbench"
-    return "stub", "regenerate_stub"
+    """Keep runtime ownership unknown without structured evidence."""
+    return "unknown", "review_unknown"
 
 
 def measure_coverage(
@@ -361,6 +544,10 @@ def measure_coverage(
     target_source: str = "orig_code.cpp",
     keep_dir: Optional[str] = None,
     budget: Any = None,
+    source_root: Optional[str] = None,
+    extra_sources: tuple[str, ...] = (),
+    compile_flags: tuple[str, ...] = (),
+    original_name: str | None = None,
 ) -> dict:
     """Compile, run, and measure coverage with tool-backed ownership evidence."""
 
@@ -372,6 +559,7 @@ def measure_coverage(
         "uncovered_lines": [],
         "run_returncode": None,
         "compile_stderr": "",
+        "compile_stdout": "",
         "run_stderr": "",
         "failure_owner": "none",
         "next_action": "continue_validation",
@@ -386,10 +574,41 @@ def measure_coverage(
 
     with ctx as tmp_s:
         tmp = tmp_s if isinstance(tmp_s, str) else tmp_s
+        template_original = bool(
+            original_name
+            and _is_function_template(
+                orig_code,
+                original_name,
+                source_root=source_root,
+                compile_flags=compile_flags,
+            )
+        )
+        refactor_contents = stub_code
+        compile_sources = list(SOURCES)
+        if template_original:
+            # The template definition and its instantiating testbench must
+            # share a translation unit. The candidate stub remains the final
+            # definition in that unit.
+            original_contents = isolate_reference_program_entry(
+                orig_code,
+                top_function=original_name,
+                testbench_code=tb_code,
+                source_path=os.path.join(source_root or tmp, "orig_code.cpp"),
+                include_dirs=(source_root,) if source_root else (),
+                compile_flags=compile_flags,
+            )
+            refactor_contents = (
+                '#include "orig_code.cpp"\n'
+                '#include "testbench.cpp"\n'
+                + _candidate_definition(stub_code)
+            )
+            compile_sources = ["refactor_code.cpp"]
+        else:
+            original_contents = orig_code
         contents = {
-            "orig_code.cpp": orig_code,
+            "orig_code.cpp": original_contents,
             "testbench.cpp": tb_code,
-            "refactor_code.cpp": stub_code,
+            "refactor_code.cpp": refactor_contents,
         }
         for name, content in contents.items():
             with open(
@@ -404,7 +623,18 @@ def measure_coverage(
             None,
             f"-I{XILINX_INCLUDE_FALLBACK}",
         ):
-            cmd = list(COMPILE_BASE)
+            cmd = [
+                "g++",
+                "-O0",
+                "-g",
+                "--coverage",
+                "-Wno-unknown-pragmas",
+                *compile_sources,
+                "-o",
+                "csim_cov",
+            ]
+            cmd[1:1] = [*compile_flags, *([f"-I{source_root}"] if source_root else [])]
+            cmd.extend(extra_sources)
             if include_flag is not None:
                 cmd.insert(1, include_flag)
             try:
@@ -430,11 +660,17 @@ def measure_coverage(
                 compiled = True
                 res["compile_stderr"] = ""
                 break
-            res["compile_stderr"] = completed.stderr[-2000:]
+            res["compile_stderr"] = str(getattr(completed, "stderr", ""))[-2000:]
+            res["compile_stdout"] = str(getattr(completed, "stdout", ""))[-2000:]
 
         if not compiled:
             owner = _classify_compile_failure_owner(
-                res["compile_stderr"]
+                res["compile_stderr"],
+                {
+                    "testbench.cpp": "testbench",
+                    "orig_code.cpp": "original",
+                    "refactor_code.cpp": "stub",
+                },
             )
             return _finish_failure(
                 res,
@@ -457,8 +693,11 @@ def measure_coverage(
             )
             res["run_returncode"] = completed.returncode
             res["run_stderr"] = completed.stderr[-2000:]
+            res["run_stdout"] = completed.stdout[-2000:]
             if completed.returncode != 0:
-                owner, action = _classify_run_failure_owner(completed.stderr)
+                owner, action = _classify_run_failure_owner(
+                    completed.stderr + "\n" + completed.stdout
+                )
                 return _finish_failure(
                     res,
                     status="run_failed",
@@ -499,6 +738,13 @@ def measure_coverage(
             ),
             None,
         )
+        if target_gcda is None and template_original:
+            # Combined template translation units record the original source
+            # under the TU's gcda filename; gcov still reports orig_code.cpp.
+            target_gcda = next(
+                (item for item in gcda_files if item.endswith("-refactor_code.gcda") or item == "refactor_code.gcda"),
+                None,
+            )
         if target_gcda is None:
             return _finish_failure(
                 res,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from hashlib import sha256
 import json
 from typing import Any
 
@@ -854,8 +855,15 @@ def _operator_feedback_report_summary(
     if not isinstance(report, FeedbackReport):
         raise TypeError("report must be a FeedbackReport")
 
+    encoded_source = json.dumps(
+        report.source_evidence,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "report_id": _redacted_hidden_report_id(step_id),
         "source": report.source,
         "item_count": len(report.items),
@@ -867,6 +875,7 @@ def _operator_feedback_report_summary(
                 "severity": item.severity.value,
                 "owner": item.owner.value,
                 "blocking": item.blocking,
+                "diagnostic_metadata": _operator_diagnostic_metadata(item),
             }
             for item in report.items
         ],
@@ -874,7 +883,54 @@ def _operator_feedback_report_summary(
         "item_identifiers_retained": False,
         "item_text_retained": False,
         "source_evidence_retained": False,
+        "source_evidence_sha256": sha256(encoded_source).hexdigest(),
     }
+
+
+def _operator_diagnostic_metadata(item: FeedbackItem) -> dict[str, Any]:
+    """Project bounded diagnostic metadata without hidden source text."""
+
+    metadata = dict(item.metadata)
+    projected: dict[str, Any] = {}
+
+    def safe_scalar(value: Any) -> Any:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str) and "\n" not in value and "\r" not in value and len(value) <= 160:
+            return value
+        return None
+
+    for key in (
+        "diagnostic_code",
+        "message_id",
+        "parser_rule",
+        "classification_confidence",
+        "evaluation_status",
+        "timed_out",
+        "return_code",
+        "passed_cases",
+        "failed_cases",
+        "evaluated_cases",
+        "source_redacted",
+    ):
+        value = safe_scalar(metadata.get(key))
+        if value is not None:
+            projected[key] = value
+
+    for key in ("compile_execution", "simulation_execution"):
+        execution = metadata.get(key)
+        if not isinstance(execution, Mapping):
+            continue
+        summary = {}
+        for field in ("status", "returncode", "timeout"):
+            value = safe_scalar(execution.get(field))
+            if value is not None:
+                summary[field] = value
+        if summary:
+            projected[key] = summary
+    return projected
 
 
 def _route_decision_summary(

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from autogen.agentchat.group import ContextVariables
+from agrefactor.config import DEFAULT_CSYNTH_TIMEOUT_S
 
 from agrefactor.evaluation.csynth_artifact_feedback import (
     CsynthArtifactFeedbackEvaluator,
@@ -34,7 +35,8 @@ class CsynthStageInputs:
 
     work_dir: str | os.PathLike[str]
     candidate_code: str
-    timelimit: int = 300
+    timelimit: int = DEFAULT_CSYNTH_TIMEOUT_S
+    extra_sources: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         try:
@@ -169,6 +171,7 @@ class CsynthValidationStageHandler:
                     context.task.kernel_name
                 ),
                 "target_profile": context.task.target,
+                "csynth_extra_sources": self._inputs.extra_sources,
             }
         )
         executor = (

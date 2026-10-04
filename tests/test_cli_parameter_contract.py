@@ -14,6 +14,7 @@ from agrefactor.config import (
     CSYNTH_TIMEOUT_SAFETY_CEILING,
     DEFAULT_CSIM_TIMEOUT_S,
     DEFAULT_CSYNTH_TIMEOUT_S,
+    DEFAULT_COSIM_TIMEOUT_S,
     DEFAULT_HIDDEN_COVERAGE_ROUNDS,
     DEFAULT_HIDDEN_GENERATION_TRAJECTORIES,
     DEFAULT_PUBLIC_COVERAGE_ROUNDS,
@@ -221,19 +222,22 @@ class CliParameterContractTests(unittest.TestCase):
             advanced.csynth_timelimit,
             DEFAULT_CSYNTH_TIMEOUT_S,
         )
-        self.assertEqual(CSIM_TIMEOUT_SAFETY_CEILING, 600)
+        self.assertEqual(CSIM_TIMEOUT_SAFETY_CEILING, 900)
         self.assertEqual(CSYNTH_TIMEOUT_SAFETY_CEILING, 3600)
+        self.assertEqual(DEFAULT_CSIM_TIMEOUT_S, 900)
+        self.assertEqual(DEFAULT_CSYNTH_TIMEOUT_S, 2700)
+        self.assertEqual(DEFAULT_COSIM_TIMEOUT_S, 4500)
 
     def test_timeout_ceilings_are_enforced(self):
         source_args(
             "--csim-timeout-s",
-            "600",
+            "900",
             "--csynth-timeout-s",
             "3600",
         )
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
-                source_args("--csim-timeout-s", "601")
+                source_args("--csim-timeout-s", "901")
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
                 source_args("--csynth-timeout-s", "3601")

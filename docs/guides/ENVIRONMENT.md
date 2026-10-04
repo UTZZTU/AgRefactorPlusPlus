@@ -76,7 +76,7 @@ export AGREFACTOR_VITIS_SETTINGS=/your/path/to/Xilinx/Vitis/2023.2/settings64.sh
 python -m agrefactor.cli refactor   src/heterorefactor/dfs/kernel.cpp   --top process_top   --model deepseek-v4-flash   --public-tests auto   --hidden-tests auto
 ```
 
-默认模型请求 timeout 为 240 秒；默认单次 CSIM/CSYNTH timeout 分别为 120/600 秒。完整参数见 [CLI 参数参考](CLI_PARAMETER_REFERENCE.md)。
+默认模型请求 timeout 为 240 秒；默认单次 CSIM/CSYNTH/COSIM timeout 分别为 900/2700/4500 秒（15/45/75 分钟）。完整参数见 [CLI 参数参考](CLI_PARAMETER_REFERENCE.md)。
 
 ## 输出目录
 

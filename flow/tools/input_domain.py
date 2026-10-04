@@ -15,7 +15,7 @@ import flow.tools as tools
 
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-_RETRIES = 1
+_RETRIES = 3
 
 
 def _source_parameters(
@@ -169,6 +169,8 @@ def generate_input_domain_contract(
         "Required shape: {\"dimensions\": {\"n\": {\"port\": \"n\", \"min\": 1, \"max\": 128}}, "
         "\"buffers\": {\"data\": {\"extent\": [\"n\"], \"max_elements\": 128}}}"
     )
+    initial_message = message
+    failures: list[str] = []
     last_error: Exception | None = None
     for attempt in range(_RETRIES + 1):
         try:
@@ -177,13 +179,15 @@ def generate_input_domain_contract(
             return normalize_input_domain_contract(payload, source_code=orig_code, kernel_name=kernel_name)
         except (ValueError, json.JSONDecodeError) as exc:
             last_error = exc
+            failures.append(f"Attempt {attempt}: {exc}")
             if attempt == _RETRIES:
                 break
             message = (
                 "Your previous input-domain response was invalid: "
-                f"{exc}. Re-read every top-level pointer access and fixed loop bound. "
+                + "\n".join(failures)
+                + "\nRe-read every top-level pointer access and fixed loop bound. "
                 "Use max_elements for the maximum number of top-level pointed objects accessed, "
                 "even when no scalar length parameter exists. Return one strict JSON object "
-                "matching the requested shape, with no markdown."
+                "matching the requested shape, with no markdown.\n\n" + initial_message
             )
     raise ValueError("model did not return a valid input-domain contract") from last_error

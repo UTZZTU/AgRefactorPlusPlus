@@ -21,6 +21,7 @@ def refactor_code(
 
     msg = (
         f"Here is the code to be refactored:\n{cv['curr_code']}\n\n"
+        f"Read-only source-package context (do not modify these files):\n{cv.get('source_package_context', [])}\n\n"
         f"Here is the plan you can refer to:\n{cv['plan']}\n\n"
         f"Here is the instructions you must follow, they specify the signature and constraints of the new kernel:\n{cv['tb_aligned_instruction']}\n\n"
         f"{cv['new_kernel_name']} is the new kernel name you must use to replace the original kernel {cv['kernel_name']}\n\n"

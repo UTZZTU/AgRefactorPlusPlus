@@ -449,6 +449,7 @@ class ValidationOrchestratorTests(unittest.TestCase):
                         "severity": "error",
                         "owner": "candidate",
                         "blocking": True,
+                        "diagnostic_metadata": {},
                     }
                 ],
             )
@@ -465,6 +466,7 @@ class ValidationOrchestratorTests(unittest.TestCase):
                     "item_identifiers_retained",
                     "item_text_retained",
                     "source_evidence_retained",
+                    "source_evidence_sha256",
                 },
             )
 
@@ -524,6 +526,82 @@ class ValidationOrchestratorTests(unittest.TestCase):
             self.assertFalse(
                 decision_summary["reason_retained"]
             )
+
+    def test_hidden_operator_projection_retains_typed_metadata_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trace_path = Path(directory) / "trace.jsonl"
+            hidden_item = FeedbackItem(
+                feedback_id="hidden.typed.item",
+                stage=FeedbackStage.COMPILE,
+                category=FeedbackCategory.LINK_ERROR,
+                severity=FeedbackSeverity.FATAL,
+                owner=FeedbackOwner.UNKNOWN,
+                summary="hidden link failure",
+                detail=SECRET,
+                source="test_evaluation",
+                evidence_ref=SECRET_PATH,
+                metadata={
+                    "diagnostic_code": "link_error",
+                    "parser_rule": "undefined_reference",
+                    "classification_confidence": "high",
+                    "compile_execution": {
+                        "status": "completed",
+                        "returncode": 1,
+                        "timeout": False,
+                        "stderr": SECRET,
+                    },
+                },
+            )
+            ValidationOrchestrator(
+                {
+                    ValidationState.PREFLIGHT: (
+                        lambda ctx: safe_report(
+                            "preflight", "testbench_preflight"
+                        )
+                    ),
+                    ValidationState.CSYNTH: (
+                        lambda ctx: safe_report("csynth", "csynth")
+                    ),
+                    ValidationState.HIDDEN_EVALUATION: (
+                        lambda ctx: hidden_report(item=hidden_item)
+                    ),
+                }
+            ).run(
+                make_context(
+                    make_task(hidden=True),
+                    output_path=trace_path,
+                ),
+                validation_id="validation",
+            )
+
+            events = [
+                json.loads(line)
+                for line in trace_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            feedback = next(
+                event["metadata"]["feedback_report_summary"]
+                for event in events
+                if event["event"] == "validation.feedback"
+                and event["phase"] == "hidden_evaluation"
+            )
+            self.assertEqual(
+                feedback["items"][0]["diagnostic_metadata"],
+                {
+                    "classification_confidence": "high",
+                    "compile_execution": {
+                        "returncode": 1,
+                        "status": "completed",
+                        "timeout": False,
+                    },
+                    "diagnostic_code": "link_error",
+                    "parser_rule": "undefined_reference",
+                },
+            )
+            self.assertEqual(len(feedback["source_evidence_sha256"]), 64)
+            trace = trace_path.read_text(encoding="utf-8")
+            self.assertNotIn(SECRET, trace)
+            self.assertNotIn(SECRET_PATH, trace)
 
     def test_hidden_unknown_trace_retains_redacted_review_chain(
         self,
@@ -619,6 +697,7 @@ class ValidationOrchestratorTests(unittest.TestCase):
                         "severity": "error",
                         "owner": "unknown",
                         "blocking": True,
+                        "diagnostic_metadata": {},
                     }
                 ],
             )

@@ -485,10 +485,8 @@ class ValidationStateMachine:
                 FeedbackRouteAction.REPAIR_ORIGINAL: RecoveryRole.ORIGINAL,
             }[action]
             stage = RecoveryStage(state.value)
-            owner_authority = (
-                RecoveryAuthority.LLM_ADVISORY
-                if decision.metadata.get("owner_authority") == "llm_advisory"
-                else RecoveryAuthority.DETERMINISTIC_PROVEN
+            owner_authority = RecoveryAuthority(
+                decision.metadata.get("owner_authority", "deterministic_proven")
             )
             policy_decision = self._recovery_policy.decide(
                 RecoveryRequest(

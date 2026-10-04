@@ -61,6 +61,40 @@ class CsynthFeedbackAdapterTests(unittest.TestCase):
             "operator_full",
         )
 
+    def test_success_requires_zero_completed_returncode(self) -> None:
+        invocation = base_invocation()
+        invocation["execution"]["returncode"] = 1
+
+        report = self.adapter.to_operator_report(
+            invocation=invocation,
+            report_id="contradictory-success",
+            legacy_status="succeeded",
+        )
+
+        self.assertEqual(len(report.items), 1)
+        self.assertEqual(report.items[0].category, FeedbackCategory.UNKNOWN)
+        self.assertEqual(report.items[0].owner, FeedbackOwner.UNKNOWN)
+        self.assertTrue(report.metadata["command_completion_proven"])
+        self.assertTrue(report.metadata["evidence_complete"])
+
+    def test_launch_error_remains_toolchain_owned_without_completion(self) -> None:
+        invocation = base_invocation()
+        invocation["execution"] = {
+            "status": "launch_error",
+            "returncode": None,
+            "timeout": False,
+        }
+
+        report = self.adapter.to_operator_report(
+            invocation=invocation,
+            report_id="incomplete",
+            legacy_status="csynth_failed",
+        )
+        item = report.items[0]
+
+        self.assertEqual(item.owner, FeedbackOwner.TOOLCHAIN)
+        self.assertFalse(report.metadata["command_completion_proven"])
+
     def test_csynth_failure_is_not_overclassified(self) -> None:
         invocation = base_invocation()
         invocation["execution"]["returncode"] = 1

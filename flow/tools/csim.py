@@ -1,9 +1,10 @@
-import os, json, requests
+import os, json, requests, shlex
 from flow.base_agent import HLSAgentLoader
 from autogen.agentchat.group import ContextVariables # type: ignore
 import flow.tools as tools
 from pydantic import BaseModel
 from typing import Annotated, Optional, Dict, Any
+from agrefactor.config import DEFAULT_CSIM_TIMEOUT_S
 
 from agrefactor.runtime.budget import (
     BudgetExceededError,
@@ -13,7 +14,7 @@ from agrefactor.runtime.budget import (
 
 HLS_SERVER_URL = os.getenv("HLS_SERVER_URL")
 
-CSIM_TIMEOUT = 60
+CSIM_TIMEOUT = DEFAULT_CSIM_TIMEOUT_S
 CSIM_COMPILE_CMD = "g++ -D__SYNTHESIS__ -I$XILINX_HLS/include -O2 -Wno-unknown-pragmas testbench.cpp orig_code.cpp refactor_code.cpp -o csim"
 CSIM_CMD = "./csim"
 CSIM_COMPILE_BUDGET_INCREMENT = {
@@ -29,6 +30,37 @@ CSIM_FULL_PLAN_BUDGET_INCREMENT = {
     "compile_calls": 1,
     "csim_calls": 1,
 }
+
+
+def _normalize_extra_sources(value: Any) -> tuple[str, ...]:
+    """Normalize explicit package source paths without inferring roles."""
+
+    if value is None:
+        return ()
+    if isinstance(value, (str, bytes)):
+        raise TypeError("csim_extra_sources must be a sequence of paths")
+    result: list[str] = []
+    for raw in value:
+        path = str(raw)
+        if not path or os.path.isabs(path) or ".." in path.replace("\\", "/").split("/"):
+            raise ValueError(f"csim extra source must be a relative path: {path!r}")
+        if path not in result:
+            result.append(path)
+    return tuple(result)
+
+
+def _csim_compile_command(extra_sources: tuple[str, ...]) -> str:
+    sources = ("testbench.cpp", "orig_code.cpp", "refactor_code.cpp", *extra_sources)
+    return (
+        "g++ -D__SYNTHESIS__ -I$XILINX_HLS/include -O2 "
+        "-Wno-unknown-pragmas "
+        + " ".join(shlex.quote(path) for path in sources)
+        + " -o csim"
+    )
+
+
+def _bounded_text(value: Any, limit: int = 12000) -> str:
+    return str(value or "")[-limit:]
 
 class FilterResult(BaseModel):
     tb_updated: Annotated[str, "empty string if no changes needed; otherwise the new testbench code"]
@@ -88,17 +120,20 @@ def _build_csim_invocation(
     work_dir: str,
     timelimit: int,
     budget: BudgetManager | None,
+    extra_sources: tuple[str, ...] = (),
 ) -> dict[str, Any]:
+    source_files = [
+        "testbench.cpp",
+        "orig_code.cpp",
+        "refactor_code.cpp",
+        *extra_sources,
+    ]
     return {
         "schema_version": 1,
         "phase": "csim",
         "work_dir": os.path.abspath(work_dir),
-        "source_files": [
-            "testbench.cpp",
-            "orig_code.cpp",
-            "refactor_code.cpp",
-        ],
-        "compile_command": CSIM_COMPILE_CMD,
+        "source_files": source_files,
+        "compile_command": _csim_compile_command(extra_sources),
         "simulation_command": CSIM_CMD,
         "timeout_seconds": timelimit,
         "budget": {
@@ -156,10 +191,16 @@ def run_csim(
         work_dir,
         "csim_invocation.json",
     )
+    try:
+        raw_extra_sources = cv["csim_extra_sources"]
+    except (KeyError, TypeError):
+        raw_extra_sources = ()
+    extra_sources = _normalize_extra_sources(raw_extra_sources)
     invocation = _build_csim_invocation(
         work_dir=work_dir,
         timelimit=timelimit,
         budget=budget,
+        extra_sources=extra_sources,
     )
     _write_json(invocation_path, invocation)
 
@@ -238,9 +279,10 @@ def run_csim(
         _write_json(invocation_path, invocation)
 
     try:
+        compile_command = invocation["compile_command"]
         compile_res = tools.general.run_cmd(
             work_dir,
-            CSIM_COMPILE_CMD,
+            compile_command,
             timelimit,
         )
     except Exception as exc:
@@ -261,6 +303,8 @@ def run_csim(
         "status": "completed",
         "returncode": compile_res.get("returncode"),
         "timeout": bool(compile_res.get("timeout", False)),
+        "stdout": _bounded_text(compile_res.get("stdout")),
+        "stderr": _bounded_text(compile_res.get("stderr")),
     }
     _write_json(invocation_path, invocation)
 
@@ -269,7 +313,12 @@ def run_csim(
             "skipped_after_compile_failure"
         )
         _write_json(invocation_path, invocation)
-        return "tb_compile_failed", compile_res["stderr"]
+        combined = (
+            compile_res.get("stdout", "")
+            + "\n"
+            + compile_res.get("stderr", "")
+        ).strip()
+        return "tb_compile_failed", combined[-4000:]
 
     if budget is not None:
         try:
@@ -329,6 +378,8 @@ def run_csim(
         "status": "completed",
         "returncode": run_res.get("returncode"),
         "timeout": bool(run_res.get("timeout", False)),
+        "stdout": _bounded_text(run_res.get("stdout")),
+        "stderr": _bounded_text(run_res.get("stderr")),
     }
     _write_json(invocation_path, invocation)
 

@@ -83,6 +83,7 @@ class CsynthFeedbackAdapter:
         target = self._mapping(
             invocation_copy.get("target_profile")
         )
+        completion = self._completion_facts(execution)
 
         return FeedbackReport(
             report_id=report_id,
@@ -104,6 +105,7 @@ class CsynthFeedbackAdapter:
                 "budget_status": budget.get("status"),
                 "return_code": execution.get("returncode"),
                 "timed_out": execution.get("timeout") is True,
+                **completion,
                 "top_kernel": invocation_copy.get("top_kernel"),
                 "target_profile_name": target.get("name"),
                 "target_device": target.get("device"),
@@ -130,11 +132,12 @@ class CsynthFeedbackAdapter:
             invocation.get("toolchain_version_verification")
         )
         budget = self._mapping(invocation.get("budget"))
+        completion = self._completion_facts(execution)
 
         if (
             legacy_status == "succeeded"
-            and execution.get("status") == "completed"
-            and execution.get("timeout") is not True
+            and completion["command_completion_proven"]
+            and completion["returncode"] == 0
         ):
             return None
 
@@ -159,6 +162,7 @@ class CsynthFeedbackAdapter:
             "execution_status": execution.get("status"),
             "execution_returncode": execution.get("returncode"),
             "execution_timeout": execution.get("timeout"),
+            **completion,
             "toolchain_verification_status": (
                 verification.get("status")
             ),
@@ -256,6 +260,15 @@ class CsynthFeedbackAdapter:
                 "CSYNTH was blocked before synthesis launch",
             )
 
+        if execution_status == "configuration_error":
+            return (
+                FeedbackStage.CONFIGURATION,
+                FeedbackCategory.INVALID_CONFIGURATION,
+                FeedbackSeverity.FATAL,
+                FeedbackOwner.CONFIGURATION,
+                "CSYNTH source-package configuration is invalid",
+            )
+
         if execution_status == "launch_error":
             return (
                 FeedbackStage.TOOLCHAIN,
@@ -337,6 +350,38 @@ class CsynthFeedbackAdapter:
                 parts.append(f"{label}={value}")
 
         return ", ".join(parts)
+
+    @staticmethod
+    def _completion_facts(
+        execution: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        returncode = execution.get("returncode")
+        valid_returncode = (
+            isinstance(returncode, int)
+            and not isinstance(returncode, bool)
+        )
+        completed = (
+            execution.get("status") == "completed"
+            and valid_returncode
+            and execution.get("timeout") is not True
+        )
+        return {
+            "tool_launched": execution.get("status") not in {
+                None,
+                "not_started",
+                "blocked_by_budget",
+                "blocked_before_csynth",
+                "configuration_error",
+            },
+            "process_exit_observed": completed,
+            "command_completion_proven": completed,
+            "evidence_complete": completed,
+            "returncode_valid": valid_returncode,
+            "returncode": returncode if valid_returncode else None,
+            "owner_authority": (
+                "tool_completed" if completed else "unknown"
+            ),
+        }
 
     @staticmethod
     def _mapping(value: Any) -> Mapping[str, Any]:

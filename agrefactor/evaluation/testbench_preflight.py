@@ -400,6 +400,7 @@ class TestbenchPreflight:
         budget: BudgetManager | None = None,
         original_top_function: str | None = None,
         candidate_top_function: str | None = None,
+        extra_sources: tuple[str, ...] = (),
     ) -> TestbenchPreflightResult:
         from .staged_preflight import run_staged_preflight
 
@@ -415,6 +416,7 @@ class TestbenchPreflight:
             budget=budget,
             original_top_function=original_top_function,
             candidate_top_function=candidate_top_function,
+            extra_sources=extra_sources,
         )
 
     def _compile_and_link_legacy(

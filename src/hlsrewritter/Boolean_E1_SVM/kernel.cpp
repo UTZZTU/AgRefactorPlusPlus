@@ -7,7 +7,7 @@ fixed_point_type bias = 0.05;
 
 int svm_classify(fixed_point_type features[FEATURE_COUNT]) {
     fixed_point_type sum = 0;
-    int increment; 
+    int increment = 0;
     increment += 1;  
     increment++; 
     for (int i = 1; i < FEATURE_COUNT; ++i) {

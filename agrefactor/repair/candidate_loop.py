@@ -79,6 +79,7 @@ _ALLOWED_REPAIR_STATES = frozenset(
         ValidationState.PUBLIC_COSIM,
     }
 )
+_MAX_PROVIDER_FAILURES = 3
 _STAGE_BY_REPAIR_STATE = {
     ValidationState.PREFLIGHT: frozenset(
         {FeedbackStage.STATIC_CHECK, FeedbackStage.COMPILE, FeedbackStage.LINK}
@@ -142,6 +143,7 @@ class CandidateRepairStopReason(str, Enum):
     BUDGET_EXHAUSTED = "budget_exhausted"
     TERMINAL_FEEDBACK = "terminal_feedback"
     VALIDATOR_ERROR = "validator_error"
+    PROVIDER_EXHAUSTED = "provider_exhausted"
 
 
 @dataclass(frozen=True, slots=True)
@@ -368,6 +370,8 @@ class CandidateRepairAttempt:
             model_call_observed=(
                 self.status
                 is not CandidateRepairAttemptStatus.BUDGET_BLOCKED
+                or self.model_response is not None
+                or self.budget_after.llm_calls > self.budget_before.llm_calls
             ),
         )
         terminal = {
@@ -491,10 +495,26 @@ class CandidateRepairLoopResult:
     def succeeded(self) -> bool:
         return self.stop_reason is CandidateRepairStopReason.VALIDATED
 
+    @property
+    def repair_attempt_count(self) -> int:
+        return sum(item.proposal is not None for item in self.attempts)
+
+    @property
+    def provider_failure_count(self) -> int:
+        return sum(
+            item.status in {
+                CandidateRepairAttemptStatus.PROVIDER_ERROR,
+                CandidateRepairAttemptStatus.RESPONSE_REJECTED,
+            }
+            for item in self.attempts
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "stop_reason": self.stop_reason.value,
             "succeeded": self.succeeded,
+            "repair_attempt_count": self.repair_attempt_count,
+            "provider_failure_count": self.provider_failure_count,
             "initial_candidate": self.initial_candidate,
             "current_candidate": self.current_candidate,
             "last_validated_candidate": self.last_validated_candidate,
@@ -523,6 +543,9 @@ class CandidateRepairLoopResult:
             CandidateRepairStopReason.VALIDATOR_ERROR: (
                 RepairTerminalStatus.ERROR
             ),
+            CandidateRepairStopReason.PROVIDER_EXHAUSTED: (
+                RepairTerminalStatus.ERROR
+            ),
         }[self.stop_reason]
         return RepairRunRecord(
             run_id=run_id,
@@ -536,6 +559,8 @@ class CandidateRepairLoopResult:
             metadata={
                 "succeeded": self.succeeded,
                 "attempt_count": len(self.attempts),
+                "repair_attempt_count": self.repair_attempt_count,
+                "provider_failure_count": self.provider_failure_count,
             },
         )
 
@@ -587,8 +612,11 @@ class BoundedCandidateRepairLoop:
         route = request.route_decision
         failure_state = request.failure_state
         prior_summaries: list[str] = []
+        repair_count = 0
+        provider_failures = 0
 
-        for attempt_number in range(1, request.max_attempts + 1):
+        while repair_count < request.max_attempts:
+            attempt_number = len(attempts) + 1
             try:
                 _validate_repair_context(
                     feedback,
@@ -607,52 +635,6 @@ class BoundedCandidateRepairLoop:
                 )
 
             budget_before = self._safe_snapshot()
-            if request.recovery_ledger is not None:
-                try:
-                    recovery_stage = RecoveryStage(failure_state.value)
-                    request.recovery_ledger.reserve(
-                        RecoveryRequest(
-                            action=RecoveryAction.REPAIR,
-                            role=RecoveryRole.CANDIDATE,
-                            stage=recovery_stage,
-                            evidence_view="agent_safe",
-                            owner_authority=(
-                                RecoveryAuthority.LLM_ADVISORY
-                                if route.metadata.get("owner_authority")
-                                == "llm_advisory"
-                                else RecoveryAuthority.DETERMINISTIC_PROVEN
-                            ),
-                            lineage_id=request.task.task_id,
-                            physical_tool_launched=True,
-                            evidence_complete=True,
-                            advisory_mode=str(
-                                route.metadata.get("advisory_mode", "off")
-                            ),
-                            timeout_class=route.metadata.get("timeout_class"),
-                        ),
-                        budget=self._budget,
-                        restart_reserve=default_restart_reserve(
-                            recovery_stage
-                        ),
-                    )
-                except RecoveryBudgetBlockedError:
-                    return self._result(
-                        CandidateRepairStopReason.BUDGET_EXHAUSTED,
-                        initial_candidate,
-                        current_candidate,
-                        last_validated_candidate,
-                        last_proposal,
-                        attempts,
-                    )
-                except RecoveryDeniedError:
-                    return self._result(
-                        CandidateRepairStopReason.TERMINAL_FEEDBACK,
-                        initial_candidate,
-                        current_candidate,
-                        last_validated_candidate,
-                        last_proposal,
-                        attempts,
-                    )
             prompt_manifest: Mapping[str, Any] = {}
             try:
                 self._budget.ensure_available(llm_calls=1)
@@ -687,7 +669,7 @@ class BoundedCandidateRepairLoop:
                 feedback=feedback,
                 failure_state=failure_state,
                 current_candidate=current_candidate,
-                attempt=attempt_number,
+                attempt=repair_count + 1,
                 prior_summaries=tuple(prior_summaries),
                 family_profile=(
                     self._model_adapter.family_profile
@@ -736,6 +718,7 @@ class BoundedCandidateRepairLoop:
                     attempts,
                 )
             except CandidateResponseError as exc:
+                provider_failures += 1
                 model_response = self._new_response(response_count_before)
                 attempts.append(
                     CandidateRepairAttempt(
@@ -769,8 +752,18 @@ class BoundedCandidateRepairLoop:
                         last_proposal,
                         attempts,
                     )
+                if provider_failures >= _MAX_PROVIDER_FAILURES:
+                    return self._result(
+                        CandidateRepairStopReason.PROVIDER_EXHAUSTED,
+                        initial_candidate,
+                        current_candidate,
+                        last_validated_candidate,
+                        last_proposal,
+                        attempts,
+                    )
                 continue
             except Exception as exc:
+                provider_failures += 1
                 model_response = self._new_response(response_count_before)
                 attempts.append(
                     CandidateRepairAttempt(
@@ -804,8 +797,71 @@ class BoundedCandidateRepairLoop:
                         last_proposal,
                         attempts,
                     )
+                if provider_failures >= _MAX_PROVIDER_FAILURES:
+                    return self._result(
+                        CandidateRepairStopReason.PROVIDER_EXHAUSTED,
+                        initial_candidate,
+                        current_candidate,
+                        last_validated_candidate,
+                        last_proposal,
+                        attempts,
+                    )
                 continue
 
+            if request.recovery_ledger is not None:
+                try:
+                    recovery_stage = RecoveryStage(failure_state.value)
+                    request.recovery_ledger.reserve(
+                        RecoveryRequest(
+                            action=RecoveryAction.REPAIR,
+                            role=RecoveryRole.CANDIDATE,
+                            stage=recovery_stage,
+                            evidence_view="agent_safe",
+                            owner_authority=RecoveryAuthority(
+                                route.metadata.get("owner_authority", "deterministic_proven")
+                            ),
+                            lineage_id=request.task.task_id,
+                            physical_tool_launched=True,
+                            evidence_complete=True,
+                            advisory_mode=str(
+                                route.metadata.get("advisory_mode", "off")
+                            ),
+                            timeout_class=route.metadata.get("timeout_class"),
+                        ),
+                        budget=self._budget,
+                        restart_reserve={
+                            **default_restart_reserve(recovery_stage),
+                            "llm_calls": 0,
+                        },
+                    )
+                except (RecoveryBudgetBlockedError, RecoveryDeniedError) as exc:
+                    attempts.append(
+                        CandidateRepairAttempt(
+                            attempt=attempt_number,
+                            status=CandidateRepairAttemptStatus.BUDGET_BLOCKED,
+                            input_candidate=current_candidate,
+                            proposal=None,
+                            model_response=model_response,
+                            model_result=model_result,
+                            validation_result=None,
+                            error_type=type(exc).__name__,
+                            error_message=str(exc),
+                            budget_before=budget_before,
+                            budget_after=self._safe_snapshot(),
+                            prompt_manifest=prompt_manifest,
+                        )
+                    )
+                    return self._result(
+                        CandidateRepairStopReason.BUDGET_EXHAUSTED
+                        if isinstance(exc, RecoveryBudgetBlockedError)
+                        else CandidateRepairStopReason.TERMINAL_FEEDBACK,
+                        initial_candidate,
+                        current_candidate,
+                        last_validated_candidate,
+                        last_proposal,
+                        attempts,
+                    )
+            repair_count += 1
             last_proposal = model_result.candidate_code
             previous_candidate = current_candidate
             current_candidate = last_proposal
@@ -814,7 +870,7 @@ class BoundedCandidateRepairLoop:
                 candidate_code=current_candidate,
                 original_code=request.original_code,
                 public_testbench_code=request.public_testbench_code,
-                attempt=attempt_number,
+                attempt=repair_count,
                 source_failure_state=failure_state,
                 required_prefix=_required_prefix(
                     request.task,
@@ -835,6 +891,7 @@ class BoundedCandidateRepairLoop:
                 _validate_completed_prefix(
                     validation_result,
                     validation_request.required_prefix,
+                    _declared_validation_order(request.task),
                 )
             except Exception as exc:
                 attempts.append(
@@ -1093,6 +1150,21 @@ def _build_prompt(
     prior_summaries: tuple[str, ...],
     family_profile,
 ):
+    if prior_summaries:
+        initial = [f"Initial validation failure: {request.failure_state.value}"]
+        for item in request.feedback.items:
+            if item.blocking:
+                initial.append(
+                    f"{item.feedback_id}; {item.stage.value}; {item.owner.value}; "
+                    + _compact_history_text(item.summary, limit=1000)
+                )
+                if item.detail:
+                    initial.append(_compact_history_text(item.detail, limit=2000))
+        if request.feedback.source_evidence:
+            initial.append(_compact_history_text(
+                json.dumps(request.feedback.source_evidence, ensure_ascii=True, sort_keys=True), limit=2000,
+            ))
+        prior_summaries = ("\n".join(initial), *prior_summaries)
     inputs = CandidateRepairPromptInputs(
         task=request.task,
         feedback=feedback,
@@ -1131,8 +1203,12 @@ def _validate_completed_stages(
 def _validate_completed_prefix(
     result: CandidateValidationResult,
     required_prefix: tuple[ValidationState, ...],
+    validation_order: tuple[ValidationState, ...],
 ) -> None:
-    if result.completed_stages[: len(required_prefix)] != required_prefix:
+    if (
+        result.completed_stages != validation_order[: len(result.completed_stages)]
+        or (result.passed and result.completed_stages[: len(required_prefix)] != required_prefix)
+    ):
         raise ValueError(
             "validator skipped a required validation stage; changed candidates must restart from preflight"
         )
@@ -1219,7 +1295,18 @@ def _validate_repair_context(
         item = item_by_id[feedback_id]
         if not item.blocking:
             raise ValueError("selected candidate feedback must be blocking")
-        if item.owner is not FeedbackOwner.CANDIDATE:
+        qualified_unknown = (
+            item.owner is FeedbackOwner.UNKNOWN
+            and state in {ValidationState.PREFLIGHT, ValidationState.PUBLIC_EVALUATION, ValidationState.PUBLIC_COSIM}
+            and item.metadata.get("owner_authority") == "public_reference_qualified"
+            and item.metadata.get("repair_eligible") is True
+            and item.metadata.get("evidence_complete") is True
+            and item.metadata.get("tool_launched") is True
+            and route.metadata.get("owner_authority") == "public_reference_qualified"
+            and feedback.metadata.get("evaluation_split") == EvaluationSplit.PUBLIC.value
+            and feedback.metadata.get("feedback_visible_to_agent") is True
+        )
+        if item.owner is not FeedbackOwner.CANDIDATE and not qualified_unknown:
             raise ValueError("selected feedback must be candidate-owned")
         if item.stage not in allowed_stages:
             raise ValueError("selected feedback stage does not match failure state")

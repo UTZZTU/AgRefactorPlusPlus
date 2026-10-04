@@ -309,7 +309,8 @@ class FrozenSourceContractTests(unittest.TestCase):
             TestQualificationStatus.QUALIFIED,
         )
         self.assertEqual(provenance.coverage["declared_case_count"], 2)
-        self.assertEqual(provenance.coverage["passed_cases"], 2)
+        self.assertEqual(provenance.coverage["passed_cases"], 0)
+        self.assertFalse(provenance.coverage["case_counts_complete"])
 
 
 class FrozenSelectionContractTests(unittest.TestCase):

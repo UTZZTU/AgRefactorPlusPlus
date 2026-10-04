@@ -237,11 +237,11 @@ class CsimValidationStageHandlerTests(
         )
         self.assertEqual(
             report.items[0].category,
-            FeedbackCategory.FUNCTIONAL_MISMATCH,
+            FeedbackCategory.UNKNOWN,
         )
         self.assertEqual(
             report.items[0].owner,
-            FeedbackOwner.CANDIDATE,
+            FeedbackOwner.UNKNOWN,
         )
         coordinated = ValidationFeedbackCoordinator(
             context.task
@@ -252,7 +252,37 @@ class CsimValidationStageHandlerTests(
         )
         self.assertEqual(
             coordinated.transition.next_state,
-            ValidationState.REPAIR_PENDING,
+            ValidationState.REVIEW_REQUIRED,
+        )
+
+    def test_nonzero_return_without_evaluated_cases_is_not_mismatch(
+        self,
+    ):
+        suite = TestSuiteSpec(
+            suite_id="public-no-cases",
+            split=EvaluationSplit.PUBLIC,
+        )
+        executor = ScriptedExecutor()
+        with tempfile.TemporaryDirectory() as directory:
+            context = make_context((suite,))
+            report = CsimValidationStageHandler(
+                self.inputs(
+                    directory,
+                    {"public-no-cases": "FAIL_PUBLIC"},
+                ),
+                split=EvaluationSplit.PUBLIC,
+                evaluator=CsimSuiteEvaluator(executor=executor),
+            )(context)
+
+        item = report.items[0]
+        self.assertEqual(item.category, FeedbackCategory.UNKNOWN)
+        self.assertEqual(item.owner, FeedbackOwner.UNKNOWN)
+        self.assertFalse(
+            item.metadata["functional_mismatch_authorized"]
+        )
+        self.assertEqual(
+            item.metadata["failure_reason"],
+            "nonzero_return_without_evaluated_cases",
         )
 
     def test_hidden_fails_fast_and_stays_operator_full(
@@ -432,7 +462,7 @@ class CsimValidationStageHandlerTests(
         )
         self.assertEqual(
             coordinated.transition.next_state,
-            ValidationState.REJECTED,
+            ValidationState.REVIEW_REQUIRED,
         )
 
     def test_missing_code_fails_before_execution(self):

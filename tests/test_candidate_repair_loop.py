@@ -1,6 +1,7 @@
 import inspect
 import json
 import unittest
+from dataclasses import replace
 
 from agrefactor.config import EvaluationSplit, TargetProfile, TaskSpec, TestSuiteSpec
 from agrefactor.evaluation import FeedbackRouteAction, FeedbackRouteDecision, ValidationState
@@ -32,6 +33,7 @@ from agrefactor.repair import (
     CandidateValidationResult,
 )
 from agrefactor.runtime import BudgetLimits, BudgetManager
+from agrefactor.recovery import RecoveryLedger
 import agrefactor.repair.candidate_loop as candidate_loop_module
 
 
@@ -95,7 +97,7 @@ def make_feedback(
     detail="operator detail must not drive routing",
 ):
     metadata = {"evidence_view": view}
-    if state in {ValidationState.PUBLIC_EVALUATION, ValidationState.HIDDEN_EVALUATION}:
+    if state in {ValidationState.PUBLIC_EVALUATION, ValidationState.PUBLIC_COSIM, ValidationState.HIDDEN_EVALUATION}:
         if include_split:
             metadata["evaluation_split"] = (
                 EvaluationSplit.HIDDEN.value
@@ -311,14 +313,14 @@ class CandidateRepairEntryContractTests(unittest.TestCase):
     def test_accepts_public_candidate_route(self):
         self.assertIs(make_request(state=ValidationState.PUBLIC_EVALUATION).failure_state, ValidationState.PUBLIC_EVALUATION)
 
-    def test_rejects_public_cosim_and_hidden_entry(self):
+    def test_rejects_public_cosim_without_split_and_hidden_entry(self):
         cases = (
             (ValidationState.PUBLIC_COSIM, "agent_safe", True),
             (ValidationState.HIDDEN_EVALUATION, "operator_full", False),
         )
         for state, view, visible in cases:
             with self.subTest(state=state.value):
-                report = make_feedback(state, view=view, visible=visible)
+                report = make_feedback(state, view=view, visible=visible, include_split=state is not ValidationState.PUBLIC_COSIM)
                 with self.assertRaises(ValueError):
                     make_request(
                         state=state,
@@ -465,11 +467,13 @@ class BoundedCandidateRepairLoopTests(unittest.TestCase):
         self.assertEqual(budget.snapshot().llm_calls, 0)
 
     def test_provider_exception_counts_exact_once_without_fake_usage(self):
-        provider = SequenceProvider([RuntimeError("provider down")])
+        provider = SequenceProvider([RuntimeError("provider down")] * 3)
         loop, budget = self.make_loop(provider, RecordingValidator([]))
         result = loop.run(make_request(max_attempts=1))
-        self.assertIs(result.stop_reason, CandidateRepairStopReason.ATTEMPTS_EXHAUSTED)
-        self.assertEqual(budget.snapshot().llm_calls, 1)
+        self.assertIs(result.stop_reason, CandidateRepairStopReason.PROVIDER_EXHAUSTED)
+        self.assertEqual(result.repair_attempt_count, 0)
+        self.assertEqual(result.provider_failure_count, 3)
+        self.assertEqual(budget.snapshot().llm_calls, 3)
         self.assertEqual(budget.snapshot().tokens, 0)
         self.assertEqual(budget.snapshot().cost_usd, 0.0)
 
@@ -511,13 +515,17 @@ class BoundedCandidateRepairLoopTests(unittest.TestCase):
         self.assertEqual(result.current_candidate, PROPOSAL_1.strip())
         self.assertEqual(budget.snapshot().llm_calls, 1)
 
-    def test_max_attempts_bounds_provider_errors(self):
-        provider = SequenceProvider([RuntimeError("a"), RuntimeError("b")])
+    def test_provider_errors_have_separate_finite_limit(self):
+        provider = SequenceProvider([RuntimeError("a"), RuntimeError("b"), RuntimeError("c")])
         loop, budget = self.make_loop(provider, RecordingValidator([]))
         result = loop.run(make_request(max_attempts=2))
-        self.assertIs(result.stop_reason, CandidateRepairStopReason.ATTEMPTS_EXHAUSTED)
-        self.assertEqual(len(provider.calls), 2)
-        self.assertEqual(budget.snapshot().llm_calls, 2)
+        self.assertIs(result.stop_reason, CandidateRepairStopReason.PROVIDER_EXHAUSTED)
+        self.assertEqual(result.repair_attempt_count, 0)
+        self.assertEqual(result.provider_failure_count, 3)
+        self.assertEqual(len(provider.calls), 3)
+        self.assertEqual(budget.snapshot().llm_calls, 3)
+        record = result.to_repair_run_record("provider-run")
+        self.assertEqual(record.metadata["repair_attempt_count"], 0)
 
     def test_failed_proposal_updates_current_not_last_validated(self):
         provider = SequenceProvider([fenced(PROPOSAL_1)])
@@ -614,7 +622,7 @@ class BoundedCandidateRepairLoopTests(unittest.TestCase):
         self.assertIn("candidate validation marker", prompt)
         self.assertIn("candidate tool marker", prompt)
 
-    def test_provider_error_and_empty_response_both_reach_third_attempt(self):
+    def test_provider_error_and_empty_response_keep_candidate_repair_slot(self):
         provider = SequenceProvider(
             [
                 RuntimeError("provider unavailable marker"),
@@ -622,14 +630,20 @@ class BoundedCandidateRepairLoopTests(unittest.TestCase):
                 fenced(PROPOSAL_1),
             ]
         )
-        loop, _ = self.make_loop(
-            provider,
-            RecordingValidator([passed_result()]),
-        )
+        validator = RecordingValidator([passed_result()])
+        loop, _ = self.make_loop(provider, validator)
+        ledger = RecoveryLedger()
 
-        result = loop.run(make_request(max_attempts=3))
+        result = loop.run(replace(make_request(max_attempts=1), recovery_ledger=ledger))
 
         self.assertTrue(result.succeeded)
+        self.assertEqual(result.repair_attempt_count, 1)
+        self.assertEqual(result.provider_failure_count, 2)
+        self.assertEqual([item.attempt for item in validator.calls], [1])
+        repairs = [event for event in ledger.events if event.accepted and event.to_dict()["action"] == "repair"]
+        self.assertEqual(len(repairs), 1)
+        self.assertEqual([item.attempt for item in result.attempts], [1, 2, 3])
+        self.assertEqual(result.attempts[2].prompt_manifest["attempt"], 1)
         prompt = "\n".join(
             message.content for message in provider.calls[2][1].messages
         )
@@ -641,6 +655,63 @@ class BoundedCandidateRepairLoopTests(unittest.TestCase):
         self.assertIn("status: provider_error", prompt)
         self.assertIn("ValueError", prompt)
         self.assertIn("text must not be empty", prompt)
+
+    def test_provider_error_after_validation_keeps_all_failure_evidence(self):
+        provider = SequenceProvider([fenced(PROPOSAL_1), RuntimeError("network marker"), fenced(PROPOSAL_2)])
+        validator = RecordingValidator([failed_result(summary="compile history marker"), passed_result()])
+        loop, _ = self.make_loop(provider, validator)
+        result = loop.run(make_request(max_attempts=2))
+        self.assertTrue(result.succeeded)
+        self.assertEqual(result.repair_attempt_count, 2)
+        self.assertEqual(result.provider_failure_count, 1)
+        self.assertEqual([item.attempt for item in validator.calls], [1, 2])
+        prompt = "\n".join(message.content for message in provider.calls[2][1].messages)
+        self.assertIn("compile history marker", prompt)
+        self.assertIn("network marker", prompt)
+        self.assertIn("Initial validation failure", prompt)
+
+    def test_provider_retries_preserve_exact_llm_budget_and_ledger_usage(self):
+        provider = SequenceProvider([RuntimeError("network"), fenced(PROPOSAL_1)])
+        validator = RecordingValidator([passed_result()])
+        loop, _ = self.make_loop(provider, validator, BudgetManager(BudgetLimits(max_llm_calls=2)))
+        result = loop.run(replace(make_request(max_attempts=1), recovery_ledger=RecoveryLedger()))
+        self.assertTrue(result.succeeded)
+        self.assertEqual(result.repair_attempt_count, 1)
+        self.assertEqual(result.budget_usage.llm_calls, 2)
+
+    def test_post_response_restart_budget_block_retains_model_evidence(self):
+        provider = SequenceProvider([fenced(PROPOSAL_1)])
+        validator = RecordingValidator([])
+        loop, _ = self.make_loop(provider, validator, BudgetManager(BudgetLimits(max_tool_calls=0)))
+        result = loop.run(replace(make_request(max_attempts=1), recovery_ledger=RecoveryLedger()))
+        self.assertIs(result.stop_reason, CandidateRepairStopReason.BUDGET_EXHAUSTED)
+        self.assertEqual(result.repair_attempt_count, 0)
+        self.assertEqual(validator.calls, [])
+        record = result.to_repair_run_record("blocked-response")
+        self.assertIsNotNone(record.attempts[0].model_observation.model_response)
+        self.assertTrue(record.attempts[0].model_observation.model_call_observed)
+
+    def test_repaired_cosim_candidate_can_fail_at_preflight_and_be_repaired_again(self):
+        provider = SequenceProvider([fenced(PROPOSAL_1), fenced(PROPOSAL_2)])
+        validator = RecordingValidator([failed_result(ValidationState.PREFLIGHT, summary="new compile error"), passed_result()])
+        loop, _ = self.make_loop(provider, validator)
+        result = loop.run(make_request(state=ValidationState.PUBLIC_COSIM, max_attempts=2))
+        self.assertTrue(result.succeeded)
+        self.assertIs(result.attempts[0].status, CandidateRepairAttemptStatus.VALIDATION_FAILED)
+        self.assertEqual(result.repair_attempt_count, 2)
+
+    def test_failed_validation_cannot_skip_public_stage(self):
+        result = failed_result(ValidationState.CSYNTH)
+        result = replace(result, completed_stages=(ValidationState.PREFLIGHT, ValidationState.CSYNTH))
+        loop, _ = self.make_loop(SequenceProvider([fenced(PROPOSAL_1)]), RecordingValidator([result]))
+        outcome = loop.run(make_request(state=ValidationState.PUBLIC_COSIM, max_attempts=1))
+        self.assertIs(outcome.stop_reason, CandidateRepairStopReason.VALIDATOR_ERROR)
+
+    def test_failed_validation_cannot_skip_public_stage_after_preflight_repair(self):
+        result = replace(failed_result(ValidationState.CSYNTH), completed_stages=(ValidationState.PREFLIGHT, ValidationState.CSYNTH))
+        loop, _ = self.make_loop(SequenceProvider([fenced(PROPOSAL_1)]), RecordingValidator([result]))
+        outcome = loop.run(make_request(state=ValidationState.PREFLIGHT, max_attempts=1))
+        self.assertIs(outcome.stop_reason, CandidateRepairStopReason.VALIDATOR_ERROR)
 
     def test_history_truncates_one_diagnostic_without_dropping_attempt(self):
         marker = "first diagnostic marker "

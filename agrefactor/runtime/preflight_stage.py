@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import os
 from pathlib import Path
 from typing import Any
 
+from agrefactor.config import EvaluationSplit
 from agrefactor.evaluation.preflight_feedback import (
     TestbenchPreflightFeedbackAdapter,
 )
@@ -40,6 +41,7 @@ class PreflightStageInputs:
     candidate_code: str
     original_top_function: str | None = None
     candidate_top_function: str | None = None
+    extra_sources: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         try:
@@ -118,7 +120,7 @@ class PreflightValidationStageHandler:
             )
 
         self._inputs = inputs
-        self._preflight = preflight or TestbenchPreflight()
+        self._preflight = preflight
         self._operator_adapter = (
             TestbenchPreflightFeedbackAdapter()
         )
@@ -147,7 +149,11 @@ class PreflightValidationStageHandler:
         )
 
         try:
-            result = self._preflight.compile_and_link(
+            preflight = self._preflight or TestbenchPreflight(
+                extra_flags=context.task.target.compile_flags,
+                include_dirs=(Path(context.task.kernel_path).parent,),
+            )
+            result = preflight.compile_and_link(
                 work_dir=self._inputs.work_dir,
                 testbench_code=self._inputs.testbench_code,
                 original_code=self._inputs.original_code,
@@ -159,6 +165,7 @@ class PreflightValidationStageHandler:
                 candidate_top_function=(
                     self._inputs.candidate_top_function
                 ),
+                extra_sources=self._inputs.extra_sources,
             )
         except BudgetExceededError as exc:
             return self._budget_report(
@@ -176,6 +183,41 @@ class PreflightValidationStageHandler:
             operator_report,
             report_id=agent_id,
         )
+
+        if (
+            result.failure_owner.value == "unknown"
+            and result.failure_kind.value == "link_error"
+            and result.failed_component is not None
+            and result.failed_component.value == "link"
+            and self._inputs.original_top_function
+            and self._inputs.candidate_top_function
+            and any(suite.split is EvaluationSplit.PUBLIC for suite in context.task.test_suites)
+        ):
+            from flow.tools.vitis_csim import _original_isolation_evidence, _write_json
+
+            isolation = _original_isolation_evidence(
+                original_code=self._inputs.original_code,
+                testbench_code=self._inputs.testbench_code,
+                candidate_code=self._inputs.candidate_code,
+                candidate_top_function=self._inputs.candidate_top_function,
+                identity={}, budget=context.budget,
+                source_root=str(self._inputs.work_dir),
+                extra_sources=tuple(str(self._inputs.work_dir / path) for path in self._inputs.extra_sources),
+                compile_flags=context.task.target.compile_flags,
+                original_top_function=self._inputs.original_top_function,
+                keep_dir=str(self._inputs.work_dir / "original_reference_qualification"),
+            )
+            _write_json(self._inputs.work_dir / "public_reference_qualification.json", isolation)
+            if isolation.get("status") == "passed":
+                safe_report = replace(
+                    safe_report,
+                    items=tuple(replace(item, metadata={
+                        **item.metadata, "owner_authority": "public_reference_qualified",
+                        "repair_eligible": True, "evidence_complete": True, "tool_launched": True,
+                    }) if item.owner is FeedbackOwner.UNKNOWN else item for item in safe_report.items),
+                    metadata={**safe_report.metadata, "evaluation_split": "public",
+                              "feedback_visible_to_agent": True},
+                )
 
         metadata = dict(safe_report.metadata)
         metadata.update(

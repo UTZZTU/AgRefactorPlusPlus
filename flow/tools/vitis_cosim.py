@@ -18,6 +18,7 @@ from flow.tools.typed_testbench_outcome import (
     read_typed_testbench_outcome,
 )
 from agrefactor.config import TargetProfile, resolve_target_profile
+from agrefactor.cpp_interface import extract_top_interface
 from agrefactor.vitis_interface import discover_top_io
 from agrefactor.runtime.budget import (
     BudgetExceededError,
@@ -63,6 +64,204 @@ def _normalize_cosim_interface_depths(
             raise ValueError("COSIM interface depth must be positive")
         out[port] = raw_depth
     return dict(sorted(out.items()))
+
+
+_M_AXI_PRAGMA_RE = re.compile(
+    r"#\s*pragma\s+HLS\s+INTERFACE\b(?P<options>[^\r\n]*)",
+    flags=re.IGNORECASE,
+)
+_PRAGMA_PORT_RE = re.compile(
+    r"\bport\s*=\s*([A-Za-z_][A-Za-z0-9_]*)",
+    flags=re.IGNORECASE,
+)
+_PRAGMA_BUNDLE_RE = re.compile(
+    r"\bbundle\s*=\s*([A-Za-z_][A-Za-z0-9_]*)",
+    flags=re.IGNORECASE,
+)
+_M_AXI_MODE_RE = re.compile(
+    r"\b(?:mode\s*=\s*)?m_axi\b",
+    flags=re.IGNORECASE,
+)
+_CPP_COMMENT_RE = re.compile(r"//[^\r\n]*|/\*.*?\*/", flags=re.DOTALL)
+
+
+def _mask_cpp_comments(source: str) -> str:
+    return _CPP_COMMENT_RE.sub(
+        lambda match: "".join("\n" if char == "\n" else " " for char in match.group()),
+        source,
+    )
+
+
+def _top_function_source(source: str, top: str | None) -> str:
+    if not top:
+        return source
+    signature = re.compile(
+        rf"\b{re.escape(top)}\s*\([^;{{}}]*\)\s*\{{",
+        flags=re.DOTALL,
+    )
+    match = signature.search(_mask_cpp_comments(source))
+    if match is None:
+        return source
+    brace = source.find("{", match.start(), match.end())
+    depth = 0
+    state = "normal"
+    escaped = False
+    index = brace
+    while index < len(source):
+        char = source[index]
+        next_char = source[index + 1] if index + 1 < len(source) else ""
+        if state == "normal" and char == "/" and next_char == "/":
+            state = "line_comment"
+            index += 2
+            continue
+        if state == "normal" and char == "/" and next_char == "*":
+            state = "block_comment"
+            index += 2
+            continue
+        if state == "line_comment":
+            if char in "\r\n":
+                state = "normal"
+            index += 1
+            continue
+        if state == "block_comment":
+            if char == "*" and next_char == "/":
+                state = "normal"
+                index += 2
+                continue
+            index += 1
+            continue
+        if state in {"string", "char"}:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif (state == "string" and char == '"') or (
+                state == "char" and char == "'"
+            ):
+                state = "normal"
+            index += 1
+            continue
+        if char == '"':
+            state = "string"
+        elif char == "'":
+            state = "char"
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return source[match.start() : index + 1]
+        index += 1
+    return source[match.start() :]
+
+
+def _infer_maxi_hardware_depths(
+    source: str,
+    source_depths: Mapping[str, int],
+    top: str | None = None,
+) -> tuple[dict[str, int], dict[str, str], str, str | None]:
+    """Map source-port depths to Vitis MAXI bundles from HLS pragmas.
+
+    Vitis assigns unbundled ``m_axi`` ports to its default memory bundle.
+    This parser records that compiler convention without referring to a
+    particular kernel or symbol.  Conflicting declarations remain a
+    contract error instead of being guessed away.
+    """
+
+    if not isinstance(source, str) or not source.strip():
+        return {}, {}, "unknown", "source_not_available"
+    mapping: dict[str, str] = {}
+    scoped_source = _top_function_source(source, top)
+    for line in scoped_source.splitlines():
+        if not line.lstrip().startswith("#"):
+            continue
+        match = _M_AXI_PRAGMA_RE.search(line)
+        if match is None:
+            continue
+        options = match.group("options").split("//", 1)[0]
+        if _M_AXI_MODE_RE.search(options) is None:
+            continue
+        port_match = _PRAGMA_PORT_RE.search(options)
+        if port_match is None:
+            continue
+        port = port_match.group(1)
+        bundle_match = _PRAGMA_BUNDLE_RE.search(options)
+        bundle = bundle_match.group(1) if bundle_match else "gmem"
+        previous = mapping.get(port)
+        if previous is not None and previous != bundle:
+            return {}, mapping, "conflicting", f"port={port}"
+        mapping[port] = bundle
+    if not mapping:
+        # A generated design may omit pragmas while the runtime contract still
+        # identifies all MAXI pointer ports. Unbundled MAXI ports use Vitis'
+        # documented default memory bundle.
+        return (
+            {"gmem": max(source_depths.values())},
+            {port: "gmem" for port in source_depths},
+            "default_bundle",
+            "no_m_axi_pragmas",
+        )
+    hardware_depths: dict[str, int] = {}
+    mapped_ports = sorted(set(source_depths) & set(mapping))
+    for source_port in mapped_ports:
+        depth = source_depths[source_port]
+        bundle = mapping[source_port]
+        hardware_depths[bundle] = max(hardware_depths.get(bundle, 0), depth)
+    unmapped_ports = sorted(set(source_depths) - set(mapping))
+    reason = (
+        "unmapped_non_maxi_ports=" + ",".join(unmapped_ports)
+        if unmapped_ports
+        else None
+    )
+    return dict(sorted(hardware_depths.items())), mapping, "inferred", reason
+
+
+def _candidate_pointer_depth_directives(
+    source: str,
+    top: str,
+    source_depths: Mapping[str, int],
+    maxi_ports: Mapping[str, str] | None = None,
+) -> dict[str, int]:
+    """Build source-port directives from the candidate's actual ABI.
+
+    Runtime contracts describe logical source ports, while Vitis may later
+    combine those ports into one hardware MAXI bundle.  The source-port
+    directive still needs each port's own contracted depth: using the bundle
+    maximum for every pointer can make the cosimulation wrapper read past
+    small fixed-size pointer arguments.  Candidate parameter names are part
+    of the frozen testbench ABI, so an unbound name is left without a
+    directive instead of being assigned a guessed depth.
+    """
+
+    interface = extract_top_interface(
+        source,
+        top,
+        require_definition=False,
+    )
+    if interface is None:
+        return {
+            name: source_depths[name]
+            for name in source_depths
+            if not maxi_ports or name in maxi_ports
+        }
+    pointer_names = [
+        parameter.name
+        for parameter in interface.parameters
+        if parameter.pointer_like and parameter.name
+    ]
+    if not pointer_names:
+        return {}
+    if maxi_ports:
+        directive_names = [name for name in pointer_names if name in maxi_ports]
+    else:
+        directive_names = pointer_names
+    if set(directive_names) != set(source_depths) and not maxi_ports:
+        return {}
+    return {
+        name: source_depths[name]
+        for name in directive_names
+        if name in source_depths
+    }
 
 
 def _runtime_contract_shape_valid(
@@ -193,6 +392,27 @@ def _file_sha256(path: Path) -> str | None:
     if path.is_symlink() or not path.is_file():
         return None
     return sha256(path.read_bytes()).hexdigest()
+
+
+def _bounded_text(value: Any, limit: int = 12000) -> str:
+    return str(value or "")[-limit:]
+
+
+def _invocation_diagnostic(invocation: Mapping[str, Any]) -> str:
+    parts: list[str] = []
+    for section_name in (
+        "version_probe_execution",
+        "execution",
+        "command_status",
+        "typed_outcome",
+    ):
+        section = invocation.get(section_name)
+        if isinstance(section, Mapping):
+            for field in ("stdout", "stderr", "error", "reason_code"):
+                value = section.get(field)
+                if value:
+                    parts.append(f"{section_name}.{field}: {value}")
+    return "\n".join(parts)[-12000:]
 
 
 def _usage(value: BudgetUsage) -> dict[str, Any]:
@@ -329,6 +549,7 @@ def make_vitis_cosim_tcl(
     profile: TargetProfile,
     typed_execution_id: str | None = None,
     interface_depths: Mapping[str, int] | None = None,
+    hardware_depths: Mapping[str, int] | None = None,
 ) -> str:
     """Build a Vitis Tcl chain with structured per-command outcome phases."""
 
@@ -346,7 +567,10 @@ def make_vitis_cosim_tcl(
     observed_roles = set(files)
     if not required_roles.issubset(observed_roles):
         raise ValueError("files must contain candidate/reference/testbench")
-    unexpected_roles = observed_roles - required_roles - adapter_roles
+    extra_roles = {
+        role for role in observed_roles if role.startswith("extra_source_")
+    }
+    unexpected_roles = observed_roles - required_roles - adapter_roles - extra_roles
     if unexpected_roles:
         raise ValueError("files contain unexpected COSIM roles: " + ", ".join(sorted(unexpected_roles)))
     if ("wrapper" in files) != ("testbench_original" in files):
@@ -355,6 +579,11 @@ def make_vitis_cosim_tcl(
     if re.fullmatch(r"[0-9a-f]{32}", execution_id) is None:
         raise ValueError("typed_execution_id must be 32 lowercase hex characters")
     normalized_depths = _normalize_cosim_interface_depths(interface_depths)
+    normalized_hardware_depths = (
+        _normalize_cosim_interface_depths(hardware_depths)
+        if hardware_depths is not None
+        else normalized_depths
+    )
 
     status_path = root / "cosim_command_status.json"
     typed_outcome_path = root / "agrefactor_cosim_outcome.json"
@@ -387,6 +616,10 @@ def make_vitis_cosim_tcl(
         add_line(files["reference"], testbench=True, flags=testbench_flags),
         add_line(files["testbench"], testbench=True, flags=testbench_flags),
         *([add_line(files["wrapper"], testbench=True, flags=testbench_flags)] if "wrapper" in files else []),
+        *[
+            add_line(files[role], testbench=True, flags=testbench_flags)
+            for role in sorted(extra_roles)
+        ],
         "open_solution -reset -flow_target vitis solution",
         f"set_part {_tcl_quote(profile.device, 'target device')}",
         f"create_clock -period {profile.clock_period_ns} -name default",
@@ -394,7 +627,7 @@ def make_vitis_cosim_tcl(
             "set_directive_interface -mode m_axi -depth "
             f"{depth} {_tcl_quote(top, 'top')} "
             f"{_tcl_quote(port, 'COSIM depth port')}"
-            for port, depth in normalized_depths.items()
+            for port, depth in normalized_hardware_depths.items()
         ],
         (
             "if {[catch {csim_design -clean -argv $ag_csim_argv} ag_msg]} { "
@@ -517,6 +750,7 @@ def _finalize_result(
         raise RuntimeError("COSIM invocation evidence was not persisted")
     return {
         **summary,
+        "diagnostic": _invocation_diagnostic(invocation) or None,
         "evidence_sha256": evidence_sha,
         "invocation_path": str(invocation_path),
     }
@@ -534,6 +768,7 @@ def run_vitis_cosim(
     budget: BudgetManager | None = None,
     suite_id: str = "public",
     runtime_contract: Mapping[str, Any] | None = None,
+    extra_sources: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Run one Public suite through a real Vitis RTL COSIM chain."""
 
@@ -546,11 +781,34 @@ def run_vitis_cosim(
     suite_id = _required_text(suite_id, "suite_id")
     top = _required_text(candidate_top_function, "candidate_top_function")
     interface_depths = _cosim_interface_depths(runtime_contract)
+    hardware_depths: dict[str, int] = {}
+    directive_depths: dict[str, int] = {}
+    source_to_hardware: dict[str, str] = {}
+    interface_mapping_status = "not_attempted"
+    interface_mapping_reason: str | None = None
 
     root = Path(work_dir).expanduser().resolve()
     if root.exists() and (root.is_symlink() or not root.is_dir()):
         raise ValueError("work_dir must be a real directory")
     root.mkdir(parents=True, exist_ok=True)
+    normalized_extra_sources: list[str] = []
+    for raw_path in extra_sources or ():
+        path = str(raw_path)
+        normalized = path.replace("\\", "/")
+        if (
+            not path
+            or os.path.isabs(path)
+            or ".." in normalized.split("/")
+        ):
+            raise ValueError(
+                "extra_sources must contain relative package paths"
+            )
+        if path not in normalized_extra_sources:
+            normalized_extra_sources.append(path)
+        if not (root / path).is_file():
+            raise FileNotFoundError(
+                f"extra source not found in COSIM work directory: {path}"
+            )
 
     invocation_path = root / "cosim_invocation.json"
     version_path = root / "toolchain_version.txt"
@@ -585,6 +843,28 @@ def run_vitis_cosim(
         testbench_code=testbench_code,
         base_identity=csim_identity,
     )
+    for index, path in enumerate(normalized_extra_sources, start=1):
+        files[f"extra_source_{index:03d}"] = root / path
+
+    if interface_depths:
+        (
+            hardware_depths,
+            source_to_hardware,
+            interface_mapping_status,
+            interface_mapping_reason,
+        ) = _infer_maxi_hardware_depths(
+            candidate_code,
+            interface_depths,
+            top,
+        )
+        directive_depths = _candidate_pointer_depth_directives(
+            candidate_code,
+            top,
+            interface_depths,
+            source_to_hardware,
+        )
+    else:
+        interface_mapping_status = "not_required"
 
     invocation: dict[str, Any] = {
         "schema_version": COSIM_SCHEMA_VERSION,
@@ -599,6 +879,13 @@ def run_vitis_cosim(
         },
         "runtime_contract": runtime_contract,
         "cosim_interface_depths": interface_depths,
+        "cosim_hardware_depths": hardware_depths,
+        "cosim_directive_depths": directive_depths,
+        "source_to_maxi_hardware": source_to_hardware,
+        "interface_mapping": {
+            "status": interface_mapping_status,
+            "reason": interface_mapping_reason,
+        },
         "typed_outcome_adapter": {
             "kind": "raw_runtime_atomic_wrapper_v2",
             "evidence_path": str(
@@ -617,6 +904,11 @@ def run_vitis_cosim(
             "design": str(files["candidate"]),
             "testbench_reference": str(files["reference"]),
             "testbench_driver": str(files["testbench"]),
+            **{
+                role: str(files[role])
+                for role in sorted(files)
+                if role.startswith("extra_source_")
+            },
         },
         "target_profile": profile.to_effective_dict(),
         "requested_toolchain_version": profile.toolchain_version,
@@ -670,6 +962,19 @@ def run_vitis_cosim(
     _atomic_json(invocation_path, invocation)
 
     version_probe_launched = False
+    if interface_mapping_status in {"conflicting", "incomplete"}:
+        return _finalize_result(
+            invocation_path,
+            invocation,
+            status="failed",
+            failure_kind="runtime_contract_interface_mismatch",
+            failure_owner="configuration",
+            reason_code="cosim_source_to_hardware_mapping_unresolved",
+            timed_out=False,
+            returncode=None,
+            version_probe_launched=False,
+            cosim_launched=False,
+        )
     if budget is not None:
         try:
             usage_before = budget.snapshot()
@@ -752,6 +1057,8 @@ def run_vitis_cosim(
         "status": "completed",
         "returncode": probe_returncode,
         "timeout": probe_timeout,
+        "stdout": _bounded_text(probe.get("stdout")),
+        "stderr": _bounded_text(probe.get("stderr")),
     }
     actual = None
     if version_path.is_file() and not version_path.is_symlink():
@@ -803,7 +1110,7 @@ def run_vitis_cosim(
             files=files,
             profile=profile,
             typed_execution_id=csim_identity["execution_id"],
-            interface_depths=interface_depths,
+            interface_depths=directive_depths or interface_depths,
         ),
     )
     invocation["tcl_sha256"] = _file_sha256(tcl_path)
@@ -887,6 +1194,8 @@ def run_vitis_cosim(
         "returncode": returncode,
         "timeout": timed_out,
         "cosim_launched": True,
+        "stdout": _bounded_text(result.get("stdout")),
+        "stderr": _bounded_text(result.get("stderr")),
     }
     command_status = _command_status(status_path)
     typed = _typed_outcome(
@@ -908,15 +1217,43 @@ def run_vitis_cosim(
     else:
         actual_depth_ports = set(synthesized_interface.maxi_pointer_ports)
         declared_depth_ports = set(interface_depths)
+        declared_maxi_depth_ports = set(
+            source_to_hardware
+            if interface_mapping_status == "inferred"
+            else declared_depth_ports
+        )
+        actual_source_to_hardware = synthesized_interface.source_to_maxi_hardware
+        actual_hardware_ports = set(synthesized_interface.maxi_hardware_ports)
+        declared_hardware_ports = set(
+            hardware_depths
+            if interface_mapping_status in {"inferred", "default_bundle"}
+            else interface_depths
+        )
+        source_mapping_mismatch = (
+            interface_mapping_status == "inferred"
+            and actual_source_to_hardware != source_to_hardware
+        )
+        source_port_mismatch = (
+            interface_mapping_status != "default_bundle"
+            and actual_depth_ports != declared_maxi_depth_ports
+        )
         interface_contract_mismatch = (
-            actual_depth_ports != declared_depth_ports
+            source_port_mismatch
+            or actual_hardware_ports != declared_hardware_ports
+            or source_mapping_mismatch
         )
         invocation["synthesized_interface"] = {
             "status": "observed",
             "top_name": synthesized_interface.top_name,
             "evidence_path": synthesized_interface.evidence_path,
             "maxi_pointer_ports": sorted(actual_depth_ports),
+            "maxi_hardware_ports": sorted(actual_hardware_ports),
+            "source_to_maxi_hardware": actual_source_to_hardware,
             "contract_depth_ports": sorted(declared_depth_ports),
+            "source_port_names_verified": not (
+                interface_mapping_status == "default_bundle"
+            ),
+            "contract_hardware_depth_ports": sorted(declared_hardware_ports),
             "contract_matches": not interface_contract_mismatch,
             "ports": [
                 {

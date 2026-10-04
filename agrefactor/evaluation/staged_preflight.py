@@ -29,6 +29,7 @@ from agrefactor.runtime.budget import (
     BudgetManager,
     BudgetUsage,
 )
+from agrefactor.cpp_interface import inspect_top_entry
 
 
 _COMPILE_INCREMENT = {"tool_calls": 1, "compile_calls": 1}
@@ -543,7 +544,10 @@ def _candidate_external_symbol_collisions(
 
 def _symbol_base(symbol: str) -> str:
     base = symbol.split("(", 1)[0].strip()
-    return base.rsplit("::", 1)[-1]
+    base = base.rsplit("::", 1)[-1]
+    if " " in base:
+        base = base.rsplit(" ", 1)[-1]
+    return re.sub(r"<.*>$", "", base)
 
 
 def _semantic_failure_step(
@@ -700,27 +704,58 @@ def run_staged_preflight(
     budget: BudgetManager | None = None,
     original_top_function: str | None = None,
     candidate_top_function: str | None = None,
+    extra_sources: Iterable[str] = (),
 ) -> TestbenchPreflightResult:
     """Run independently owned compile, symbol, ABI, and link stages."""
 
     directory = Path(work_dir)
     directory.mkdir(parents=True, exist_ok=True)
+    include_dirs = tuple(Path(item) for item in include_dirs)
+    extra_flags = tuple(str(item) for item in extra_flags)
     sources = {
         "testbench.cpp": testbench_code,
         "orig_code.cpp": original_code,
         "refactor_code.cpp": candidate_code,
     }
+    normalized_extra_sources = tuple(dict.fromkeys(str(item) for item in extra_sources))
+    template_reference = False
     for name, content in sources.items():
         if not isinstance(content, str) or not content.strip():
             raise ValueError(f"{name} source must not be empty")
         (directory / name).write_text(content, encoding="utf-8")
+
+    if original_top_function is not None:
+        entry_facts = inspect_top_entry(
+            original_code,
+            original_top_function,
+            source_path=str(directory / "orig_code.cpp"),
+            include_dirs=tuple(str(item) for item in include_dirs),
+            compile_flags=tuple(str(item) for item in extra_flags),
+        )
+        template_reference = (
+            entry_facts.get("status") in {"confirmed", "ambiguous"}
+            and any(
+                item.get("kind") == "template"
+                for item in entry_facts.get("entries", ())
+            )
+        )
+        if template_reference:
+            (directory / "template_reference.cpp").write_text(
+                '#include "orig_code.cpp"\n'
+                '#include "testbench.cpp"\n',
+                encoding="utf-8",
+            )
 
     invocation_path = directory / "testbench_preflight_invocation.json"
     invocation: dict[str, Any] = {
         "schema_version": 2,
         "phase": "testbench_preflight_staged",
         "work_dir": str(directory.resolve()),
-        "source_files": list(sources),
+        "source_files": [
+            *sources,
+            *(("template_reference.cpp",) if template_reference else ()),
+            *normalized_extra_sources,
+        ],
         "compiler": compiler,
         "symbol_tool": os.getenv("AGREFACTOR_NM", "nm"),
         "timeout_seconds": timeout_s,
@@ -799,7 +834,13 @@ def run_staged_preflight(
         include_dirs=include_dirs,
     )
     substeps: list[TestbenchPreflightSubstep] = []
-    compile_specs = (
+    reference_source_name = (
+        "template_reference.cpp" if template_reference else "orig_code.cpp"
+    )
+    reference_object_name = (
+        "template_reference.o" if template_reference else "orig_code.o"
+    )
+    compile_specs = tuple([
         (
             "testbench.cpp",
             "testbench.o",
@@ -809,8 +850,8 @@ def run_staged_preflight(
             TestbenchPreflightReasonCode.TESTBENCH_COMPILE_FAILED,
         ),
         (
-            "orig_code.cpp",
-            "orig_code.o",
+            reference_source_name,
+            reference_object_name,
             TestbenchPreflightComponent.REFERENCE,
             TestbenchPreflightSubstage.REFERENCE_COMPILE,
             TestbenchFailureOwner.ORIGINAL,
@@ -824,7 +865,8 @@ def run_staged_preflight(
             TestbenchFailureOwner.CANDIDATE,
             TestbenchPreflightReasonCode.CANDIDATE_COMPILE_FAILED,
         ),
-    )
+        *tuple((source_name, f"extra_{index:03d}.o", TestbenchPreflightComponent.CONFIGURATION, TestbenchPreflightSubstage.REFERENCE_COMPILE, TestbenchFailureOwner.CONFIGURATION, TestbenchPreflightReasonCode.CONFIGURATION_FAILED) for index, source_name in enumerate(normalized_extra_sources, start=1)),
+    ])
 
     for (
         source_name,
@@ -906,7 +948,7 @@ def run_staged_preflight(
         if reference_top is not None:
             symbol_specs.append(
                 (
-                    "orig_code.o",
+                    reference_object_name,
                     "reference",
                     TestbenchPreflightComponent.REFERENCE,
                     TestbenchPreflightSubstage.REFERENCE_SYMBOL_CHECK,
@@ -969,7 +1011,9 @@ def run_staged_preflight(
                     for symbol in symbol_outputs[key]
                     if _symbol_base(symbol) == top
                 }
-                if not defined:
+                if not defined and not (
+                    key == "reference" and template_reference
+                ):
                     reason = (
                         TestbenchPreflightReasonCode.REFERENCE_TOP_MISSING
                         if key == "reference"
@@ -1019,6 +1063,8 @@ def run_staged_preflight(
         ):
             if top is None:
                 continue
+            if key == "reference" and template_reference:
+                continue
             expected = {
                 symbol
                 for symbol in testbench_symbols
@@ -1052,6 +1098,31 @@ def run_staged_preflight(
                     budget=budget,
                 )
 
+    interface_specs = (
+        ()
+        if template_reference
+        else (
+            (
+                reference_top,
+                reference_object_name,
+                "reference_interface.o",
+                TestbenchPreflightComponent.REFERENCE,
+                TestbenchPreflightSubstage.REFERENCE_INTERFACE_CHECK,
+                TestbenchFailureOwner.TESTBENCH,
+            ),
+        )
+    ) + (
+        (
+            (
+                candidate_top,
+                "refactor_code.o",
+                "candidate_interface.o",
+                TestbenchPreflightComponent.CANDIDATE,
+                TestbenchPreflightSubstage.CANDIDATE_INTERFACE_CHECK,
+                TestbenchFailureOwner.CANDIDATE,
+            ),
+        )
+    )
     for (
         top,
         object_name,
@@ -1059,24 +1130,7 @@ def run_staged_preflight(
         component,
         substage,
         owner,
-    ) in (
-        (
-            reference_top,
-            "orig_code.o",
-            "reference_interface.o",
-            TestbenchPreflightComponent.REFERENCE,
-            TestbenchPreflightSubstage.REFERENCE_INTERFACE_CHECK,
-            TestbenchFailureOwner.TESTBENCH,
-        ),
-        (
-            candidate_top,
-            "refactor_code.o",
-            "candidate_interface.o",
-            TestbenchPreflightComponent.CANDIDATE,
-            TestbenchPreflightSubstage.CANDIDATE_INTERFACE_CHECK,
-            TestbenchFailureOwner.CANDIDATE,
-        ),
-    ):
+    ) in interface_specs:
         if top is None:
             continue
         step = _launch(
@@ -1225,13 +1279,18 @@ def run_staged_preflight(
                 budget=budget,
             )
 
+    link_objects = (
+        ("template_reference.o",)
+        if template_reference
+        else ("testbench.o", "orig_code.o")
+    )
     link_step = _launch(
         command=[
             *base,
             "-Werror=lto-type-mismatch",
-            "testbench.o",
-            "orig_code.o",
+            *link_objects,
             "refactor_code.o",
+            *[f"extra_{index:03d}.o" for index in range(1, len(normalized_extra_sources) + 1)],
             "-o",
             "testbench_preflight",
         ],

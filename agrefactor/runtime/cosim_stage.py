@@ -28,6 +28,12 @@ from .runner import RunContext
 
 CosimExecutor = Callable[..., Mapping[str, Any]]
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_ABSOLUTE_POSIX_PATH_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])/(?:[^/\s:;,()]+/)*[^/\s:;,()]+"
+)
+_WINDOWS_PATH_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])[A-Za-z]:\\(?:[^\\\s:;,()]+\\)*[^\\\s:;,()]+"
+)
 _ALLOWED_POLICIES = frozenset({"required", "off"})
 _ALLOWED_FAILURES = frozenset(
     {
@@ -67,6 +73,17 @@ _CATEGORY = {
     "ownership_unknown": FeedbackCategory.UNKNOWN,
     "budget_exhausted": FeedbackCategory.BUDGET_EXHAUSTED,
 }
+
+
+def _safe_diagnostic_detail(value: Any) -> str | None:
+    """Keep runtime evidence useful without leaking paths or newlines."""
+
+    if value is None:
+        return None
+    text = " ".join(str(value).split())
+    text = _WINDOWS_PATH_RE.sub("<PATH>", text)
+    text = _ABSOLUTE_POSIX_PATH_RE.sub("<PATH>", text)
+    return text[-2048:] or None
 
 
 def _candidate_failure_contract_authorized(
@@ -151,6 +168,8 @@ class CosimStageInputs:
     target_profile: TargetProfile
     timelimit: int
     policy: str = "required"
+    extra_sources: tuple[str, ...] = ()
+    reference_top_function: str | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -202,8 +221,24 @@ class CosimStageInputs:
                 "Public RTL COSIM requires at least one Public suite"
             )
 
+        normalized_extra_sources: list[str] = []
+        for raw_path in self.extra_sources:
+            path = str(raw_path)
+            normalized = path.replace("\\", "/")
+            if (
+                not path
+                or os.path.isabs(path)
+                or ".." in normalized.split("/")
+            ):
+                raise ValueError(
+                    "extra_sources must contain relative package paths"
+                )
+            if path not in normalized_extra_sources:
+                normalized_extra_sources.append(path)
+
         object.__setattr__(self, "work_dir", Path(raw_root).expanduser())
         object.__setattr__(self, "suite_testbench_codes", suites)
+        object.__setattr__(self, "extra_sources", tuple(normalized_extra_sources))
         object.__setattr__(
             self,
             "candidate_top_function",
@@ -333,6 +368,8 @@ class CosimValidationStageHandler:
             suite_id = suite.suite_id
             attempted_suite_ids.append(suite_id)
             work = self._suite_work_dir(index)
+            if context.task.source_package is not None:
+                context.task.source_package.stage_into(work)
             try:
                 raw = self._executor(
                     work_dir=work,
@@ -347,11 +384,40 @@ class CosimValidationStageHandler:
                     budget=context.budget,
                     suite_id=suite_id,
                     runtime_contract=suite.runtime_contract,
+                    extra_sources=self._inputs.extra_sources,
                 )
                 outcome = _normalize_outcome(
                     raw,
                     runtime_contract=suite.runtime_contract,
                 )
+                if (outcome.get("failure_owner") == "unknown"
+                        and self._inputs.reference_top_function is not None
+                        and outcome.get("tool_launched") is True
+                        and outcome.get("cosim_launched") is True
+                        and outcome.get("timed_out") is not True
+                        and outcome.get("evidence_sha256") is not None):
+                    from hashlib import sha256
+                    from flow.tools.vitis_csim import _original_isolation_evidence
+
+                    isolation = _original_isolation_evidence(
+                        original_code=self._inputs.original_code,
+                        testbench_code=self._inputs.suite_testbench_codes[suite_id],
+                        candidate_code=self._inputs.candidate_code,
+                        candidate_top_function=self._inputs.candidate_top_function,
+                        identity={"suite_id_sha256": sha256(suite_id.encode("utf-8")).hexdigest()},
+                        budget=context.budget,
+                        source_root=str(work),
+                        extra_sources=tuple(str(work / name) for name in self._inputs.extra_sources),
+                        compile_flags=self._inputs.target_profile.compile_flags,
+                        original_top_function=self._inputs.reference_top_function,
+                        keep_dir=str(work / "original_reference_qualification"),
+                    )
+                    _atomic_json(work / "public_reference_qualification.json", isolation)
+                    if isolation.get("status") == "passed":
+                        outcome.update(
+                            owner_authority="public_reference_qualified",
+                            repair_eligible=True, evidence_complete=True,
+                        )
             except BudgetExceededError as exc:
                 outcome = {
                     "status": "blocked",
@@ -377,6 +443,9 @@ class CosimValidationStageHandler:
                     "cosim_launched": False,
                     "evidence_sha256": None,
                     "error_type": type(exc).__name__,
+                    "detail": _safe_diagnostic_detail(
+                        f"{type(exc).__name__}: {exc}"
+                    ),
                 }
 
             summary = _safe_summary(suite_id, outcome)
@@ -419,6 +488,7 @@ class CosimValidationStageHandler:
                     summary=outcome["reason_code"],
                     source=self.source,
                     evidence_ref=outcome.get("evidence_sha256"),
+                    detail=outcome.get("detail"),
                     metadata=summary,
                 )
             )
@@ -627,6 +697,9 @@ def _normalize_outcome(
         "failure_kind": kind,
         "failure_owner": owner,
         "reason_code": reason.strip()[:300],
+        "detail": _safe_diagnostic_detail(
+            value.get("detail") or value.get("diagnostic")
+        ),
         "timed_out": value.get("timed_out") is True,
         "returncode": (
             value.get("returncode")
@@ -679,6 +752,7 @@ def _safe_summary(
         "failure_kind": outcome.get("failure_kind"),
         "failure_owner": outcome.get("failure_owner"),
         "reason_code": outcome.get("reason_code"),
+        "detail": outcome.get("detail"),
         "timed_out": outcome.get("timed_out") is True,
         "returncode": (
             outcome.get("returncode")

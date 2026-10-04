@@ -7,16 +7,20 @@ source plus the frozen Public-derived Candidate ABI.
 """
 
 import concurrent.futures
+from contextlib import nullcontext
 import json
 import os
 import tempfile
 import hashlib
 import re
 import subprocess
+import traceback
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from autogen.agentchat.group import ContextVariables  # type: ignore
 from agrefactor.config import EvaluationSplit, TestSuiteSpec
+from agrefactor.config.tool_timeouts import DEFAULT_CSYNTH_TIMEOUT_S
 from agrefactor.cpp_interface import (
     extract_top_interface,
     interfaces_equivalent,
@@ -35,7 +39,7 @@ from flow.inflight_tb.checks import extract_hls_decl_from_tb as _extract_seed_hl
 
 AGENT_YAML = "flow/agents/testbench_coverage.yaml"
 AGENT_NAME = "tb_engineer"
-SYNTH_CHECK_TIMEOUT = 300  # seconds for csynth on empty stub
+SYNTH_CHECK_TIMEOUT = DEFAULT_CSYNTH_TIMEOUT_S
 # Maximum number of uncovered lines to enumerate explicitly in the prompt;
 # beyond this we just include the annotated source. Keeps prompts bounded.
 MAX_LISTED_UNCOVERED = 60
@@ -186,6 +190,9 @@ class TestbenchGenerationExhausted(RuntimeError):
             or trajectory.get("trajectory_status")
             or "generation_qualification_failed"
         )
+        if trajectory.get("trajectory_status") == "synth_failed":
+            diagnostic_kind = "synth_failed"
+            action = "review_unknown"
         raw_diagnostic = str(
             last.get("compile_stderr")
             or last.get("run_stderr")
@@ -233,10 +240,19 @@ class TestbenchGenerationExhausted(RuntimeError):
 def extract_hls_decl_from_testbench(
     testbench_code: str,
     hls_name: str,
+    *,
+    source_path: Optional[str] = None,
+    include_dirs: Tuple[str, ...] = (),
+    compile_flags: Tuple[str, ...] = (),
 ) -> str:
     """Extract one normalized Candidate declaration from a Public Testbench."""
 
-    declaration = _extract_seed_hls_decl(testbench_code, hls_name)
+    interface = extract_top_interface(
+        testbench_code, hls_name, require_definition=False,
+        source_path=source_path, include_dirs=include_dirs,
+        compile_flags=compile_flags,
+    )
+    declaration = interface.source_declaration if interface is not None else ""
     if not declaration:
         return ""
     return declaration.strip().rstrip(";") + ";"
@@ -256,6 +272,9 @@ def public_runtime_contract_depth_ports(
     testbench_code: str,
     candidate_top_function: str,
     frozen_hls_decl: str,
+    source_path: Optional[str] = None,
+    include_dirs: Tuple[str, ...] = (),
+    compile_flags: Tuple[str, ...] = (),
 ) -> Tuple[str, ...]:
     """Return pointer/array Candidate ports that require COSIM depths."""
 
@@ -274,6 +293,19 @@ def public_runtime_contract_depth_ports(
         candidate,
         require_definition=False,
     )
+    # A declaration may use a typedef declared only in the Public testbench
+    # (for example tb_data_t * where tb_data_t is an array typedef).
+    # Parse the complete testbench when the isolated declaration cannot
+    # resolve that type, so depth requirements remain tied to the frozen ABI.
+    if interface is None:
+        interface = extract_top_interface(
+            testbench_code,
+            candidate,
+            require_definition=False,
+            source_path=source_path,
+            include_dirs=include_dirs,
+            compile_flags=compile_flags,
+        )
     if interface is None:
         return ()
     return tuple(
@@ -291,6 +323,9 @@ def validate_public_runtime_contract(
     testbench_code: str,
     candidate_top_function: str,
     frozen_hls_decl: str,
+    source_path: Optional[str] = None,
+    include_dirs: Tuple[str, ...] = (),
+    compile_flags: Tuple[str, ...] = (),
 ) -> Dict[str, Any]:
     """Normalize a generated contract and bind it to the frozen Public ABI."""
 
@@ -309,6 +344,9 @@ def validate_public_runtime_contract(
             testbench_code=testbench_code,
             candidate_top_function=candidate_top_function,
             frozen_hls_decl=frozen_hls_decl,
+            source_path=source_path,
+            include_dirs=include_dirs,
+            compile_flags=compile_flags,
         )
     )
 
@@ -370,11 +408,13 @@ def validate_stub_contract(
 def _freeze_public_contract(
     testbench_code: str,
     candidate_name: str,
+    **parse_context,
 ) -> Tuple[str, Tuple[str, ...]]:
     interface = extract_top_interface(
         testbench_code,
         candidate_name,
         require_definition=False,
+        **parse_context,
     )
     if interface is None or interface.source_declaration is None:
         raise ModelArtifactError(
@@ -391,11 +431,13 @@ def _validate_frozen_public_contract(
     candidate_name: str,
     frozen_hls_decl: str,
     frozen_macros: Tuple[str, ...],
+    **parse_context,
 ) -> None:
     _validate_frozen_candidate_abi(
         testbench_code,
         candidate_name,
         frozen_hls_decl,
+        **parse_context,
     )
 
 
@@ -403,19 +445,39 @@ def _validate_frozen_candidate_abi(
     testbench_code: str,
     candidate_name: str,
     frozen_hls_decl: str,
+    **parse_context,
 ) -> None:
     observed = extract_top_interface(
         testbench_code,
         candidate_name,
         require_definition=False,
+        **parse_context,
     )
     frozen = extract_top_interface(
         frozen_hls_decl,
         candidate_name,
         require_definition=False,
+        **parse_context,
     )
-    if observed is None or frozen is None:
-        return
+    if frozen is None:
+        # Frozen declarations may use a typedef or vendor type declared by the
+        # Testbench's source package. Parse the declaration in that context,
+        # while keeping the observed declaration check independent.
+        frozen = extract_top_interface(
+            testbench_code + "\n" + frozen_hls_decl,
+            candidate_name,
+            require_definition=False,
+            **parse_context,
+        )
+    if frozen is None:
+        raise ModelArtifactError(
+            "externally frozen Candidate ABI could not be parsed"
+        )
+    if observed is None:
+        raise ModelArtifactError(
+            "Testbench does not expose the externally frozen Candidate "
+            "declaration"
+        )
     if not interfaces_equivalent(observed, frozen):
         raise ModelArtifactError(
             "Testbench changed the externally frozen Public-derived ABI"
@@ -430,6 +492,8 @@ def _coverage_action(record: Dict[str, Any]) -> str:
     if action:
         return action
     owner = str(record.get("failure_owner") or "unknown")
+    if owner == "unknown":
+        return "review_unknown"
     return {
         "stub": "regenerate_stub",
         "testbench": "repair_testbench",
@@ -732,6 +796,8 @@ def _stub_request_message(
 def _empty_stub_request_message(
     hls_name: str,
     pinned_hls_decl: Optional[str] = None,
+    failure_history: str = "",
+    previous_stub: str = "",
 ) -> str:
     pinned = ""
     if pinned_hls_decl:
@@ -742,13 +808,24 @@ def _empty_stub_request_message(
             + ";\n```"
         )
     return (
-        f"Write a minimal empty/dummy implementation of `{hls_name}` for an "
+        f"Write a minimal synthesis probe implementation of `{hls_name}` for an "
         "ABI-only CSYNTH check. Define the Candidate top exactly once. "
         "Preserve the exact C/C++ linkage and full frozen ABI. Do not include "
         "`main`, do not define the Original top, and do not add an extra "
         '`extern "C"` wrapper that changes linkage. The body may return a '
         "default value or do nothing for `void`."
+        " Preserve enough legal port use or explicit tool interface directives "
+        "for the synthesizer to infer the actual interface; an unused port "
+        "being optimized away is not evidence that the frozen ABI is unsupported. "
+        "Use synthesis-compatible toolchain types and headers. Do not implement "
+        "the algorithm or change any frozen declaration. Include official headers "
+        "for declared types. Never invent or redeclare types inside `std` or any "
+        "other standard-library or vendor-tool namespace, and never shadow a "
+        "library or toolchain type. If CSYNTH rejects the exact ABI, leave that "
+        "evidence visible for the existing coordinated ABI-correction path."
         + pinned
+        + ("\nPrevious synthesis probe:\n```cpp\n" + previous_stub + "\n```" if previous_stub else "")
+        + ("\nAll previous synthesis failures:\n```\n" + failure_history + "\n```" if failure_history else "")
         + "\nReply with exactly one complete ```cpp ... ``` block and no "
         "commentary."
     )
@@ -760,8 +837,9 @@ def _hls_friendly_rewrite_message(
 ) -> str:
     excerpt = csynth_err.strip()[-1500:] or "(no detailed error)"
     return (
-        "The ABI-only CSYNTH check proved that the frozen Candidate ABI is "
-        "not synthesizable. This is an explicit coordinated ABI correction, "
+        "The temporary synthesis probe failed CSYNTH. This does not prove "
+        "that every implementation of the frozen ABI is unsynthesizable. "
+        "This is an explicit coordinated ABI correction, "
         "not a coverage-only edit.\n\n"
         f"Candidate top: `{hls_name}`\n"
         "CSYNTH evidence:\n```\n"
@@ -785,12 +863,19 @@ def _synth_check(
     hls_name: str,
     work_dir: str,
     budget: Any = None,
+    source_context: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, str]:
     """Run csynth on an empty stub. Returns (passed, error_tail_chars)."""
     os.makedirs(work_dir, exist_ok=True)
+    context = dict(source_context or {})
+    if context.get("source_root"):
+        import shutil
+        shutil.copytree(context["source_root"], work_dir, dirs_exist_ok=True)
     cv = ContextVariables(data={
         "curr_code": empty_stub_code,
         "new_kernel_name": hls_name,
+        "target_profile": context.get("target_profile") or {"compile_flags": context.get("compile_flags", ())},
+        "csynth_extra_sources": context.get("extra_sources", ()),
     })
     try:
         status, error_msg = tools.csynth.run_csynth(
@@ -918,7 +1003,7 @@ def _feedback_message(
                 newline * 2
                 + "PREVIOUS FAILED ATTEMPTS (do not repeat them):"
                 + newline
-                + failure_history[-6000:]
+                + failure_history
                 + newline
             )
         scope_block = ""
@@ -1144,11 +1229,13 @@ def _request_cpp_artifact(
     first_turn: bool,
     artifact_kind: str,
     required_symbol: Optional[str],
+    max_repairs: int = _ARTIFACT_RESPONSE_RETRIES,
 ) -> str:
     current_message = message
     current_first_turn = first_turn
     last_error: Exception | None = None
-    for attempt in range(_ARTIFACT_RESPONSE_RETRIES + 1):
+    failures: list[str] = []
+    for attempt in range(max_repairs + 1):
         try:
             raw = _agent_run_once(
                 agent,
@@ -1162,13 +1249,15 @@ def _request_cpp_artifact(
             )
         except ModelArtifactError as exc:
             last_error = exc
-            if attempt >= _ARTIFACT_RESPONSE_RETRIES:
+            failures.append(f"Attempt {attempt}: {exc}")
+            if attempt >= max_repairs:
                 break
             current_first_turn = False
             current_message = (
                 "Your previous response was invalid: "
-                f"{exc}. Return exactly one complete fenced ```cpp block "
-                "for the requested artifact, with no other text."
+                + "\n".join(failures)
+                + "\nReturn exactly one complete fenced ```cpp block "
+                "for the requested artifact, with no other text.\n\n" + message
             )
     raise ModelArtifactError(
         f"model did not return a valid {artifact_kind} artifact"
@@ -1219,6 +1308,9 @@ def _runtime_contract_from_model_response(
     testbench_code: str,
     candidate_top_function: str,
     frozen_hls_decl: str,
+    source_path: Optional[str] = None,
+    include_dirs: Tuple[str, ...] = (),
+    compile_flags: Tuple[str, ...] = (),
 ) -> Dict[str, Any]:
     if not isinstance(content, str):
         raise ModelArtifactError("model response content must be a string")
@@ -1246,6 +1338,9 @@ def _runtime_contract_from_model_response(
         testbench_code=testbench_code,
         candidate_top_function=candidate_top_function,
         frozen_hls_decl=frozen_hls_decl,
+        source_path=source_path,
+        include_dirs=include_dirs,
+        compile_flags=compile_flags,
     )
 
 
@@ -1258,6 +1353,9 @@ def generate_public_runtime_contract(
     llm_config: Optional[Dict[str, Any]] = None,
     budget: Any = None,
     input_domain_contract: Optional[Dict[str, Any]] = None,
+    source_path: Optional[str] = None,
+    include_dirs: Tuple[str, ...] = (),
+    compile_flags: Tuple[str, ...] = (),
 ) -> Dict[str, Any]:
     """Generate and validate the Public COSIM depth contract."""
 
@@ -1265,6 +1363,9 @@ def generate_public_runtime_contract(
         testbench_code=testbench_code,
         candidate_top_function=candidate_top_function,
         frozen_hls_decl=frozen_hls_decl,
+        source_path=source_path,
+        include_dirs=include_dirs,
+        compile_flags=compile_flags,
     )
     if not required_ports:
         return {
@@ -1286,6 +1387,8 @@ def generate_public_runtime_contract(
         required_ports=required_ports,
     )
     first_turn = True
+    initial_message = message
+    failures: list[str] = []
     last_error: Exception | None = None
     for attempt in range(_ARTIFACT_RESPONSE_RETRIES + 1):
         try:
@@ -1295,18 +1398,22 @@ def generate_public_runtime_contract(
                 testbench_code=testbench_code,
                 candidate_top_function=candidate_top_function,
                 frozen_hls_decl=frozen_hls_decl,
+                source_path=source_path,
+                include_dirs=include_dirs,
+                compile_flags=compile_flags,
             )
         except ModelArtifactError as exc:
             last_error = exc
+            failures.append(f"Attempt {attempt}: {exc}")
             if attempt >= _ARTIFACT_RESPONSE_RETRIES:
                 break
             first_turn = False
             message = (
                 "Your previous interface depth response was invalid: "
-                f"{exc}. Return exactly one JSON object with only "
+                + "\n".join(failures) + "\nReturn exactly one JSON object with only "
                 "cosim_interface_depths. Include every required pointer/"
                 "array port exactly once with a positive integer depth. "
-                "Do not return Candidate code or commentary."
+                "Do not return Candidate code or commentary.\n\n" + initial_message
             )
     raise ModelArtifactError(
         "model did not return a valid Public runtime contract"
@@ -1317,6 +1424,7 @@ def _ensure_original_forward_declaration(
     stub_code: str,
     orig_code: str,
     kernel_name: str,
+    **parse_context,
 ) -> str:
     call_re = re.compile(rf"\b{re.escape(kernel_name)}\s*\(")
     declaration_re = re.compile(
@@ -1329,11 +1437,9 @@ def _ensure_original_forward_declaration(
         return stub_code
     if declaration_re.search(stub_code):
         return stub_code
-    declaration = _extract_seed_hls_decl(orig_code, kernel_name)
+    declaration = extract_hls_decl_from_testbench(orig_code, kernel_name, **parse_context)
     if not declaration:
-        raise ModelArtifactError(
-            f"could not derive original declaration for {kernel_name}"
-        )
+        return stub_code
     return declaration.rstrip() + ";\n\n" + stub_code.lstrip()
 
 
@@ -1345,19 +1451,29 @@ def _measure_qualified_coverage(
     budget: Any = None,
     *,
     require_original_execution: bool = False,
+    source_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     # First qualify the exact generated inputs against the Original with a
     # no-op Candidate and sanitizers.  The model receives the raw Testbench
     # and tool evidence when this fails; no inferred root cause is inserted.
     candidate_name = f"{kernel_name}_hls"
-    candidate_decl = extract_hls_decl_from_testbench(tb_code, candidate_name)
-    if candidate_decl:
+    context = dict(source_context or {})
+    context.pop("target_profile", None)
+    parse_context = {
+        "source_path": str(Path(context["source_root"]) / "testbench.cpp") if context.get("source_root") else None,
+        "include_dirs": (context["source_root"],) if context.get("source_root") else (),
+        "compile_flags": context.get("compile_flags", ()),
+    }
+    candidate_decl = extract_hls_decl_from_testbench(tb_code, candidate_name, **parse_context)
+    if candidate_decl or require_original_execution:
         original_check = check_original_execution(
             orig_code,
             tb_code,
             candidate_decl,
             candidate_name,
             budget=budget,
+            original_name=kernel_name,
+            **context,
         )
         if original_check.get("status") != "ok":
             original_check.setdefault("qualification_errors", [])
@@ -1371,8 +1487,16 @@ def _measure_qualified_coverage(
         tb_code,
         stub_code,
         budget=budget,
+        original_name=kernel_name,
+        **context,
     )
     result.setdefault("qualification_errors", [])
+    if (result.get("status") == "run_failed" and result.get("failure_owner") == "unknown"
+            and candidate_decl and original_check.get("status") == "ok"):
+        # Safe Original execution does not qualify the comparison logic.
+        # Keep both generated artifacts eligible while ownership is unknown.
+        result["next_action"] = "repair_testbench_stub"
+        result["original_qualification_status"] = "passed"
     lines_total = result.get("lines_total")
     lines_hit = result.get("lines_hit")
     if (
@@ -1530,6 +1654,8 @@ def run_trajectory(
     budget: Any = None,
     artifact_root: Optional[str] = None,
     input_domain_contract: Optional[Dict[str, Any]] = None,
+    source_context: Optional[Dict[str, Any]] = None,
+    max_repairs: int = 3,
 ) -> Dict[str, Any]:
     if isinstance(K, bool) or not isinstance(K, int) or K < 1:
         raise ValueError("K must be a positive integer")
@@ -1540,6 +1666,12 @@ def run_trajectory(
         budget=budget,
     )
     agent = loader.load_agent(AGENT_NAME)
+    context = dict(source_context or {})
+    parse_context = {
+        "source_path": str(Path(context["source_root"]) / "testbench.cpp") if context.get("source_root") else None,
+        "include_dirs": (context["source_root"],) if context.get("source_root") else (),
+        "compile_flags": context.get("compile_flags", ()),
+    }
     hls_name = f"{kernel_name}_hls"
     rounds: List[Dict[str, Any]] = []
     external_abi_frozen = bool(
@@ -1565,6 +1697,7 @@ def run_trajectory(
         current_message = message
         current_first_turn = first_turn
         last_error: Exception | None = None
+        failures: list[str] = []
         for attempt in range(_ARTIFACT_RESPONSE_RETRIES + 1):
             try:
                 value = _request_cpp_artifact(
@@ -1573,6 +1706,7 @@ def run_trajectory(
                     first_turn=current_first_turn,
                     artifact_kind="testbench",
                     required_symbol=hls_name,
+                    max_repairs=0,
                 )
                 validate_testbench_top_contract(
                     value,
@@ -1580,7 +1714,11 @@ def run_trajectory(
                     hls_name,
                     require_original_call=external_abi_frozen,
                 )
-                declaration = extract_hls_decl_from_testbench(value, hls_name)
+                declaration = extract_hls_decl_from_testbench(value, hls_name, **parse_context)
+                if not declaration:
+                    raise ModelArtifactError(
+                        "Testbench does not expose a Candidate declaration"
+                    )
                 validate_testbench_input_domain(
                     value,
                     hls_name,
@@ -1591,17 +1729,19 @@ def run_trajectory(
                 return value
             except ModelArtifactError as exc:
                 last_error = exc
+                failures.append(f"Attempt {attempt}: {exc}")
                 if attempt >= _ARTIFACT_RESPONSE_RETRIES:
                     break
                 current_first_turn = False
                 current_message = (
-                    "The previous Testbench violated the frozen input-domain contract: "
-                    f"{exc}. Generate a complete replacement with simple, directly auditable Candidate calls. "
+                    "The previous Testbench violated the required Candidate/Testbench contract: "
+                    + "\n".join(failures) + "\nGenerate a complete replacement with simple, directly auditable Candidate calls. "
                     "Every Candidate forward-declaration parameter must have an explicit name matching the frozen contract port name; never omit parameter names."
-                    + domain_block
+                    + domain_block + "\n\n" + message
                 )
         raise ModelArtifactError(
-            "model did not return a Testbench compatible with the frozen input domain"
+            "model did not return a Testbench compatible with the required "
+            "Candidate/Testbench contract:\n" + "\n".join(failures)[-1500:]
         ) from last_error
 
     def request_stub(
@@ -1612,6 +1752,7 @@ def run_trajectory(
         declaration = extract_hls_decl_from_testbench(
             testbench_code,
             hls_name,
+            **parse_context,
         )
         if not declaration:
             raise ModelArtifactError(
@@ -1623,6 +1764,7 @@ def run_trajectory(
             else _stub_request_message(kernel_name, declaration)
         )
         last_error: Exception | None = None
+        failures: list[str] = []
         for attempt in range(_ARTIFACT_RESPONSE_RETRIES + 1):
             try:
                 value = _request_cpp_artifact(
@@ -1631,11 +1773,13 @@ def run_trajectory(
                     first_turn=False,
                     artifact_kind="stub",
                     required_symbol=hls_name,
+                    max_repairs=0,
                 )
                 value = _ensure_original_forward_declaration(
                     value,
                     orig_code,
                     kernel_name,
+                    **(parse_context if source_context else {}),
                 )
                 validate_stub_contract(
                     value,
@@ -1646,12 +1790,13 @@ def run_trajectory(
                 return value, _normalize_declaration(declaration)
             except ModelArtifactError as exc:
                 last_error = exc
+                failures.append(f"Attempt {attempt}: {exc}")
                 if attempt >= _ARTIFACT_RESPONSE_RETRIES:
                     break
                 current_message = _stub_request_message(
                     kernel_name,
                     declaration,
-                    failure_excerpt=str(exc),
+                    failure_excerpt="\n".join(failures),
                 )
         raise ModelArtifactError(
             "model did not return a Stub matching the frozen Candidate ABI"
@@ -1674,6 +1819,7 @@ def run_trajectory(
                 testbench_code,
                 hls_name,
                 frozen_hls_decl,
+                **parse_context,
             )
     except ModelArtifactError as exc:
         if not external_abi_frozen:
@@ -1691,6 +1837,7 @@ def run_trajectory(
             testbench_code,
             hls_name,
             frozen_hls_decl,
+            **parse_context,
         )
         initial_testbench_contract_repaired = True
 
@@ -1702,18 +1849,21 @@ def run_trajectory(
         kernel_name,
         budget=budget,
         require_original_execution=external_abi_frozen,
+        source_context=source_context,
     )
 
     if coverage.get("status") == "ok":
         observed_decl, observed_macros = _freeze_public_contract(
             testbench_code,
             hls_name,
+            **parse_context,
         )
         if external_abi_frozen:
             _validate_frozen_candidate_abi(
                 testbench_code,
                 hls_name,
                 frozen_hls_decl,
+                **parse_context,
             )
             frozen_macros = observed_macros
         else:
@@ -1748,7 +1898,7 @@ def run_trajectory(
     # normal round machinery preserves the exact tool diagnostic and history.
     lightweight_mode = K == 1
     if lightweight_mode and rounds[-1].get("status") != "ok":
-        K = 4
+        K = max_repairs + 1
     if K == 1:
         previous = rounds[-1]
         reported_action = _coverage_action(previous)
@@ -1781,6 +1931,7 @@ def run_trajectory(
                     or extract_hls_decl_from_testbench(
                         testbench_code,
                         hls_name,
+                        **parse_context,
                     )
                 )
                 stub_code, current_decl = request_stub(
@@ -1850,6 +2001,7 @@ def run_trajectory(
                         testbench_code,
                         hls_name,
                         frozen_hls_decl,
+                        **parse_context,
                     )
                 stub_code, current_decl = request_stub(testbench_code)
 
@@ -1860,17 +2012,20 @@ def run_trajectory(
                 kernel_name,
                 budget=budget,
                 require_original_execution=external_abi_frozen,
+                source_context=source_context,
             )
             if coverage.get("status") == "ok":
                 observed_decl, observed_macros = _freeze_public_contract(
                     testbench_code,
                     hls_name,
+                    **parse_context,
                 )
                 if external_abi_frozen:
                     _validate_frozen_candidate_abi(
                         testbench_code,
                         hls_name,
                         frozen_hls_decl,
+                        **parse_context,
                     )
                     frozen_macros = observed_macros
                 else:
@@ -1907,7 +2062,7 @@ def run_trajectory(
         previous = rounds[-1]
         if (
             previous.get("status") == "ok"
-            and (previous.get("cov_pct") or 0.0) >= target_pct
+            and (lightweight_mode or (previous.get("cov_pct") or 0.0) >= target_pct)
         ):
             break
 
@@ -1919,7 +2074,7 @@ def run_trajectory(
             and action == "repair_abi_testbench_stub"
         ):
             action = "repair_testbench_stub"
-        if action in {"review_toolchain", "review_original"}:
+        if action in {"review_toolchain", "review_original", "review_unknown"}:
             break
         testbench_reused = False
         stub_reused = False
@@ -1936,6 +2091,7 @@ def run_trajectory(
                 or extract_hls_decl_from_testbench(
                     testbench_code,
                     hls_name,
+                    **parse_context,
                 )
             )
             stub_code, current_decl = request_stub(
@@ -1943,7 +2099,7 @@ def run_trajectory(
                 message=_stub_request_message(
                     kernel_name,
                     declaration,
-                    failure_excerpt=previous_error,
+                    failure_excerpt=_failure_history(rounds),
                 ),
             )
             testbench_reused = True
@@ -1983,6 +2139,7 @@ def run_trajectory(
                         hls_name,
                         frozen_hls_decl,
                         frozen_macros,
+                        **parse_context,
                     )
                 except ModelArtifactError as exc:
                     _append_round(
@@ -2052,6 +2209,7 @@ def run_trajectory(
                         hls_name,
                         frozen_hls_decl,
                         frozen_macros,
+                        **parse_context,
                     )
                 except ModelArtifactError as exc:
                     _append_round(
@@ -2082,7 +2240,7 @@ def run_trajectory(
             testbench_code = request_testbench(
                 _hls_friendly_rewrite_message(
                     hls_name,
-                    previous_error,
+                    _failure_history(rounds),
                 ),
                 first_turn=False,
             )
@@ -2122,6 +2280,7 @@ def run_trajectory(
                 original_decl = _extract_seed_hls_decl(
                     orig_code,
                     kernel_name,
+                    **parse_context,
                 )
                 repair_message += (
                     chr(10) * 2
@@ -2148,6 +2307,7 @@ def run_trajectory(
                     testbench_code,
                     hls_name,
                     frozen_hls_decl,
+                    **parse_context,
                 )
             stub_code, current_decl = request_stub(testbench_code)
 
@@ -2158,18 +2318,21 @@ def run_trajectory(
             kernel_name,
             budget=budget,
             require_original_execution=external_abi_frozen,
+            source_context=source_context,
         )
 
         if coverage.get("status") == "ok":
             observed_decl, observed_macros = _freeze_public_contract(
                 testbench_code,
                 hls_name,
+                **parse_context,
             )
             if external_abi_frozen:
                 _validate_frozen_candidate_abi(
                     testbench_code,
                     hls_name,
                     frozen_hls_decl,
+                    **parse_context,
                 )
                 if frozen_macros:
                     _validate_frozen_public_contract(
@@ -2177,6 +2340,7 @@ def run_trajectory(
                         hls_name,
                         frozen_hls_decl,
                         frozen_macros,
+                        **parse_context,
                     )
                 else:
                     frozen_macros = observed_macros
@@ -2192,6 +2356,7 @@ def run_trajectory(
                     hls_name,
                     frozen_hls_decl,
                     frozen_macros,
+                    **parse_context,
                 )
             reusable_stub = stub_code
 
@@ -2239,6 +2404,8 @@ def run_trajectory(
         budget=budget,
         artifact_root=artifact_root,
         allow_abi_correction=not external_abi_frozen,
+        source_context=source_context,
+        synth_retry_budget=max_repairs,
     )
 
 
@@ -2250,11 +2417,18 @@ def _finalize_trajectory(
     expected_hls_name: Optional[str] = None,
     orig_code: Optional[str] = None,
     emit_final_text: bool = True,
-    synth_retry_budget: int = 1,
+    synth_retry_budget: int = 3,
     budget: Any = None,
     artifact_root: Optional[str] = None,
     allow_abi_correction: bool = True,
+    source_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    context = dict(source_context or {})
+    parse_context = {
+        "source_path": str(Path(context["source_root"]) / "testbench.cpp") if context.get("source_root") else None,
+        "include_dirs": (context["source_root"],) if context.get("source_root") else (),
+        "compile_flags": context.get("compile_flags", ()),
+    }
     ok_rounds = [
         record
         for record in rounds
@@ -2300,12 +2474,14 @@ def _finalize_trajectory(
             else expected_hls_name
         )
         retries_left = synth_retry_budget
+        synth_failures: List[str] = []
         while True:
             best_decl = (
                 str(best.get("frozen_public_hls_decl") or "")
                 or extract_hls_decl_from_testbench(
                     str(best["tb_code"]),
                     expected_hls_name,
+                    **parse_context,
                 )
             )
             if not best_decl:
@@ -2317,6 +2493,8 @@ def _finalize_trajectory(
                 _empty_stub_request_message(
                     expected_hls_name,
                     best_decl,
+                    failure_history="\n\n".join(synth_failures),
+                    previous_stub=empty_stub,
                 ),
                 first_turn=False,
                 artifact_kind="empty_stub",
@@ -2328,28 +2506,34 @@ def _finalize_trajectory(
                 candidate_name=expected_hls_name,
                 frozen_hls_decl=best_decl,
             )
-            with tempfile.TemporaryDirectory(
-                prefix=f"synth_check_traj{trajectory_idx}_"
-            ) as work_dir:
+            synth_attempt = synth_retry_budget - retries_left
+            synth_context = (
+                nullcontext(str(Path(artifact_root) / f"trajectory_{trajectory_idx:03d}" / f"synth_attempt_{synth_attempt:03d}"))
+                if artifact_root else tempfile.TemporaryDirectory(prefix=f"synth_check_traj{trajectory_idx}_")
+            )
+            with synth_context as work_dir:
                 synth_ok, synth_error = _synth_check(
                     empty_stub,
                     expected_hls_name,
                     work_dir,
                     budget=budget,
+                    source_context=source_context,
                 )
             if (
                 synth_ok
                 or retries_left <= 0
-                or not allow_abi_correction
             ):
                 break
 
             retries_left -= 1
+            synth_failures.append(synth_error)
+            if not allow_abi_correction:
+                continue
             new_tb = _request_cpp_artifact(
                 agent,
                 _hls_friendly_rewrite_message(
                     expected_hls_name,
-                    synth_error,
+                    "\n\n".join(synth_failures),
                 ),
                 first_turn=False,
                 artifact_kind="testbench",
@@ -2363,6 +2547,7 @@ def _finalize_trajectory(
             new_decl = extract_hls_decl_from_testbench(
                 new_tb,
                 expected_hls_name,
+                **parse_context,
             )
             if not new_decl:
                 raise ModelArtifactError(
@@ -2373,7 +2558,7 @@ def _finalize_trajectory(
                 _stub_request_message(
                     original_name,
                     new_decl,
-                    failure_excerpt=synth_error,
+                    failure_excerpt="\n\n".join(synth_failures),
                 ),
                 first_turn=False,
                 artifact_kind="stub",
@@ -2383,6 +2568,7 @@ def _finalize_trajectory(
                 new_stub,
                 orig_code,
                 original_name,
+                **parse_context,
             )
             validate_stub_contract(
                 new_stub,
@@ -2396,6 +2582,7 @@ def _finalize_trajectory(
                 new_stub,
                 original_name,
                 budget=budget,
+                source_context=source_context,
             )
             frozen_decl = ""
             frozen_macros: Tuple[str, ...] = ()
@@ -2403,6 +2590,7 @@ def _finalize_trajectory(
                 frozen_decl, frozen_macros = _freeze_public_contract(
                     new_tb,
                     expected_hls_name,
+                    **parse_context,
                 )
             new_record = _append_round(
                 rounds,
@@ -2889,6 +3077,8 @@ def make_golden_hidden_tb(
     budget: Any = None,
     artifact_root: Optional[str] = None,
     input_domain_contract: Optional[Dict[str, Any]] = None,
+    source_context: Optional[Dict[str, Any]] = None,
+    max_repairs: int = 3,
 ) -> Dict[str, Any]:
     if not isinstance(pinned_public_hls_decl, str) or not (
         pinned_public_hls_decl.strip()
@@ -2948,6 +3138,8 @@ def make_golden_hidden_tb(
                 budget=budget,
                 artifact_root=artifact_root,
                 input_domain_contract=input_domain_contract,
+                source_context=source_context,
+                max_repairs=max_repairs,
             ): index
             for index in range(M)
         }
@@ -2956,6 +3148,18 @@ def make_golden_hidden_tb(
             try:
                 trajectories.append(future.result())
             except Exception as exc:
+                if artifact_root:
+                    error_dir = Path(artifact_root) / f"trajectory_{futures[future]:03d}"
+                    error_dir.mkdir(parents=True, exist_ok=True)
+                    (error_dir / "exception.json").write_text(
+                        json.dumps({
+                            "evidence_view": "operator_full",
+                            "error_type": type(exc).__name__,
+                            "error_message": str(exc),
+                            "traceback": traceback.format_exc(),
+                        }, indent=2, ensure_ascii=True),
+                        encoding="utf-8",
+                    )
                 trajectories.append(
                     {
                         "trajectory_idx": futures[future],

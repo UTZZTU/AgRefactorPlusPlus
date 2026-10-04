@@ -170,10 +170,16 @@ def build_product_summary(
     if accepted and phase is not None and phase.phase is RunPhase.OPTIMIZE:
         public_status = "passed"
         hidden_status = "passed"
+    validation_evidence = _latest_validation_evidence(root)
     failed_stage = (
         None
         if accepted
-        else _failed_stage(identity, phase_metadata, phase=phase)
+        else _failed_stage(
+            identity,
+            phase_metadata,
+            phase=phase,
+            validation_evidence=validation_evidence,
+        )
     )
     candidate_path = root / "optimize" / "final_candidate.cpp"
     if not candidate_path.is_file():
@@ -200,9 +206,26 @@ def build_product_summary(
             failed_stage=failed_stage,
             public_status=public_status,
             hidden_status=hidden_status,
+            stage_statuses=(
+                validation_evidence.get("stage_statuses", {})
+                if validation_evidence is not None
+                else {}
+            ),
         ),
-        "public": public_status,
-        "hidden": hidden_status,
+        "public": (
+            validation_evidence.get("stage_statuses", {}).get(
+                "public", "not_run"
+            )
+            if validation_evidence is not None
+            else public_status
+        ),
+        "hidden": (
+            validation_evidence.get("stage_statuses", {}).get(
+                "hidden", "not_run"
+            )
+            if validation_evidence is not None
+            else hidden_status
+        ),
     }
     if _public_cosim_evidence_present(suites):
         validation["public_cosim"] = public_cosim_status
@@ -214,6 +237,11 @@ def build_product_summary(
         failed_stage=failed_stage,
         optimizer=optimizer,
         accepted=accepted,
+        validation_records=(
+            validation_evidence.get("failure_records", [])
+            if validation_evidence is not None
+            else None
+        ),
     )
     reason_code = failure_fields["reason_code"]
     payload = {
@@ -627,16 +655,135 @@ def _public_cosim_status(suites: object) -> str:
     )
 
 
+_VALIDATION_STAGE_NAMES = {
+    "preflight": "preflight",
+    "public_evaluation": "public",
+    "csim": "public",
+    "public_cosim": "public_cosim",
+    "cosim": "public_cosim",
+    "csynth": "csynth",
+    "hidden_evaluation": "hidden",
+}
+_TERMINAL_TRANSITIONS = {"require_review", "block", "reject"}
+
+
+def _latest_validation_evidence(root: Path) -> dict[str, Any] | None:
+    """Project only the latest validation attempt into product-stage evidence."""
+
+    path = root / "refactor" / "orchestration_result.json"
+    if not path.is_file() or path.is_symlink():
+        return None
+    try:
+        artifact = _read_json(path)
+    except (OSError, TypeError, ValueError):
+        return None
+    result = artifact.get("result")
+    if not isinstance(result, Mapping):
+        result = artifact
+    validations = result.get("candidate_validations")
+    if isinstance(validations, list) and validations:
+        validation = validations[-1]
+    else:
+        validation = result.get("initial_validation")
+    if not isinstance(validation, Mapping):
+        return None
+    steps = validation.get("steps")
+    if not isinstance(steps, list):
+        steps = []
+    stage_statuses: dict[str, str] = {}
+    stage_routes: dict[str, str | None] = {}
+    terminal_stage: str | None = None
+    failure_records: list[dict[str, Any]] = []
+    for raw_step in steps:
+        if not isinstance(raw_step, Mapping):
+            continue
+        stage = _VALIDATION_STAGE_NAMES.get(str(raw_step.get("state")))
+        if stage is None:
+            continue
+        transition = raw_step.get("transition")
+        transition_map = transition if isinstance(transition, Mapping) else {}
+        kind = str(transition_map.get("kind") or "")
+        blocking = raw_step.get("source_blocking") is True
+        if blocking or kind in _TERMINAL_TRANSITIONS:
+            stage_statuses[stage] = "failed"
+            terminal_stage = stage
+            failure_records.append({
+                "stage": stage,
+                "blocking": True,
+                "route_action": raw_step.get("route_action")
+                or transition_map.get("route_action"),
+            })
+            stage_routes[stage] = failure_records[-1]["route_action"]
+        elif kind in {"advance", "accept"}:
+            stage_statuses[stage] = "passed"
+    if terminal_stage is None and steps:
+        last = steps[-1]
+        if isinstance(last, Mapping):
+            terminal_stage = _VALIDATION_STAGE_NAMES.get(str(last.get("state")))
+
+    result_metadata = result.get("metadata")
+    result_metadata = result_metadata if isinstance(result_metadata, Mapping) else {}
+    diagnostics = result_metadata.get("diagnostic_events", [])
+    diagnostic_records_added = False
+    if isinstance(diagnostics, list):
+        validation_id = validation.get("validation_id")
+        for event in diagnostics:
+            if not isinstance(event, Mapping):
+                continue
+            if validation_id and event.get("validation_id") not in {None, validation_id}:
+                continue
+            items = event.get("diagnostic_items")
+            if not isinstance(items, list) or not items:
+                items = [event]
+            for item in items:
+                if not isinstance(item, Mapping):
+                    continue
+                item_stage = _VALIDATION_STAGE_NAMES.get(str(item.get("stage")))
+                item_stage = item_stage or _safe_failure_code(item.get("stage"))
+                classes = event.get("failure_classes")
+                failure_kind = item.get("category")
+                if not failure_kind and isinstance(classes, list) and len(classes) == 1:
+                    failure_kind = classes[0]
+                failure_records.append({
+                    "stage": item_stage or terminal_stage,
+                    "blocking": item.get("severity") in {"fatal", "error"}
+                    or event.get("accepted") is False
+                    or bool(classes),
+                    "failure_kind": failure_kind,
+                    "failure_owner": item.get("owner") or event.get("owner"),
+                    "route_action": event.get("route_action"),
+                })
+                diagnostic_records_added = True
+    if diagnostic_records_added:
+        failure_records = [
+            record for record in failure_records
+            if record.get("failure_kind") is not None
+        ]
+        for record in failure_records:
+            if record.get("route_action") is None:
+                record["route_action"] = stage_routes.get(record.get("stage"))
+    return {
+        "terminal_stage": terminal_stage,
+        "stage_statuses": stage_statuses,
+        "failure_records": failure_records,
+    }
+
+
 def _csynth_status(
     *, accepted: bool,
     failed_stage: str | None,
     public_status: str,
     hidden_status: str,
+    stage_statuses: Mapping[str, str] | None = None,
 ) -> str:
     if failed_stage == "csynth":
         return "failed"
-    if accepted or public_status != "not_run" or hidden_status != "not_run":
+    if accepted:
         return "passed"
+    if isinstance(stage_statuses, Mapping):
+        status = stage_statuses.get("csynth")
+        if status in {"passed", "failed"}:
+            return status
     return "not_run"
 
 
@@ -645,7 +792,12 @@ def _failed_stage(
     phase_metadata: Mapping[str, Any],
     *,
     phase: object | None = None,
+    validation_evidence: Mapping[str, Any] | None = None,
 ) -> str | None:
+    if isinstance(validation_evidence, Mapping):
+        stage = validation_evidence.get("terminal_stage")
+        if isinstance(stage, str) and stage:
+            return stage
     exhaustion = _mapping_path(identity, "budget", "hard_budget_exhaustion")
     if isinstance(exhaustion, Mapping) and exhaustion.get("stage"):
         return str(exhaustion["stage"])
@@ -657,6 +809,14 @@ def _failed_stage(
     if _suite_status(suites, "hidden") == "failed":
         return "hidden"
     state = phase_metadata.get("last_validation_state")
+    state_stage = {
+        "public_evaluation": "public",
+        "public_cosim": "public_cosim",
+        "csynth": "csynth",
+        "hidden_evaluation": "hidden",
+    }.get(state)
+    if state_stage:
+        return state_stage
     if isinstance(state, str) and state:
         return state
     explicit = phase_metadata.get("failed_stage")
@@ -838,11 +998,12 @@ _SUCCESS_FAILURE_CODES = frozenset({
 })
 _VALIDATION_FAILURE_STAGES = frozenset(
     {
-        "public", "public_csim", "csim", "csynth",
+        "preflight", "public", "public_csim", "csim", "csynth",
         "public_cosim", "cosim", "hidden",
     }
 )
 _STAGE_EQUIVALENTS = {
+    "preflight": frozenset({"preflight"}),
     "public": frozenset({"public", "public_csim", "csim"}),
     "public_csim": frozenset({"public", "public_csim", "csim"}),
     "csim": frozenset({"public", "public_csim", "csim"}),
@@ -981,11 +1142,16 @@ def _validation_failure_fields(
     identity: Mapping[str, Any],
     *,
     failed_stage: str | None,
+    records: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     stage = _safe_failure_code(failed_stage)
     if stage not in _VALIDATION_FAILURE_STAGES:
         return None
-    records = list(_typed_failure_records(identity))
+    records = (
+        list(records)
+        if records is not None
+        else list(_typed_failure_records(identity))
+    )
     candidates = _terminal_failure_candidates(records, stage=stage)
     fallback_stage = "public" if stage in {"public_csim", "csim"} else stage
     if not candidates:
@@ -1057,6 +1223,7 @@ def _product_failure_fields(
     failed_stage: str | None,
     optimizer: Mapping[str, Any] | None,
     accepted: bool,
+    validation_records: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     if accepted:
         return {
@@ -1065,7 +1232,11 @@ def _product_failure_fields(
             "route_action": None,
             "review_required": False,
         }
-    validation = _validation_failure_fields(identity, failed_stage=failed_stage)
+    validation = _validation_failure_fields(
+        identity,
+        failed_stage=failed_stage,
+        records=validation_records,
+    )
     if validation is not None:
         return validation
     return {

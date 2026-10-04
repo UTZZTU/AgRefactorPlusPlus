@@ -118,7 +118,7 @@ class CandidateRepairPromptInputs:
     original_code: str
     public_testbench_code: str | None = None
     attempt: int = 1
-    max_attempts: int = 1
+    max_attempts: int = 3
     family_instruction: str | None = None
     family_profile: FamilyInstructionProfile | None = None
     prior_attempt_summaries: tuple[str, ...] = ()
@@ -341,6 +341,12 @@ def _build_candidate_repair_prompt(
     ]
     read_only = [_ORIGINAL_ARTIFACT]
 
+    if inputs.task.source_package is not None:
+        context = "\n\n".join(f"// {path}\n{content}" for path, content in inputs.task.source_package.context_files())
+        if context:
+            artifacts.append(PromptArtifact(name="source_package_context", content=context))
+            read_only.append("source_package_context")
+
     if inputs.public_testbench_code is not None:
         artifacts.append(
             PromptArtifact(
@@ -354,7 +360,15 @@ def _build_candidate_repair_prompt(
         purpose=spec.purpose,
         task=inputs.task,
         feedback=inputs.feedback,
-        objective=spec.objective,
+        objective=(
+            "Repair only the candidate using the Public failure evidence. Ownership remains unknown; "
+            "the Original was qualified on the same frozen inputs. Do not assume a proven candidate cause. "
+            "The proposal remains untrusted until the entire validation chain passes."
+            if any(
+                item.metadata.get("owner_authority") == "public_reference_qualified"
+                for item in inputs.feedback.items if item.blocking
+            ) else spec.objective
+        ),
         artifacts=tuple(artifacts),
         modification_scope=ModificationScope(
             editable_artifacts=(_CANDIDATE_ARTIFACT,),

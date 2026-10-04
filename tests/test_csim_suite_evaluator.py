@@ -91,9 +91,9 @@ class CsimSuiteEvaluatorTests(unittest.TestCase):
             result.evidence.status,
             TestEvaluationStatus.PASSED,
         )
-        self.assertEqual(result.evidence.passed_cases, 4)
+        self.assertEqual(result.evidence.passed_cases, 0)
         self.assertEqual(result.evidence.failed_cases, 0)
-        self.assertTrue(
+        self.assertFalse(
             result.evidence.details["case_counts_complete"]
         )
         self.assertIs(executor.calls[0]["budget"], budget)
@@ -146,6 +146,202 @@ class CsimSuiteEvaluatorTests(unittest.TestCase):
             "PUBLIC_MISMATCH_DETAIL",
         )
         self.assertFalse(result.succeeded)
+
+    def test_verified_case_counts_are_used(self) -> None:
+        executor = RecordingExecutor(
+            ("csim_failed", "PUBLIC_MISMATCH_DETAIL"),
+            invocation={
+                "compile_execution": {
+                    "status": "completed",
+                    "returncode": 0,
+                    "timeout": False,
+                },
+                "simulation_execution": {
+                    "status": "completed",
+                    "returncode": 1,
+                    "timeout": False,
+                },
+                "case_counts": {
+                    "complete": True,
+                    "identity_verified": True,
+                    "passed_cases": 2,
+                    "failed_cases": 1,
+                    "evaluated_cases": 3,
+                },
+            },
+        )
+        evaluator = CsimSuiteEvaluator(executor=executor)
+        suite = TestSuiteSpec(
+            suite_id="reduction-public",
+            case_count=3,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = evaluator.evaluate(
+                work_dir=directory,
+                context_variables={},
+                suite=suite,
+            )
+
+        self.assertEqual(result.evidence.passed_cases, 2)
+        self.assertEqual(result.evidence.failed_cases, 1)
+        self.assertTrue(result.evidence.details["case_counts_complete"])
+        self.assertEqual(
+            result.evidence.details["case_counts_source"],
+            "invocation.case_counts",
+        )
+
+    def test_unverified_case_counts_are_not_used(self) -> None:
+        executor = RecordingExecutor(
+            ("csim_failed", "PUBLIC_MISMATCH_DETAIL"),
+            invocation={
+                "simulation_execution": {
+                    "status": "completed",
+                    "returncode": 1,
+                    "timeout": False,
+                },
+                "case_counts": {
+                    "complete": True,
+                    "passed_cases": 2,
+                    "failed_cases": 1,
+                    "evaluated_cases": 3,
+                },
+            },
+        )
+        evaluator = CsimSuiteEvaluator(executor=executor)
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = evaluator.evaluate(
+                work_dir=directory,
+                context_variables={},
+                suite=TestSuiteSpec(
+                    suite_id="reduction-public",
+                    case_count=3,
+                ),
+            )
+
+        self.assertEqual(result.evidence.evaluated_cases, 0)
+        self.assertFalse(result.evidence.details["case_counts_complete"])
+
+    def test_typed_outcome_case_counts_are_used(self) -> None:
+        executor = RecordingExecutor(
+            ("succeeded", ""),
+            invocation={
+                "simulation_execution": {
+                    "status": "completed",
+                    "returncode": 0,
+                    "timeout": False,
+                },
+                "typed_outcome": {
+                    "identity_verified": True,
+                    "case_counts": {
+                        "complete": True,
+                        "identity_verified": True,
+                        "passed_cases": 2,
+                        "failed_cases": 0,
+                        "evaluated_cases": 2,
+                    },
+                },
+            },
+        )
+        evaluator = CsimSuiteEvaluator(executor=executor)
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = evaluator.evaluate(
+                work_dir=directory,
+                context_variables={},
+                suite=TestSuiteSpec(
+                    suite_id="typed-public",
+                    case_count=2,
+                ),
+            )
+
+        self.assertEqual(result.evidence.passed_cases, 2)
+        self.assertTrue(result.evidence.details["case_counts_complete"])
+        self.assertEqual(
+            result.evidence.details["case_counts_source"],
+            "typed_outcome.case_counts",
+        )
+
+    def test_invocation_conflict_maps_to_error(self) -> None:
+        executor = RecordingExecutor(
+            ("succeeded", ""),
+            invocation={
+                "simulation_execution": {
+                    "status": "completed",
+                    "returncode": 1,
+                    "timeout": False,
+                },
+            },
+        )
+        evaluator = CsimSuiteEvaluator(executor=executor)
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = evaluator.evaluate(
+                work_dir=directory,
+                context_variables={},
+                suite=TestSuiteSpec(suite_id="conflict-public"),
+            )
+
+        self.assertEqual(result.evidence.status, TestEvaluationStatus.ERROR)
+        self.assertTrue(result.evidence.details["evidence_inconsistent"])
+        self.assertEqual(
+            result.evidence.summary,
+            "CSIM invocation evidence conflicts with legacy status",
+        )
+
+    def test_case_count_conflict_maps_to_error(self) -> None:
+        executor = RecordingExecutor(
+            ("succeeded", ""),
+            invocation={
+                "case_counts": {
+                    "complete": True,
+                    "identity_verified": True,
+                    "passed_cases": 1,
+                    "failed_cases": 1,
+                    "evaluated_cases": 2,
+                },
+            },
+        )
+        evaluator = CsimSuiteEvaluator(executor=executor)
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = evaluator.evaluate(
+                work_dir=directory,
+                context_variables={},
+                suite=TestSuiteSpec(
+                    suite_id="count-conflict-public",
+                    case_count=2,
+                ),
+            )
+
+        self.assertEqual(result.evidence.status, TestEvaluationStatus.ERROR)
+        self.assertTrue(result.evidence.details["evidence_inconsistent"])
+        self.assertEqual(result.evidence.evaluated_cases, 0)
+
+    def test_timeout_has_priority_over_legacy_status(self) -> None:
+        executor = RecordingExecutor(
+            ("succeeded", ""),
+            invocation={
+                "simulation_execution": {
+                    "status": "completed",
+                    "returncode": None,
+                    "timeout": True,
+                },
+            },
+        )
+        evaluator = CsimSuiteEvaluator(executor=executor)
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = evaluator.evaluate(
+                work_dir=directory,
+                context_variables={},
+                suite=TestSuiteSpec(suite_id="timeout-public"),
+            )
+
+        self.assertEqual(result.evidence.status, TestEvaluationStatus.ERROR)
+        self.assertTrue(result.evidence.timed_out)
+        self.assertFalse(result.evidence.details["evidence_inconsistent"])
 
     def test_hidden_failure_trace_redacts_diagnostic(self) -> None:
         executor = RecordingExecutor(

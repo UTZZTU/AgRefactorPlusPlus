@@ -47,6 +47,7 @@ def generate_plan(
         f"Here is the code:\n{cv['curr_code']}\n\n"
         f"Here is the instruction aligned with the testbench:\n{cv['tb_aligned_instruction']}\n\n"
         f"Here is the list of identified non-synthesizable constructs:\n{cv['identified_items']}\n\n"
+        f"Read-only source-package context (do not modify these files):\n{cv.get('source_package_context', [])}\n\n"
     )
     msg_hetero = (
         f"Here is the code:\n{cv['curr_code']}\n\n"

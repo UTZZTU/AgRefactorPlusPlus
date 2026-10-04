@@ -224,15 +224,6 @@ class CsimSuiteEvaluator:
     ) -> TestEvaluationEvidence:
         status, summary = cls._normalize_status(legacy_status)
 
-        passed_cases = 0
-        case_counts_complete = False
-        if (
-            status is TestEvaluationStatus.PASSED
-            and suite.case_count is not None
-        ):
-            passed_cases = suite.case_count
-            case_counts_complete = True
-
         compile_execution = cls._execution_summary(
             invocation,
             "compile_execution",
@@ -250,6 +241,50 @@ class CsimSuiteEvaluator:
             compile_execution,
             simulation_execution,
         )
+        (
+            passed_cases,
+            failed_cases,
+            case_counts_complete,
+            case_counts_source,
+        ) = cls._verified_case_counts(invocation, suite)
+
+        execution_reason = cls._execution_priority_reason(
+            compile_execution,
+            simulation_execution,
+        )
+        evidence_inconsistent = False
+        if execution_reason == "timeout":
+            status = TestEvaluationStatus.ERROR
+            summary = "CSIM evaluation timed out"
+        elif execution_reason == "launch_error":
+            status = TestEvaluationStatus.ERROR
+            summary = "CSIM evaluation could not be launched"
+        elif cls._legacy_status_conflicts_with_execution(
+            legacy_status,
+            compile_execution,
+            simulation_execution,
+        ):
+            status = TestEvaluationStatus.ERROR
+            summary = (
+                "CSIM invocation evidence conflicts with legacy status"
+            )
+            evidence_inconsistent = True
+        elif cls._case_counts_conflict(
+            legacy_status,
+            failed_cases=failed_cases,
+            case_counts_complete=case_counts_complete,
+        ):
+            status = TestEvaluationStatus.ERROR
+            summary = (
+                "CSIM case-count evidence conflicts with legacy status"
+            )
+            evidence_inconsistent = True
+
+        if execution_reason is not None or evidence_inconsistent:
+            passed_cases = 0
+            failed_cases = 0
+            case_counts_complete = False
+            case_counts_source = None
 
         execution_backend = (
             invocation.get("execution_backend")
@@ -275,6 +310,9 @@ class CsimSuiteEvaluator:
             ),
             "legacy_status": legacy_status,
             "case_counts_complete": case_counts_complete,
+            "case_counts_source": case_counts_source,
+            "case_counts_verified": case_counts_complete,
+            "evidence_inconsistent": evidence_inconsistent,
             "compile_execution": compile_execution,
             "simulation_execution": simulation_execution,
             "toolchain_version_status": (
@@ -307,15 +345,7 @@ class CsimSuiteEvaluator:
                 coverage={
                     "declared_case_count": suite.case_count,
                     "passed_cases": passed_cases,
-                    "failed_cases": (
-                        0
-                        if status is TestEvaluationStatus.PASSED
-                        else (
-                            suite.case_count
-                            if suite.case_count is not None
-                            else 0
-                        )
-                    ),
+                    "failed_cases": failed_cases,
                     "case_counts_complete": case_counts_complete,
                     "compile_attempted": bool(compile_execution),
                     "simulation_attempted": bool(simulation_execution),
@@ -331,7 +361,7 @@ class CsimSuiteEvaluator:
             suite=suite,
             status=status,
             passed_cases=passed_cases,
-            failed_cases=0,
+            failed_cases=failed_cases,
             timed_out=timed_out,
             return_code=return_code,
             summary=summary,
@@ -339,6 +369,137 @@ class CsimSuiteEvaluator:
             artifacts=artifacts,
             source_provenance=source_provenance,
         )
+
+    @classmethod
+    def _verified_case_counts(
+        cls,
+        invocation: Mapping[str, Any] | None,
+        suite: TestSuiteSpec,
+    ) -> tuple[int, int, bool, str | None]:
+        """Read counts only from an explicit, verified completion record.
+
+        A process return code and a declared suite size do not prove how many
+        cases ran.  The optional ``case_counts`` record is therefore accepted
+        only when it explicitly marks both identity verification and complete
+        accounting.  The same record may be nested in the typed outcome
+        produced by an execution adapter.
+        """
+
+        if not isinstance(invocation, Mapping):
+            return 0, 0, False, None
+
+        candidates: list[tuple[str, Mapping[str, Any]]] = []
+        direct = invocation.get("case_counts")
+        if isinstance(direct, Mapping):
+            candidates.append(("invocation.case_counts", direct))
+        typed = invocation.get("typed_outcome")
+        if isinstance(typed, Mapping):
+            nested = typed.get("case_counts")
+            if (
+                isinstance(nested, Mapping)
+                and typed.get("identity_verified") is True
+            ):
+                candidates.append(("typed_outcome.case_counts", nested))
+
+        for source, counts in candidates:
+            if counts.get("complete") is not True:
+                continue
+            if counts.get("identity_verified") is not True:
+                continue
+            parsed = cls._parse_case_counts(counts, suite)
+            if parsed is None:
+                continue
+            passed_cases, failed_cases = parsed
+            return passed_cases, failed_cases, True, source
+
+        return 0, 0, False, None
+
+    @staticmethod
+    def _parse_case_counts(
+        counts: Mapping[str, Any],
+        suite: TestSuiteSpec,
+    ) -> tuple[int, int] | None:
+        values: dict[str, int] = {}
+        for field in ("passed_cases", "failed_cases", "evaluated_cases"):
+            value = counts.get(field)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+            ):
+                return None
+            values[field] = value
+        if values["evaluated_cases"] != (
+            values["passed_cases"] + values["failed_cases"]
+        ):
+            return None
+        if (
+            suite.case_count is not None
+            and values["evaluated_cases"] != suite.case_count
+        ):
+            return None
+        return values["passed_cases"], values["failed_cases"]
+
+    @staticmethod
+    def _execution_priority_reason(
+        compile_execution: Mapping[str, Any],
+        simulation_execution: Mapping[str, Any],
+    ) -> str | None:
+        if (
+            compile_execution.get("timeout") is True
+            or simulation_execution.get("timeout") is True
+        ):
+            return "timeout"
+        if (
+            compile_execution.get("status") == "launch_error"
+            or simulation_execution.get("status") == "launch_error"
+        ):
+            return "launch_error"
+        return None
+
+    @staticmethod
+    def _legacy_status_conflicts_with_execution(
+        legacy_status: str,
+        compile_execution: Mapping[str, Any],
+        simulation_execution: Mapping[str, Any],
+    ) -> bool:
+        compile_completed = (
+            compile_execution.get("status") == "completed"
+            and isinstance(compile_execution.get("returncode"), int)
+            and not isinstance(compile_execution.get("returncode"), bool)
+        )
+        simulation_completed = (
+            simulation_execution.get("status") == "completed"
+            and isinstance(simulation_execution.get("returncode"), int)
+            and not isinstance(simulation_execution.get("returncode"), bool)
+        )
+        compile_code = compile_execution.get("returncode")
+        simulation_code = simulation_execution.get("returncode")
+
+        if legacy_status == "succeeded":
+            return simulation_completed and simulation_code != 0
+        if legacy_status == "csim_failed":
+            return simulation_completed and simulation_code == 0
+        if legacy_status == "tb_compile_failed":
+            if compile_completed and compile_code == 0:
+                return True
+            return simulation_completed
+        return False
+
+    @staticmethod
+    def _case_counts_conflict(
+        legacy_status: str,
+        *,
+        failed_cases: int,
+        case_counts_complete: bool,
+    ) -> bool:
+        if not case_counts_complete:
+            return False
+        if legacy_status == "succeeded":
+            return failed_cases > 0
+        if legacy_status == "csim_failed":
+            return failed_cases == 0
+        return legacy_status == "tb_compile_failed"
 
     @staticmethod
     def _normalize_status(
@@ -377,10 +538,19 @@ class CsimSuiteEvaluator:
             return {}
 
         summary: dict[str, Any] = {}
-        for field in ("status", "returncode", "timeout"):
+        for field in (
+            "status",
+            "returncode",
+            "timeout",
+            "stdout",
+            "stderr",
+        ):
             item = value.get(field)
             if item is not None:
-                summary[field] = item
+                if field in {"stdout", "stderr"}:
+                    summary[field] = str(item)[-12000:]
+                else:
+                    summary[field] = item
         return summary
 
     @staticmethod

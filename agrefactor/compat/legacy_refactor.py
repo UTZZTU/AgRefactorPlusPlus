@@ -465,6 +465,8 @@ def build_legacy_refactor_kwargs(
     return {
         "kernel_path": task.kernel_path,
         "kernel_name": task.kernel_name,
+        "source_package": None if task.source_package is None else task.source_package.to_dict(),
+        "source_package_context": ([] if task.source_package is None else [{"path": path, "content": content} for path, content in task.source_package.context_files()]),
         "target_profile": task.target.to_dict(),
         "knowledge_db_path": settings.knowledge_db_path,
         "embedding_model": settings.embedding_model,

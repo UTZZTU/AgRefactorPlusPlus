@@ -992,7 +992,7 @@ class CandidateRepairValidationOrchestratorTests(unittest.TestCase):
             return pass_scenario(request, state)
 
         adapter, provider = make_adapter(
-            [RuntimeError("one"), RuntimeError("two")]
+            [RuntimeError("one"), RuntimeError("two"), RuntimeError("three")]
         )
         result = CandidateRepairValidationOrchestrator(
             model_adapter=adapter,
@@ -1005,9 +1005,11 @@ class CandidateRepairValidationOrchestratorTests(unittest.TestCase):
         self.assertEqual(
             result.status,
             CandidateRepairOrchestrationStatus.
-            REPAIR_EXHAUSTED,
+            PROVIDER_ERROR,
         )
-        self.assertEqual(len(provider.calls), 2)
+        self.assertEqual(len(provider.calls), 3)
+        self.assertEqual(result.metadata["repair_attempt_count"], 0)
+        self.assertEqual(result.metadata["provider_failure_count"], 3)
         self.assertEqual(result.final_candidate, BASE)
 
     def test_zero_llm_budget_blocks_before_provider(self):

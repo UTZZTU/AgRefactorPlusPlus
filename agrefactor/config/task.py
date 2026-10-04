@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from .source_package import SourcePackageSpec
 from .test_suite import TestSuiteSpec
 from .target import (
     TargetProfile,
@@ -35,6 +36,7 @@ class TaskSpec:
     )
     mode: RunMode = RunMode.REFACTOR
     testbench_path: str | None = None
+    source_package: SourcePackageSpec | None = None
     test_suites: tuple[TestSuiteSpec, ...] = ()
 
     def __post_init__(self) -> None:
@@ -42,6 +44,9 @@ class TaskSpec:
         kernel_path = self.kernel_path.strip()
         kernel_name = self.kernel_name.strip()
         testbench_path = self._clean_optional(self.testbench_path)
+        source_package = self.source_package
+        if source_package is not None and not isinstance(source_package, SourcePackageSpec):
+            raise TypeError("TaskSpec.source_package must be SourcePackageSpec or null")
         test_suites = self._normalize_test_suites(self.test_suites)
 
         if not task_id:
@@ -70,6 +75,7 @@ class TaskSpec:
         object.__setattr__(self, "target", self.target)
         object.__setattr__(self, "mode", mode)
         object.__setattr__(self, "testbench_path", testbench_path)
+        object.__setattr__(self, "source_package", source_package)
         object.__setattr__(self, "test_suites", test_suites)
 
     @staticmethod
@@ -148,6 +154,9 @@ class TaskSpec:
             "target": self.target.to_dict(),
             "mode": self.mode.value,
             "testbench_path": self.testbench_path,
+            "source_package": (
+                None if self.source_package is None else self.source_package.to_dict()
+            ),
         }
         if self.test_suites:
             payload["test_suites"] = [
@@ -168,6 +177,10 @@ class TaskSpec:
                 data.get("mode", RunMode.REFACTOR.value)
             ),
             testbench_path=data.get("testbench_path"),
+            source_package=(
+                None if data.get("source_package") is None
+                else SourcePackageSpec.from_dict(data["source_package"])
+            ),
             test_suites=cls._parse_test_suites(
                 data.get("test_suites")
             ),

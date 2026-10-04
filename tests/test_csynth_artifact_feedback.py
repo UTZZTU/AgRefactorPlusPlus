@@ -160,6 +160,91 @@ class CsynthArtifactFeedbackEvaluatorTests(
         )
         self.assertTrue(report.blocking)
 
+    def test_uncompleted_invocation_downgrades_diagnostic_owner(self) -> None:
+        payload = invocation_payload(returncode=None, execution_status="launch_error")
+        self.write_invocation(payload)
+        self.write_log(
+            "ERROR: [HLS 207-3776] use of undeclared "
+            "identifier 'N' (top_hls.cpp:4:2)"
+        )
+
+        report = self.evaluate(status="csynth_failed", owner=FeedbackOwner.CANDIDATE)
+
+        diagnostic = next(
+            item
+            for item in report.items
+            if item.category is FeedbackCategory.UNDECLARED_SYMBOL
+        )
+        self.assertEqual(diagnostic.owner, FeedbackOwner.UNKNOWN)
+        self.assertFalse(report.metadata["command_completion_proven"])
+        self.assertEqual(
+            report.metadata["failure_reason"],
+            "command_completion_not_proven",
+        )
+        self.assertEqual(
+            diagnostic.evidence_ref,
+            str((self.root / "csynth" / "solution" / "solution.log").resolve()),
+        )
+
+    def test_completed_recursive_diagnostic_retains_toolchain_owner(self) -> None:
+        self.write_invocation(invocation_payload(returncode=1))
+        self.write_log(
+            "ERROR: [HLS 214-139] Recursive function calls are not supported "
+            "(top_hls.cpp:10:1)"
+        )
+
+        report = self.evaluate(status="csynth_failed", owner=FeedbackOwner.CANDIDATE)
+        diagnostic = next(
+            item
+            for item in report.items
+            if item.metadata.get("parser_rule") == "unsupported_recursive_function"
+        )
+
+        self.assertEqual(diagnostic.category, FeedbackCategory.UNSUPPORTED_CONSTRUCT)
+        self.assertEqual(diagnostic.owner, FeedbackOwner.TOOLCHAIN)
+        self.assertTrue(diagnostic.metadata["command_completion_proven"])
+
+    def test_conflicting_legacy_success_downgrades_diagnostic_owner(self) -> None:
+        self.write_invocation(invocation_payload(returncode=1))
+        self.write_log(
+            "ERROR: [HLS 214-139] Recursive function calls are not supported "
+            "(top_hls.cpp:10:1)"
+        )
+
+        report = self.evaluate(status="succeeded", owner=FeedbackOwner.CANDIDATE)
+        diagnostic = next(
+            item
+            for item in report.items
+            if item.metadata.get("parser_rule") == "unsupported_recursive_function"
+        )
+
+        self.assertEqual(diagnostic.owner, FeedbackOwner.UNKNOWN)
+        self.assertFalse(diagnostic.metadata["evidence_consistent"])
+        self.assertEqual(
+            report.metadata["failure_reason"],
+            "inconsistent_execution_evidence",
+        )
+
+    def test_timed_out_recursive_diagnostic_has_unknown_owner(self) -> None:
+        self.write_invocation(
+            invocation_payload(returncode=None, timeout=True)
+        )
+        self.write_log(
+            "ERROR: [HLS 214-139] Recursive function calls are not supported "
+            "(top_hls.cpp:10:1)"
+        )
+
+        report = self.evaluate(status="timeout", owner=FeedbackOwner.CANDIDATE)
+        diagnostic = next(
+            item
+            for item in report.items
+            if item.metadata.get("parser_rule") == "unsupported_recursive_function"
+        )
+
+        self.assertEqual(diagnostic.category, FeedbackCategory.UNSUPPORTED_CONSTRUCT)
+        self.assertEqual(diagnostic.owner, FeedbackOwner.UNKNOWN)
+        self.assertFalse(diagnostic.metadata["command_completion_proven"])
+
     def test_warning_only_does_not_hide_failed_invocation(
         self,
     ) -> None:

@@ -6,6 +6,7 @@ import flow.tools as tools
 from typing import Optional, Dict, Any
 
 from agrefactor.config import (
+    DEFAULT_CSYNTH_TIMEOUT_S,
     TargetProfile,
     default_target_profile,
     resolve_target_profile,
@@ -18,7 +19,7 @@ from agrefactor.runtime.budget import (
 
 HLS_SERVER_URL = os.getenv("HLS_SERVER_URL")
 
-CSYNTH_TIMEOUT = 300
+CSYNTH_TIMEOUT = DEFAULT_CSYNTH_TIMEOUT_S
 ERROR_LINES = 15
 CSYNTH_EXECUTABLE_ENV = "AGREFACTOR_VITIS_RUN"
 CSYNTH_SETTINGS_ENV = "AGREFACTOR_VITIS_SETTINGS"
@@ -584,6 +585,47 @@ def run_csynth(
     top_kernel_name = cv["new_kernel_name"]
     file_list = {f"{top_kernel_name}.cpp": cv["curr_code"]}
     profile = resolve_target_profile(cv.get("target_profile"))
+    extra_paths = tuple(
+        dict.fromkeys(str(item) for item in (cv.get("csynth_extra_sources") or ()))
+    )
+    missing_paths = [
+        path
+        for path in extra_paths
+        if not os.path.isfile(os.path.join(work_dir, path))
+    ]
+    command_resolution = resolve_csynth_command(profile)
+    if missing_paths:
+        invocation_path = os.path.join(work_dir, "csynth_invocation.json")
+        invocation = _build_csynth_invocation(
+            work_dir=work_dir,
+            top_kernel_name=top_kernel_name,
+            source_files=[f"{top_kernel_name}.cpp", *extra_paths],
+            profile=profile,
+            command_resolution=command_resolution,
+            timelimit=timelimit,
+            budget=budget,
+        )
+        message = (
+            "source package configuration error: extra source file(s) not found: "
+            + ", ".join(missing_paths)
+        )
+        invocation["execution"] = {
+            "status": "configuration_error",
+            "returncode": None,
+            "timeout": False,
+            "error": message,
+        }
+        invocation["source_package_error"] = {
+            "missing_sources": missing_paths,
+            "requested_sources": list(extra_paths),
+        }
+        _write_json(invocation_path, invocation)
+        return "csynth_failed", message
+
+    for path in extra_paths:
+        source_path = os.path.join(work_dir, path)
+        with open(source_path, "r", encoding="utf-8") as source_file:
+            file_list[path] = source_file.read()
     make_csynth_script(
         work_dir,
         top_kernel_name,
@@ -591,7 +633,6 @@ def run_csynth(
         target_profile=profile,
     )
 
-    command_resolution = resolve_csynth_command(profile)
     invocation = _build_csynth_invocation(
         work_dir=work_dir,
         top_kernel_name=top_kernel_name,

@@ -45,6 +45,7 @@ class RecoveryStage(str, Enum):
 
 class RecoveryAuthority(str, Enum):
     DETERMINISTIC_PROVEN = "deterministic_proven"
+    PUBLIC_REFERENCE_QUALIFIED = "public_reference_qualified"
     LLM_ADVISORY = "llm_advisory"
     UNKNOWN = "unknown"
 
@@ -75,15 +76,15 @@ class RecoveryBudgetBlockedError(RecoveryPolicyError):
 @dataclass(frozen=True, slots=True)
 class RecoveryLimits:
     provider_retries: int = 1
-    response_regenerations: int = 1
+    response_regenerations: int = 3
     llm_advisories: int = 1
     tool_retries_per_stage: int = 1
     testbench_preflight_repairs: int = 3
     refactor_candidate_repairs_total: int = 3
     candidate_public_csim_repairs: int = 3
     candidate_public_cosim_repairs: int = 3
-    testbench_public_csim_repairs: int = 1
-    testbench_public_cosim_repairs: int = 1
+    testbench_public_csim_repairs: int = 3
+    testbench_public_cosim_repairs: int = 3
     optimize_recoveries_per_root: int = 1
     hidden_repairs: int = 0
     total_recovery_actions: int = 5
@@ -214,7 +215,13 @@ class RecoveryPolicy:
             return self._deny(request, "recovery_requires_agent_safe_evidence")
 
         if request.action is RecoveryAction.REPAIR:
-            if request.owner_authority is RecoveryAuthority.LLM_ADVISORY:
+            if request.owner_authority is RecoveryAuthority.PUBLIC_REFERENCE_QUALIFIED:
+                if (request.role is not RecoveryRole.CANDIDATE
+                        or request.stage not in {RecoveryStage.PREFLIGHT, RecoveryStage.PUBLIC_CSIM, RecoveryStage.PUBLIC_COSIM}
+                        or not request.physical_tool_launched
+                        or not request.evidence_complete):
+                    return self._review(request, "public_unknown_requires_qualified_reference")
+            elif request.owner_authority is RecoveryAuthority.LLM_ADVISORY:
                 if request.advisory_mode != "candidate-only":
                     return self._review(request, "llm_advisory_repair_gate_disabled")
                 if request.role is not RecoveryRole.CANDIDATE:
@@ -230,10 +237,11 @@ class RecoveryPolicy:
                     RecoveryStage.PUBLIC_COSIM,
                 }:
                     return self._deny(request, "candidate_repair_stage_not_eligible")
-                if request.timeout_class is not None and request.timeout_class not in {
+                if (request.owner_authority is not RecoveryAuthority.PUBLIC_REFERENCE_QUALIFIED
+                        and request.timeout_class is not None and request.timeout_class not in {
                     "candidate_deadlock",
                     "candidate_stream_mismatch",
-                }:
+                }):
                     return self._review(request, "candidate_timeout_not_proven")
                 return self._allow(request, "candidate_repair_eligible", restart=True)
 

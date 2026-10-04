@@ -10,7 +10,9 @@ from agrefactor.cli import build_parser
 from agrefactor.config import EvaluationSplit, TestSuiteSpec, resolve_target_profile
 from agrefactor.product.source_bootstrap import _load_public_test_contracts
 from flow.tools.vitis_cosim import (
+    _candidate_pointer_depth_directives,
     _candidate_returncode_authorized as cosim_authorized,
+    _infer_maxi_hardware_depths,
     make_vitis_cosim_tcl,
 )
 from flow.tools.tb_optimizer import (
@@ -128,6 +130,52 @@ class P40FPrR1CCosimDepthContractTests(unittest.TestCase):
             ),
             ("input", "output"),
         )
+
+    def test_public_abi_depth_ports_resolve_typedefs_from_testbench(self):
+        declaration = (
+            "void top_hls(tb_data_t *data_int, unsigned int *datalen_int);"
+        )
+        testbench = (
+            "typedef unsigned char tb_data_t[64];\n"
+            + declaration
+            + "\nint main(){return 0;}\n"
+        )
+        self.assertEqual(
+            public_runtime_contract_depth_ports(
+                testbench_code=testbench,
+                candidate_top_function="top_hls",
+                frozen_hls_decl=declaration,
+            ),
+            ("data_int", "datalen_int"),
+        )
+
+    def test_public_abi_depth_ports_resolve_typedefs_from_included_header(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "types.hpp").write_text(
+                "typedef unsigned char tb_data_t[64];\n",
+                encoding="utf-8",
+            )
+            declaration = (
+                "void top_hls(tb_data_t *data_int, unsigned int *datalen_int);"
+            )
+            testbench = (
+                '#include "types.hpp"\n'
+                + declaration
+                + "\nint main(){return 0;}\n"
+            )
+            testbench_path = root / "testbench.cpp"
+            testbench_path.write_text(testbench, encoding="utf-8")
+            self.assertEqual(
+                public_runtime_contract_depth_ports(
+                    testbench_code=testbench,
+                    candidate_top_function="top_hls",
+                    frozen_hls_decl=declaration,
+                    source_path=str(testbench_path),
+                    include_dirs=(str(root),),
+                ),
+                ("data_int", "datalen_int"),
+            )
 
     def test_public_abi_depth_ports_support_pointer_to_array_parameters(self):
         declaration = (
@@ -285,6 +333,104 @@ class P40FPrR1CCosimDepthContractTests(unittest.TestCase):
         self.assertEqual(positions, sorted(positions))
         self.assertLess(tcl.index("create_clock"), positions[0])
         self.assertLess(positions[-1], tcl.index("csim_design"))
+
+    def test_source_directives_keep_each_pointer_depth(self):
+        source = (
+            "void process_top_hls(const unsigned char *input, "
+            "const int *shape, unsigned int *output);\n"
+        )
+        depths = {"input": 128, "shape": 3, "output": 64}
+        self.assertEqual(
+            _candidate_pointer_depth_directives(
+                source,
+                "process_top_hls",
+                depths,
+            ),
+            depths,
+        )
+
+    def test_mixed_maxi_and_s_axilite_pointers_are_filtered(self):
+        source = (
+            "void top(int *scalar, int *matrix);\n"
+            "#pragma HLS INTERFACE mode=s_axilite port=scalar\n"
+            "#pragma HLS INTERFACE mode=m_axi port=matrix bundle=gmem\n"
+        )
+        depths = {"scalar": 1, "matrix": 64}
+        hardware, mapping, status, _ = _infer_maxi_hardware_depths(
+            source,
+            depths,
+        )
+        self.assertEqual(hardware, {"gmem": 64})
+        self.assertEqual(mapping, {"matrix": "gmem"})
+        self.assertEqual(status, "inferred")
+        self.assertEqual(
+            _candidate_pointer_depth_directives(
+                source,
+                "top",
+                depths,
+                mapping,
+            ),
+            {"matrix": 64},
+        )
+
+    def test_comment_text_is_not_treated_as_an_interface_pragma(self):
+        source = "// #pragma HLS INTERFACE m_axi port=fake\n"
+        hardware, mapping, status, reason = _infer_maxi_hardware_depths(
+            source,
+            {"real": 8},
+        )
+        self.assertEqual(hardware, {"gmem": 8})
+        self.assertEqual(mapping, {"real": "gmem"})
+        self.assertEqual(status, "default_bundle")
+        self.assertEqual(reason, "no_m_axi_pragmas")
+
+    def test_bundle_scan_is_limited_to_target_function(self):
+        source = (
+            "void helper(int *input) {\n"
+            "#pragma HLS INTERFACE m_axi port=input bundle=helper_mem\n"
+            "}\n"
+            "void top(int *input) {\n"
+            "#pragma HLS INTERFACE m_axi port=input bundle=top_mem\n"
+            "}\n"
+        )
+        self.assertEqual(
+            _infer_maxi_hardware_depths(
+                source,
+                {"input": 8},
+                "top",
+            )[:3],
+            ({"top_mem": 8}, {"input": "top_mem"}, "inferred"),
+        )
+
+    def test_comment_pseudo_signature_does_not_change_target_scope(self):
+        source = (
+            "/* void top(int *input) {\n"
+            "#pragma HLS INTERFACE m_axi port=input bundle=fake_mem\n"
+            "} */\n"
+            "void top(int *input) {\n"
+            "#pragma HLS INTERFACE m_axi port=input bundle=real_mem\n"
+            "}\n"
+        )
+        self.assertEqual(
+            _infer_maxi_hardware_depths(
+                source,
+                {"input": 8},
+                "top",
+            )[:2],
+            ({"real_mem": 8}, {"input": "real_mem"}),
+        )
+
+    def test_unparsed_candidate_keeps_only_known_maxi_depths(self):
+        source = "void top(unknown_t *ctrl, int *data) { return; }"
+        self.assertEqual(
+            _candidate_pointer_depth_directives(
+                source,
+                "top",
+                {"ctrl": 1, "data": 64},
+                {"data": "gmem"},
+            ),
+            {"data": 64},
+        )
 
     def test_v2_csim_candidate_mismatch_authority_preserved(self):
         self.assertTrue(csim_authorized(V2, 1))

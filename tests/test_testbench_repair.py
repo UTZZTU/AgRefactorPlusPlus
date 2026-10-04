@@ -312,10 +312,11 @@ class TestbenchRepairLoopTests(unittest.TestCase):
         summaries = (
             repairer.requests[1].prior_attempt_summaries
         )
-        self.assertEqual(len(summaries), 1)
-        self.assertIn("Attempt 1", summaries[0])
-        self.assertIn("insert", summaries[0])
-        self.assertIn("dfs_traverse", summaries[0])
+        self.assertEqual(len(summaries), 2)
+        self.assertIn("Attempt 0", summaries[0])
+        self.assertIn("Attempt 1", summaries[1])
+        self.assertIn("insert", summaries[1])
+        self.assertIn("dfs_traverse", summaries[1])
 
     def test_zero_budget_returns_exhausted(self) -> None:
         repairer = RecordingRepairer([])
@@ -394,9 +395,11 @@ class TestbenchRepairLoopTests(unittest.TestCase):
         )
         self.assertEqual(
             len(repairer.requests[2].prior_attempt_summaries),
-            2,
+            3,
         )
-        first, second = repairer.requests[2].prior_attempt_summaries
+        initial, first, second = repairer.requests[2].prior_attempt_summaries
+        self.assertIn("Attempt 0", initial)
+        self.assertIn("node", initial)
         self.assertIn("Attempt 1", first)
         self.assertIn("preflight status: failed", first)
         self.assertIn("failure owner: testbench", first)

@@ -7,11 +7,12 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 from typing import Any
 
 from autogen.agentchat.group import ContextVariables
 
-from agrefactor.config import TargetProfile, resolve_target_profile
+from agrefactor.config import DEFAULT_CSIM_TIMEOUT_S, TargetProfile, resolve_target_profile
 from agrefactor.runtime.budget import (
     BudgetExceededError,
     BudgetManager,
@@ -30,7 +31,7 @@ from flow.tools.typed_testbench_outcome import (
 )
 
 
-NATIVE_VITIS_CSIM_TIMEOUT = 60
+NATIVE_VITIS_CSIM_TIMEOUT = DEFAULT_CSIM_TIMEOUT_S
 NATIVE_VITIS_CSIM_BUDGET_INCREMENT = {
     "tool_calls": 1,
     "csim_calls": 1,
@@ -100,11 +101,16 @@ def _original_isolation_evidence(
     candidate_top_function: str,
     identity: Mapping[str, str],
     budget: BudgetManager | None,
+    source_root: str | None = None,
+    extra_sources: tuple[str, ...] = (),
+    compile_flags: tuple[str, ...] = (),
+    original_top_function: str | None = None,
+    keep_dir: str | None = None,
 ) -> dict[str, Any]:
     """Re-run the frozen Public inputs against only the Original implementation."""
 
     from flow.tools.tb_coverage import check_original_execution
-    from flow.inflight_tb.checks import extract_hls_decl_from_tb
+    from flow.tools.tb_optimizer import extract_hls_decl_from_testbench
 
     evidence = {
         "status": "unknown",
@@ -120,24 +126,32 @@ def _original_isolation_evidence(
         ).hexdigest(),
         "suite_id_sha256": identity.get("suite_id_sha256"),
     }
-    declaration = extract_hls_decl_from_tb(
+    declaration = extract_hls_decl_from_testbench(
         testbench_code,
         candidate_top_function,
+        source_path=str(Path(source_root) / "testbench.cpp") if source_root else None,
+        include_dirs=(source_root,) if source_root else (),
+        compile_flags=compile_flags,
     )
-    if not declaration:
-        evidence["reason_code"] = "candidate_interface_unknown"
-        return evidence
     result = check_original_execution(
         original_code,
         testbench_code,
         declaration,
         candidate_top_function,
         budget=budget,
+        original_name=original_top_function,
+        source_root=source_root,
+        extra_sources=extra_sources,
+        compile_flags=compile_flags,
+        required_original_entry=original_top_function,
+        keep_dir=keep_dir,
     )
     evidence.update(
         status=(
             "passed"
-            if result.get("status") == "ok"
+            if result.get("status") == "ok" and declaration
+            and (original_top_function is None or result.get("original_entry_executed") is True)
+            else "unknown" if result.get("status") == "ok"
             else "failed"
         ),
         reason_code=str(result.get("status") or "unknown"),
@@ -146,6 +160,7 @@ def _original_isolation_evidence(
         failure_evidence_source=str(
             result.get("failure_evidence_source") or "unknown"
         ),
+        original_entry_executed=result.get("original_entry_executed"),
     )
     return evidence
 
@@ -163,6 +178,60 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
         + "\n",
         encoding="utf-8",
     )
+
+
+def _normalize_vitis_toolchain_headers(
+    root: Path,
+) -> dict[str, Any]:
+    """Keep staged package headers from shadowing Vitis runtime headers.
+
+    Source packages are staged into the suite directory so relative includes
+    remain available. Vitis still resolves angle-bracket includes from its
+    own include tree, while quoted includes can resolve a staged copy first.
+    That would give different translation units different hls::stream
+    definitions. Preserve the package copy for evidence and put the active
+    toolchain header at the shared include name instead.
+    """
+
+    toolchain_root = os.environ.get("XILINX_HLS")
+    vendor_header = (
+        Path(toolchain_root).expanduser().resolve() / "include" / "hls_stream.h"
+        if isinstance(toolchain_root, str) and toolchain_root.strip()
+        else None
+    )
+    staged_header = root / "hls_stream.h"
+    if vendor_header is None or not vendor_header.is_file():
+        return {
+            "status": "vendor_header_unavailable",
+            "header": "hls_stream.h",
+        }
+    if not staged_header.is_file():
+        return {
+            "status": "vendor_header_used",
+            "header": "hls_stream.h",
+            "vendor_path": str(vendor_header),
+        }
+    if staged_header.read_bytes() == vendor_header.read_bytes():
+        return {
+            "status": "already_canonical",
+            "header": "hls_stream.h",
+            "vendor_path": str(vendor_header),
+        }
+
+    backup = root / "hls_stream.h.source_package"
+    if backup.exists():
+        raise FileExistsError(
+            "cannot preserve staged hls_stream.h: "
+            f"{backup} already exists"
+        )
+    staged_header.replace(backup)
+    shutil.copy2(vendor_header, staged_header)
+    return {
+        "status": "canonical_vendor",
+        "header": "hls_stream.h",
+        "vendor_path": str(vendor_header),
+        "source_package_backup": str(backup),
+    }
 
 
 def _usage(usage: BudgetUsage) -> dict[str, Any]:
@@ -208,6 +277,7 @@ def make_native_vitis_csim_tcl(
     typed_outcome_path: str | None = None,
     typed_execution_id: str | None = None,
     typed_phase: str = "public_native_vitis_csim",
+    extra_sources: tuple[str, ...] = (),
 ) -> str:
     """Build one truthful native Vitis CSIM Tcl program."""
 
@@ -239,6 +309,7 @@ def make_native_vitis_csim_tcl(
     ]
     if wrapper_source is not None:
         tb_sources.append((wrapper_source, "typed wrapper source"))
+    tb_sources.extend((source, f"extra source {index}") for index, source in enumerate(extra_sources, start=1))
     for source, label in tb_sources:
         line = f"add_files -tb {_tcl_quote(source, label)}"
         if compile_flags:
@@ -280,6 +351,7 @@ def make_native_vitis_csim_script(
     top_kernel: str,
     target_profile: TargetProfile | Mapping[str, Any] | str | None,
     suite_id: str = "public",
+    extra_sources: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     root = Path(work_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -301,10 +373,25 @@ def make_native_vitis_csim_script(
         "testbench.cpp": instrumented,
         "agrefactor_csim_wrapper.cpp": wrapper,
     }
+    normalized_extra_sources = tuple(
+        dict.fromkeys(str(item) for item in (extra_sources or ()))
+    )
+    for raw_path in normalized_extra_sources:
+        relative = Path(raw_path)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError(
+                "extra source must be a relative path inside the CSIM work directory: "
+                f"{raw_path!r}"
+            )
+        if not (root / relative).is_file():
+            raise FileNotFoundError(
+                f"extra source not found in CSIM work directory: {raw_path}"
+            )
     for name, content in files.items():
         if not isinstance(content, str) or not content.strip():
             raise ValueError(f"{name} content must not be empty")
         (root / name).write_text(content, encoding="utf-8")
+    toolchain_header_resolution = _normalize_vitis_toolchain_headers(root)
     typed_outcome_path = root / "agrefactor_csim_outcome.json"
     adapter_path = root / "typed_outcome_adapter.json"
     _write_json(adapter_path, adapter)
@@ -319,6 +406,7 @@ def make_native_vitis_csim_script(
         typed_execution_id=identity["execution_id"],
         typed_phase=identity["phase"],
         target_profile=profile,
+        extra_sources=normalized_extra_sources,
     )
     (root / "vitis.tcl").write_text(tcl, encoding="utf-8")
     return {
@@ -327,12 +415,17 @@ def make_native_vitis_csim_script(
         "tcl": tcl,
         "typed_outcome_path": typed_outcome_path,
         "typed_outcome_identity": identity,
+        "toolchain_header_resolution": toolchain_header_resolution,
         "typed_outcome_adapter_path": adapter_path,
         "source_files": [
             {"path": "candidate.cpp", "role": "design"},
             {"path": "reference.cpp", "role": "testbench_reference"},
             {"path": "testbench.cpp", "role": "testbench_driver"},
             {"path": "agrefactor_csim_wrapper.cpp", "role": "testbench_wrapper"},
+            *[
+                {"path": path, "role": "extra_source"}
+                for path in normalized_extra_sources
+            ],
         ],
     }
 
@@ -403,6 +496,11 @@ def run_vitis_csim(
         preflight_authority = cv["csim_preflight_authority"]
     except (KeyError, TypeError):
         preflight_authority = None
+    try:
+        raw_extra_sources = cv["csim_extra_sources"]
+    except (KeyError, TypeError):
+        raw_extra_sources = ()
+    extra_sources = tuple(dict.fromkeys(str(item) for item in (raw_extra_sources or ())))
     material = make_native_vitis_csim_script(
         work_dir=work_dir,
         original_code=cv["orig_code"],
@@ -411,6 +509,7 @@ def run_vitis_csim(
         top_kernel=top_kernel,
         target_profile=profile,
         suite_id=suite_id,
+        extra_sources=extra_sources,
     )
     root: Path = material["root"]
     command_resolution = resolve_csynth_command(profile)
@@ -424,6 +523,7 @@ def run_vitis_csim(
         "top_kernel": top_kernel,
         "source_files": material["source_files"],
         "typed_outcome_identity": material["typed_outcome_identity"],
+        "toolchain_header_resolution": material["toolchain_header_resolution"],
         "typed_outcome_adapter_path": str(material["typed_outcome_adapter_path"]),
         "typed_outcome": {"status": "pending"},
         "runtime_contract": runtime_contract,
@@ -686,6 +786,9 @@ def run_vitis_csim(
                 candidate_top_function=top_kernel,
                 identity=material["typed_outcome_identity"],
                 budget=budget,
+                source_root=str(Path(work_dir).resolve()),
+                extra_sources=tuple(str(Path(work_dir).resolve() / name) for name in cv.get("csim_extra_sources", ())),
+                compile_flags=profile.compile_flags,
             )
             invocation["original_isolation"] = isolation
             if isolation.get("status") == "passed":

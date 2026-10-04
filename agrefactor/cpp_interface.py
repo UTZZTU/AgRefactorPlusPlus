@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import ctypes
 import os
+import subprocess
+import sys
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -17,6 +20,8 @@ _DEFAULT_LIBCLANG = Path(
     "/data/Xilinx/Vitis_HLS/2023.2/lnx64/tools/clang-3.9/lib/libclang.so"
 )
 _FUNCTION_DECL = 8
+_METHOD_DECL = 21
+_FUNCTION_TEMPLATE = 30
 _VARIABLE_DECL = 9
 _TRANSLATION_UNIT = 300
 _CHILD_VISIT_RECURSE = 2
@@ -24,6 +29,18 @@ _POINTER_TYPE = 101
 _REFERENCE_TYPES = frozenset({103, 104})
 _ARRAY_TYPES = frozenset({112, 113, 114, 115})
 _FUNCTION_TYPES = frozenset({110, 111})
+
+# libclang CXLinkage values used by the vendor libclang shipped with Vitis.
+# Keep the numeric value in the evidence as well; the name is only a readable
+# projection and must not be used as a case-specific gate.
+_LINKAGE_NAMES = {
+    0: "invalid",
+    1: "no_linkage",
+    2: "internal",
+    3: "unique_external",
+    4: "external",
+    5: "module",
+}
 
 
 class _CXString(ctypes.Structure):
@@ -77,6 +94,7 @@ class CppParameter:
     type_spelling: str
     canonical_type: str
     pointer_like: bool
+    mutable_output: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +104,10 @@ class CppFunctionInterface:
     parameters: tuple[CppParameter, ...]
     source_declaration: str | None = None
     canonical_result_type: str | None = None
+    source_start: int | None = None
+    source_end: int | None = None
+    linkage: int | None = None
+    global_state: tuple[CppVariable, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +116,9 @@ class CppVariable:
     type_spelling: str
     canonical_type: str
     pointer_like: bool
+    dimensions: tuple[int, ...] = ()
+    scalar_type: str | None = None
+    qualified_name: str | None = None
 
 
 def interfaces_equivalent(
@@ -118,6 +143,11 @@ def interfaces_equivalent(
 
 class _LibClang:
     def __init__(self, path: Path) -> None:
+        # Load the Python environment's C++ runtime before the vendor RPATH
+        # can select its older runtime for the whole host process.
+        runtime = Path(sys.prefix) / "lib" / "libstdc++.so.6"
+        if runtime.is_file():
+            ctypes.CDLL(str(runtime), mode=ctypes.RTLD_GLOBAL)
         library = ctypes.CDLL(str(path))
         self.library = library
         self.visitor_type = ctypes.CFUNCTYPE(
@@ -140,6 +170,17 @@ class _LibClang:
         ]
         library.clang_parseTranslationUnit.restype = ctypes.c_void_p
         library.clang_disposeTranslationUnit.argtypes = [ctypes.c_void_p]
+        library.clang_getNumDiagnostics.argtypes = [ctypes.c_void_p]
+        library.clang_getNumDiagnostics.restype = ctypes.c_uint
+        library.clang_getDiagnostic.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+        library.clang_getDiagnostic.restype = ctypes.c_void_p
+        library.clang_getDiagnosticSeverity.argtypes = [ctypes.c_void_p]
+        library.clang_getDiagnosticSeverity.restype = ctypes.c_uint
+        library.clang_getDiagnosticSpelling.argtypes = [ctypes.c_void_p]
+        library.clang_getDiagnosticSpelling.restype = _CXString
+        library.clang_getDiagnosticLocation.argtypes = [ctypes.c_void_p]
+        library.clang_getDiagnosticLocation.restype = _CXSourceLocation
+        library.clang_disposeDiagnostic.argtypes = [ctypes.c_void_p]
         library.clang_getTranslationUnitCursor.argtypes = [ctypes.c_void_p]
         library.clang_getTranslationUnitCursor.restype = _CXCursor
         library.clang_visitChildren.argtypes = [
@@ -152,6 +193,26 @@ class _LibClang:
         library.clang_getCursorSpelling.restype = _CXString
         library.clang_getCursorType.argtypes = [_CXCursor]
         library.clang_getCursorType.restype = _CXType
+        library.clang_getCursorLinkage.argtypes = [_CXCursor]
+        library.clang_getCursorLinkage.restype = ctypes.c_int
+        library.clang_getCursorReferenced.argtypes = [_CXCursor]
+        library.clang_getCursorReferenced.restype = _CXCursor
+        library.clang_getCursorDefinition.argtypes = [_CXCursor]
+        library.clang_getCursorDefinition.restype = _CXCursor
+        library.clang_getCursorSemanticParent.argtypes = [_CXCursor]
+        library.clang_getCursorSemanticParent.restype = _CXCursor
+        library.clang_hashCursor.argtypes = [_CXCursor]
+        library.clang_hashCursor.restype = ctypes.c_uint
+        library.clang_isConstQualifiedType.argtypes = [_CXType]
+        library.clang_isConstQualifiedType.restype = ctypes.c_uint
+        library.clang_getArraySize.argtypes = [_CXType]
+        library.clang_getArraySize.restype = ctypes.c_longlong
+        library.clang_getArrayElementType.argtypes = [_CXType]
+        library.clang_getArrayElementType.restype = _CXType
+        library.clang_getCursorLocation.argtypes = [_CXCursor]
+        library.clang_getCursorLocation.restype = _CXSourceLocation
+        library.clang_Location_isFromMainFile.argtypes = [_CXSourceLocation]
+        library.clang_Location_isFromMainFile.restype = ctypes.c_int
         library.clang_getCanonicalType.argtypes = [_CXType]
         library.clang_getCanonicalType.restype = _CXType
         library.clang_getPointeeType.argtypes = [_CXType]
@@ -179,6 +240,8 @@ class _LibClang:
             ctypes.POINTER(ctypes.c_uint),
             ctypes.POINTER(ctypes.c_uint),
         ]
+        library.clang_getFileName.argtypes = [ctypes.c_void_p]
+        library.clang_getFileName.restype = _CXString
         library.clang_getCString.argtypes = [_CXString]
         library.clang_getCString.restype = ctypes.c_char_p
         library.clang_disposeString.argtypes = [_CXString]
@@ -196,11 +259,39 @@ def _library_path() -> Path:
     return Path(configured) if configured else _DEFAULT_LIBCLANG
 
 
+@lru_cache(maxsize=4)
+def _compiler_include_flags(library_path: Path) -> tuple[str, ...]:
+    driver = library_path.parent.parent / "bin" / "clang++"
+    if not driver.is_file():
+        return ()
+    try:
+        result = subprocess.run(
+            [str(driver), f"--gcc-toolchain={driver.parent.parent}", "-E", "-x", "c++", "-v", "-"],
+            input="", capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ()
+    flags: list[str] = []
+    collecting = False
+    for line in result.stderr.splitlines():
+        if line.strip() == "#include <...> search starts here:":
+            collecting = True
+        elif line.strip() == "End of search list.":
+            break
+        elif collecting and Path(line.strip()).is_dir():
+            flags.extend(("-isystem", line.strip()))
+    return tuple(flags)
+
+
 def extract_top_interface(
     source: str,
     function_name: str,
     *,
     require_definition: bool = True,
+    source_path: str | Path | None = None,
+    include_dirs: tuple[str, ...] = (),
+    compile_flags: tuple[str, ...] = (),
+    _entry_facts: dict | None = None,
 ) -> Optional[CppFunctionInterface]:
     """Return one compiler-resolved top definition, or ``None`` if unknown."""
 
@@ -220,13 +311,14 @@ def extract_top_interface(
             return None
         translation_unit = None
         try:
-            filename = b"agrefactor_interface.cpp"
+            filename = str(source_path or "agrefactor_interface.cpp").encode("utf-8")
             contents = source.encode("utf-8")
             unsaved = _CXUnsavedFile(filename, contents, len(contents))
-            arguments = (ctypes.c_char_p * 3)(
-                b"-x",
-                b"c++",
-                b"-std=c++14",
+            flags = ["-x", "c++", "-std=c++14", *_compiler_include_flags(path)]
+            flags.extend(f"-I{directory}" for directory in include_dirs)
+            flags.extend(compile_flags)
+            arguments = (ctypes.c_char_p * len(flags))(
+                *(flag.encode("utf-8") for flag in flags)
             )
             translation_unit = library.clang_parseTranslationUnit(
                 index,
@@ -239,8 +331,49 @@ def extract_top_interface(
             )
             if not translation_unit:
                 return None
+            error_offsets: list[int] = []
+            has_errors = False
+            diagnostic_evidence: list[dict] = []
+            for diagnostic_index in range(library.clang_getNumDiagnostics(translation_unit)):
+                diagnostic = library.clang_getDiagnostic(translation_unit, diagnostic_index)
+                try:
+                    severity = library.clang_getDiagnosticSeverity(diagnostic)
+                    has_errors = has_errors or severity >= 3
+                    location = library.clang_getDiagnosticLocation(diagnostic)
+                    file_handle = ctypes.c_void_p()
+                    line = ctypes.c_uint()
+                    column = ctypes.c_uint()
+                    offset = ctypes.c_uint()
+                    library.clang_getSpellingLocation(
+                        location,
+                        ctypes.byref(file_handle),
+                        ctypes.byref(line),
+                        ctypes.byref(column),
+                        ctypes.byref(offset),
+                    )
+                    diagnostic_evidence.append(
+                        {
+                            "severity": int(severity),
+                            "message": clang.text(
+                                library.clang_getDiagnosticSpelling(diagnostic)
+                            ),
+                            "file": clang.text(
+                                library.clang_getFileName(file_handle)
+                            ) if file_handle.value else None,
+                            "line": int(line.value) if line.value else None,
+                            "column": int(column.value) if column.value else None,
+                            "offset": int(offset.value),
+                        }
+                    )
+                    if severity >= 3 and library.clang_Location_isFromMainFile(location):
+                        error_offsets.append(offset.value)
+                finally:
+                    library.clang_disposeDiagnostic(diagnostic)
+            if _entry_facts is not None:
+                _entry_facts["diagnostics"] = diagnostic_evidence
 
             matches: list[_CXCursor] = []
+            entries: list[dict] = []
 
             @clang.visitor_type
             def visit(
@@ -248,22 +381,54 @@ def extract_top_interface(
                 _parent: _CXCursor,
                 _client_data: ctypes.c_void_p,
             ) -> int:
-                if cursor.kind == _FUNCTION_DECL:
+                location = library.clang_getCursorLocation(cursor)
+                if cursor.kind in {_FUNCTION_DECL, _METHOD_DECL, _FUNCTION_TEMPLATE}:
                     name = clang.text(library.clang_getCursorSpelling(cursor))
                     if name == function_name and (
                         not require_definition
                         or library.clang_isCursorDefinition(cursor)
                     ):
-                        matches.append(cursor)
+                        entry_file = ctypes.c_void_p()
+                        library.clang_getSpellingLocation(location, ctypes.byref(entry_file), None, None, None)
+                        start, end = _source_offsets(clang, cursor)
+                        declaration = _declaration_text(source, start, end) if library.clang_Location_isFromMainFile(location) else None
+                        linkage = int(library.clang_getCursorLinkage(cursor))
+                        entries.append({
+                            "kind": {_FUNCTION_DECL: "function", _METHOD_DECL: "member", _FUNCTION_TEMPLATE: "template"}[cursor.kind],
+                            "name": name,
+                            "parent": clang.text(library.clang_getCursorSpelling(_parent)),
+                            "linkage": linkage,
+                            "linkage_name": _LINKAGE_NAMES.get(
+                                linkage,
+                                "unknown",
+                            ),
+                            "source_path": clang.text(library.clang_getFileName(entry_file)),
+                            "signature_valid": declaration is not None and not any(start <= offset < start + len(declaration.encode("utf-8")) for offset in error_offsets),
+                        })
+                        if cursor.kind == _FUNCTION_DECL and library.clang_Location_isFromMainFile(location):
+                            matches.append(cursor)
                 return _CHILD_VISIT_RECURSE
 
             root = library.clang_getTranslationUnitCursor(translation_unit)
             library.clang_visitChildren(root, visit, None)
+            if _entry_facts is not None:
+                valid_entries = [entry for entry in entries if entry.pop("signature_valid") or not has_errors]
+                _entry_facts.update(
+                    status="confirmed" if len(valid_entries) == 1 else "ambiguous" if valid_entries else "missing" if not entries and not has_errors else "unknown",
+                    entries=valid_entries,
+                )
             interfaces = [
                 _interface_from_cursor(clang, cursor, source)
                 for cursor in matches
             ]
-            interfaces = [item for item in interfaces if item is not None]
+            interfaces = [
+                item for item in interfaces
+                if item is not None and item.source_declaration is not None
+                and not any(
+                    item.source_start <= offset < item.source_start + len(item.source_declaration.encode("utf-8"))
+                    for offset in error_offsets
+                )
+            ]
             unique = {
                 (
                     item.name,
@@ -388,8 +553,6 @@ def _interface_from_cursor(
     for index_value in range(argument_count):
         argument = library.clang_Cursor_getArgument(cursor, index_value)
         name = clang.text(library.clang_getCursorSpelling(argument))
-        if not name:
-            return None
         argument_type = library.clang_getCursorType(argument)
         canonical = library.clang_getCanonicalType(argument_type)
         spelling = clang.text(library.clang_getTypeSpelling(argument_type))
@@ -404,6 +567,9 @@ def _interface_from_cursor(
             if kind == _POINTER_TYPE or kind in _REFERENCE_TYPES
             else -1
         )
+        mutable_target = canonical
+        if kind == _POINTER_TYPE or kind in _REFERENCE_TYPES:
+            mutable_target = library.clang_getPointeeType(canonical)
         parameters.append(
             CppParameter(
                 name=name,
@@ -423,6 +589,14 @@ def _interface_from_cursor(
                         )
                     )
                 ),
+                mutable_output=(
+                    (
+                        kind in _ARRAY_TYPES
+                        or kind == _POINTER_TYPE
+                        or kind in _REFERENCE_TYPES
+                    )
+                    and not library.clang_isConstQualifiedType(mutable_target)
+                ),
             )
         )
     start, end = _source_offsets(clang, cursor)
@@ -432,7 +606,69 @@ def _interface_from_cursor(
         parameters=tuple(parameters),
         source_declaration=_declaration_text(source, start, end),
         canonical_result_type=canonical_result_type,
+        source_start=start,
+        source_end=end,
+        linkage=library.clang_getCursorLinkage(cursor),
+        global_state=_referenced_state(clang, cursor),
     )
+
+
+def inspect_top_entry(source: str, function_name: str, **context) -> dict:
+    facts: dict = {"status": "unknown", "entries": []}
+    extract_top_interface(source, function_name, _entry_facts=facts, **context)
+    return facts
+
+
+def _referenced_state(clang: _LibClang, top: _CXCursor) -> tuple[CppVariable, ...]:
+    library = clang.library
+    variables: dict[int, CppVariable] = {}
+    visited: set[int] = set()
+
+    def walk(function: _CXCursor) -> None:
+        key = library.clang_hashCursor(function)
+        if key in visited:
+            return
+        visited.add(key)
+
+        @clang.visitor_type
+        def visit(cursor, _parent, _data):
+            if cursor.kind == 101:  # CXCursor_DeclRefExpr
+                declaration = library.clang_getCursorReferenced(cursor)
+                if declaration.kind == _FUNCTION_DECL:
+                    definition = library.clang_getCursorDefinition(declaration)
+                    if library.clang_Location_isFromMainFile(library.clang_getCursorLocation(definition)):
+                        walk(definition)
+                elif declaration.kind == _VARIABLE_DECL:
+                    parent = library.clang_getCursorSemanticParent(declaration)
+                    value_type = library.clang_getCanonicalType(library.clang_getCursorType(declaration))
+                    if parent.kind in {_TRANSLATION_UNIT, 22} and not library.clang_isConstQualifiedType(value_type):
+                        names = [clang.text(library.clang_getCursorSpelling(declaration))]
+                        scope = parent
+                        while scope.kind == 22:  # CXCursor_Namespace
+                            scope_name = clang.text(library.clang_getCursorSpelling(scope))
+                            if scope_name:
+                                names.insert(0, scope_name)
+                            scope = library.clang_getCursorSemanticParent(scope)
+                        dimensions: list[int] = []
+                        element = value_type
+                        while element.kind == 112:  # CXType_ConstantArray
+                            dimensions.append(library.clang_getArraySize(element))
+                            element = library.clang_getCanonicalType(library.clang_getArrayElementType(element))
+                        variables[library.clang_hashCursor(declaration)] = CppVariable(
+                            name=clang.text(library.clang_getCursorSpelling(declaration)),
+                            type_spelling=clang.text(library.clang_getTypeSpelling(value_type)),
+                            canonical_type=clang.text(library.clang_getTypeSpelling(value_type)),
+                            pointer_like=value_type.kind in _ARRAY_TYPES or value_type.kind == _POINTER_TYPE,
+                            dimensions=tuple(dimensions),
+                            scalar_type=clang.text(library.clang_getTypeSpelling(element)) if 2 <= element.kind <= 30 else None,
+                            qualified_name="::".join(names),
+                        )
+            return _CHILD_VISIT_RECURSE
+
+        library.clang_visitChildren(function, visit, None)
+
+    walk(top)
+    return tuple(variables.values())
 
 
 def extract_global_variables(source: str) -> Optional[tuple[CppVariable, ...]]:
@@ -469,6 +705,8 @@ def extract_global_variables(source: str) -> Optional[tuple[CppVariable, ...]]:
                 0,
             )
             if not translation_unit:
+                if _entry_facts is not None:
+                    _entry_facts.setdefault("diagnostics", [])
                 return None
             variables: list[CppVariable] = []
 

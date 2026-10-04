@@ -72,7 +72,7 @@ def build_effective_repair_quota_summary(
     ledger: RecoveryLedger,
     budget: Any,
     candidate_requested_max: int,
-    runtime_testbench_local_max: int = 1,
+    runtime_testbench_local_max: int = 3,
 ) -> EffectiveRepairQuotaSummary:
     if not isinstance(ledger, RecoveryLedger):
         raise TypeError("ledger must be a RecoveryLedger")

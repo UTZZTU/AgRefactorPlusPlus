@@ -25,6 +25,7 @@ def eval_against_hidden_tb(
     refactor_code: str,
     hidden_tb: str,
     work_dir: Optional[str] = None,
+    original_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run hidden TB against the agent's refactored code.
 
@@ -33,6 +34,7 @@ def eval_against_hidden_tb(
         refactor_code: REAL refactored HLS code (refactor_code.cpp) — NOT a stub
         hidden_tb: hidden testbench source (testbench.cpp)
         work_dir: optional; if set, artifacts are preserved here for debugging
+        original_name: Original entry name, used to keep template instantiation in its definition unit
 
     Returns dict with keys:
         passed: bool
@@ -48,6 +50,7 @@ def eval_against_hidden_tb(
         stub_code=refactor_code,
         target_source="orig_code.cpp",
         keep_dir=work_dir,
+        original_name=original_name,
     )
 
     status = cov.get("status")

@@ -14,6 +14,7 @@ import re
 import tempfile
 from typing import Any, Protocol, TextIO
 from uuid import uuid4
+from agrefactor.cpp_interface import inspect_top_entry
 
 from agrefactor.compat import (
     LegacyRefactorAdapter,
@@ -32,6 +33,7 @@ from agrefactor.config import (
     DEFAULT_TEST_GENERATION_TRAJECTORIES,
     EvaluationSplit,
     RunMode,
+    SourcePackageSpec,
     TaskSpec,
     TargetProfile,
     TestSourceKind,
@@ -115,7 +117,10 @@ from .refactor_eligibility import (
 
 
 _SAFE_COMPONENT_RE = re.compile(r"[^A-Za-z0-9._-]+")
-_CPP_SUFFIXES = frozenset({".c", ".cc", ".cpp", ".cxx"})
+_CPP_SUFFIXES = frozenset({
+    ".c", ".cc", ".cpp", ".cxx",
+    ".h", ".hh", ".hpp", ".hxx",
+})
 
 
 def _clean_required(name: str, value: str) -> str:
@@ -524,6 +529,7 @@ class SourceBootstrapRequest:
     budget_contract: EffectiveRunBudget
     max_candidate_repairs: int
     run_id: str
+    source_package: SourcePackageSpec | None = None
     public_test_contracts: tuple[Mapping[str, Any], ...] = ()
     max_testbench_repairs: int = (
         DEFAULT_TESTBENCH_REPAIR_ATTEMPTS
@@ -561,6 +567,8 @@ class SourceBootstrapRequest:
                 + ", ".join(sorted(_CPP_SUFFIXES))
             )
         _read_code(source, "source file")
+        if self.source_package is not None and not isinstance(self.source_package, SourcePackageSpec):
+            raise TypeError("source_package must be SourcePackageSpec or null")
         mode = self.mode if isinstance(self.mode, RunMode) else RunMode(
             str(self.mode)
         )
@@ -740,6 +748,7 @@ class SourceBootstrapRequest:
                 self.require_complete_execution_identity
             ),
             "source_path": str(self.source_path),
+            "source_package": (None if self.source_package is None else self.source_package.to_dict()),
             "source_sha256": _sha256_file(self.source_path),
             "top_function": self.top_function,
             "mode": self.mode.value,
@@ -1208,7 +1217,10 @@ def _prepare_public_testbench(
         budget=budget,
     )
     loop = TestbenchRepairLoop(
-        preflight=TestbenchPreflight(),
+        preflight=TestbenchPreflight(
+            extra_flags=task.target.compile_flags,
+            include_dirs=(Path(task.kernel_path).parent,),
+        ),
         repairer=repairer,
         max_repair_attempts=max_repair_attempts,
     )
@@ -1237,6 +1249,17 @@ def _prepare_public_testbench(
             for step in final_preflight.substeps
         )
     )
+    unknown_link_failure = (
+        final_preflight.failure_owner.value == "unknown"
+        and final_preflight.failed_component.value == "link"
+        and final_preflight.failure_kind.value == "link_error"
+        and all(
+            step.status.value == "passed"
+            for step in final_preflight.substeps
+            if step.component.value != "link"
+        )
+    ) if final_preflight.failed_component is not None else False
+    defer_to_formal = candidate_only_failure or unknown_link_failure
 
     prompt_evidence: list[dict[str, Any]] = []
     for attempt_index, observation in enumerate(
@@ -1316,13 +1339,14 @@ def _prepare_public_testbench(
 
     semantic_revision = None
     semantic_audit = None
-    result_status = "passed" if candidate_only_failure else result.status.value
+    result_status = "passed" if defer_to_formal else result.status.value
     result_code = result.testbench_code
     result_reason = (
         "Public Testbench passed its own preflight; Candidate-owned failure "
         "was deferred to formal Candidate repair."
         if candidate_only_failure
-        else result.reason
+        else "Public link ownership remains unknown; deferred to formal reference qualification."
+        if unknown_link_failure else result.reason
     )
     if result.repair_attempts_used > 0 and result.status.value == "passed":
         semantic_revision = build_testbench_semantic_revision(
@@ -1504,6 +1528,8 @@ class SourceBootstrapPhase:
         budget_before = context.budget.snapshot().to_dict()
         bootstrap_root = self._layout.artifact_root / "bootstrap"
         bootstrap_root.mkdir(parents=True, exist_ok=True)
+        if self._request.source_package is not None:
+            self._request.source_package.stage_into(self._layout.work_root / "generation")
         _atomic_json(
             bootstrap_root / "source_request.json",
             self._request.to_dict(),
@@ -1561,12 +1587,66 @@ class SourceBootstrapPhase:
             hard_budget_exhaustion=None,
         )
 
+        entry_paths = [self._request.source_path]
+        if self._request.source_package is not None:
+            entry_paths.extend(self._request.source_package.extra_sources)
+        inspections = [inspect_top_entry(
+            _read_code(path, "source entry unit"), self._request.top_function,
+            source_path=path,
+            include_dirs=(str(path.parent), str(self._request.source_package.root) if self._request.source_package else str(path.parent)),
+            compile_flags=self._request.target.compile_flags,
+        ) for path in entry_paths]
+        entries = [entry for inspection in inspections for entry in inspection["entries"]]
+        entry_status = (
+            "confirmed" if len(entries) == 1
+            else "ambiguous" if entries
+            else "missing" if all(inspection["status"] == "missing" for inspection in inspections)
+            else "unknown"
+        )
+        entry_evidence = {"status": entry_status, "entries": entries, "inspections": inspections}
+        _atomic_json(bootstrap_root / "source_entry.json", entry_evidence)
+        member_entry = entry_status == "confirmed" and entries[0]["kind"] == "member"
+        internal_entry = any(
+            entry.get("linkage") == 2
+            for entry in entries
+        )
+        entry_diagnostics = [
+            diagnostic
+            for inspection in inspections
+            for diagnostic in inspection.get("diagnostics", ())
+            if isinstance(diagnostic, Mapping)
+        ]
+        missing_dependency = any(
+                re.search(
+                    r"(?:file not found|no such file or directory|cannot open source file|没有那个文件|找不到)",
+                    str(diagnostic.get("message", "")),
+                    flags=re.IGNORECASE,
+                )
+                for diagnostic in entry_diagnostics
+            )
+        if entry_status == "missing" or member_entry or internal_entry or missing_dependency:
+            if internal_entry:
+                reason = "internal_linkage_entry_unsupported"
+            elif missing_dependency:
+                reason = "missing_external_dependency"
+            else:
+                reason = "class_member_entry_unsupported" if member_entry else "source_top_missing"
+            return PhaseResult(
+                phase=RunPhase.REFACTOR, status=PhaseStatus.FAILED,
+                summary=reason + ": " + self._request.top_function,
+                metadata={"failed_stage": "source_entry_confirmation", "failure_owner": "configuration",
+                          "next_action": "review_configuration",
+                          "diagnostic_kind": reason, "source_entry": entry_evidence,
+                          "formal_validation_started": False, "attempt_count": 0},
+            )
+
         generation_task = TaskSpec(
             task_id=f"{self._request.run_id}.generation",
             kernel_path=str(self._request.source_path),
             kernel_name=self._request.top_function,
             target=self._request.target,
             mode=RunMode.REFACTOR,
+            source_package=self._request.source_package,
             testbench_path=self._first_public_provided_path(),
         )
         generation_context = RunContext(
@@ -1668,7 +1748,12 @@ class SourceBootstrapPhase:
             _read_code(
                 self._request.source_path,
                 "source file",
-            )
+            ),
+            top_function=self._request.top_function,
+            testbench_code=generated["public_testbench"],
+            source_path=self._request.source_path,
+            include_dirs=(str(self._request.source_path.parent),),
+            compile_flags=self._request.target.compile_flags,
         )
         candidate_code = generated["candidate_code"]
         candidate_top = generated["candidate_top"]
@@ -1719,6 +1804,7 @@ class SourceBootstrapPhase:
             kernel_name=candidate_top,
             target=self._request.target,
             mode=RunMode.REFACTOR,
+            source_package=self._request.source_package,
             testbench_path=preflight_suite.testbench_path,
             test_suites=suites,
         )
@@ -1739,6 +1825,8 @@ class SourceBootstrapPhase:
                     "hidden_testbench_exposed_to_model": False,
                 },
             )
+            if self._request.source_package is not None:
+                self._request.source_package.stage_into(bootstrap_root / "public_testbench_repair")
             public_preparation = _prepare_public_testbench(
                 task=formal_task,
                 testbench_code=preflight_code,
@@ -1852,6 +1940,7 @@ class SourceBootstrapPhase:
                     kernel_name=candidate_top,
                     target=self._request.target,
                     mode=RunMode.REFACTOR,
+                    source_package=self._request.source_package,
                     testbench_path=(
                         preflight_suite.testbench_path
                     ),
@@ -1883,6 +1972,7 @@ class SourceBootstrapPhase:
                 )
             ),
             max_attempts=self._request.max_candidate_repairs,
+            max_testbench_repairs=self._request.max_testbench_repairs,
             family_instruction=(
                 self._request.effective_model_config.family_instruction
             ),
@@ -3090,6 +3180,7 @@ def _write_request_rejection_artifacts(
     model_runtime: ModelRuntimeSelection,
     plan: TestSourcePlan,
     target: TargetProfile,
+    source_package: SourcePackageSpec | None,
     args,
     rejection: Mapping[str, Any],
 ) -> None:
@@ -3100,6 +3191,7 @@ def _write_request_rejection_artifacts(
         kernel_name=top_function,
         target=target,
         mode=mode,
+        source_package=source_package,
     )
     model_manifest = model_runtime.effective_config.to_manifest()
     model_manifest["actual_cost_estimation"] = {
@@ -3187,6 +3279,7 @@ def _build_generation_settings(
         max_retry_attempts=0,
         debug=debug,
         generation_only=True,
+        max_testbench_repair_attempts=request.max_testbench_repairs,
         external_kernel_name=f"{request.top_function}_hls",
         test_generation_profile=profile.value,
         enable_tb_coverage_loop=public_auto and enhanced,
@@ -3297,6 +3390,21 @@ def _build_r5_shadow_advisor_factory(*, profile, model_runtime):
     return factory
 
 
+def _source_package_from_cli(source: Path, args) -> SourcePackageSpec | None:
+    raw_root = getattr(args, "source_root", None)
+    raw_extras = getattr(args, "extra_sources", ()) or ()
+    if raw_root is None and not raw_extras:
+        return None
+    root = Path(raw_root or source.parent).expanduser().resolve()
+    extras = []
+    for raw in raw_extras:
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            path = root / path
+        extras.append(path)
+    return SourcePackageSpec(root=root, target=source, extra_sources=tuple(extras))
+
+
 def run_source_command(
     args,
     *,
@@ -3309,6 +3417,7 @@ def run_source_command(
     _validate_mode_specific_cli(args)
 
     source = Path(args.source).expanduser().resolve()
+    source_package = _source_package_from_cli(source, args)
     run_id = (
         args.run_id.strip()
         if isinstance(args.run_id, str) and args.run_id.strip()
@@ -3365,6 +3474,7 @@ def run_source_command(
             model_runtime=model_runtime,
             plan=plan,
             target=target,
+            source_package=source_package,
             args=args,
             rejection=rejection,
         )
@@ -3386,6 +3496,7 @@ def run_source_command(
             model_runtime=model_runtime,
             plan=plan,
             target=target,
+            source_package=source_package,
             args=args,
             rejection=rejection,
         )
@@ -3420,6 +3531,7 @@ def run_source_command(
             model_runtime=model_runtime,
             plan=plan,
             target=target,
+            source_package=source_package,
             args=args,
             rejection=rejection,
         )
@@ -3436,6 +3548,7 @@ def run_source_command(
         source_path=source,
         top_function=args.top,
         mode=mode,
+        source_package=source_package,
         effective_model_config=model_runtime.effective_config,
         target=target,
         test_source_plan=plan,
@@ -3602,6 +3715,7 @@ def run_source_command(
         kernel_name=request.top_function,
         target=target,
         mode=mode,
+        source_package=source_package,
     )
     runner = UnifiedRunner(
         handlers,

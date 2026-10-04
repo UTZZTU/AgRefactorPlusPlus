@@ -734,6 +734,21 @@ class SharedLayeredPromptBuilder:
             item.owner.value
             for item in blocking
             if item.owner is not expected_owner
+            and not (
+                expected_owner is FeedbackOwner.CANDIDATE
+                and request.purpose in {
+                    PromptPurpose.CANDIDATE_COMPILE_REPAIR,
+                    PromptPurpose.CANDIDATE_PUBLIC_CSIM_REPAIR,
+                    PromptPurpose.CANDIDATE_PUBLIC_COSIM_REPAIR,
+                }
+                and item.owner is FeedbackOwner.UNKNOWN
+                and str(split).lower() == "public"
+                and metadata.get("feedback_visible_to_agent") is True
+                and item.metadata.get("owner_authority") == "public_reference_qualified"
+                and item.metadata.get("repair_eligible") is True
+                and item.metadata.get("evidence_complete") is True
+                and item.metadata.get("tool_launched") is True
+            )
         }
         if invalid_owners:
             raise ValueError(

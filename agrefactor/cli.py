@@ -349,7 +349,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=_repair_attempt_count,
         default=DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
         help=(
-            "Maximum Candidate repair model calls after initial validation. "
+            "Maximum Candidate repair proposals sent to validation after initial validation. "
             f"Default: {DEFAULT_CANDIDATE_REPAIR_ATTEMPTS}; "
             f"valid range: 1..{REPAIR_ATTEMPT_SAFETY_CEILING}."
         ),
@@ -425,6 +425,19 @@ def build_parser() -> argparse.ArgumentParser:
             "--top",
             required=True,
             help="Explicit source top function name.",
+        )
+        source_parser.add_argument(
+            "--source-root",
+            type=Path,
+            help="Optional root directory for a multi-file source package.",
+        )
+        source_parser.add_argument(
+            "--extra-source",
+            dest="extra_sources",
+            action="append",
+            default=[],
+            type=Path,
+            help="Repeatable independent source file inside --source-root.",
         )
         source_parser.add_argument(
             "--reference-source",

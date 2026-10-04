@@ -264,6 +264,15 @@ class FeedbackRouter:
         for item in blocking:
             grouped[self._action_for_item(item)].append(item)
 
+        qualified_unknown = [item for item in blocking
+                             if item.owner is FeedbackOwner.UNKNOWN
+                             and self._action_for_item(item) is FeedbackRouteAction.REPAIR_CANDIDATE]
+        if qualified_unknown:
+            common_metadata.update(
+                owner_authority="public_reference_qualified",
+                physical_tool_launched=True, evidence_complete=True,
+            )
+
         blocking_ids = tuple(
             item.feedback_id for item in blocking
         )
@@ -332,7 +341,11 @@ class FeedbackRouter:
         return FeedbackRouteDecision(
             decision_id=normalized_decision_id,
             action=action,
-            reason=self._reason(action),
+            reason=(
+                "Public failure ownership remains unknown; qualified reference execution permits bounded candidate repair."
+                if qualified_unknown and action is FeedbackRouteAction.REPAIR_CANDIDATE
+                else self._reason(action)
+            ),
             source_report_id=report.report_id,
             blocking_feedback_ids=blocking_ids,
             selected_feedback_ids=tuple(
@@ -380,6 +393,14 @@ class FeedbackRouter:
             and item.category is FeedbackCategory.TIMEOUT
         ):
             return FeedbackRouteAction.FIX_TOOLCHAIN
+
+        if (item.owner is FeedbackOwner.UNKNOWN
+                and item.stage in {FeedbackStage.LINK, FeedbackStage.TEST, FeedbackStage.CSIM, FeedbackStage.COSIM}
+                and item.metadata.get("owner_authority") == "public_reference_qualified"
+                and item.metadata.get("repair_eligible") is True
+                and item.metadata.get("evidence_complete") is True
+                and item.metadata.get("tool_launched") is True):
+            return FeedbackRouteAction.REPAIR_CANDIDATE
 
         return FeedbackRouteAction.REVIEW_UNKNOWN
 

@@ -67,6 +67,23 @@ auto top(sample (&input)[8], unsigned count) -> void {
         self.assertEqual(interface.result_type, "Ret")
         self.assertEqual(interface.canonical_result_type, "void")
 
+    def test_fixed_array_output_is_mutable_but_const_input_is_not(self) -> None:
+        for input_type, output_type in (
+            ("const int input[8]", "int output[8]"),
+            ("const int input[2][4]", "int output[2][4]"),
+            ("const int (&input)[8]", "int (&output)[8]"),
+            ("const int *input", "int *output"),
+        ):
+            with self.subTest(input_type=input_type, output_type=output_type):
+                interface = extract_top_interface(
+                    f"void top({input_type}, {output_type}) {{}}",
+                    "top",
+                )
+                self.assertIsNotNone(interface)
+                assert interface is not None
+                self.assertFalse(interface.parameters[0].mutable_output)
+                self.assertTrue(interface.parameters[1].mutable_output)
+
 
     def test_global_variables_come_from_ast_not_comments_or_strings(self) -> None:
         variables = extract_global_variables(

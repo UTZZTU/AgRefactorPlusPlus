@@ -101,6 +101,18 @@ _UNSUPPORTED_DYNAMIC_ALLOCATION_RE = re.compile(
     r"\bUndefined function operator\s+(?:new|delete)\s*\[\]",
     flags=re.IGNORECASE,
 )
+_UNSUPPORTED_STRUCT_POINTER_ARGUMENT_RE = re.compile(
+    r"\bStruct type with pointer type inside on top function argument is not supported\b",
+    flags=re.IGNORECASE,
+)
+_UNSUPPORTED_POINTER_TO_POINTER_RE = re.compile(
+    r"\bPointer to pointer is not supported\b",
+    flags=re.IGNORECASE,
+)
+_UNSUPPORTED_RECURSIVE_FUNCTION_RE = re.compile(
+    r"\bRecursive function calls are not supported\b",
+    flags=re.IGNORECASE,
+)
 
 
 class CsynthDiagnosticParser:
@@ -402,6 +414,39 @@ class CsynthDiagnosticParser:
                 "high",
             )
 
+        if (
+            message_id == "HLS 214-298"
+            and _UNSUPPORTED_STRUCT_POINTER_ARGUMENT_RE.search(message)
+        ):
+            return (
+                FeedbackCategory.UNSUPPORTED_CONSTRUCT,
+                "Vitis HLS does not support pointer members in top-level struct arguments",
+                "unsupported_struct_pointer_argument",
+                "high",
+            )
+
+        if (
+            message_id == "HLS 214-134"
+            and _UNSUPPORTED_POINTER_TO_POINTER_RE.search(message)
+        ):
+            return (
+                FeedbackCategory.UNSUPPORTED_CONSTRUCT,
+                "Vitis HLS does not support pointer-to-pointer constructs",
+                "unsupported_pointer_to_pointer",
+                "high",
+            )
+
+        if (
+            message_id == "HLS 214-139"
+            and _UNSUPPORTED_RECURSIVE_FUNCTION_RE.search(message)
+        ):
+            return (
+                FeedbackCategory.UNSUPPORTED_CONSTRUCT,
+                "Vitis HLS does not support recursive function calls",
+                "unsupported_recursive_function",
+                "high",
+            )
+
         if _S_AXILITE_BUNDLE_RE.search(message):
             return (
                 FeedbackCategory.INVALID_CONFIGURATION,
@@ -471,7 +516,14 @@ class CsynthDiagnosticParser:
         category = FeedbackCategory(record["category"])
         rule = str(record["parser_rule"])
         effective_owner = (
-            owner
+            FeedbackOwner.TOOLCHAIN
+            if rule
+            in {
+                "unsupported_struct_pointer_argument",
+                "unsupported_pointer_to_pointer",
+                "unsupported_recursive_function",
+            }
+            else owner
             if rule
             in {
                 "undeclared_identifier",

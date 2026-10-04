@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -101,6 +102,11 @@ class CsynthArtifactFeedbackEvaluator:
             diagnostic_report=diagnostic_report,
             report_id=report_id,
         )
+        combined = self._apply_completion_facts(
+            combined,
+            invocation=invocation,
+            legacy_status=legacy_status,
+        )
 
         source_evidence = dict(combined.source_evidence)
         source_evidence["artifact_loading"] = {
@@ -141,6 +147,75 @@ class CsynthArtifactFeedbackEvaluator:
             items=combined.items,
             source_evidence=source_evidence,
             metadata=metadata,
+        )
+
+    @staticmethod
+    def _apply_completion_facts(
+        report: FeedbackReport,
+        *,
+        invocation: dict[str, Any],
+        legacy_status: str | None,
+    ) -> FeedbackReport:
+        execution = invocation.get("execution")
+        execution = execution if isinstance(execution, dict) else {}
+        returncode = execution.get("returncode")
+        valid_returncode = (
+            isinstance(returncode, int)
+            and not isinstance(returncode, bool)
+        )
+        completed = (
+            execution.get("status") == "completed"
+            and valid_returncode
+            and execution.get("timeout") is not True
+        )
+        evidence_consistent = True
+        if legacy_status == "succeeded":
+            evidence_consistent = completed and returncode == 0
+        elif legacy_status == "timeout":
+            evidence_consistent = execution.get("timeout") is True
+        elif legacy_status == "csynth_failed":
+            evidence_consistent = not (completed and returncode == 0)
+        facts = {
+            "tool_launched": execution.get("status") not in {
+                None,
+                "not_started",
+                "blocked_by_budget",
+                "blocked_before_csynth",
+                "configuration_error",
+            },
+            "process_exit_observed": completed,
+            "command_completion_proven": completed,
+            "evidence_complete": completed,
+            "evidence_consistent": evidence_consistent,
+            "owner_authority": (
+                "tool_completed"
+                if completed and evidence_consistent
+                else "unknown"
+            ),
+        }
+        items = []
+        for item in report.items:
+            metadata = dict(item.metadata)
+            metadata.update(facts)
+            if (
+                item.source == "csynth_diagnostic"
+                and (not completed or not evidence_consistent)
+            ):
+                metadata["failure_reason"] = "command_completion_not_proven"
+                item = replace(item, owner=FeedbackOwner.UNKNOWN)
+            items.append(replace(item, metadata=metadata))
+        report_metadata = dict(report.metadata)
+        report_metadata.update(facts)
+        if (not completed or not evidence_consistent) and report.items:
+            report_metadata["failure_reason"] = (
+                "inconsistent_execution_evidence"
+                if completed
+                else "command_completion_not_proven"
+            )
+        return replace(
+            report,
+            items=tuple(items),
+            metadata=report_metadata,
         )
 
     @staticmethod

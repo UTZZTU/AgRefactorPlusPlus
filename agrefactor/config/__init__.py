@@ -42,6 +42,7 @@ from .tool_timeouts import (
     validate_csynth_timeout_s,
     validate_cosim_timeout_s,
 )
+from .source_package import SourcePackageSpec
 from .task import RunMode, TaskSpec
 from .test_source import (
     TestFeedbackVisibility,
@@ -83,6 +84,7 @@ __all__ = [
     "TargetProfile",
     "TargetResourceLimits",
     "TaskSpec",
+    "SourcePackageSpec",
     "OverallTestSourceMode",
     "TestFeedbackVisibility",
     "TestGenerationProfile",

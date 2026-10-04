@@ -2237,18 +2237,17 @@
       "case_id": "internal-hlsrewritter-3fa90f3d2d17cbbf",
       "eligibility": "quarantine",
       "exclusion_reasons": [
-        "d1_duplicate_in_inconsistent_execution_contract",
-        "vitis_tcl_execution_contract_inconsistent"
+        "license_or_checked_in_provenance_unresolved"
       ],
       "execution_contract": {
         "added_source_paths": [
-          "src/hlsrewritter/DA_E2_binary_tree/kernel.cpp"
+          "src/hlsrewritter/DA_E2_binary_tree/kernel.h"
         ],
         "declared_top": "DFS",
-        "declared_top_found_in_added_source": false,
+        "declared_top_found_in_added_source": true,
         "declared_top_matches_registry": true,
-        "registered_source_declared": false,
-        "status": "inconsistent",
+        "registered_source_declared": true,
+        "status": "consistent",
         "tcl_path": "src/hlsrewritter/DA_E2_binary_tree/vitis.tcl"
       },
       "history_future_partition": "history",
@@ -2259,14 +2258,7 @@
       },
       "legacy_claim_refs": [],
       "legacy_info_label": "not_useful",
-      "nearest_duplicate_refs": [
-        {
-          "case_id": "internal-hlsrewritter-48df229d9d93843b",
-          "level": "D1",
-          "reason": "case_file_d1_match:src/hlsrewritter/DA_E2_binary_tree/kernel.cpp:src/hlsrewritter/DA_E1_linear_program/kernel.cpp",
-          "score": 1.0
-        }
-      ],
+      "nearest_duplicate_refs": [],
       "normalized_token_sha256": "e367bc8fea9f0c576c936e9987c4b7b948a9a1d31046dcff8369abd6c4e71ef2",
       "oracles": {
         "hidden": {
@@ -2288,7 +2280,7 @@
         "vitis_tcl": {
           "path": "src/hlsrewritter/DA_E2_binary_tree/vitis.tcl",
           "present": true,
-          "sha256": "e6d345f03fe1962aedc5e3a4e7455c3b55d00511a309f54d1a1c10214a118c12"
+          "sha256": "c80b75d7aec0e8f4c2d1f931de0928d534212e0a5ccdaac97afd9abbbae63dfb"
         }
       },
       "raw_source_baseline": {
@@ -4225,13 +4217,13 @@
   },
   "policy_sha256": "e50f3746b0b351d0b39e0cc6fc2c3e1a173d5cfc92a041fb7b67a16d08eb5cfa",
   "registry_id": "v2.3-r5.1-internal-dataset-registry-v1",
-  "registry_sha256": "ff0a5e25b28bc057f0a6ef96f185a1eace3270a131dd90d949ac725516f3f386",
+  "registry_sha256": "2e792fe806b025d10a8af2f5b4cda9bbd16bf2201e05cd75b62fc7488315a90d",
   "schema_version": 1,
   "source_info_sha256": "034869411fe8993cc512f549ef7f15a6b952a04952db2d9630ae4ebd3a805aa0",
   "summary": {
     "case_count": 57,
     "d0_case_count": 0,
-    "d1_case_count": 2,
+    "d1_case_count": 1,
     "d2_candidate_case_count": 0,
     "eligibility_counts": {
       "adapter_required": 9,

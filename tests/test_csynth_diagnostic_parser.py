@@ -189,6 +189,50 @@ class CsynthDiagnosticParserTests(unittest.TestCase):
                     "high",
                 )
 
+    def test_hls_214_298_struct_pointer_argument_is_toolchain_owned(self) -> None:
+        item = self.parse(
+            "ERROR: [HLS 214-298] Struct type with pointer type inside on "
+            "top function argument is not supported, please disaggregate "
+            "argument 'input' manually (aes_encrypt_hls.cpp:9:0)"
+        ).items[0]
+
+        self.assertEqual(item.category, FeedbackCategory.UNSUPPORTED_CONSTRUCT)
+        self.assertEqual(item.owner, FeedbackOwner.TOOLCHAIN)
+        self.assertEqual(
+            item.metadata["parser_rule"],
+            "unsupported_struct_pointer_argument",
+        )
+
+    def test_recursive_function_is_unsupported_construct(self) -> None:
+        item = self.parse(
+            "ERROR: [HLS 214-139] Recursive function calls are not supported: "
+            "sort_node(node*, node*) -> sort_node(node*, node*)"
+        ).items[0]
+
+        self.assertEqual(item.category, FeedbackCategory.UNSUPPORTED_CONSTRUCT)
+        self.assertEqual(item.owner, FeedbackOwner.TOOLCHAIN)
+        self.assertEqual(
+            item.metadata["parser_rule"],
+            "unsupported_recursive_function",
+        )
+        self.assertEqual(
+            item.metadata["classification_confidence"],
+            "high",
+        )
+
+    def test_pointer_to_pointer_is_toolchain_capability(self) -> None:
+        item = self.parse(
+            "ERROR: [HLS 214-134] Pointer to pointer is not supported "
+            "for variable 'p' (top_hls.cpp:61:18)"
+        ).items[0]
+
+        self.assertEqual(item.category, FeedbackCategory.UNSUPPORTED_CONSTRUCT)
+        self.assertEqual(item.owner, FeedbackOwner.TOOLCHAIN)
+        self.assertEqual(
+            item.metadata["parser_rule"],
+            "unsupported_pointer_to_pointer",
+        )
+
     def test_dynamic_allocation_words_with_other_code_remain_unknown(self) -> None:
         item = self.parse(
             "ERROR: [HLS 214-999] Undefined function operator new[] "

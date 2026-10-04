@@ -35,6 +35,22 @@ class VitisTopInterface:
             )
         )
 
+    @property
+    def source_to_maxi_hardware(self) -> dict[str, str]:
+        """Return the synthesized source-port to hardware-bundle mapping."""
+
+        return {
+            port.source_name: (port.hardware_name or port.source_name)
+            for port in self.ports
+            if port.is_pointer and port.hardware_interface == "MAXI"
+        }
+
+    @property
+    def maxi_hardware_ports(self) -> tuple[str, ...]:
+        """Return unique hardware bundles used by MAXI pointer ports."""
+
+        return tuple(sorted(set(self.source_to_maxi_hardware.values())))
+
 
 def _optional_int(value: str | None) -> int | None:
     if value is None or not value.strip():
