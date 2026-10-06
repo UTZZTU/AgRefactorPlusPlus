@@ -938,6 +938,12 @@ _GENERATION_FAILURE_SCALAR_KEYS = (
     "diagnostic_excerpt",
     "hidden_testbench_exposed_to_model",
     "retry_guidance",
+    "qualification_mode",
+    "repair_attempt_count",
+    "retry_exhausted",
+    "qualification_artifact_dir",
+    "qualification_receipt",
+    "qualification_synth_invocation",
 )
 
 
@@ -986,7 +992,11 @@ def _extract_generation_failure_metadata(
         if isinstance(value, (str, int, bool)) or value is None:
             failure[key] = value
 
-    if failure.get("failure_kind") != "testbench_generation_exhausted":
+    failure_kind = failure.get("failure_kind")
+    if failure_kind not in {
+        "testbench_generation_exhausted",
+        "testbench_qualification_failed",
+    }:
         return {}
     if failure.get("bounded") is not True:
         return {}
@@ -996,11 +1006,23 @@ def _extract_generation_failure_metadata(
     if not isinstance(stage, str) or not stage:
         return {}
 
+    qualification_mode = failure.get("qualification_mode", "generated")
+    if failure_kind == "testbench_qualification_failed":
+        if qualification_mode != "provided":
+            return {}
+        failure["next_action"] = "review_required_provided"
+        failure["retry_exhausted"] = False
+        failure["repair_attempt_count"] = 0
+
     diagnostic = failure.get("diagnostic_excerpt")
     if isinstance(diagnostic, str):
         failure["diagnostic_excerpt"] = diagnostic[-2000:]
 
     return {
+        "generation_failure_kind": failure_kind,
+        "generation_failure_terminal_class": failure.get(
+            "terminal_class"
+        ),
         "failed_stage": stage,
         "failure_owner": failure.get("failure_owner", "unknown"),
         "next_action": failure.get(
@@ -1013,6 +1035,16 @@ def _extract_generation_failure_metadata(
         ),
         "attempt_count": failure.get("attempt_count", 0),
         "trajectory_count": failure.get("trajectory_count", 0),
+        "qualification_mode": qualification_mode,
+        "repair_attempt_count": failure.get("repair_attempt_count", 0),
+        "retry_exhausted": failure.get("retry_exhausted", True),
+        "qualification_artifact_dir": failure.get(
+            "qualification_artifact_dir"
+        ),
+        "qualification_receipt": failure.get("qualification_receipt"),
+        "qualification_synth_invocation": failure.get(
+            "qualification_synth_invocation"
+        ),
         "hidden_testbench_exposed_to_model": False,
         "generation_failure": failure,
     }
@@ -1705,7 +1737,11 @@ class SourceBootstrapPhase:
                 phase=RunPhase.REFACTOR,
                 status=generation_result.status,
                 summary=(
-                    "Initial generation failed before formal validation: "
+                    (
+                        "Provided Public Testbench qualification failed before formal validation: "
+                        if failure_payload.get("qualification_mode") == "provided"
+                        else "Initial generation failed before formal validation: "
+                    )
                     + (
                         str(failure_reason)
                         if failure_reason

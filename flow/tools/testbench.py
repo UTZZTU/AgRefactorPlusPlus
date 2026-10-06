@@ -411,6 +411,21 @@ def qualify_external_public_testbench(
         ),
     }
 
+    qualification_root = None
+    artifact_root = cv.get("public_tb_artifact_dir")
+    if artifact_root:
+        qualification_root = Path(str(artifact_root)) / "provided_qualification"
+        qualification_root.mkdir(parents=True, exist_ok=True)
+        existing = sorted(qualification_root.glob("attempt_*"))
+        attempt_dir = qualification_root / f"attempt_{len(existing) + 1:03d}"
+        attempt_dir.mkdir()
+        original_dir = attempt_dir / "original_execution"
+        stub_dir = attempt_dir / "stub_synthesis"
+        original_dir.mkdir()
+        stub_dir.mkdir()
+    else:
+        attempt_dir = original_dir = stub_dir = None
+
     tools.tb_optimizer.validate_testbench_top_contract(
         testbench_code,
         kernel_name,
@@ -439,9 +454,48 @@ def qualify_external_public_testbench(
         candidate_decl,
         hls_name,
         budget=budget,
+        keep_dir=str(original_dir) if original_dir is not None else None,
         original_name=kernel_name,
         **execution_context,
     )
+    original_receipt_path = None
+    if attempt_dir is not None:
+        original_receipt_path = attempt_dir / "original_qualification_receipt.json"
+        original_receipt_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "qualification_mode": "provided",
+                    "split": "public",
+                    "stage": "external_public_original_qualification",
+                    "result": original_result,
+                },
+                ensure_ascii=False,
+                indent=2,
+                allow_nan=False,
+                default=str,
+            ),
+            encoding="utf-8",
+        )
+    cv["provided_public_qualification"] = {
+        "qualification_mode": "provided",
+        "split": "public",
+        "artifact_dir": str(attempt_dir) if attempt_dir is not None else None,
+        "original_receipt": (
+            str(original_receipt_path)
+            if original_receipt_path is not None
+            else None
+        ),
+        "status": original_result.get("status"),
+        "failure_owner": original_result.get("failure_owner", "unknown"),
+        "diagnostic_kind": original_result.get(
+            "diagnostic_kind",
+            original_result.get("status", "unknown"),
+        ),
+        "repair_attempt_count": 0,
+        "retry_exhausted": False,
+        "formal_validation_started": False,
+    }
     if original_result.get("status") != "ok":
         raise tools.tb_optimizer.TestbenchGenerationExhausted(
             split="public",
@@ -452,6 +506,7 @@ def qualify_external_public_testbench(
                     "rounds": [original_result],
                 }
             ],
+            qualification_mode="provided",
         )
 
     loader = HLSAgentLoader(
@@ -477,7 +532,15 @@ def qualify_external_public_testbench(
         candidate_name=hls_name,
         frozen_hls_decl=candidate_decl,
     )
-    with tempfile.TemporaryDirectory(prefix="external_public_synth_check_") as work_dir:
+    if stub_dir is None:
+        synth_context = tempfile.TemporaryDirectory(
+            prefix="external_public_synth_check_"
+        )
+        work_dir = synth_context.name
+    else:
+        synth_context = None
+        work_dir = str(stub_dir)
+    try:
         synth_ok, synth_error = tools.tb_optimizer._synth_check(
             stub,
             hls_name,
@@ -487,6 +550,44 @@ def qualify_external_public_testbench(
                 **execution_context,
                 "target_profile": cv.get("target_profile") or {},
             },
+        )
+    finally:
+        if synth_context is not None:
+            synth_context.cleanup()
+    synth_invocation = Path(work_dir) / "csynth_invocation.json"
+    cv["provided_public_qualification"].update(
+        {
+            "status": "ok" if synth_ok else "synth_failed",
+            "stub_synthesis_artifact_dir": (
+                str(stub_dir) if stub_dir is not None else None
+            ),
+            "stub_synthesis_invocation": (
+                str(synth_invocation) if synth_invocation.exists() else None
+            ),
+            "synth_error_tail": str(synth_error or "")[-1500:],
+        }
+    )
+    if attempt_dir is not None:
+        (attempt_dir / "stub_synthesis_receipt.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "qualification_mode": "provided",
+                    "split": "public",
+                    "stage": "external_public_abi_synthesis_qualification",
+                    "status": "ok" if synth_ok else "synth_failed",
+                    "invocation_path": (
+                        str(synth_invocation)
+                        if synth_invocation.exists()
+                        else None
+                    ),
+                    "error_tail": str(synth_error or "")[-1500:],
+                },
+                ensure_ascii=False,
+                indent=2,
+                allow_nan=False,
+            ),
+            encoding="utf-8",
         )
     if not synth_ok:
         raise tools.tb_optimizer.TestbenchGenerationExhausted(
@@ -506,5 +607,6 @@ def qualify_external_public_testbench(
                     ],
                 }
             ],
+            qualification_mode="provided",
         )
     return testbench_code

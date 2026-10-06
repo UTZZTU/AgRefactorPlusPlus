@@ -446,6 +446,67 @@ class P4DPublicRtlCosimTests(unittest.TestCase):
             coordinated.selected_feedback_items[0].owner,
             FeedbackOwner.CANDIDATE,
         )
+        self.assertTrue(
+            coordinated.selected_feedback_items[0].metadata["evidence_complete"]
+        )
+
+    def test_incomplete_candidate_cosim_evidence_requires_review(self) -> None:
+        task = self._task()
+        payload = {
+            "status": "failed",
+            "failure_kind": "candidate_rtl_functional_failure",
+            "failure_owner": "candidate",
+            "owner_authority": "deterministic_proven",
+            "testbench_returncode": 1,
+            "reason_code": "public_rtl_mismatch",
+            "timed_out": False,
+            "returncode": 23,
+            "tool_launched": True,
+            "cosim_launched": True,
+            "evidence_sha256": "b" * 64,
+        }
+        incomplete_evidence = (
+            {"evidence_sha256": None},
+            {"evidence_sha256": "invalid"},
+            {"tool_launched": False},
+            {"cosim_launched": False},
+            {"owner_authority": "unknown"},
+            {"testbench_returncode": 2},
+            {"testbench_returncode": True},
+            {"failure_kind": "ownership_unknown", "failure_owner": "unknown"},
+        )
+        for missing in incomplete_evidence:
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as raw:
+                report = CosimValidationStageHandler(
+                    CosimStageInputs(
+                        work_dir=raw,
+                        original_code="int reference;",
+                        candidate_code="int candidate;",
+                        suite_testbench_codes={"public-1": "int main(){return 1;}"},
+                        candidate_top_function="kernel",
+                        target_profile=task.target,
+                        timelimit=30,
+                    ),
+                    executor=lambda **_: {**payload, **missing},
+                )(
+                    RunContext(
+                        run_id="p4d-incomplete",
+                        task=task,
+                        budget=BudgetManager(),
+                        trace=TraceRecorder("p4d-incomplete", task_id=task.task_id),
+                    )
+                )
+                coordinated = ValidationFeedbackCoordinator(task).coordinate(
+                    report,
+                    ValidationState.PUBLIC_COSIM,
+                    coordination_id="p4d-incomplete.cosim",
+                )
+                self.assertEqual(
+                    coordinated.route_action,
+                    FeedbackRouteAction.REVIEW_UNKNOWN,
+                )
+                self.assertFalse(coordinated.transition.repair_allowed)
+                self.assertFalse(report.items[0].metadata["evidence_complete"])
 
     def test_untrusted_owner_pair_and_timeout_are_unknown_safe(self) -> None:
         task = self._task()

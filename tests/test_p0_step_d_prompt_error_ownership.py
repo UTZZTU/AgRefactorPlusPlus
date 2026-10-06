@@ -608,7 +608,7 @@ class HiddenQualificationExceptionArtifactsTests(unittest.TestCase):
             passed, _ = tb_optimizer._synth_check("void trial(){}", "trial", root)
         self.assertTrue(passed)
         self.assertEqual(synth.call_args.kwargs["timelimit"], DEFAULT_CSYNTH_TIMEOUT_S)
-        self.assertEqual(DEFAULT_CSYNTH_TIMEOUT_S, 2700)
+        self.assertEqual(DEFAULT_CSYNTH_TIMEOUT_S, 5400)
 
     def test_hidden_qualification_retains_exception_chain_only_for_operator(self):
         def fail(**kwargs):

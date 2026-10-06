@@ -222,25 +222,25 @@ class CliParameterContractTests(unittest.TestCase):
             advanced.csynth_timelimit,
             DEFAULT_CSYNTH_TIMEOUT_S,
         )
-        self.assertEqual(CSIM_TIMEOUT_SAFETY_CEILING, 900)
-        self.assertEqual(CSYNTH_TIMEOUT_SAFETY_CEILING, 3600)
-        self.assertEqual(DEFAULT_CSIM_TIMEOUT_S, 900)
-        self.assertEqual(DEFAULT_CSYNTH_TIMEOUT_S, 2700)
-        self.assertEqual(DEFAULT_COSIM_TIMEOUT_S, 4500)
+        self.assertEqual(CSIM_TIMEOUT_SAFETY_CEILING, 1800)
+        self.assertEqual(CSYNTH_TIMEOUT_SAFETY_CEILING, 5400)
+        self.assertEqual(DEFAULT_CSIM_TIMEOUT_S, 1800)
+        self.assertEqual(DEFAULT_CSYNTH_TIMEOUT_S, 5400)
+        self.assertEqual(DEFAULT_COSIM_TIMEOUT_S, 9000)
 
     def test_timeout_ceilings_are_enforced(self):
         source_args(
             "--csim-timeout-s",
-            "900",
+            "1800",
             "--csynth-timeout-s",
-            "3600",
+            "5400",
         )
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
-                source_args("--csim-timeout-s", "901")
+                source_args("--csim-timeout-s", "1801")
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
-                source_args("--csynth-timeout-s", "3601")
+                source_args("--csynth-timeout-s", "5401")
 
     def test_replace_compile_flag_replaces_profile_defaults(self):
         args = source_args(

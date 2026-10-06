@@ -30,9 +30,9 @@ hidden_tests=auto
 test_generation_profile=lightweight
 max_testbench_repairs=3
 max_candidate_repairs=3
-csim_timeout_s=900
-csynth_timeout_s=2700
-cosim_timeout_s=4500
+csim_timeout_s=1800
+csynth_timeout_s=5400
+cosim_timeout_s=9000
 ```
 
 完整参数见 [CLI 参数参考](CLI_PARAMETER_REFERENCE.md)。

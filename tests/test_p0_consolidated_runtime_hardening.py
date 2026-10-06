@@ -88,6 +88,7 @@ class RuntimeContractV2NormalizationTests(unittest.TestCase):
         )
         self.assertEqual(outcome["failure_kind"], "candidate_rtl_functional_failure")
         self.assertEqual(outcome["failure_owner"], "candidate")
+        self.assertTrue(outcome["evidence_complete"])
 
     def test_v2_candidate_failure_is_authoritative(self) -> None:
         outcome = _normalize_outcome(
@@ -96,6 +97,15 @@ class RuntimeContractV2NormalizationTests(unittest.TestCase):
         )
         self.assertEqual(outcome["failure_kind"], "candidate_rtl_functional_failure")
         self.assertEqual(outcome["failure_owner"], "candidate")
+        self.assertTrue(outcome["evidence_complete"])
+
+    def test_contract_authorized_code_does_not_depend_on_launcher_code(self) -> None:
+        outcome = _normalize_outcome(
+            {**_candidate_failure_payload(returncode=7), "returncode": 0},
+            runtime_contract={**V2, "candidate_mismatch_returncodes": [7]},
+        )
+        self.assertEqual(outcome["failure_owner"], "candidate")
+        self.assertTrue(outcome["evidence_complete"])
 
     def test_v2_wrong_returncode_fails_closed(self) -> None:
         outcome = _normalize_outcome(
@@ -104,6 +114,7 @@ class RuntimeContractV2NormalizationTests(unittest.TestCase):
         )
         self.assertEqual(outcome["failure_kind"], "ownership_unknown")
         self.assertEqual(outcome["failure_owner"], "unknown")
+        self.assertFalse(outcome["evidence_complete"])
 
     def test_malformed_v2_depths_fail_closed(self) -> None:
         malformed_contracts = (
@@ -120,6 +131,7 @@ class RuntimeContractV2NormalizationTests(unittest.TestCase):
                 )
                 self.assertEqual(outcome["failure_kind"], "ownership_unknown")
                 self.assertEqual(outcome["failure_owner"], "unknown")
+                self.assertFalse(outcome["evidence_complete"])
 
 
 if __name__ == "__main__":

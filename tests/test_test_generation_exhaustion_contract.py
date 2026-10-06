@@ -94,6 +94,39 @@ class FailedGenerationAdapter:
 
 
 class TestGenerationExhaustionContractTests(unittest.TestCase):
+    def test_original_only_sanitizer_failure_repairs_hidden_testbench(self):
+        failure = {
+            "status": "original_run_failed",
+            "failure_owner": "unknown",
+            "next_action": "review_unknown",
+            "failure_evidence_source": "original-only sanitizer/runtime",
+            "owner_authority": "runtime_not_isolated",
+            "evidence_complete": False,
+        }
+
+        self.assertEqual(
+            tb_optimizer._coverage_action(failure),
+            "review_unknown",
+        )
+        self.assertEqual(
+            tb_optimizer._hidden_generation_action(failure),
+            "repair_testbench",
+        )
+        self.assertEqual(failure["failure_owner"], "unknown")
+
+    def test_hidden_generation_keeps_other_unknown_failures_for_review(self):
+        failure = {
+            "status": "original_run_timeout",
+            "failure_owner": "unknown",
+            "next_action": "review_unknown",
+            "failure_evidence_source": "original-only timeout",
+        }
+
+        self.assertEqual(
+            tb_optimizer._hidden_generation_action(failure),
+            "review_unknown",
+        )
+
     def test_hidden_payload_is_code_free_and_structured(self):
         secret = "PRIVATE_HELD_OUT_STRUCTURE"
         exc = tb_optimizer.TestbenchGenerationExhausted(

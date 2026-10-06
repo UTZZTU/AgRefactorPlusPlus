@@ -736,7 +736,15 @@ def _normalize_outcome(
             False if timeout is None else timeout.advisory_eligible
         ),
         "evidence_complete": (
-            False if timeout is None else timeout.evidence_complete
+            (
+                kind == "candidate_rtl_functional_failure"
+                and owner == "candidate"
+                and value.get("tool_launched") is True
+                and value.get("cosim_launched") is True
+                and evidence_sha is not None
+            )
+            if timeout is None
+            else timeout.evidence_complete
         ),
     }
 

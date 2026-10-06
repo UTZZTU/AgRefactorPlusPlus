@@ -600,6 +600,127 @@ class CoverageLoopHardeningTests(unittest.TestCase):
         )
         self.assertTrue(result["qualified"])
 
+    def test_hidden_original_runtime_failure_retries_generation_only(self):
+        testbench = (
+            "void process_top_hls();\n"
+            "int main(){process_top();process_top_hls();return 0;}\n"
+        )
+        failure = {
+            "status": "original_run_failed",
+            "failure_owner": "unknown",
+            "next_action": "review_unknown",
+            "failure_evidence_source": "original-only sanitizer/runtime",
+            "owner_authority": "runtime_not_isolated",
+            "evidence_complete": False,
+            "run_stderr": "AddressSanitizer: heap-buffer-overflow",
+        }
+        passed = {
+            "status": "ok",
+            "cov_pct": 100.0,
+            "lines_total": 1,
+            "lines_hit": 1,
+            "uncovered_lines": [],
+            "compile_stderr": "",
+            "run_stderr": "",
+        }
+        input_domain = {"n": {"minimum": 1, "maximum": 8}}
+        loader = Mock()
+        loader.load_agent.return_value = object()
+
+        with (
+            patch.object(
+                tb_optimizer,
+                "HLSAgentLoader",
+                return_value=loader,
+            ),
+            patch.object(
+                tb_optimizer,
+                "_request_cpp_artifact",
+                side_effect=[
+                    testbench,
+                    "void process_top_hls(){}\n",
+                    testbench,
+                    "void process_top_hls(){}\n",
+                    "void process_top_hls(){}\n",
+                ],
+            ) as request_artifact,
+            patch.object(
+                tb_optimizer,
+                "_measure_qualified_coverage",
+                side_effect=[failure, passed],
+            ) as measure,
+            patch.object(
+                tb_optimizer,
+                "_freeze_public_contract",
+                return_value=("void process_top_hls();", ()),
+            ),
+            patch.object(
+                tb_optimizer,
+                "_validate_frozen_candidate_abi",
+            ) as validate_abi,
+            patch.object(
+                tb_optimizer,
+                "_synth_check",
+                return_value=(True, ""),
+            ),
+        ):
+            result = tb_optimizer.run_trajectory(
+                orig_code="void process_top(){}\n",
+                kernel_name="process_top",
+                K=1,
+                target_pct=100.0,
+                llm_config=None,
+                want_sig_spec=False,
+                pinned_hls_decl="void process_top_hls();",
+                hidden_generation=True,
+                emit_final_text=False,
+                input_domain_contract=input_domain,
+                max_repairs=1,
+            )
+
+        self.assertEqual(measure.call_count, 2)
+        self.assertTrue(
+            all(
+                call.kwargs["require_original_execution"]
+                for call in measure.call_args_list
+            )
+        )
+        self.assertEqual(result["rounds"][0]["failure_owner"], "unknown")
+        self.assertEqual(
+            result["rounds"][0]["next_action"],
+            "review_unknown",
+        )
+        self.assertEqual(
+            result["rounds"][1]["ownership_action"],
+            "repair_testbench",
+        )
+        self.assertEqual(
+            result["rounds"][1]["lightweight_bounded_recovery_reported_action"],
+            "review_unknown",
+        )
+        self.assertTrue(result["qualified"])
+        self.assertGreater(validate_abi.call_count, 0)
+        testbench_messages = [
+            call.args[1]
+            for call in request_artifact.call_args_list
+            if call.kwargs.get("artifact_kind") == "testbench"
+        ]
+        self.assertEqual(len(testbench_messages), 2)
+        self.assertIn(
+            "AddressSanitizer: heap-buffer-overflow",
+            testbench_messages[1],
+        )
+        self.assertIn("Hidden-test generation", testbench_messages[1])
+        self.assertIn(
+            "FROZEN LEGAL INPUT-DOMAIN CONTRACT",
+            testbench_messages[1],
+        )
+        self.assertIn(
+            "All generated and repaired test cases must remain inside this "
+            "finite range.",
+            testbench_messages[1],
+        )
+
 
 class HiddenQualificationTests(unittest.TestCase):
     def test_unqualified_hidden_trajectories_are_rejected(self):
@@ -644,7 +765,7 @@ class HiddenQualificationTests(unittest.TestCase):
             tb_optimizer,
             "run_trajectory",
             return_value=trajectory,
-        ):
+        ) as run_trajectory:
             result = tb_optimizer.make_golden_hidden_tb(
                 orig_code="void process_top(){}\n",
                 kernel_name="process_top",
@@ -656,6 +777,9 @@ class HiddenQualificationTests(unittest.TestCase):
             )
         self.assertTrue(result["qualified"])
         self.assertEqual(result["hidden_cov"], 100.0)
+        self.assertTrue(
+            run_trajectory.call_args.kwargs["hidden_generation"]
+        )
 
 
 if __name__ == "__main__":

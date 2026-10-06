@@ -14,6 +14,7 @@ uncovered_lines, run_returncode. status is one of:
 """
 
 import os
+import hashlib
 import gzip
 import json
 import re
@@ -23,7 +24,9 @@ import tempfile
 from typing import Any, Mapping, Optional
 from pathlib import Path
 
-from agrefactor.cpp_interface import extract_top_interface, inspect_top_entry
+from agrefactor.cpp_interface import (
+    extract_top_interface, inspect_top_entry, interfaces_equivalent,
+)
 
 from agrefactor.reference_source import isolate_reference_program_entry
 from agrefactor.evaluation.owner_evidence import OwnerEvidence, resolve_source_owner
@@ -90,6 +93,53 @@ def _is_function_template(
 def _candidate_definition(stub_code: str) -> str:
     """Remove the harness include from a stub before combined-TU assembly."""
     return re.sub(r"(?m)^\s*#include\s+\"testbench\.cpp\"\s*\n?", "", stub_code, count=1)
+
+
+def _noop_candidate_definition(declaration: str, body: str, function_name: str) -> str:
+    # Keep the included Testbench unchanged. GNU attributes after parameters
+    # are valid on declarations but not definitions in GCC. Move those groups
+    # before the function name, retaining their function/type semantics and
+    # leaving parameter and return-prefix attributes in their original place.
+    tokens = [token for token in re.finditer(
+        r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[A-Za-z_]\w*|[()]',
+        declaration, re.DOTALL,
+    ) if not token.group().startswith(("//", "/*"))]
+    depth = 0
+    spans = []
+    function_token = None
+    parameter_depth = None
+    parameters_closed = False
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        value = token.group()
+        if value == function_name and index + 1 < len(tokens) and tokens[index + 1].group() == "(":
+            function_token = token
+            parameter_depth = depth
+        if value in {"__attribute__", "__attribute"} and depth == 0 and parameters_closed:
+            end_index = index + 1
+            if end_index < len(tokens) and tokens[end_index].group() == "(":
+                nested = 0
+                while end_index < len(tokens):
+                    part = tokens[end_index].group()
+                    nested += int(part == "(") - int(part == ")")
+                    if nested == 0:
+                        spans.append((token.start(), tokens[end_index].end()))
+                        index = end_index
+                        break
+                    end_index += 1
+        else:
+            depth += int(value == "(") - int(value == ")")
+            if value == ")" and parameter_depth is not None and depth == parameter_depth:
+                parameters_closed = True
+        index += 1
+    attributes = " ".join(declaration[start:end] for start, end in spans)
+    for start, end in reversed(spans):
+        declaration = declaration[:start] + declaration[end:]
+    if attributes and function_token is not None:
+        position = function_token.start()
+        declaration = declaration[:position] + attributes + " " + declaration[position:]
+    return declaration.rstrip(";").strip() + " {" + body + "}\n"
 
 _LINES_RE = re.compile(r"Lines executed:\s*([\d.]+)%\s+of\s+(\d+)")
 
@@ -220,6 +270,8 @@ def _record_execution(
     status: str,
     returncode: int | None = None,
     timeout: bool = False,
+    stdout: str | None = None,
+    stderr: str | None = None,
 ) -> dict:
     record = {
         "component": component,
@@ -229,6 +281,12 @@ def _record_execution(
         "returncode": returncode,
         "timeout": timeout,
     }
+    for stream, contents in (("stdout", stdout), ("stderr", stderr)):
+        if contents is not None:
+            path = Path(work_dir) / f"execution_{len(result.get('executions', [])):03d}.{stream}.log"
+            path.write_text(contents, encoding="utf-8")
+            record[f"{stream}_path"] = str(path.resolve())
+            record[f"{stream}_sha256"] = hashlib.sha256(contents.encode("utf-8")).hexdigest()
     result.setdefault("executions", []).append(record)
     return record
 
@@ -306,6 +364,62 @@ def _original_only_candidate_stub(candidate_decl: str, candidate_name: str) -> s
     return declaration + " {" + body + "}\n"
 
 
+def _original_interface_evidence(
+    orig_code: str,
+    tb_code: str,
+    original_name: str | None,
+    *,
+    source_root: str | None,
+    work_dir: str,
+    compile_flags: tuple[str, ...],
+    include_dirs: tuple[str, ...],
+) -> dict:
+    if not original_name:
+        return {"status": "unknown"}
+    resolved = []
+    for source, filename, definition, role in (
+        (orig_code, "orig_code.cpp", True, "original"),
+        (tb_code, "testbench.cpp", False, "testbench"),
+    ):
+        interface = extract_top_interface(
+            source,
+            original_name,
+            require_definition=definition,
+            source_path=os.path.join(source_root or work_dir, filename),
+            include_dirs=include_dirs,
+            compile_flags=compile_flags,
+        )
+        if (
+            interface is None
+            or not interface.canonical_function_type
+            or not interface.linker_symbol
+        ):
+            return {"status": "unknown"}
+        resolved.append((interface, {
+            "source_role": role,
+            "source_file": filename,
+            "line": source.encode("utf-8")[:interface.source_start].count(b"\n") + 1,
+            "declaration": interface.source_declaration,
+            "canonical_function_type": interface.canonical_function_type,
+            "linker_symbol": interface.linker_symbol,
+            "language_linkage": interface.language_linkage,
+        }))
+    (expected, expected_facts), (observed, observed_facts) = resolved
+    equivalent = interfaces_equivalent(
+        expected, observed, require_parameter_names=False, semantic_types=True,
+    )
+    differences = [
+        field for field in ("canonical_function_type", "linker_symbol")
+        if expected_facts[field] != observed_facts[field]
+    ]
+    return {
+        "status": "equivalent" if equivalent else "mismatch",
+        "expected": expected_facts,
+        "observed": observed_facts,
+        "differences": differences,
+    }
+
+
 def check_original_execution(
     orig_code: str,
     tb_code: str,
@@ -339,6 +453,10 @@ def check_original_execution(
         "owner_authority": "unknown",
         "evidence_complete": False,
         "executions": [],
+        "source_identity": {
+            "original_sha256": hashlib.sha256(orig_code.encode("utf-8")).hexdigest(),
+            "testbench_sha256": hashlib.sha256(tb_code.encode("utf-8")).hexdigest(),
+        },
     }
     if keep_dir is not None:
         os.makedirs(keep_dir, exist_ok=True)
@@ -390,7 +508,7 @@ def check_original_execution(
         )
         stub = '#include "testbench.cpp"\n'
         if declaration:
-            stub += declaration.rstrip(";").strip() + " {" + body + "}\n"
+            stub += _noop_candidate_definition(declaration, body, candidate_name)
         reference_spans: list[dict] = []
         if template_original:
             # Function templates must be instantiated where their definition
@@ -487,12 +605,26 @@ def check_original_execution(
             execution = _record_execution(
                 result, component="compile", command=cmd, work_dir=tmp,
                 status="completed", returncode=completed.returncode,
+                stdout=getattr(completed, "stdout", "") or "", stderr=getattr(completed, "stderr", "") or "",
             )
             if completed.returncode == 0:
                 compiled = True
                 break
             result["compile_stderr"] = completed.stderr
 
+        # Interface facts supplement the real execution; an unresolved AST
+        # never prevents compilation or grants a repair opportunity.
+        interface_evidence = _original_interface_evidence(
+            orig_code, tb_code, original_name,
+            source_root=source_root,
+            work_dir=tmp,
+            compile_flags=compile_flags,
+            include_dirs=(
+                *((source_root,) if source_root else ()),
+                *((XILINX_INCLUDE_FALLBACK,) if include_flag else ()),
+            ),
+        )
+        result["original_interface_evidence"] = interface_evidence
         if not compiled:
             evidence = _compile_failure_evidence(
                 result["compile_stderr"],
@@ -502,11 +634,22 @@ def check_original_execution(
                 result["source_spans"],
                 tuple({member for members in result["compile_units"].values() for member in members}),
             )
+            match = load_catalog().match(result["compile_stderr"], stage="link")
+            if (
+                match is not None
+                and completed.returncode > 0
+                and interface_evidence["status"] == "mismatch"
+            ):
+                evidence = OwnerEvidence(
+                    "testbench", "original_interface_differential", True,
+                    (os.path.join(tmp, "testbench.cpp"),),
+                    "generated Original declaration differs from its definition; "
+                    "repair this proven interface defect and requalify the link",
+                )
             owner = evidence.owner
             result["ownership_evidence"] = evidence.to_dict()
             result["owner_authority"] = evidence.owner_authority
             result["evidence_complete"] = evidence.evidence_complete
-            match = load_catalog().match(result["compile_stderr"], stage="link")
             if match is None:
                 match = load_catalog().match(result["compile_stderr"], stage="compile")
             if match is not None:
@@ -530,6 +673,25 @@ def check_original_execution(
                 evidence_complete=evidence.evidence_complete,
             )
             return result
+
+        if interface_evidence["status"] == "mismatch":
+            # C linkage and return-type mismatches can link successfully.
+            # Compilation alone cannot qualify an incompatible declaration.
+            evidence = OwnerEvidence(
+                "testbench", "original_interface_differential", True,
+                (os.path.join(tmp, "testbench.cpp"),),
+                "compiled Testbench declares an incompatible Original interface",
+            )
+            result.update(
+                ownership_evidence=evidence.to_dict(),
+                owner_authority=evidence.owner_authority,
+                evidence_complete=evidence.evidence_complete,
+                compile_stderr=evidence.reason,
+            )
+            return _finish_failure(
+                result, status="contract_failed", owner="testbench",
+                evidence_source="compiled Original interface differential",
+            )
 
         try:
             _consume_tool_launch(budget, csim_calls=1)
@@ -558,6 +720,7 @@ def check_original_execution(
         _record_execution(
             result, component="runtime", command=["./original_only"], work_dir=tmp,
             status="completed", returncode=completed.returncode,
+            stdout=getattr(completed, "stdout", "") or "", stderr=getattr(completed, "stderr", "") or "",
         )
 
         stderr = (completed.stderr or "")[-3000:]
@@ -578,7 +741,7 @@ def check_original_execution(
         )
         crashed = (
             completed.returncode < 0
-            or any(marker in stderr for marker in sanitizer_markers)
+            or any(marker in (completed.stderr or "") for marker in sanitizer_markers)
         )
         if crashed:
             result.update(
@@ -623,7 +786,8 @@ def check_original_execution(
                                   failure_evidence_source="gcov launch error")
                     return result
                 _record_execution(result, component="gcov", command=command, work_dir=tmp,
-                                  status="completed", returncode=coverage.returncode)
+                                  status="completed", returncode=coverage.returncode,
+                                  stdout=getattr(coverage, "stdout", "") or "", stderr=getattr(coverage, "stderr", "") or "")
                 if coverage.returncode != 0:
                     continue
                 for report in Path(tmp).glob("*.gcov.json.gz"):
@@ -701,6 +865,11 @@ def measure_coverage(
         "owner_authority": "unknown",
         "evidence_complete": False,
         "executions": [],
+        "source_identity": {
+            "original_sha256": hashlib.sha256(orig_code.encode("utf-8")).hexdigest(),
+            "testbench_sha256": hashlib.sha256(tb_code.encode("utf-8")).hexdigest(),
+            "stub_sha256": hashlib.sha256(stub_code.encode("utf-8")).hexdigest(),
+        },
     }
 
     if keep_dir is not None:
@@ -827,6 +996,7 @@ def measure_coverage(
             execution = _record_execution(
                 res, component="compile", command=cmd, work_dir=tmp,
                 status="completed", returncode=completed.returncode,
+                stdout=getattr(completed, "stdout", "") or "", stderr=getattr(completed, "stderr", "") or "",
             )
             if completed.returncode == 0:
                 compiled = True
@@ -876,6 +1046,7 @@ def measure_coverage(
             _record_execution(
                 res, component="runtime", command=["./csim_cov"], work_dir=tmp,
                 status="completed", returncode=completed.returncode,
+                stdout=getattr(completed, "stdout", "") or "", stderr=getattr(completed, "stderr", "") or "",
             )
             res["run_stderr"] = completed.stderr[-2000:]
             res["run_stdout"] = completed.stdout[-2000:]

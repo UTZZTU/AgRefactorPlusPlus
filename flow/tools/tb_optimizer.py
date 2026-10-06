@@ -59,6 +59,7 @@ class TestbenchGenerationExhausted(RuntimeError):
         split: str,
         stage: str,
         trajectories: List[Dict[str, Any]],
+        qualification_mode: str = "generated",
     ) -> None:
         if split not in {"public", "hidden"}:
             raise ValueError("split must be public or hidden")
@@ -66,6 +67,10 @@ class TestbenchGenerationExhausted(RuntimeError):
             raise ValueError("stage must not be empty")
         if not isinstance(trajectories, list) or not trajectories:
             raise ValueError("trajectories must be a non-empty list")
+        if qualification_mode not in {"generated", "provided"}:
+            raise ValueError(
+                "qualification_mode must be generated or provided"
+            )
 
         summaries = [
             self._summarize_trajectory(
@@ -122,41 +127,75 @@ class TestbenchGenerationExhausted(RuntimeError):
             -self._DIAGNOSTIC_LIMIT:
         ]
 
+        is_provided = qualification_mode == "provided"
         self._payload = {
             "schema_version": self.schema_version,
-            "failure_kind": "testbench_generation_exhausted",
-            "terminal_class": "bounded_generation_failure",
+            "failure_kind": (
+                "testbench_qualification_failed"
+                if is_provided
+                else "testbench_generation_exhausted"
+            ),
+            "terminal_class": (
+                "provided_qualification_failure"
+                if is_provided
+                else "bounded_generation_failure"
+            ),
             "bounded": True,
             "split": split,
             "stage": stage.strip(),
+            "qualification_mode": qualification_mode,
             "trajectory_count": len(summaries),
             "qualified_count": 0,
             "attempt_count": attempt_count,
+            "repair_attempt_count": 0 if is_provided else attempt_count,
+            "retry_exhausted": False if is_provided else True,
             "failure_owner": failure_owner,
-            "next_action": next_action,
+            "next_action": (
+                "review_required_provided"
+                if is_provided
+                else next_action
+            ),
             "diagnostic_kind": diagnostic_kind,
             "diagnostic_excerpt": diagnostic_excerpt,
             "trajectory_summaries": summaries,
             "hidden_testbench_exposed_to_model": False,
-            "retry_guidance": [
-                "retry with a different bounded generation profile",
-                "retry with another compatible model",
-                "increase bounded trajectory diversity within safety ceilings",
-                "provide qualified Public/Hidden suites when available",
-                "use a future memory-assisted strategy when available",
-            ],
+            "retry_guidance": (
+                [
+                    "review the provided Public Testbench and its qualification receipt",
+                    "supply a corrected and independently qualified Public Testbench",
+                    "do not modify the supplied Testbench automatically",
+                ]
+                if is_provided
+                else [
+                    "retry with a different bounded generation profile",
+                    "retry with another compatible model",
+                    "increase bounded trajectory diversity within safety ceilings",
+                    "provide qualified Public/Hidden suites when available",
+                    "use a future memory-assisted strategy when available",
+                ]
+            ),
         }
         compatibility_prefix = (
+            "provided Public Testbench qualification"
+            if is_provided
+            else
             "golden hidden testbench generation"
             if split == "hidden"
             else "public testbench generation"
         )
-        super().__init__(
-            f"{compatibility_prefix} produced no qualified trajectory: "
-            f"exhausted {len(summaries)} trajectory(s) after "
-            f"{attempt_count} bounded qualification attempt(s); "
-            f"owner={failure_owner}; kind={diagnostic_kind}"
-        )
+        if is_provided:
+            message = (
+                f"{compatibility_prefix} failed before formal validation; "
+                f"owner={failure_owner}; kind={diagnostic_kind}"
+            )
+        else:
+            message = (
+                f"{compatibility_prefix} produced no qualified trajectory: "
+                f"exhausted {len(summaries)} trajectory(s) after "
+                f"{attempt_count} bounded qualification attempt(s); "
+                f"owner={failure_owner}; kind={diagnostic_kind}"
+            )
+        super().__init__(message)
 
     @classmethod
     def _summarize_trajectory(
@@ -536,6 +575,58 @@ def _coverage_action(record: Dict[str, Any]) -> str:
     }.get(owner, "repair_testbench_stub")
 
 
+def _completed_returncode(record: Dict[str, Any], component: str) -> Optional[int]:
+    executions = [item for item in record.get("executions", []) if item.get("component") == component]
+    if not executions:
+        return None
+    execution = executions[-1]
+    returncode = execution.get("returncode")
+    if (execution.get("status") == "completed" and execution.get("timeout") is False
+            and isinstance(returncode, int) and not isinstance(returncode, bool)):
+        return returncode
+    return None
+
+
+def _hidden_generation_action(record: Dict[str, Any], *, orig_code: Optional[str] = None) -> str:
+    if (
+        record.get("status") == "original_run_failed"
+        and record.get("failure_evidence_source")
+        == "original-only sanitizer/runtime"
+        and record.get("failure_owner") == "unknown"
+        and record.get("next_action") == "review_unknown"
+        and record.get("owner_authority") == "runtime_not_isolated"
+        and record.get("evidence_complete") is False
+    ):
+        return "repair_testbench"
+    if (record.get("status") == "run_failed" and record.get("failure_owner") == "unknown"
+            and record.get("next_action") == "review_unknown" and orig_code is not None):
+        original = record.get("original_qualification_evidence", {})
+        identity = record.get("qualification_identity", {})
+        expected = {
+            "original_sha256": hashlib.sha256(orig_code.encode("utf-8")).hexdigest(),
+            "testbench_sha256": hashlib.sha256(str(record.get("tb_code") or "").encode("utf-8")).hexdigest(),
+            "stub_sha256": hashlib.sha256(str(record.get("stub_code") or "").encode("utf-8")).hexdigest(),
+        }
+        original_returncode = _completed_returncode(original, "runtime")
+        differential_returncode = _completed_returncode(record, "runtime")
+        if (all(identity.get(key) == value for key, value in expected.items())
+                and all(original.get("source_identity", {}).get(key) == expected[key]
+                        for key in ("original_sha256", "testbench_sha256"))
+                and original.get("status") == "ok"
+                and original.get("original_entry_observed") is True
+                and original.get("original_entry_executed") is True
+                and _completed_returncode(original, "compile") == 0
+                and _completed_returncode(original, "gcov") == 0
+                and original_returncode is not None and original_returncode >= 0
+                and _completed_returncode(record, "compile") == 0
+                and differential_returncode is not None and differential_returncode > 0
+                and differential_returncode == record.get("run_returncode")):
+            # This authorizes an unfrozen generation attempt, not ownership.
+            # Keeping the exact Testbench preserves its inputs and oracle.
+            return "regenerate_stub"
+    return _coverage_action(record)
+
+
 def _coverage_contract_failure(message: str) -> Dict[str, Any]:
     return {
         "status": "contract_failed",
@@ -556,22 +647,28 @@ def _coverage_contract_failure(message: str) -> Dict[str, Any]:
 def _failure_history(rounds: List[Dict[str, Any]]) -> str:
     entries = []
     for record in rounds:
+        initial_error = str(record.get("initial_testbench_contract_error") or "")
+        if initial_error:
+            entries.append("Initial Testbench contract correction: " + initial_error)
         if record.get("status") == "ok":
             continue
-        evidence = (
-            str(record.get("compile_stderr") or "")
-            or str(record.get("run_stderr") or "")
-            or str(record.get("status") or "unknown")
-        ).strip()
+        evidence = "\n".join(
+            f"{stream}: {str(record[stream])[-1200:]}"
+            for stream in ("compile_stderr", "run_stderr", "run_stdout")
+            if record.get(stream)
+        ) or str(record.get("status") or "unknown")
         entries.append(
             "Round {}: status={}; owner={}; action={}; evidence={}".format(
                 record.get("round"),
                 record.get("status"),
                 record.get("failure_owner"),
                 record.get("next_action"),
-                evidence[-1200:],
+                evidence,
             )
         )
+        interface_evidence = record.get("original_interface_evidence")
+        if isinstance(interface_evidence, dict) and interface_evidence.get("status") == "mismatch":
+            entries.append("Original interface evidence: " + json.dumps(interface_evidence, sort_keys=True))
     return chr(10).join(entries)
 
 
@@ -769,6 +866,8 @@ def _stub_request_message(
     kernel_name: Optional[str] = None,
     pinned_hls_decl: Optional[str] = None,
     failure_excerpt: Optional[str] = None,
+    failure_owner: str = "stub",
+    previous_stub: str = "",
 ) -> str:
     original_name = kernel_name or "the Original top"
     candidate_name = (
@@ -792,10 +891,12 @@ def _stub_request_message(
     evidence = ""
     if failure_excerpt:
         evidence = (
-            "\n\nStub-owned tool evidence from the previous attempt:\n"
-            "```\n"
-            + failure_excerpt.strip()[-1500:]
-            + "\n```\nRepair only the Stub. Keep the Testbench unchanged."
+            ("\n\nGeneration-time evidence; ownership remains unknown:\n"
+             if failure_owner == "unknown" else "\n\nStub-owned tool evidence from the previous attempt:\n")
+            + "```\n"
+            + failure_excerpt.strip()
+            + "\n```\nAttempt to correct only the Stub. Keep the Testbench unchanged. "
+            "Do not assume this proves a Stub defect or change comparison semantics."
         )
     return (
         "Write one complete temporary Stub translation unit. The Stub is "
@@ -811,7 +912,11 @@ def _stub_request_message(
         "mutated-buffer state. If safe delegation cannot be established, "
         "write an independent minimal stub that matches the tested "
         "observable behavior and does not call or copy the original "
-        "implementation. Prefer straightforward, compile-safe, HLS-friendly "
+        "implementation. Preserve the Original's observable output and state "
+        "behavior for legal inputs, including incoming values of outputs that "
+        "the Original does not update. Do not replace that behavior with the "
+        "Testbench's sample values or suppress a failed comparison. "
+        "Prefer straightforward, compile-safe, HLS-friendly "
         "C++ with fixed-size storage, ordinary loops, and named helper "
         "functions. Avoid dynamic allocation, exceptions, recursion, generic "
         "or nested lambdas, complex capture rules, and unnecessary STL unless "
@@ -824,6 +929,7 @@ def _stub_request_message(
         "required forward declaration ending in `;`."
         + pinned
         + evidence
+        + ("\nPrevious qualification Stub:\n```cpp\n" + previous_stub + "\n```" if previous_stub else "")
         + "\nReply with exactly one complete ```cpp ... ``` block and no "
         "commentary."
     )
@@ -940,6 +1046,7 @@ def _feedback_message(
     previous_testbench_code: str = "",
     failure_history: str = "",
     feedback_scope: str = "public",
+    original_interface_evidence: Optional[Dict[str, Any]] = None,
 ) -> str:
     frozen_block = ""
     if frozen_hls_decl:
@@ -1053,6 +1160,21 @@ def _feedback_message(
                 + "Hidden generation and must not be passed to Candidate repair."
                 + newline
             )
+        original_interface_block = ""
+        if original_interface_evidence and original_interface_evidence.get("status") == "mismatch":
+            original_interface_block = (
+                newline * 2
+                + "COMPILER-RESOLVED ORIGINAL INTERFACE DIFFERENTIAL:"
+                + newline
+                + json.dumps(original_interface_evidence, sort_keys=True)
+                + newline
+                + "Use the Original source below to resolve typedefs and headers. "
+                + "Correct the Testbench declaration and calls; preserve the "
+                + "frozen Candidate ABI, legal input domain, and output checks. "
+                + "Do not copy the Original implementation into the Testbench."
+                + newline + "```cpp" + newline + annotated_source
+                + newline + "```" + newline
+            )
         return (
             f"Round {round_idx - 1} failed with status [{prev_status}] and "
             f"tool-backed owner [{owner_text}]."
@@ -1069,6 +1191,7 @@ def _feedback_message(
             + testbench_block
             + history_block
             + scope_block
+            + original_interface_block
             + instruction
             + "\nTreat Original and Candidate implementations as black boxes. "
             "Only forward-declare their tops; do not define, stub, wrap, or "
@@ -1488,11 +1611,15 @@ def _measure_qualified_coverage(
     *,
     require_original_execution: bool = False,
     source_context: Optional[Dict[str, Any]] = None,
+    qualification_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     # First qualify the exact generated inputs against the Original with a
     # no-op Candidate and sanitizers.  The model receives the raw Testbench
     # and tool evidence when this fails; no inferred root cause is inserted.
     candidate_name = f"{kernel_name}_hls"
+    if qualification_dir:
+        Path(qualification_dir).mkdir(parents=True, exist_ok=True)
+        qualification_dir = tempfile.mkdtemp(prefix="qualification_", dir=qualification_dir)
     context = dict(source_context or {})
     context.pop("target_profile", None)
     parse_context = {
@@ -1509,6 +1636,8 @@ def _measure_qualified_coverage(
             candidate_name,
             budget=budget,
             original_name=kernel_name,
+            required_original_entry=kernel_name if require_original_execution else None,
+            keep_dir=str(Path(qualification_dir) / "original_only") if qualification_dir else None,
             **context,
         )
         if original_check.get("status") != "ok":
@@ -1516,7 +1645,7 @@ def _measure_qualified_coverage(
             original_check["qualification_errors"].append(
                 "Original-only qualification failed before differential coverage."
             )
-            return original_check
+            return {**original_check, "original_qualification_evidence": dict(original_check)}
 
     result = measure_coverage(
         orig_code,
@@ -1524,8 +1653,15 @@ def _measure_qualified_coverage(
         stub_code,
         budget=budget,
         original_name=kernel_name,
+        keep_dir=str(Path(qualification_dir) / "coverage") if qualification_dir else None,
         **context,
     )
+    if candidate_decl or require_original_execution:
+        result["original_qualification_evidence"] = original_check
+        result["qualification_identity"] = result.get("source_identity", {})
+        result["original_interface_evidence"] = original_check.get(
+            "original_interface_evidence", {"status": "unknown"}
+        )
     result.setdefault("qualification_errors", [])
     if (result.get("status") == "run_failed" and result.get("failure_owner") == "unknown"
             and candidate_decl and original_check.get("status") == "ok"):
@@ -1573,6 +1709,11 @@ def _coverage_failure_fingerprint(record: Dict[str, Any]) -> str:
     diagnostic = re.sub(r"\s+", " ", diagnostic).strip()
     return hashlib.sha256(diagnostic.encode("utf-8")).hexdigest()
 
+
+
+def _qualification_dir(artifact_root: Optional[str], trajectory_idx: int, round_index: int) -> Optional[str]:
+    root = artifact_root or os.getenv("AGREFACTOR_TB_DEBUG_DIR")
+    return str(Path(root) / f"trajectory_{trajectory_idx:03d}" / f"round_{round_index:03d}") if root else None
 
 
 def _persist_round_artifacts(
@@ -1643,6 +1784,7 @@ def _append_round(
         "run_returncode": cov.get("run_returncode"),
         "compile_stderr": cov.get("compile_stderr", "")[-2000:],
         "run_stderr": cov.get("run_stderr", "")[-2000:],
+        "run_stdout": cov.get("run_stdout", "")[-2000:],
         "qualification_errors": list(
             cov.get("qualification_errors", [])
         ),
@@ -1675,6 +1817,9 @@ def _append_round(
                 "executions", "source_roles", "compile_units", "source_spans",
                 "diagnostic_classification", "original_entry_observed",
                 "original_entry_executed",
+                "original_interface_evidence",
+                "original_qualification_status", "original_qualification_evidence",
+                "qualification_identity", "source_identity",
             )
             if key in cov
         },
@@ -1707,6 +1852,7 @@ def run_trajectory(
     input_domain_contract: Optional[Dict[str, Any]] = None,
     source_context: Optional[Dict[str, Any]] = None,
     max_repairs: int = 3,
+    hidden_generation: bool = False,
 ) -> Dict[str, Any]:
     if isinstance(K, bool) or not isinstance(K, int) or K < 1:
         raise ValueError("K must be a positive integer")
@@ -1729,6 +1875,8 @@ def run_trajectory(
         isinstance(pinned_hls_decl, str)
         and pinned_hls_decl.strip()
     )
+    if hidden_generation and not external_abi_frozen:
+        raise ValueError("Hidden generation requires a frozen Public ABI")
     frozen_hls_decl = (
         _normalize_declaration(pinned_hls_decl)
         if external_abi_frozen
@@ -1844,10 +1992,9 @@ def run_trajectory(
                 failures.append(f"Attempt {attempt}: {exc}")
                 if attempt >= _ARTIFACT_RESPONSE_RETRIES:
                     break
-                current_message = _stub_request_message(
-                    kernel_name,
-                    declaration,
-                    failure_excerpt="\n".join(failures),
+                current_message = (
+                    (message or _stub_request_message(kernel_name, declaration))
+                    + "\n\nStub artifact contract failures:\n" + "\n".join(failures)
                 )
         raise ModelArtifactError(
             "model did not return a Stub matching the frozen Candidate ABI"
@@ -1872,11 +2019,8 @@ def run_trajectory(
                 frozen_hls_decl,
                 **parse_context,
             )
-            _validate_original_language_linkage(
-                testbench_code, orig_code, kernel_name, **parse_context
-            )
     except ModelArtifactError as exc:
-        if not external_abi_frozen:
+        if not external_abi_frozen or max_repairs < 1:
             raise
         initial_testbench_contract_error = str(exc)
         testbench_code = request_testbench(
@@ -1893,9 +2037,6 @@ def run_trajectory(
             frozen_hls_decl,
             **parse_context,
         )
-        _validate_original_language_linkage(
-            testbench_code, orig_code, kernel_name, **parse_context
-        )
         initial_testbench_contract_repaired = True
 
     stub_code, current_decl = request_stub(testbench_code)
@@ -1907,6 +2048,7 @@ def run_trajectory(
         budget=budget,
         require_original_execution=external_abi_frozen,
         source_context=source_context,
+        qualification_dir=_qualification_dir(artifact_root, trajectory_idx, 1),
     )
 
     if coverage.get("status") == "ok":
@@ -1954,12 +2096,19 @@ def run_trajectory(
     # generated Testbench gets three bounded correction rounds. Reusing the
     # normal round machinery preserves the exact tool diagnostic and history.
     lightweight_mode = K == 1
+    remaining_repairs = max(0, max_repairs - int(initial_testbench_contract_repaired))
     if lightweight_mode and rounds[-1].get("status") != "ok":
-        K = max_repairs + 1
-    if K == 1:
+        K = remaining_repairs + 1
+    if hidden_generation:
+        K = min(K, remaining_repairs + 1)
+    if K == 1 and remaining_repairs > 0:
         previous = rounds[-1]
         reported_action = _coverage_action(previous)
-        action = reported_action
+        action = (
+            _hidden_generation_action(previous, orig_code=orig_code)
+            if hidden_generation
+            else reported_action
+        )
         if (
             external_abi_frozen
             and action == "repair_abi_testbench_stub"
@@ -1973,11 +2122,6 @@ def run_trajectory(
             "repair_testbench",
             "repair_testbench_stub",
         }:
-            previous_error = (
-                str(previous.get("compile_stderr") or "")
-                or str(previous.get("run_stderr") or "")
-                or str(previous.get("status") or "unknown")
-            )
             testbench_reused = False
             stub_reused = False
 
@@ -1996,7 +2140,9 @@ def run_trajectory(
                     message=_stub_request_message(
                         kernel_name,
                         declaration,
-                        failure_excerpt=previous_error,
+                        failure_excerpt=_failure_history(rounds),
+                        failure_owner=str(previous.get("failure_owner") or "unknown"),
+                        previous_stub=str(previous.get("stub_code") or ""),
                     ),
                 )
                 testbench_reused = True
@@ -2028,6 +2174,7 @@ def run_trajectory(
                     feedback_scope=(
                         "hidden" if external_abi_frozen else "public"
                     ),
+                    original_interface_evidence=previous.get("original_interface_evidence"),
                 )
                 if reported_action == "repair_abi_testbench_stub":
                     original_decl = _extract_seed_hls_decl(
@@ -2070,6 +2217,7 @@ def run_trajectory(
                 budget=budget,
                 require_original_execution=external_abi_frozen,
                 source_context=source_context,
+                qualification_dir=_qualification_dir(artifact_root, trajectory_idx, 2),
             )
             if coverage.get("status") == "ok":
                 observed_decl, observed_macros = _freeze_public_contract(
@@ -2124,7 +2272,11 @@ def run_trajectory(
             break
 
         reported_action = _coverage_action(previous)
-        action = reported_action
+        action = (
+            _hidden_generation_action(previous, orig_code=orig_code)
+            if hidden_generation
+            else reported_action
+        )
         if (
             lightweight_mode
             and external_abi_frozen
@@ -2135,12 +2287,6 @@ def run_trajectory(
             break
         testbench_reused = False
         stub_reused = False
-        previous_error = (
-            str(previous.get("compile_stderr") or "")
-            or str(previous.get("run_stderr") or "")
-            or str(previous.get("status") or "unknown")
-        )
-
         if action == "regenerate_stub":
             testbench_code = str(previous["tb_code"])
             declaration = (
@@ -2157,6 +2303,8 @@ def run_trajectory(
                     kernel_name,
                     declaration,
                     failure_excerpt=_failure_history(rounds),
+                    failure_owner=str(previous.get("failure_owner") or "unknown"),
+                    previous_stub=str(previous.get("stub_code") or ""),
                 ),
             )
             testbench_reused = True
@@ -2187,6 +2335,7 @@ def run_trajectory(
                     feedback_scope=(
                         "hidden" if external_abi_frozen else "public"
                     ),
+                    original_interface_evidence=previous.get("original_interface_evidence"),
                     ),
                     first_turn=False,
                 )
@@ -2256,6 +2405,7 @@ def run_trajectory(
                     feedback_scope=(
                         "hidden" if external_abi_frozen else "public"
                     ),
+                    original_interface_evidence=previous.get("original_interface_evidence"),
                 ),
                 first_turn=False,
             )
@@ -2331,6 +2481,7 @@ def run_trajectory(
                     feedback_scope=(
                         "hidden" if external_abi_frozen else "public"
                     ),
+                    original_interface_evidence=previous.get("original_interface_evidence"),
                 )
 
             if reported_action == "repair_abi_testbench_stub":
@@ -2368,15 +2519,23 @@ def run_trajectory(
                 )
             stub_code, current_decl = request_stub(testbench_code)
 
-        coverage = _measure_qualified_coverage(
-            orig_code,
-            testbench_code,
-            stub_code,
-            kernel_name,
-            budget=budget,
-            require_original_execution=external_abi_frozen,
-            source_context=source_context,
-        )
+        try:
+            if external_abi_frozen:
+                _validate_frozen_candidate_abi(
+                    testbench_code, hls_name, frozen_hls_decl, **parse_context,
+                )
+            coverage = _measure_qualified_coverage(
+                orig_code,
+                testbench_code,
+                stub_code,
+                kernel_name,
+                budget=budget,
+                require_original_execution=external_abi_frozen,
+                source_context=source_context,
+                qualification_dir=_qualification_dir(artifact_root, trajectory_idx, round_index),
+            )
+        except ModelArtifactError as exc:
+            coverage = _coverage_contract_failure(str(exc))
 
         if coverage.get("status") == "ok":
             observed_decl, observed_macros = _freeze_public_contract(
@@ -2640,6 +2799,7 @@ def _finalize_trajectory(
                 original_name,
                 budget=budget,
                 source_context=source_context,
+                qualification_dir=_qualification_dir(artifact_root, trajectory_idx, rounds[-1]["round"] + 1),
             )
             frozen_decl = ""
             frozen_macros: Tuple[str, ...] = ()
@@ -3191,6 +3351,7 @@ def make_golden_hidden_tb(
                 want_sig_spec=False,
                 trajectory_idx=index,
                 pinned_hls_decl=normalized_public_decl,
+                hidden_generation=True,
                 emit_final_text=False,
                 budget=budget,
                 artifact_root=artifact_root,

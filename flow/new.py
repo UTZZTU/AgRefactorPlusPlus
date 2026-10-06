@@ -213,6 +213,24 @@ def _finish_test_generation_exhaustion(
             "exc must be TestbenchGenerationExhausted"
         )
     failure = exc.to_dict()
+    qualification_mode = str(
+        failure.get("qualification_mode") or "generated"
+    )
+    provided = qualification_mode == "provided"
+    if provided:
+        failure["next_action"] = "review_required_provided"
+        failure["retry_exhausted"] = False
+        failure["repair_attempt_count"] = 0
+        qualification = cv.get("provided_public_qualification")
+        if isinstance(qualification, dict):
+            for source_key, failure_key in (
+                ("artifact_dir", "qualification_artifact_dir"),
+                ("original_receipt", "qualification_receipt"),
+                ("stub_synthesis_invocation", "qualification_synth_invocation"),
+            ):
+                value = qualification.get(source_key)
+                if isinstance(value, str) and value:
+                    failure[failure_key] = value
     cv["generation_failure"] = failure
     cv["generation_failure_kind"] = failure["failure_kind"]
     cv["failed_stage"] = failure["stage"]
@@ -221,9 +239,14 @@ def _finish_test_generation_exhaustion(
     cv["diagnostic_kind"] = failure["diagnostic_kind"]
     cv["attempt_count"] = failure["attempt_count"]
     cv["trajectory_count"] = failure["trajectory_count"]
+    cv["qualification_mode"] = qualification_mode
     cv["hidden_testbench_exposed_to_model"] = False
 
-    event_name = f"{failure['split']}_generation"
+    event_name = (
+        "public_qualification"
+        if provided
+        else f"{failure['split']}_generation"
+    )
     order = list(cv.get("generation_event_order", []))
     if event_name not in order:
         order.append(event_name)
@@ -234,7 +257,9 @@ def _finish_test_generation_exhaustion(
         cv["generated_hidden_coverage"] = None
 
     tools.general.save_context(
-        "test_generation_exhausted",
+        "public_testbench_qualification_failed"
+        if provided
+        else "test_generation_exhausted",
         cv,
         output_dir,
     )
@@ -669,12 +694,19 @@ def hls_refactor_with_rag(
                 "Public Testbench did not expose a valid Candidate ABI"
             )
         cv["new_kernel_name"] = external_candidate_name
-        tools.testbench.qualify_external_public_testbench(
-            cv,
-            external_testbench,
-            public_tb_llm_config,
-            budget,
-        )
+        try:
+            tools.testbench.qualify_external_public_testbench(
+                cv,
+                external_testbench,
+                public_tb_llm_config,
+                budget,
+            )
+        except tools.tb_optimizer.TestbenchGenerationExhausted as exc:
+            return _finish_test_generation_exhaustion(
+                cv,
+                exc,
+                output_dir,
+            )
         cv["testbench"] = external_testbench
         cv["tb_aligned_instruction"] = (
             _build_external_candidate_abi_instruction(

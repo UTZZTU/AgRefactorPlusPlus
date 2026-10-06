@@ -113,6 +113,8 @@ class CppFunctionInterface:
     # ABI declaration cannot silently lose an ``extern "C"`` requirement.
     language_linkage: str | None = None
     global_state: tuple[CppVariable, ...] = ()
+    canonical_function_type: str | None = None
+    linker_symbol: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,14 +133,30 @@ def interfaces_equivalent(
     right: CppFunctionInterface,
     *,
     require_parameter_names: bool = True,
+    semantic_types: bool = False,
 ) -> bool:
-    if left.name != right.name or left.result_type != right.result_type:
+    if left.name != right.name:
         return False
+    if semantic_types:
+        # Function types include compiler-adjusted array parameters and omit
+        # top-level parameter qualifiers that do not change the interface.
+        if (
+            not left.canonical_function_type
+            or left.canonical_function_type != right.canonical_function_type
+            or not left.linker_symbol
+            or left.linker_symbol != right.linker_symbol
+        ):
+            return False
+        return not require_parameter_names or tuple(
+            item.name for item in left.parameters
+        ) == tuple(item.name for item in right.parameters)
     if (
         left.language_linkage is not None
         and right.language_linkage is not None
         and left.language_linkage != right.language_linkage
     ):
+        return False
+    if left.result_type != right.result_type:
         return False
     if len(left.parameters) != len(right.parameters):
         return False
@@ -202,6 +220,8 @@ class _LibClang:
         library.clang_visitChildren.restype = ctypes.c_uint
         library.clang_getCursorSpelling.argtypes = [_CXCursor]
         library.clang_getCursorSpelling.restype = _CXString
+        library.clang_Cursor_getMangling.argtypes = [_CXCursor]
+        library.clang_Cursor_getMangling.restype = _CXString
         library.clang_getCursorType.argtypes = [_CXCursor]
         library.clang_getCursorType.restype = _CXType
         library.clang_getCursorLinkage.argtypes = [_CXCursor]
@@ -704,6 +724,12 @@ def _interface_from_cursor(
         linkage=library.clang_getCursorLinkage(cursor),
         language_linkage=_language_linkage_at_offset(source, start),
         global_state=_referenced_state(clang, cursor),
+        canonical_function_type=clang.text(
+            library.clang_getTypeSpelling(
+                library.clang_getCanonicalType(function_type)
+            )
+        ),
+        linker_symbol=clang.text(library.clang_Cursor_getMangling(cursor)),
     )
 
 
