@@ -84,6 +84,18 @@ class DiagnosticCatalogTests(unittest.TestCase):
         self.assertEqual(rule.stage, FeedbackStage.CSYNTH)
         self.assertEqual(rule.owner_policy, "resolve_from_evidence")
 
+    def test_unknown_pointer_phi_is_catalog_classified_without_owner(self):
+        catalog = load_catalog()
+        result = catalog.match(
+            "Pointer (phi) points to an unknown underlying object and therefore cannot be synthesized",
+            message_id="HLS 214-390",
+            stage=FeedbackStage.CSYNTH,
+        )
+        self.assertIsNotNone(result)
+        self.assertEqual(result.category, FeedbackCategory.UNSUPPORTED_CONSTRUCT)
+        self.assertEqual(result.parser_rule, "unsupported_unknown_pointer_phi")
+        self.assertEqual(result.owner_policy, "resolve_from_evidence")
+
     def test_compile_and_link_categories_are_stage_scoped(self):
         catalog = load_catalog()
         link = catalog.match(
