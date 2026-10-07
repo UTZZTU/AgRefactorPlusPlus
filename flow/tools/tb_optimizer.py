@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from autogen.agentchat.group import ContextVariables  # type: ignore
 from agrefactor.config import EvaluationSplit, TestSuiteSpec
+from agrefactor.reference_source import isolate_reference_program_entry
 from agrefactor.config.tool_timeouts import DEFAULT_CSYNTH_TIMEOUT_S
 from agrefactor.cpp_interface import (
     extract_top_interface,
@@ -1867,6 +1868,7 @@ def run_trajectory(
     max_repairs: int = 3,
     hidden_generation: bool = False,
     pinned_result_mapping: Optional[Dict[str, Any]] = None,
+    mapping_original_code: Optional[str] = None,
 ) -> Dict[str, Any]:
     if isinstance(K, bool) or not isinstance(K, int) or K < 1:
         raise ValueError("K must be a positive integer")
@@ -1946,8 +1948,21 @@ def run_trajectory(
                     if pinned_result_mapping:
                         validate_frozen_result_mapping(value, pinned_result_mapping, **parse_context)
                     elif not hidden_generation:
-                        freeze_result_mapping(value, orig_code, kernel_name, hls_name,
-                                              require_explicit=True, **parse_context)
+                        mapping_source = mapping_original_code or orig_code
+                        adapted_reference_code = isolate_reference_program_entry(
+                            mapping_source,
+                            top_function=kernel_name,
+                            testbench_code=value,
+                            **parse_context,
+                        )
+                        freeze_result_mapping(
+                            value,
+                            adapted_reference_code,
+                            kernel_name,
+                            hls_name,
+                            require_explicit=True,
+                            **parse_context,
+                        )
                 except ValueError as exc:
                     raise ModelArtifactError(str(exc)) from exc
                 return value
@@ -2963,6 +2978,7 @@ def optimize_tb_public(
     M: int = 1,
     artifact_root: Optional[str] = None,
     input_domain_contract: Optional[Dict[str, Any]] = None,
+    mapping_original_code: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Generate Public evidence across one or more independent trajectories."""
 
@@ -2983,6 +2999,7 @@ def optimize_tb_public(
                 budget=budget,
                 artifact_root=artifact_root,
                 input_domain_contract=input_domain_contract,
+                mapping_original_code=mapping_original_code,
             )
         ]
     else:
@@ -3003,6 +3020,7 @@ def optimize_tb_public(
                     budget=budget,
                     artifact_root=artifact_root,
                     input_domain_contract=input_domain_contract,
+                    mapping_original_code=mapping_original_code,
                 ): index
                 for index in range(M)
             }
@@ -3287,6 +3305,9 @@ def gen_tb_with_coverage(
         M=M,
         artifact_root=artifact_root,
         input_domain_contract=input_domain_contract,
+        mapping_original_code=(
+            getter("curr_code") if callable(getter) else None
+        ),
     )
     cv["public_testbench_coverage"] = {
         "schema_version": 1,
