@@ -193,6 +193,7 @@ def gen_tb_prior(
         max_repairs=repair_limit,
     )
     contract_failures: list[str] = []
+    mapping_repairs_used = 0
     for repair_index in range(repair_limit + 1):
         try:
             tools.tb_optimizer.validate_testbench_top_contract(tb, kernel_name, hls_name)
@@ -213,6 +214,20 @@ def gen_tb_prior(
             cv["public_contract_failures"] = list(contract_failures)
             if repair_index == repair_limit:
                 raise
+            mapping_failure = "no explicit common result mapping" in str(exc)
+            if mapping_failure:
+                mapping_repairs_used += 1
+                if mapping_repairs_used > repair_limit:
+                    raise tools.tb_optimizer.TestbenchGenerationExhausted(
+                        split="public",
+                        stage="public_abi_mapping_qualification",
+                        trajectories=[{"trajectory_idx": 0, "rounds": [{
+                            "status": "contract_failed",
+                            "failure_owner": "testbench",
+                            "next_action": "repair_testbench",
+                            "contract_failures": list(contract_failures),
+                        }]}],
+                    )
             tb = tools.tb_optimizer._request_cpp_artifact(
                 agent,
                 "Public Testbench contract failures:\n" + "\n".join(contract_failures)
@@ -222,7 +237,7 @@ def gen_tb_prior(
                 + _build_testbench_request(reference_code, kernel_name,
                     cv.get("input_domain_contract"), cv.get("source_package_context")),
                 first_turn=False, artifact_kind="testbench", required_symbol=hls_name,
-                max_repairs=repair_limit,
+                max_repairs=0 if mapping_failure else repair_limit,
             )
 
     qualification_failures: list[str] = []
@@ -291,6 +306,46 @@ def gen_tb_prior(
             cv.get("input_domain_contract"),
             require_maximum=True,
         )
+        try:
+            validate_mapping_contract(tb)
+        except ValueError as exc:
+            mapping_repairs_used += 1
+            if mapping_repairs_used > repair_limit:
+                raise tools.tb_optimizer.TestbenchGenerationExhausted(
+                    split="public",
+                    stage="public_abi_mapping_qualification",
+                    trajectories=[{"trajectory_idx": 0, "rounds": [{
+                        "status": "contract_failed",
+                        "failure_owner": "testbench",
+                        "next_action": "repair_testbench",
+                        "contract_failures": [str(exc)],
+                    }]}],
+                )
+            tb = tools.tb_optimizer._request_cpp_artifact(
+                agent,
+                "Public Testbench contract failure after Original qualification repair:\n"
+                + str(exc) + "\nReturn a complete replacement with an explicit shared result mapping.\n\n"
+                + mapping_generation_instruction() + "\n\n"
+                + _build_testbench_request(
+                    reference_code,
+                    kernel_name,
+                    cv.get("input_domain_contract"),
+                    cv.get("source_package_context"),
+                ),
+                first_turn=False,
+                artifact_kind="testbench_repair",
+                required_symbol=hls_name,
+                max_repairs=0,
+            )
+            tools.tb_optimizer.validate_testbench_top_contract(tb, kernel_name, hls_name)
+            tools.tb_optimizer.validate_testbench_input_domain(
+                tb,
+                hls_name,
+                tools.tb_optimizer.extract_hls_decl_from_testbench(tb, hls_name, **parse_context),
+                cv.get("input_domain_contract"),
+                require_maximum=True,
+            )
+            validate_mapping_contract(tb)
 
     # Validate the public Candidate ABI with the same Vitis probe used by the
     # held-out path before freezing it for downstream stages. This keeps an
@@ -368,54 +423,48 @@ def gen_tb_prior(
                 cv.get("input_domain_contract"),
                 require_maximum=True,
             )
-            mapping_repair_failures: list[str] = []
-            for mapping_repair_index in range(repair_limit + 1):
-                try:
-                    validate_mapping_contract(tb)
-                    break
-                except ValueError as exc:
-                    message = f"ABI correction mapping validation {mapping_repair_index}: {exc}"
-                    mapping_repair_failures.append(message)
-                    if mapping_repair_index >= repair_limit:
-                        raise tools.tb_optimizer.TestbenchGenerationExhausted(
-                            split="public",
-                            stage="public_abi_mapping_qualification",
-                            trajectories=[{
-                                "trajectory_idx": 0,
-                                "rounds": [{
-                                    "status": "contract_failed",
-                                    "failure_owner": "testbench",
-                                    "next_action": "repair_testbench",
-                                    "contract_failures": mapping_repair_failures,
-                                }],
-                            }],
-                        )
-                    tb = tools.tb_optimizer._request_cpp_artifact(
-                        agent,
-                        "Public Testbench contract failures after ABI correction:\n"
-                        + "\n".join(mapping_repair_failures)
-                        + "\nReturn a complete replacement Testbench with the corrected Candidate ABI and an explicit shared result mapping.\n\n"
-                        + mapping_generation_instruction()
-                        + "\n\n"
-                        + _build_testbench_request(
-                            reference_code,
-                            kernel_name,
-                            cv.get("input_domain_contract"),
-                            cv.get("source_package_context"),
-                        ),
-                        first_turn=False,
-                        artifact_kind="testbench_repair",
-                        required_symbol=hls_name,
-                        max_repairs=repair_limit,
+            try:
+                validate_mapping_contract(tb)
+            except ValueError as exc:
+                mapping_repairs_used += 1
+                if mapping_repairs_used > repair_limit:
+                    raise tools.tb_optimizer.TestbenchGenerationExhausted(
+                        split="public",
+                        stage="public_abi_mapping_qualification",
+                        trajectories=[{"trajectory_idx": 0, "rounds": [{
+                            "status": "contract_failed",
+                            "failure_owner": "testbench",
+                            "next_action": "repair_testbench",
+                            "contract_failures": [str(exc)],
+                        }]}],
                     )
-                    tools.tb_optimizer.validate_testbench_top_contract(tb, kernel_name, hls_name)
-                    tools.tb_optimizer.validate_testbench_input_domain(
-                        tb,
-                        hls_name,
-                        tools.tb_optimizer.extract_hls_decl_from_testbench(tb, hls_name, **parse_context),
+                tb = tools.tb_optimizer._request_cpp_artifact(
+                    agent,
+                    "Public Testbench contract failure after ABI correction:\n"
+                    + str(exc)
+                    + "\nReturn a complete replacement Testbench with the corrected Candidate ABI and an explicit shared result mapping.\n\n"
+                    + mapping_generation_instruction()
+                    + "\n\n"
+                    + _build_testbench_request(
+                        reference_code,
+                        kernel_name,
                         cv.get("input_domain_contract"),
-                        require_maximum=True,
-                    )
+                        cv.get("source_package_context"),
+                    ),
+                    first_turn=False,
+                    artifact_kind="testbench_repair",
+                    required_symbol=hls_name,
+                    max_repairs=0,
+                )
+                tools.tb_optimizer.validate_testbench_top_contract(tb, kernel_name, hls_name)
+                tools.tb_optimizer.validate_testbench_input_domain(
+                    tb,
+                    hls_name,
+                    tools.tb_optimizer.extract_hls_decl_from_testbench(tb, hls_name, **parse_context),
+                    cv.get("input_domain_contract"),
+                    require_maximum=True,
+                )
+                validate_mapping_contract(tb)
             original_result = tools.tb_coverage.check_original_execution(
                 isolate_reference_program_entry(
                     str(cv["curr_code"]), top_function=kernel_name, testbench_code=tb,
