@@ -185,8 +185,26 @@ def gen_tb_prior(
                 cv.get("input_domain_contract"), require_maximum=True,
             )
             try:
-                freeze_result_mapping(tb, reference_code, kernel_name, hls_name,
-                                      require_explicit=True, **parse_context)
+                # Use the same adapted Original context as flow/new.py's final
+                # gate.  An ABI rewrite can only be classified after the
+                # current Testbench has supplied the bridge context; checking
+                # the pre-adaptation source here can incorrectly look like an
+                # identity interface and defer a missing mapping until the
+                # generation function has already returned.
+                adapted_reference_code = isolate_reference_program_entry(
+                    str(cv.get("curr_code") or reference_code),
+                    top_function=kernel_name,
+                    testbench_code=tb,
+                    **parse_context,
+                )
+                freeze_result_mapping(
+                    tb,
+                    adapted_reference_code,
+                    kernel_name,
+                    hls_name,
+                    require_explicit=True,
+                    **parse_context,
+                )
             except ValueError as exc:
                 raise tools.tb_optimizer.ModelArtifactError(str(exc)) from exc
             break

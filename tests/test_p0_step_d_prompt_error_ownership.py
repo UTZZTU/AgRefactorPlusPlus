@@ -92,6 +92,55 @@ class StepDPromptContractTests(unittest.TestCase):
         self.assertEqual(instruction, "instruction")
         self.assertEqual(name, CANDIDATE_NAME)
 
+    def test_mapping_contract_uses_current_adapted_original_context(self):
+        agent = Mock()
+        response = Mock()
+        response.messages = [{"content": "instruction"}]
+        agent.run.return_value = response
+        loader = Mock()
+        loader.load_agent.return_value = agent
+        cv = {
+            "kernel_name": ORIGINAL_NAME,
+            "curr_code": "void process_top(){}\n",
+        }
+        seen_originals = []
+
+        def fake_isolation(source_code, **kwargs):
+            return "adapted-reference" if kwargs.get("testbench_code") else "raw-reference"
+
+        def fake_freeze(tb, original, *args, **kwargs):
+            seen_originals.append(original)
+            if original != "adapted-reference":
+                raise AssertionError("mapping check used the pre-adaptation source")
+            return None
+
+        with patch.object(
+            testbench,
+            "HLSAgentLoader",
+            return_value=loader,
+        ), patch.object(
+            tb_optimizer,
+            "_request_cpp_artifact",
+            return_value=TB_ONE,
+        ), patch.object(
+            tb_coverage,
+            "check_original_execution",
+            return_value={"status": "ok"},
+        ), patch.object(
+            testbench,
+            "isolate_reference_program_entry",
+            side_effect=fake_isolation,
+        ), patch.object(
+            testbench,
+            "freeze_result_mapping",
+            side_effect=fake_freeze,
+        ):
+            generated, instruction, name = testbench.gen_tb_prior(cv)
+
+        self.assertEqual(generated, TB_ONE)
+        self.assertEqual(name, CANDIDATE_NAME)
+        self.assertEqual(seen_originals, ["adapted-reference"])
+
     def test_lightweight_prompt_uses_black_box_surface(self):
         message = testbench._build_testbench_request(
             "void process_top(){}\n",
