@@ -32,7 +32,18 @@ def decision(action, **metadata):
         source_report_id="report",
         blocking_feedback_ids=ids,
         selected_feedback_ids=ids,
-        metadata={"evidence_view": "agent_safe", **metadata},
+        # Repair transitions model an already executed, deterministically
+        # attributed public component. These fields are required by the
+        # production recovery policy; denial tests override them below.
+        metadata={
+            "evidence_view": "agent_safe",
+            "owner_authority": "deterministic_proven",
+            "physical_tool_launched": True,
+            "tool_launched": True,
+            "evidence_complete": True,
+            "execution_evidence_complete": True,
+            **metadata,
+        },
     )
 
 

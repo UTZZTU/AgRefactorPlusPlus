@@ -100,7 +100,14 @@ class LightweightRuntimeRecoveryTests(unittest.TestCase):
                 if state is ValidationState.PUBLIC_EVALUATION and request.attempt < 3:
                     item = replace(feedback_item(
                         f'runtime-{request.attempt}', state=state, owner=FeedbackOwner.TESTBENCH,
-                    ), summary=f'runtime-{request.attempt}', metadata={'suite_id': 'public-main'})
+                    ), summary=f'runtime-{request.attempt}', metadata={
+                        'suite_id': 'public-main',
+                        'owner_authority': 'deterministic_proven',
+                        'physical_tool_launched': True,
+                        'tool_launched': True,
+                        'evidence_complete': True,
+                        'repair_eligible': True,
+                    })
                     return report_for(state, item=item, report_id=f'failure-{request.attempt}')
                 return pass_scenario(request, state)
 
@@ -180,7 +187,8 @@ class LightweightRuntimeRecoveryTests(unittest.TestCase):
                 item = replace(feedback_item(f'cosim-{request.attempt}', state=state, owner=FeedbackOwner.UNKNOWN),
                                stage=FeedbackStage.COSIM,
                                metadata={'owner_authority': 'public_reference_qualified', 'repair_eligible': True,
-                                         'evidence_complete': True, 'tool_launched': True})
+                                         'evidence_complete': True, 'tool_launched': True,
+                                         'physical_tool_launched': True})
                 return replace(report_for(state, item=item), metadata={
                     'evidence_view': 'agent_safe', 'evaluation_split': 'public', 'feedback_visible_to_agent': True,
                 })
