@@ -329,6 +329,11 @@ class TestbenchRepairLoop:
         root.mkdir(parents=True, exist_ok=True)
 
         current = self._require_source("testbench_code", testbench_code)
+        frozen_result_helpers = None
+        if "// AGREFACTOR_SHARED_RESULT_MAPPING_BEGIN" in current:
+            from flow.tools.result_mapping import shared_helper_identity
+
+            frozen_result_helpers = shared_helper_identity(current)
         original = self._require_source("original_code", original_code)
         candidate = self._require_source("candidate_code", candidate_code)
         original_top = self._optional_top(
@@ -447,6 +452,19 @@ class TestbenchRepairLoop:
             audit_count_before = self._audit_event_count()
             try:
                 proposed = self._repairer.repair(request)
+                if frozen_result_helpers is not None and isinstance(proposed, str) and proposed.strip():
+                    from flow.tools.result_mapping import validate_frozen_result_mapping
+                    from agrefactor.testing.model_testbench_repairer import TestbenchRepairResponseError
+
+                    try:
+                        validate_frozen_result_mapping(
+                            proposed, frozen_result_helpers,
+                            source_path=str(root / "testbench.cpp"),
+                            include_dirs=(str(Path(task.kernel_path).parent),),
+                            compile_flags=task.target.compile_flags,
+                        )
+                    except ValueError as exc:
+                        raise TestbenchRepairResponseError(str(exc)) from exc
             except Exception as exc:
                 last_repair_error = (
                     "testbench repair provider raised "

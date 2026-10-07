@@ -1,10 +1,12 @@
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from agrefactor.config import TaskSpec
+from agrefactor.config import EvaluationSplit, TaskSpec, TestSuiteSpec
 from agrefactor.evaluation import ValidationState
 from agrefactor.evidence import (
     FeedbackCategory,
@@ -17,6 +19,8 @@ from agrefactor.runtime import (
     BudgetManager,
     CsynthStageInputs,
     CsynthValidationStageHandler,
+    CandidateValidationPlanRequest,
+    LocalCandidateValidationHandlerFactory,
     RunContext,
     TraceRecorder,
     ValidationOrchestrator,
@@ -187,7 +191,33 @@ class CsynthValidationStageHandlerTests(
                 )
                 return "csynth_failed", "synthesis failed"
 
-            report = self.handler(Path(directory) / "csynth", executor)(make_context())
+            qualification_result = {
+                "authority": "original_only_runtime",
+                "status": "passed",
+                "original_entry_executed": True,
+            }
+            evidence_path = (
+                Path(directory)
+                / "csynth"
+                / "original_reference_qualification"
+                / "original_only_execution.json"
+            )
+            evidence_path.parent.mkdir(parents=True, exist_ok=True)
+            evidence_path.write_text('{"status":"passed"}', encoding="utf-8")
+            qualification_result.update(
+                execution_evidence_ref=str(evidence_path),
+                execution_evidence_sha256=hashlib.sha256(
+                    evidence_path.read_bytes()
+                ).hexdigest(),
+            )
+            with patch.object(
+                CsynthValidationStageHandler,
+                "_public_reference_qualification",
+                return_value=qualification_result,
+            ):
+                report = self.handler(Path(directory) / "csynth", executor)(
+                    make_context()
+                )
             self.assertTrue(report.blocking)
             item = report.items[0]
             self.assertEqual(item.owner, FeedbackOwner.UNKNOWN)
@@ -202,6 +232,133 @@ class CsynthValidationStageHandlerTests(
                 report.metadata["recovery_authority"],
                 "public_csynth_bounded_trial",
             )
+
+    def test_public_csynth_qualifies_original_when_preflight_record_is_missing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = make_context()
+            task = replace(base.task, test_suites=(TestSuiteSpec(
+                suite_id="public-a", split=EvaluationSplit.PUBLIC,
+            ),))
+            context = replace(base, task=task)
+            calls = []
+
+            def executor(work_dir, variables, timelimit, *, budget):
+                write_invocation(work_dir, returncode=1)
+                write_log(work_dir, "ERROR: [HLS 214-390] Pointer cannot be synthesized\n")
+                return "csynth_failed", "synthesis failed"
+
+            def qualify(**kwargs):
+                calls.append(kwargs)
+                evidence_path = Path(kwargs["keep_dir"]) / "original_only_execution.json"
+                evidence_path.parent.mkdir(parents=True, exist_ok=True)
+                evidence_path.write_text('{"status":"passed"}', encoding="utf-8")
+                return {"status": "passed", "authority": "original_only_runtime",
+                        "original_entry_executed": True,
+                        "execution_evidence_ref": str(evidence_path),
+                        "execution_evidence_sha256": hashlib.sha256(
+                            evidence_path.read_bytes()
+                        ).hexdigest()}
+
+            handler = CsynthValidationStageHandler(
+                CsynthStageInputs(
+                    work_dir=Path(directory) / "csynth", candidate_code=CANDIDATE,
+                    original_code=CANDIDATE,
+                    public_testbench_code='extern "C" int candidate_top(int); int main(){return candidate_top(1);}',
+                    public_suite_id="public-a", original_top_function="candidate_top",
+                    candidate_top_function="candidate_top", timelimit=17,
+                ), executor=executor,
+            )
+            with patch("flow.tools.vitis_csim._original_isolation_evidence", side_effect=qualify):
+                report = handler(context)
+                handler(context)
+            self.assertEqual(report.metadata["recovery_authority"], "public_csynth_bounded_trial")
+            self.assertEqual(len(calls), 1)
+            qualification = Path(directory) / "csynth" / "public_reference_qualification.json"
+            self.assertTrue(qualification.is_file())
+            self.assertEqual(json.loads(qualification.read_text())["status"], "passed")
+            self.assertIsNone(context.budget.active_reserve.max_tool_calls)
+
+    def test_factory_wires_public_inputs_into_real_csynth_handler(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = make_context()
+            task = replace(base.task, test_suites=(TestSuiteSpec(
+                suite_id="public-a", split=EvaluationSplit.PUBLIC,
+            ),))
+            context = replace(base, task=task)
+            public_tb = 'extern "C" int candidate_top(int); int main(){return candidate_top(1);}'
+            plan = CandidateValidationPlanRequest(
+                task=task, candidate_code=CANDIDATE, original_code=CANDIDATE,
+                preflight_testbench_code=public_tb,
+                suite_testbench_codes={"public-a": public_tb}, attempt=0,
+                validation_id="factory-qualification",
+            )
+
+            def executor(work_dir, variables, timelimit, *, budget):
+                write_invocation(work_dir, returncode=1)
+                write_log(work_dir, "ERROR: [HLS 214-390] Pointer cannot be synthesized\n")
+                return "csynth_failed", "synthesis failed"
+
+            def qualify(**kwargs):
+                self.assertEqual(kwargs["testbench_code"], public_tb)
+                self.assertEqual(kwargs["original_code"], CANDIDATE)
+                evidence_path = Path(kwargs["keep_dir"]) / "original_only_execution.json"
+                evidence_path.parent.mkdir(parents=True, exist_ok=True)
+                evidence_path.write_text('{"status":"passed"}', encoding="utf-8")
+                return {"status": "passed", "authority": "original_only_runtime",
+                        "original_entry_executed": True,
+                        "execution_evidence_ref": str(evidence_path),
+                        "execution_evidence_sha256": hashlib.sha256(
+                            evidence_path.read_bytes()
+                        ).hexdigest()}
+
+            factory = LocalCandidateValidationHandlerFactory(directory)
+            with patch.object(CsynthValidationStageHandler, "_load_default_executor", return_value=executor), \
+                 patch("flow.tools.vitis_csim._original_isolation_evidence", side_effect=qualify):
+                report = factory.build(plan)[ValidationState.CSYNTH](context)
+            self.assertEqual(report.metadata["recovery_authority"], "public_csynth_bounded_trial")
+
+    def test_tampered_operator_qualification_is_not_reused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = make_context()
+            task = replace(base.task, test_suites=(TestSuiteSpec(
+                suite_id="public-a", split=EvaluationSplit.PUBLIC,
+            ),))
+            context = replace(base, task=task)
+            calls = []
+            public_tb = 'extern "C" int candidate_top(int); int main(){return candidate_top(1);}'
+
+            def executor(work_dir, variables, timelimit, *, budget):
+                write_invocation(work_dir, returncode=1)
+                write_log(work_dir, "ERROR: [HLS 214-390] Pointer cannot be synthesized\n")
+                return "csynth_failed", "synthesis failed"
+
+            def qualify(**kwargs):
+                calls.append(kwargs)
+                evidence_path = Path(kwargs["keep_dir"]) / "original_only_execution.json"
+                evidence_path.parent.mkdir(parents=True, exist_ok=True)
+                evidence_path.write_text('{"status":"passed"}', encoding="utf-8")
+                digest = hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+                return {
+                    "status": "passed", "authority": "original_only_runtime",
+                    "original_entry_executed": True,
+                    "execution_evidence_ref": str(evidence_path),
+                    "execution_evidence_sha256": digest,
+                }
+
+            handler = CsynthValidationStageHandler(
+                CsynthStageInputs(
+                    work_dir=Path(directory) / "csynth", candidate_code=CANDIDATE,
+                    original_code=CANDIDATE, public_testbench_code=public_tb,
+                    public_suite_id="public-a", original_top_function="candidate_top",
+                    candidate_top_function="candidate_top", timelimit=17,
+                ), executor=executor,
+            )
+            with patch("flow.tools.vitis_csim._original_isolation_evidence", side_effect=qualify):
+                handler(context)
+                evidence_path = Path(directory) / "csynth" / "original_reference_qualification" / "original_only_execution.json"
+                evidence_path.write_text('{"status":"tampered"}', encoding="utf-8")
+                handler(context)
+            self.assertEqual(len(calls), 2)
 
     def test_success_returns_agent_safe_report(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -738,7 +738,6 @@ class SharedLayeredPromptBuilder:
                 expected_owner is FeedbackOwner.CANDIDATE
                 and request.purpose in {
                     PromptPurpose.CANDIDATE_COMPILE_REPAIR,
-                    PromptPurpose.CANDIDATE_CSYNTH_REPAIR,
                     PromptPurpose.CANDIDATE_PUBLIC_CSIM_REPAIR,
                     PromptPurpose.CANDIDATE_PUBLIC_COSIM_REPAIR,
                 }
@@ -749,6 +748,24 @@ class SharedLayeredPromptBuilder:
                 and item.metadata.get("repair_eligible") is True
                 and item.metadata.get("evidence_complete") is True
                 and item.metadata.get("tool_launched") is True
+            )
+            and not (
+                expected_owner is FeedbackOwner.CANDIDATE
+                and request.purpose is PromptPurpose.CANDIDATE_CSYNTH_REPAIR
+                and item.owner is FeedbackOwner.UNKNOWN
+                and str(split).lower() == "public"
+                and metadata.get("feedback_visible_to_agent") is True
+                and item.metadata.get("recovery_authority") == "public_csynth_bounded_trial"
+                and item.metadata.get("repair_eligible") is True
+                and item.metadata.get("evidence_complete") is False
+                and item.metadata.get("execution_evidence_complete") is True
+                and item.metadata.get("tool_launched") is True
+                and item.metadata.get("timed_out") is not True
+                and metadata.get("timed_out") is not True
+                and item.metadata.get("timeout_class") is None
+                and metadata.get("timeout_class") is None
+                and item.metadata.get("execution_status") in {None, "completed"}
+                and metadata.get("execution_status") in {None, "completed"}
             )
         }
         if invalid_owners:

@@ -10,6 +10,7 @@ from autogen.agentchat.group import ContextVariables  # type: ignore
 from flow.base_agent import HLSAgentLoader
 from agrefactor.reference_source import isolate_reference_program_entry
 import flow.tools as tools
+from flow.tools.result_mapping import freeze_result_mapping, mapping_generation_instruction
 
 
 _ORIGINAL_EXECUTION_REPAIRS = 3
@@ -67,6 +68,12 @@ def _build_testbench_request(
             f"// {item.get('path')}\n{item.get('content')}"
             for item in source_package_context
         )
+    request += (
+        "\n\nIf compiler-backed qualification later confirms a transformed "
+        "public Candidate ABI, the qualification step will request a shared "
+        "source-grounded observation block. Do not invent an adapter or "
+        "change observable meaning merely to satisfy this note."
+    )
     return request
 
 
@@ -177,6 +184,11 @@ def gen_tb_prior(
                 tools.tb_optimizer.extract_hls_decl_from_testbench(tb, hls_name, **parse_context),
                 cv.get("input_domain_contract"), require_maximum=True,
             )
+            try:
+                freeze_result_mapping(tb, reference_code, kernel_name, hls_name,
+                                      require_explicit=True, **parse_context)
+            except ValueError as exc:
+                raise tools.tb_optimizer.ModelArtifactError(str(exc)) from exc
             break
         except tools.tb_optimizer.ModelArtifactError as exc:
             contract_failures.append(f"Validation {repair_index}: {exc}")
@@ -187,6 +199,8 @@ def gen_tb_prior(
                 agent,
                 "Public Testbench contract failures:\n" + "\n".join(contract_failures)
                 + "\nReturn a complete replacement.\n\n"
+                + (mapping_generation_instruction() + "\n\n"
+                   if "no explicit common result mapping" in str(exc) else "")
                 + _build_testbench_request(reference_code, kernel_name,
                     cv.get("input_domain_contract"), cv.get("source_package_context")),
                 first_turn=False, artifact_kind="testbench", required_symbol=hls_name,
@@ -379,6 +393,8 @@ def qualify_external_public_testbench(
     testbench_code: str,
     llm_config: Optional[Dict[str, Any]] = None,
     budget: Any = None,
+    *,
+    require_explicit: bool = False,
 ) -> str:
     """Qualify supplied Public Testbench before binding its Candidate ABI."""
     if not isinstance(testbench_code, str) or not testbench_code.strip():
@@ -440,6 +456,24 @@ def qualify_external_public_testbench(
         raise tools.tb_optimizer.ModelArtifactError(
             "external Public Testbench did not expose a Candidate declaration"
         )
+
+    # Provided/legacy Public suites remain observational when they do not carry
+    # the new common-result block.  If a block is present, validate it with the
+    # same compiler-backed evidence checks used by generated suites; callers can
+    # opt into the transformed-interface gate without changing identity cases.
+    try:
+        mapping = freeze_result_mapping(
+            testbench_code,
+            str(cv.get("orig_code") or cv.get("curr_code") or ""),
+            kernel_name,
+            hls_name,
+            require_explicit=require_explicit,
+            **parse_context,
+        )
+    except ValueError as exc:
+        raise tools.tb_optimizer.ModelArtifactError(str(exc)) from exc
+    if mapping is not None:
+        cv["public_result_mapping"] = mapping
 
     original_result = tools.tb_coverage.check_original_execution(
         isolate_reference_program_entry(

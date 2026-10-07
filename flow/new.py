@@ -8,6 +8,7 @@ from flow.tools.input_domain import (
     input_domain_sha256,
     normalize_input_domain_contract,
 )
+from flow.tools.result_mapping import freeze_result_mapping, frozen_mapping_instruction
 from flow.rag.rag_integration import KnowledgeManager
 from flow.base_agent import reset_agrefactorpp_usage_registry, print_agrefactorpp_usage_summary
 from agrefactor.runtime.prompt_evidence import reset_model_prompt_evidence
@@ -637,6 +638,7 @@ def hls_refactor_with_rag(
         "public_hls_decl_sha256": "",
         "public_runtime_contract": None,
         "public_runtime_contract_sha256": "",
+        "public_result_mapping": None,
         "input_domain_contract": copy.deepcopy(input_domain_contract),
         "input_domain_contract_sha256": input_domain_contract_sha256,
         "model_data_boundary": {},
@@ -777,6 +779,20 @@ def hls_refactor_with_rag(
         )
     cv["public_hls_decl_verbatim"] = public_hls_decl
     cv["public_hls_decl_sha256"] = _sha256_text(public_hls_decl)
+    cv["public_result_mapping"] = freeze_result_mapping(
+        cv["testbench"], cv["orig_code"], cv["kernel_name"], cv["new_kernel_name"],
+        # The resolver only requires a block when compiler facts prove an
+        # interface transformation. Provided Public suites therefore retain
+        # legacy behavior for identity interfaces, while transformed suites
+        # cannot silently invent a result mapping.
+        require_explicit=not external_testbench,
+        source_path=str(Path(package_root) / "testbench.cpp"),
+        include_dirs=(package_root,), compile_flags=reference_context["compile_flags"],
+    )
+    cv["tb_aligned_instruction"] += frozen_mapping_instruction(cv["public_result_mapping"], for_candidate=True)
+    if cv["public_result_mapping"] is not None:
+        with open(os.path.join(output_dir, "public_result_mapping.json"), "w", encoding="utf-8") as mapping_file:
+            json.dump(cv["public_result_mapping"], mapping_file, ensure_ascii=False, indent=2)
     if not external_testbench:
         cv["public_runtime_contract"] = (
             tools.tb_optimizer.generate_public_runtime_contract(
@@ -844,6 +860,7 @@ def hls_refactor_with_rag(
                     "target_profile": target_profile,
                 },
                 max_repairs=max_testbench_repair_attempts,
+                pinned_result_mapping=cv["public_result_mapping"],
             )
         except tools.tb_optimizer.TestbenchGenerationExhausted as exc:
             return _finish_test_generation_exhaustion(

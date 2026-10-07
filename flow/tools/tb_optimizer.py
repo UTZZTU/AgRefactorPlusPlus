@@ -32,6 +32,12 @@ from flow.tools.tb_coverage import (
     check_original_execution,
     measure_coverage,
 )
+from flow.tools.result_mapping import (
+    freeze_result_mapping,
+    frozen_mapping_instruction,
+    mapping_generation_instruction,
+    validate_frozen_result_mapping,
+)
 
 # Reuse the compiler-backed interface extractor from the inflight package.
 from flow.inflight_tb.checks import extract_hls_decl_from_tb as _extract_seed_hls_decl  # noqa: E402
@@ -736,6 +742,13 @@ def _initial_user_message(
                 "Give every Candidate declaration parameter an explicit name. Use the contract's top-level port names exactly; never emit an unnamed parameter.",
             ]
         )
+    parts.extend([
+        "",
+        "If the compiler later confirms that the public Candidate ABI is "
+        "transformed from the Original interface, the qualification step will "
+        "request a source-grounded shared observation block. Do not invent an "
+        "adapter or change observable meaning merely to satisfy this note.",
+    ])
     if pinned_public_hls_decl:
         parts.extend(
             [
@@ -1853,6 +1866,7 @@ def run_trajectory(
     source_context: Optional[Dict[str, Any]] = None,
     max_repairs: int = 3,
     hidden_generation: bool = False,
+    pinned_result_mapping: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if isinstance(K, bool) or not isinstance(K, int) or K < 1:
         raise ValueError("K must be a positive integer")
@@ -1893,6 +1907,9 @@ def run_trajectory(
         domain_block = _input_domain_block(input_domain_contract)
         if domain_block and "FROZEN LEGAL INPUT-DOMAIN CONTRACT" not in message:
             message += domain_block
+        mapping_block = frozen_mapping_instruction(pinned_result_mapping)
+        if mapping_block:
+            message += mapping_block
         current_message = message
         current_first_turn = first_turn
         last_error: Exception | None = None
@@ -1925,6 +1942,14 @@ def run_trajectory(
                     input_domain_contract,
                     require_maximum=not external_abi_frozen,
                 )
+                try:
+                    if pinned_result_mapping:
+                        validate_frozen_result_mapping(value, pinned_result_mapping, **parse_context)
+                    elif not hidden_generation:
+                        freeze_result_mapping(value, orig_code, kernel_name, hls_name,
+                                              require_explicit=True, **parse_context)
+                except ValueError as exc:
+                    raise ModelArtifactError(str(exc)) from exc
                 return value
             except ModelArtifactError as exc:
                 last_error = exc
@@ -1937,6 +1962,11 @@ def run_trajectory(
                     + "\n".join(failures) + "\nGenerate a complete replacement with simple, directly auditable Candidate calls. "
                     "Every Candidate forward-declaration parameter must have an explicit name matching the frozen contract port name; never omit parameter names."
                     + domain_block + "\n\n" + message
+                    + (
+                        "\n\n" + mapping_generation_instruction()
+                        if "no explicit common result mapping" in str(exc)
+                        else ""
+                    )
                 )
         raise ModelArtifactError(
             "model did not return a Testbench compatible with the required "
@@ -3296,6 +3326,7 @@ def make_golden_hidden_tb(
     input_domain_contract: Optional[Dict[str, Any]] = None,
     source_context: Optional[Dict[str, Any]] = None,
     max_repairs: int = 3,
+    pinned_result_mapping: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if not isinstance(pinned_public_hls_decl, str) or not (
         pinned_public_hls_decl.strip()
@@ -3322,6 +3353,7 @@ def make_golden_hidden_tb(
         else ""
     )
     orig_sha = hashlib.sha256(orig_code.encode("utf-8")).hexdigest()
+    mapping_sha = pinned_result_mapping.get("sha256", "") if pinned_result_mapping else ""
     cache_key = cache_key or kernel_name
     if cache_dir is not None:
         cached = _load_golden_cache(
@@ -3329,6 +3361,7 @@ def make_golden_hidden_tb(
             cache_key,
             orig_sha,
             expected_domain_sha=domain_sha,
+            expected_result_mapping_sha=mapping_sha,
         )
         if (
             cached is not None
@@ -3358,6 +3391,7 @@ def make_golden_hidden_tb(
                 input_domain_contract=input_domain_contract,
                 source_context=source_context,
                 max_repairs=max_repairs,
+                pinned_result_mapping=pinned_result_mapping,
             ): index
             for index in range(M)
         }
@@ -3422,6 +3456,7 @@ def make_golden_hidden_tb(
         "public_hls_decl": normalized_public_decl,
         "public_hls_decl_sha256": public_decl_sha,
         "input_domain_contract_sha256": domain_sha,
+        "result_mapping_sha256": mapping_sha,
         "best_trajectory": best.get("trajectory_idx", -1),
         "best_round": best["best_round"],
         "synth_ok": True,
@@ -3446,6 +3481,7 @@ def _load_golden_cache(
     kernel_name: str,
     expected_sha: str,
     expected_domain_sha: str = "",
+    expected_result_mapping_sha: str = "",
 ) -> Optional[Dict[str, Any]]:
     path = _golden_cache_path(cache_dir, kernel_name)
     if not os.path.isfile(path):
@@ -3458,6 +3494,8 @@ def _load_golden_cache(
     if data.get("orig_sha256") != expected_sha:
         return None
     if expected_domain_sha and data.get("input_domain_contract_sha256") != expected_domain_sha:
+        return None
+    if expected_result_mapping_sha and data.get("result_mapping_sha256") != expected_result_mapping_sha:
         return None
     return data
 

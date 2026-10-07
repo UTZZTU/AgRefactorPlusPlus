@@ -678,11 +678,20 @@ class ProductQualificationAdapter:
                 split=EvaluationSplit.PUBLIC,
             ),
             QualificationStage.CSYNTH: CsynthValidationStageHandler(
-                CsynthStageInputs(
-                    work_dir=work / "csynth",
-                    candidate_code=candidate_code,
-                    timelimit=self._csynth_timeout_s,
-                )
+            CsynthStageInputs(
+                work_dir=work / "csynth",
+                original_code=self._material.reference_code,
+                candidate_code=candidate_code,
+                public_testbench_code=(
+                    next(iter(public_codes.values()), None)
+                ),
+                public_suite_id=(
+                    next(iter(public_codes), None)
+                ),
+                original_top_function=self._material.reference_top_function,
+                candidate_top_function=self._material.top_function,
+                timelimit=self._csynth_timeout_s,
+            )
             ),
             QualificationStage.PUBLIC_COSIM: CosimValidationStageHandler(
                 CosimStageInputs(

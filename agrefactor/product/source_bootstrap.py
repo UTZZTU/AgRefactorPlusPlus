@@ -238,6 +238,7 @@ def _contract_observation(
     public_hls_decl_sha256: str,
     public_runtime_contract_sha256: str,
     input_domain_contract_sha256: str,
+    public_result_mapping: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Record contract identities for shadow review without gating execution.
 
@@ -253,6 +254,9 @@ def _contract_observation(
         "public_hls_decl_sha256": public_hls_decl_sha256,
         "public_runtime_contract_sha256": public_runtime_contract_sha256,
         "input_domain_contract_sha256": input_domain_contract_sha256,
+        "public_result_mapping_sha256": (
+            public_result_mapping.get("sha256", "") if public_result_mapping else ""
+        ),
         "observable_mapping": {
             "comparison": {
                 "status": "typed",
@@ -1288,6 +1292,7 @@ def _prepare_public_testbench(
     candidate_top_function: str | None = None,
     suite_id: str = "public-readiness",
     source_kind: str = "generated",
+    public_result_mapping: Mapping[str, Any] | None = None,
 ) -> PublicTestbenchPreparationResult:
     'Preflight and, when necessary, repair one Public Testbench.'
 
@@ -1446,6 +1451,20 @@ def _prepare_public_testbench(
                 "repaired Public Testbench was blocked by the independent "
                 "semantic non-weakening audit"
             )
+    if result_status == "passed" and public_result_mapping is not None:
+        from flow.tools.result_mapping import validate_frozen_result_mapping
+
+        try:
+            validate_frozen_result_mapping(
+                result_code, public_result_mapping,
+                source_path=str(work_dir / "testbench.cpp"),
+                include_dirs=(str(Path(task.kernel_path).parent),),
+                compile_flags=task.target.compile_flags,
+            )
+        except ValueError as exc:
+            result_status = "failed"
+            result_code = testbench_code
+            result_reason = str(exc) + "; correct an upstream mapping in an independent new run"
 
     return PublicTestbenchPreparationResult(
         status=result_status,
@@ -1859,6 +1878,8 @@ class SourceBootstrapPhase:
                     "sha256": generated["input_domain_contract_sha256"],
                 },
             )
+        if generated.get("public_result_mapping") is not None:
+            _atomic_json(bootstrap_root / "public_result_mapping.json", generated["public_result_mapping"])
         actual_generation_prompts = get_model_prompt_evidence()
         if actual_generation_prompts.get("actual_call_count", 0) > 0:
             generation_prompt_sha = str(
@@ -1931,6 +1952,7 @@ class SourceBootstrapPhase:
                     if preflight_suite.source is not None
                     else "generated"
                 ),
+                public_result_mapping=generated.get("public_result_mapping"),
             )
             self._public_testbench_cost_observations = (
                 public_preparation.cost_observations
@@ -2794,6 +2816,12 @@ class SourceBootstrapPhase:
             context_variables,
             "input_domain_contract_sha256",
         )
+        public_result_mapping = _mapping_get(context_variables, "public_result_mapping")
+        if public_result_mapping is not None:
+            from flow.tools.result_mapping import validate_result_mapping_identity
+
+            public_result_mapping = json.loads(json.dumps(dict(public_result_mapping), ensure_ascii=False))
+            validate_result_mapping_identity(public_result_mapping)
         model_data_boundary = _mapping_get(
             context_variables,
             "model_data_boundary",
@@ -2891,6 +2919,7 @@ class SourceBootstrapPhase:
                 if isinstance(input_domain_contract_sha256, str)
                 else ""
             ),
+            "public_result_mapping": public_result_mapping,
             "model_data_boundary": copied_boundary,
         }
 
@@ -2948,6 +2977,15 @@ class SourceBootstrapPhase:
                     / f"{suite_id}.cpp"
                 )
                 _atomic_text(target_path, code)
+                result_mapping = generated.get("public_result_mapping")
+                if result_mapping is not None:
+                    from flow.tools.result_mapping import validate_frozen_result_mapping
+
+                    validate_frozen_result_mapping(
+                        code, result_mapping, source_path=str(target_path),
+                        include_dirs=(str(self._request.source_path.parent),),
+                        compile_flags=self._request.target.compile_flags,
+                    )
                 digest = _sha256_text(code.rstrip() + "\n")
                 if kind is TestSourceKind.PROVIDED:
                     source = TestSourceSpec(
@@ -3052,6 +3090,7 @@ class SourceBootstrapPhase:
                                     "input_domain_contract_sha256", ""
                                 )
                             ),
+                            public_result_mapping=result_mapping,
                         ),
                     )
                 suite = TestSuiteSpec(

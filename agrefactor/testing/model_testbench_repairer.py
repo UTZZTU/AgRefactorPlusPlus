@@ -180,6 +180,14 @@ _TESTBENCH_FORBIDDEN_ACTIONS = (
 
 _TESTBENCH_OUTPUT_REQUIREMENTS = (
     (
+        "If the current Testbench contains an explicitly frozen "
+        "AGREFACTOR_SHARED_RESULT_MAPPING_BEGIN/END helper block, retain "
+        "that block verbatim and keep using its observation helpers. Do not "
+        "revise result semantics, omit observations, or bypass the comparator. "
+        "An upstream contract contradiction requires an independent new run; "
+        "it is not permission to adapt the frozen oracle to this Candidate."
+    ),
+    (
         "Treat Original and Candidate implementations as read-only black "
         "boxes exposed only through their public top declarations."
     ),

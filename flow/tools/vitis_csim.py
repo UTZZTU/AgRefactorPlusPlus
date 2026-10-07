@@ -162,6 +162,13 @@ def _original_isolation_evidence(
         ),
         original_entry_executed=result.get("original_entry_executed"),
     )
+    if keep_dir is not None:
+        execution_path = Path(keep_dir) / "original_only_execution.json"
+        _write_json(execution_path, result)
+        evidence["execution_evidence_ref"] = str(execution_path)
+        evidence["execution_evidence_sha256"] = __import__("hashlib").sha256(
+            execution_path.read_bytes()
+        ).hexdigest()
     return evidence
 
 

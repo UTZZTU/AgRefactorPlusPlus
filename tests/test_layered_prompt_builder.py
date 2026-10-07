@@ -1,4 +1,5 @@
 import copy
+from dataclasses import replace
 import json
 import unittest
 
@@ -321,6 +322,88 @@ class SharedLayeredPromptBuilderTests(
             SharedLayeredPromptBuilder().build(
                 make_request(feedback=feedback)
             )
+
+    def csynth_trial_feedback(self):
+        report = make_feedback(
+            owner=FeedbackOwner.UNKNOWN,
+            stage=FeedbackStage.CSYNTH,
+            split="public",
+            visible=True,
+        )
+        return replace(
+            report,
+            items=(replace(
+                report.items[0],
+                category=FeedbackCategory.UNKNOWN,
+                metadata={
+                    "owner_authority": "unknown",
+                    "recovery_authority": "public_csynth_bounded_trial",
+                    "repair_eligible": True,
+                    "evidence_complete": False,
+                    "execution_evidence_complete": True,
+                    "physical_tool_launched": True,
+                    "tool_launched": True,
+                },
+            ),),
+        )
+
+    def test_public_csynth_trial_unknown_feedback_is_accepted(self):
+        result = SharedLayeredPromptBuilder().build(make_request(
+            purpose=PromptPurpose.CANDIDATE_CSYNTH_REPAIR,
+            feedback=self.csynth_trial_feedback(),
+        ))
+        self.assertEqual(result.manifest["purpose"], "candidate_csynth_repair")
+
+    def test_public_csynth_unknown_rejects_legacy_reference_authority(self):
+        report = self.csynth_trial_feedback()
+        report = replace(report, items=(replace(
+            report.items[0],
+            metadata={
+                "owner_authority": "public_reference_qualified",
+                "repair_eligible": True,
+                "evidence_complete": True,
+                "tool_launched": True,
+            },
+        ),))
+        with self.assertRaisesRegex(ValueError, "owner"):
+            SharedLayeredPromptBuilder().build(make_request(
+                purpose=PromptPurpose.CANDIDATE_CSYNTH_REPAIR,
+                feedback=report,
+            ))
+
+    def test_public_csynth_trial_rejects_invalid_execution_contract(self):
+        cases = (
+            ("unknown_authority", {}, {"recovery_authority": "unknown"}, {}),
+            ("legacy_authority", {}, {"recovery_authority": "public_reference_qualified"}, {}),
+            ("missing_execution_evidence", {}, {"execution_evidence_complete": None}, {}),
+            ("incomplete_execution", {}, {"execution_evidence_complete": False}, {}),
+            ("tool_not_launched", {}, {"tool_launched": False}, {}),
+            ("not_repair_eligible", {}, {"repair_eligible": False}, {}),
+            ("ownership_complete", {}, {"evidence_complete": True}, {}),
+            ("hidden", {}, {}, {"evaluation_split": "hidden"}),
+            ("invisible", {}, {}, {"feedback_visible_to_agent": False}),
+            ("wrong_stage", {"stage": FeedbackStage.COSIM}, {}, {}),
+            ("timeout_execution", {}, {"timed_out": True}, {}),
+            ("timeout_status", {}, {"execution_status": "timeout"}, {}),
+            ("timeout_class", {}, {"timeout_class": "csynth_timeout"}, {}),
+            ("report_timeout", {}, {}, {"timed_out": True}),
+            ("report_timeout_status", {}, {}, {"execution_status": "timeout"}),
+            ("report_timeout_class", {}, {}, {"timeout_class": "csynth_timeout"}),
+        )
+        for name, item_changes, item_metadata, report_metadata in cases:
+            with self.subTest(contract=name):
+                report = self.csynth_trial_feedback()
+                item = report.items[0]
+                report = replace(
+                    report,
+                    items=(replace(item, metadata={**item.metadata, **item_metadata}, **item_changes),),
+                    metadata={**report.metadata, **report_metadata},
+                )
+                with self.assertRaises(ValueError):
+                    SharedLayeredPromptBuilder().build(make_request(
+                        purpose=PromptPurpose.CANDIDATE_CSYNTH_REPAIR,
+                        feedback=report,
+                    ))
 
     def test_wrong_feedback_stage_is_rejected(self):
         feedback = make_feedback(

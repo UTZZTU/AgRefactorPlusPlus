@@ -452,6 +452,10 @@ def extract_top_interface(
                     status="confirmed" if len(valid_entries) == 1 else "ambiguous" if valid_entries else "missing" if not entries and not has_errors else "unknown",
                     entries=valid_entries,
                 )
+                if len(matches) == 1 and not has_errors:
+                    _entry_facts["reachable_calls"] = _reachable_call_facts(
+                        clang, matches[0]
+                    )
             interfaces = [
                 _interface_from_cursor(clang, cursor, source)
                 for cursor in matches
@@ -737,6 +741,38 @@ def inspect_top_entry(source: str, function_name: str, **context) -> dict:
     facts: dict = {"status": "unknown", "entries": []}
     extract_top_interface(source, function_name, _entry_facts=facts, **context)
     return facts
+
+
+def _reachable_call_facts(clang: _LibClang, top: _CXCursor) -> list[dict]:
+    """Compiler identities reachable from a function, without semantic claims."""
+    library = clang.library
+    visited: set[int] = set()
+    calls: dict[int, dict] = {}
+
+    def walk(function: _CXCursor) -> None:
+        key = library.clang_hashCursor(function)
+        if key in visited:
+            return
+        visited.add(key)
+
+        @clang.visitor_type
+        def visit(cursor, _parent, _data):
+            if cursor.kind == 103:  # CXCursor_CallExpr
+                declaration = library.clang_getCursorReferenced(cursor)
+                if declaration.kind == _FUNCTION_DECL:
+                    calls[library.clang_hashCursor(declaration)] = {
+                        "name": clang.text(library.clang_getCursorSpelling(declaration)),
+                        "linker_symbol": clang.text(library.clang_Cursor_getMangling(declaration)),
+                    }
+                    definition = library.clang_getCursorDefinition(declaration)
+                    if library.clang_Location_isFromMainFile(library.clang_getCursorLocation(definition)):
+                        walk(definition)
+            return _CHILD_VISIT_RECURSE
+
+        library.clang_visitChildren(function, visit, None)
+
+    walk(top)
+    return list(calls.values())
 
 
 def _referenced_state(clang: _LibClang, top: _CXCursor) -> tuple[CppVariable, ...]:

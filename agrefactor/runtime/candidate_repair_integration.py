@@ -522,6 +522,8 @@ class LocalCandidateValidationHandlerFactory:
             for stage_name in ("preflight", "csim", "csynth", "public_cosim"):
                 package.stage_into(run_dir / stage_name)
         extra_sources = tuple(str(path) for path in package.extra_relative) if package is not None else ()
+        public_suite = next((suite for suite in request.task.test_suites
+                             if suite.split is EvaluationSplit.PUBLIC), None)
         handlers: dict[
             ValidationState,
             ValidationStageHandler,
@@ -553,6 +555,14 @@ class LocalCandidateValidationHandlerFactory:
                         candidate_code=request.candidate_code,
                         timelimit=self._csynth_timelimit,
                         extra_sources=extra_sources,
+                        original_code=request.original_code,
+                        public_testbench_code=(
+                            request.suite_testbench_codes[public_suite.suite_id]
+                            if public_suite is not None else None
+                        ),
+                        public_suite_id=(public_suite.suite_id if public_suite is not None else None),
+                        original_top_function=request.reference_top_function or request.task.kernel_name,
+                        candidate_top_function=request.candidate_top_function or request.task.kernel_name,
                     )
                 )
             ),

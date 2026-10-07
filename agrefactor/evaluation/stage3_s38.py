@@ -449,7 +449,12 @@ def qualify_external_candidate(
         QualificationStage.CSYNTH: CsynthValidationStageHandler(
             CsynthStageInputs(
                 work_dir=work / "csynth",
+                original_code=reference_code,
                 candidate_code=candidate_code,
+                public_testbench_code=public_code,
+                public_suite_id="public-1",
+                original_top_function=reference_top_function,
+                candidate_top_function=top_function,
                 timelimit=int(csynth_timeout_s),
             )
         ),

@@ -261,7 +261,10 @@ class EmptyStubFailureTruthTests(unittest.TestCase):
                 self.assertEqual(record["next_action"], "review_unknown")
                 self.assertIn("unresolved synthesis failure", record["diagnostic_excerpt"])
                 self.assertEqual(payload["failure_owner"], "unknown")
-                self.assertEqual(payload["next_action"], "review_unknown")
+                self.assertEqual(
+                    payload["next_action"],
+                    "review_required_provided" if external else "review_unknown",
+                )
 
 
 class CsimTimeoutTruthTests(unittest.TestCase):

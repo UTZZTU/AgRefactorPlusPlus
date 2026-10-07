@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
 from typing import Any
 
 from autogen.agentchat.group import ContextVariables
-from agrefactor.config import DEFAULT_CSYNTH_TIMEOUT_S
+from agrefactor.config import DEFAULT_CSYNTH_TIMEOUT_S, EvaluationSplit
 
 from agrefactor.evaluation.csynth_artifact_feedback import (
     CsynthArtifactFeedbackEvaluator,
@@ -22,7 +23,9 @@ from agrefactor.evidence import (
     FeedbackOwner,
     FeedbackReport,
 )
+from agrefactor.recovery import RecoveryStage, default_restart_reserve
 
+from .budget import BudgetExceededError, BudgetLimits
 from .runner import RunContext
 
 
@@ -37,6 +40,11 @@ class CsynthStageInputs:
     candidate_code: str
     timelimit: int = DEFAULT_CSYNTH_TIMEOUT_S
     extra_sources: tuple[str, ...] = ()
+    original_code: str | None = None
+    public_testbench_code: str | None = None
+    public_suite_id: str | None = None
+    original_top_function: str | None = None
+    candidate_top_function: str | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -70,6 +78,11 @@ class CsynthStageInputs:
             raise ValueError(
                 "timelimit must be positive"
             )
+        for name in ("original_code", "public_testbench_code", "public_suite_id",
+                     "original_top_function", "candidate_top_function"):
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"{name} must be non-empty text or null")
 
         object.__setattr__(
             self,
@@ -225,19 +238,28 @@ class CsynthValidationStageHandler:
             work_dir
         )
 
-        reference_qualified = self._public_reference_qualified(work_dir)
         blocking_items = tuple(
             item for item in safe_report.items if item.blocking
         )
-        bounded_trial = bool(
-            reference_qualified
-            and legacy_status == "csynth_failed"
+        trial_execution = bool(
+            legacy_status == "csynth_failed"
             and safe_report.metadata.get("execution_evidence_complete") is True
             and summary is not None
             and summary.get("execution_status") == "completed"
+            and summary.get("execution_returncode") not in {None, 0}
+            and summary.get("execution_timeout") is not True
             and blocking_items
             and all(item.owner is FeedbackOwner.UNKNOWN for item in blocking_items)
         )
+        qualification = (
+            self._public_reference_qualification(context, work_dir)
+            if trial_execution else {}
+        )
+        reference_qualified = self._qualification_passed(
+            qualification,
+            allowed_root=work_dir / "original_reference_qualification",
+        )
+        bounded_trial = trial_execution and reference_qualified
         if bounded_trial:
             safe_items = tuple(
                 replace(
@@ -270,6 +292,11 @@ class CsynthValidationStageHandler:
                 "evaluation_split": "public",
                 "feedback_visible_to_agent": True,
                 "public_reference_qualified": reference_qualified,
+                "public_reference_qualification": {
+                    key: qualification.get(key)
+                    for key in ("status", "reason_code", "original_entry_executed", "context_sha256")
+                    if key in qualification
+                },
                 "stage_handler_version": (
                     self.handler_version
                 ),
@@ -351,24 +378,123 @@ class CsynthValidationStageHandler:
             metadata=metadata,
         )
 
-    @staticmethod
-    def _public_reference_qualified(work_dir: Path) -> bool:
-        # Preflight writes this typed, identity-bound qualification record in
-        # the same attempt directory.  It is only an execution prerequisite;
-        # it never proves candidate ownership.
-        path = work_dir.parent / "preflight" / "public_reference_qualification.json"
-        if not path.is_file():
-            return False
+    def _public_reference_qualification(self, context: RunContext, work_dir: Path) -> dict[str, Any]:
+        from flow.tools.vitis_csim import _original_isolation_evidence, _write_json
+
+        path = work_dir / "public_reference_qualification.json"
+        record: dict[str, Any] = {"status": "unavailable", "reason_code": "public_reference_inputs_unavailable"}
+        if not (any(suite.split is EvaluationSplit.PUBLIC
+                    and suite.suite_id == self._inputs.public_suite_id
+                    for suite in context.task.test_suites)
+                and all((self._inputs.original_code, self._inputs.public_testbench_code,
+                    self._inputs.public_suite_id, self._inputs.original_top_function,
+                    self._inputs.candidate_top_function))):
+            _write_json(path, record)
+            return record
+
         try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            identity = self._qualification_identity(context, work_dir)
+            record.update(identity)
+            for existing in (path, work_dir.parent / "preflight" / path.name):
+                if not existing.is_file():
+                    continue
+                try:
+                    value = json.loads(existing.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                reusable_keys = tuple(
+                    key for key in identity if key != "candidate_sha256"
+                )
+                if (isinstance(value, dict) and self._qualification_passed(
+                            value, allowed_root=existing.parent
+                        )
+                        and all(value.get(key) == identity[key] for key in reusable_keys)):
+                    return value
+
+            reserve = default_restart_reserve(RecoveryStage.PUBLIC_COSIM)
+            previous = context.budget.active_reserve
+            increments = {key: value for key, value in reserve.items() if key != "wall_time_s"}
+            context.budget.ensure_available(**increments)
+            held = BudgetLimits(**{
+                f"max_{key}": (getattr(previous, f"max_{key}") or 0) + value
+                for key, value in reserve.items()
+            })
+            try:
+                context.budget.set_active_reserve(held)
+                record = _original_isolation_evidence(
+                    original_code=self._inputs.original_code,
+                    testbench_code=self._inputs.public_testbench_code,
+                    candidate_code=self._inputs.candidate_code,
+                    candidate_top_function=self._inputs.candidate_top_function,
+                    original_top_function=self._inputs.original_top_function,
+                    identity=identity,
+                    budget=context.budget,
+                    source_root=str(work_dir),
+                    extra_sources=tuple(str(work_dir / source) for source in self._inputs.extra_sources),
+                    compile_flags=context.task.target.compile_flags,
+                    keep_dir=str(work_dir / "original_reference_qualification"),
+                )
+                record.update(identity)
+            finally:
+                context.budget.set_active_reserve(previous)
+        except BudgetExceededError as exc:
+            record.update(status="blocked", reason_code="public_reference_budget_unavailable", budget_resource=exc.resource)
+        except Exception as exc:
+            record.update(status="failed", reason_code="public_reference_qualification_error",
+                          exception_type=type(exc).__name__, exception_message=str(exc))
+        _write_json(path, record)
+        return record
+
+    def _qualification_identity(self, context: RunContext, work_dir: Path) -> dict[str, str]:
+        package = context.task.source_package
+        dependencies = {
+            source: sha256((work_dir / source).read_bytes()).hexdigest()
+            for source in self._inputs.extra_sources
+        }
+        if package is not None:
+            for source in sorted(package.root.rglob("*")):
+                if source.is_file() and not source.is_symlink() and source != package.target:
+                    relative = str(source.relative_to(package.root))
+                    dependencies[relative] = sha256((work_dir / relative).read_bytes()).hexdigest()
+        scope = {
+            "attempt": str(work_dir.parent.resolve()),
+            "original_top_function": self._inputs.original_top_function,
+            "candidate_top_function": self._inputs.candidate_top_function,
+            "target_profile": context.task.target.to_dict(),
+            "dependencies": dependencies,
+        }
+        return {
+            "original_sha256": sha256(self._inputs.original_code.encode("utf-8")).hexdigest(),
+            "candidate_sha256": sha256(self._inputs.candidate_code.encode("utf-8")).hexdigest(),
+            "testbench_sha256": sha256(self._inputs.public_testbench_code.encode("utf-8")).hexdigest(),
+            "suite_id_sha256": sha256(self._inputs.public_suite_id.encode("utf-8")).hexdigest(),
+            "context_sha256": sha256(json.dumps(scope, sort_keys=True).encode("utf-8")).hexdigest(),
+        }
+
+    @staticmethod
+    def _qualification_passed(
+        record: dict[str, Any], *, allowed_root: Path | None = None
+    ) -> bool:
+        if not (
+            record.get("status") == "passed"
+            and record.get("authority") == "original_only_runtime"
+            and record.get("original_entry_executed") is True
+        ):
             return False
-        return (
-            isinstance(value, dict)
-            and value.get("status") == "passed"
-            and value.get("authority") == "original_only_runtime"
-            and value.get("original_entry_executed") is True
-        )
+        reference = record.get("execution_evidence_ref")
+        digest = record.get("execution_evidence_sha256")
+        if not isinstance(reference, str) or not isinstance(digest, str):
+            return False
+        path = Path(reference)
+        try:
+            path = path.resolve()
+            if allowed_root is not None:
+                path.relative_to(Path(allowed_root).resolve())
+            return path.is_file() and sha256(path.read_bytes()).hexdigest() == digest
+        except ValueError:
+            return False
+        except OSError:
+            return False
 
     def _invocation_path(self) -> Path:
         return (
