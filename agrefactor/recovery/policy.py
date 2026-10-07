@@ -46,6 +46,7 @@ class RecoveryStage(str, Enum):
 class RecoveryAuthority(str, Enum):
     DETERMINISTIC_PROVEN = "deterministic_proven"
     PUBLIC_REFERENCE_QUALIFIED = "public_reference_qualified"
+    PUBLIC_CSYNTH_BOUNDED_TRIAL = "public_csynth_bounded_trial"
     LLM_ADVISORY = "llm_advisory"
     UNKNOWN = "unknown"
 
@@ -63,6 +64,7 @@ _RECOVERY_AUTHORITY_ALIASES = {
     "original_entry_not_executed": RecoveryAuthority.DETERMINISTIC_PROVEN,
     "original_only_completed": RecoveryAuthority.DETERMINISTIC_PROVEN,
     "public_reference_qualified": RecoveryAuthority.PUBLIC_REFERENCE_QUALIFIED,
+    "public_csynth_bounded_trial": RecoveryAuthority.PUBLIC_CSYNTH_BOUNDED_TRIAL,
     "llm_advisory": RecoveryAuthority.LLM_ADVISORY,
     "unknown": RecoveryAuthority.UNKNOWN,
 }
@@ -145,6 +147,7 @@ class RecoveryRequest:
     lineage_id: str
     physical_tool_launched: bool = False
     evidence_complete: bool = False
+    execution_evidence_complete: bool = False
     advisory_mode: str = "off"
     timeout_class: str | None = None
 
@@ -165,6 +168,8 @@ class RecoveryRequest:
             raise TypeError("physical_tool_launched must be boolean")
         if not isinstance(self.evidence_complete, bool):
             raise TypeError("evidence_complete must be boolean")
+        if not isinstance(self.execution_evidence_complete, bool):
+            raise TypeError("execution_evidence_complete must be boolean")
         cleaned_mode = str(self.advisory_mode).strip().casefold()
         if cleaned_mode not in {"off", "candidate-only"}:
             raise ValueError("advisory_mode must be off or candidate-only")
@@ -212,6 +217,7 @@ class RecoveryDecision:
             "lineage_id": self.request.lineage_id,
             "physical_tool_launched": self.request.physical_tool_launched,
             "evidence_complete": self.request.evidence_complete,
+            "execution_evidence_complete": self.request.execution_evidence_complete,
             "advisory_mode": self.request.advisory_mode,
             "timeout_class": self.request.timeout_class,
             "limit_key": self.limit_key,
@@ -246,7 +252,21 @@ class RecoveryPolicy:
             return self._deny(request, "recovery_requires_agent_safe_evidence")
 
         if request.action is RecoveryAction.REPAIR:
-            if request.owner_authority is RecoveryAuthority.PUBLIC_REFERENCE_QUALIFIED:
+            if request.owner_authority is RecoveryAuthority.PUBLIC_CSYNTH_BOUNDED_TRIAL:
+                if (
+                    request.role is not RecoveryRole.CANDIDATE
+                    or request.stage is not RecoveryStage.CSYNTH
+                    or request.evidence_view != "agent_safe"
+                    or not request.physical_tool_launched
+                    or not request.execution_evidence_complete
+                    or request.evidence_complete
+                    or request.timeout_class is not None
+                ):
+                    return self._review(
+                        request,
+                        "public_csynth_bounded_trial_requires_execution_evidence",
+                    )
+            elif request.owner_authority is RecoveryAuthority.PUBLIC_REFERENCE_QUALIFIED:
                 if (request.role is not RecoveryRole.CANDIDATE
                         or request.stage not in {RecoveryStage.PREFLIGHT, RecoveryStage.PUBLIC_CSIM, RecoveryStage.PUBLIC_COSIM}
                         or not request.physical_tool_launched
@@ -411,19 +431,21 @@ class RecoveryLedger:
             raise RecoveryDeniedError(decision.reason_code)
 
         key, limit = self._limit_key(request)
-        observed = self._counts.get(key, 0)
-        if observed >= limit:
-            blocked = RecoveryDecision(
-                RecoveryDecisionStatus.DENIED,
-                "recovery_limit_exhausted",
-                request,
-                limit_key=key,
-                limit=limit,
-                observed=observed,
-                restart_required=decision.restart_required,
-            )
-            self._append(blocked, key, False)
-            raise RecoveryDeniedError(blocked.reason_code)
+        additional_limits = self._additional_limit_keys(request, key)
+        for checked_key, checked_limit in ((key, limit), *additional_limits):
+            observed = self._counts.get(checked_key, 0)
+            if observed >= checked_limit:
+                blocked = RecoveryDecision(
+                    RecoveryDecisionStatus.DENIED,
+                    "recovery_limit_exhausted",
+                    request,
+                    limit_key=checked_key,
+                    limit=checked_limit,
+                    observed=observed,
+                    restart_required=decision.restart_required,
+                )
+                self._append(blocked, checked_key, False)
+                raise RecoveryDeniedError(blocked.reason_code)
 
         total = self._counts.get("run:total_recovery_actions", 0)
         if request.action not in {RecoveryAction.VALIDATION_RESTART}:
@@ -479,7 +501,11 @@ class RecoveryLedger:
                 self._append(blocked, key, False)
                 raise RecoveryBudgetBlockedError(blocked.reason_code) from exc
 
-        self._counts[key] = observed + 1
+        self._counts[key] = self._counts.get(key, 0) + 1
+        for additional_key, _ in additional_limits:
+            self._counts[additional_key] = (
+                self._counts.get(additional_key, 0) + 1
+            )
         if request.action not in {RecoveryAction.VALIDATION_RESTART}:
             self._counts["run:total_recovery_actions"] = total + 1
         self._append(decision, key, True)
@@ -566,6 +592,29 @@ class RecoveryLedger:
                     limits.testbench_preflight_repairs,
                 )
         return f"{prefix}:{request.action.value}", 0
+
+    def _additional_limit_keys(
+        self,
+        request: RecoveryRequest,
+        primary_key: str,
+    ) -> tuple[tuple[str, int], ...]:
+        """Return aggregate limits that supplement the stage lane."""
+
+        if request.action is not RecoveryAction.REPAIR:
+            return ()
+        if request.role is not RecoveryRole.CANDIDATE:
+            return ()
+        aggregate_key = (
+            f"lineage:{request.lineage_id}:candidate:repairs_total"
+        )
+        if aggregate_key == primary_key:
+            return ()
+        return (
+            (
+                aggregate_key,
+                self._policy.limits.refactor_candidate_repairs_total,
+            ),
+        )
 
     def _append(
         self,

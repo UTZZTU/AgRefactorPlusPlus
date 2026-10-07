@@ -232,6 +232,53 @@ def _sha256_json(value: Mapping[str, Any]) -> str:
     )
 
 
+def _contract_observation(
+    *,
+    public_testbench_sha256: str,
+    public_hls_decl_sha256: str,
+    public_runtime_contract_sha256: str,
+    input_domain_contract_sha256: str,
+) -> dict[str, Any]:
+    """Record contract identities for shadow review without gating execution.
+
+    The existing runtime contract remains authoritative for execution. This
+    observation records only typed and hashed material; it does not infer C++
+    output or state semantics from source text.
+    """
+    return {
+        "schema_version": 1,
+        "mode": "shadow",
+        "status": "observed",
+        "public_testbench_sha256": public_testbench_sha256,
+        "public_hls_decl_sha256": public_hls_decl_sha256,
+        "public_runtime_contract_sha256": public_runtime_contract_sha256,
+        "input_domain_contract_sha256": input_domain_contract_sha256,
+        "observable_mapping": {
+            "comparison": {
+                "status": "typed",
+                "source": "public_runtime_contract",
+                "contract_field": "candidate_mismatch_returncodes",
+            },
+            "output_parameters": {
+                "status": "legacy_unverified",
+                "source": "public_testbench",
+            },
+            "post_call_state": {
+                "status": "legacy_unverified",
+                "source": "public_testbench",
+            },
+            "interface_adaptation": {
+                "status": "legacy_unverified",
+                "source": "frozen_public_abi",
+            },
+        },
+        "hidden_boundary": {
+            "hidden_inputs_included": False,
+            "hidden_outputs_included": False,
+        },
+    }
+
+
 def _sha256_file(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest()
 
@@ -2960,6 +3007,17 @@ class SourceBootstrapPhase:
                         testbench_code=code,
                         candidate_top_function=str(generated["candidate_top"]),
                         frozen_hls_decl=str(generated["public_hls_decl"]),
+                        source_path=str(target_path),
+                        include_dirs=tuple(
+                            str(path)
+                            for path in (
+                                (target_path.parent,)
+                                + ((self._request.source_package.root,)
+                                   if self._request.source_package is not None
+                                   else ())
+                            )
+                        ),
+                        compile_flags=tuple(self._request.target.compile_flags),
                     )
                     runtime_contract_sha = _sha256_json(runtime_contract)
                     if runtime_contract_sha != generated.get(
@@ -2980,6 +3038,21 @@ class SourceBootstrapPhase:
                                 "public_hls_decl_sha256"
                             ],
                         },
+                    )
+                    _atomic_json(
+                        bootstrap_root / "contract_observation.json",
+                        _contract_observation(
+                            public_testbench_sha256=digest,
+                            public_hls_decl_sha256=str(
+                                generated["public_hls_decl_sha256"]
+                            ),
+                            public_runtime_contract_sha256=runtime_contract_sha,
+                            input_domain_contract_sha256=str(
+                                generated.get(
+                                    "input_domain_contract_sha256", ""
+                                )
+                            ),
+                        ),
                     )
                 suite = TestSuiteSpec(
                     suite_id=suite_id,

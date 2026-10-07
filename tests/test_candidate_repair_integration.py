@@ -135,6 +135,16 @@ def feedback_item(
             else "safe detail"
         ),
         source="synthetic",
+        metadata=(
+            {
+                "owner_authority": "deterministic_proven",
+                "physical_tool_launched": True,
+                "tool_launched": True,
+                "evidence_complete": True,
+            }
+            if owner in {FeedbackOwner.CANDIDATE, FeedbackOwner.TESTBENCH}
+            else {}
+        ),
     )
 
 

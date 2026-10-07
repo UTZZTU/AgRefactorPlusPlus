@@ -169,6 +169,40 @@ class CsynthValidationStageHandlerTests(
             executor=executor,
         )
 
+    def test_public_csynth_unknown_gets_bounded_trial_authority(self):
+        with tempfile.TemporaryDirectory() as directory:
+            qualification = Path(directory) / "preflight" / "public_reference_qualification.json"
+            qualification.parent.mkdir(parents=True, exist_ok=True)
+            qualification.write_text(json.dumps({
+                "authority": "original_only_runtime",
+                "status": "passed",
+                "original_entry_executed": True,
+            }), encoding="utf-8")
+
+            def executor(work_dir, variables, timelimit, *, budget):
+                write_invocation(work_dir, returncode=1)
+                write_log(
+                    work_dir,
+                    "ERROR: [HLS 214-390] Pointer (phi) points to an unknown underlying object and therefore cannot be synthesized\n",
+                )
+                return "csynth_failed", "synthesis failed"
+
+            report = self.handler(Path(directory) / "csynth", executor)(make_context())
+            self.assertTrue(report.blocking)
+            item = report.items[0]
+            self.assertEqual(item.owner, FeedbackOwner.UNKNOWN)
+            self.assertEqual(
+                item.metadata["recovery_authority"],
+                "public_csynth_bounded_trial",
+            )
+            self.assertTrue(item.metadata["execution_evidence_complete"])
+            self.assertFalse(item.metadata["evidence_complete"])
+            self.assertTrue(item.metadata["repair_eligible"])
+            self.assertEqual(
+                report.metadata["recovery_authority"],
+                "public_csynth_bounded_trial",
+            )
+
     def test_success_returns_agent_safe_report(self):
         with tempfile.TemporaryDirectory() as directory:
             observed = {}

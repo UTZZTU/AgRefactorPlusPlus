@@ -6,6 +6,8 @@ from agrefactor.recovery import (
     RecoveryBudgetBlockedError,
     RecoveryDeniedError,
     RecoveryLedger,
+    RecoveryLimits,
+    RecoveryPolicy,
     RecoveryRequest,
     RecoveryRole,
     RecoveryStage,
@@ -16,7 +18,8 @@ from agrefactor.recovery import (
 
 def req(*, action=RecoveryAction.REPAIR, role=RecoveryRole.CANDIDATE,
         stage=RecoveryStage.PUBLIC_CSIM, authority=RecoveryAuthority.DETERMINISTIC_PROVEN,
-        mode="off", view="agent_safe", timeout_class=None, launched=True, complete=True):
+        mode="off", view="agent_safe", timeout_class=None, launched=True,
+        complete=True, execution_complete=False):
     return RecoveryRequest(
         action=action,
         role=role,
@@ -28,6 +31,7 @@ def req(*, action=RecoveryAction.REPAIR, role=RecoveryRole.CANDIDATE,
         timeout_class=timeout_class,
         physical_tool_launched=launched,
         evidence_complete=complete,
+        execution_evidence_complete=execution_complete,
     )
 
 
@@ -50,6 +54,43 @@ class RecoveryPolicyTests(unittest.TestCase):
         self.assertTrue(conservative_v1_policy().decide(
             req(stage=RecoveryStage.PUBLIC_COSIM)
         ).allowed)
+
+    def test_public_csynth_bounded_trial_requires_execution_evidence(self):
+        decision = conservative_v1_policy().decide(req(
+            stage=RecoveryStage.CSYNTH,
+            authority=RecoveryAuthority.PUBLIC_CSYNTH_BOUNDED_TRIAL,
+            complete=False,
+            execution_complete=True,
+        ))
+        self.assertTrue(decision.allowed)
+        self.assertEqual(
+            decision.to_dict()["owner_authority"],
+            "public_csynth_bounded_trial",
+        )
+        self.assertTrue(decision.to_dict()["execution_evidence_complete"])
+
+    def test_public_csynth_trial_rejects_owner_proven_or_timeout(self):
+        policy = conservative_v1_policy()
+        self.assertFalse(policy.decide(req(
+            stage=RecoveryStage.CSYNTH,
+            authority=RecoveryAuthority.PUBLIC_CSYNTH_BOUNDED_TRIAL,
+            complete=True,
+            execution_complete=True,
+        )).allowed)
+        self.assertFalse(policy.decide(req(
+            stage=RecoveryStage.CSYNTH,
+            authority=RecoveryAuthority.PUBLIC_CSYNTH_BOUNDED_TRIAL,
+            complete=False,
+            execution_complete=True,
+            timeout_class="candidate_deadlock",
+        )).allowed)
+
+    def test_legacy_public_reference_qualification_does_not_cover_csynth(self):
+        decision = conservative_v1_policy().decide(req(
+            stage=RecoveryStage.CSYNTH,
+            authority=RecoveryAuthority.PUBLIC_REFERENCE_QUALIFIED,
+        ))
+        self.assertFalse(decision.allowed)
 
     def test_testbench_public_csim_allowed(self):
         self.assertTrue(conservative_v1_policy().decide(
@@ -126,6 +167,22 @@ class RecoveryPolicyTests(unittest.TestCase):
                     ledger.reserve(req(stage=stage), restart_reserve={})
                 with self.assertRaises(RecoveryDeniedError):
                     ledger.reserve(req(stage=stage), restart_reserve={})
+
+    def test_ledger_enforces_candidate_total_across_stage_lanes(self):
+        policy = RecoveryPolicy(limits=RecoveryLimits(
+            refactor_candidate_repairs_total=2,
+            candidate_public_csim_repairs=3,
+            candidate_public_cosim_repairs=3,
+        ))
+        ledger = RecoveryLedger(policy)
+        ledger.reserve(req(stage=RecoveryStage.PUBLIC_CSIM), restart_reserve={})
+        ledger.reserve(req(stage=RecoveryStage.PUBLIC_COSIM), restart_reserve={})
+        with self.assertRaises(RecoveryDeniedError):
+            ledger.reserve(req(stage=RecoveryStage.CSYNTH), restart_reserve={})
+        payload = ledger.to_dict()
+        aggregate_key = "lineage:task.lineage:candidate:repairs_total"
+        self.assertEqual(payload["counts"][aggregate_key], 2)
+        self.assertEqual(payload["events"][-1]["limit_key"], aggregate_key)
 
     def test_ledger_checks_restart_budget(self):
         ledger = RecoveryLedger()

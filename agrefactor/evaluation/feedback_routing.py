@@ -264,14 +264,29 @@ class FeedbackRouter:
         for item in blocking:
             grouped[self._action_for_item(item)].append(item)
 
-        qualified_unknown = [item for item in blocking
-                             if item.owner is FeedbackOwner.UNKNOWN
-                             and self._action_for_item(item) is FeedbackRouteAction.REPAIR_CANDIDATE]
-        if qualified_unknown:
-            common_metadata.update(
-                owner_authority="public_reference_qualified",
-                physical_tool_launched=True, evidence_complete=True,
+        public_split = str(
+            report.metadata.get("evaluation_split", report.metadata.get("split", ""))
+        ).casefold() == "public"
+        qualified_unknown = [
+            item for item in blocking
+            if item.owner is FeedbackOwner.UNKNOWN
+            and self._action_for_item(item) is FeedbackRouteAction.REPAIR_CANDIDATE
+            and (
+                item.metadata.get("owner_authority") == "public_reference_qualified"
+                or (
+                    public_split
+                    and item.stage is FeedbackStage.CSYNTH
+                    and item.metadata.get("recovery_authority") == "public_csynth_bounded_trial"
+                    and item.metadata.get("execution_evidence_complete") is True
+                    and item.metadata.get("repair_eligible") is True
+                )
             )
+        ]
+        if qualified_unknown and any(
+            item.metadata.get("recovery_authority") == "public_csynth_bounded_trial"
+            for item in qualified_unknown
+        ):
+            common_metadata["recovery_authority"] = "public_csynth_bounded_trial"
 
         blocking_ids = tuple(
             item.feedback_id for item in blocking
@@ -410,14 +425,27 @@ class FeedbackRouter:
                 for item in items
             )
 
+        recovery_authorities = {
+            item.metadata.get("recovery_authority")
+            for item in items
+            if item.metadata.get("recovery_authority") not in {None, "unknown"}
+        }
         return {
             "owner_authority": authority,
+            "recovery_authority": (
+                next(iter(recovery_authorities))
+                if len(recovery_authorities) == 1
+                else None
+            ),
             "physical_tool_launched": all_true(
                 "physical_tool_launched", report_physical
             ),
             "tool_launched": all_true("tool_launched", report_physical),
             "evidence_complete": all_true(
                 "evidence_complete", report_complete
+            ),
+            "execution_evidence_complete": all_true(
+                "execution_evidence_complete", False
             ),
             "repair_eligible": all_true(
                 "repair_eligible", report_eligible
@@ -458,6 +486,12 @@ class FeedbackRouter:
                 and item.metadata.get("repair_eligible") is True
                 and item.metadata.get("evidence_complete") is True
                 and item.metadata.get("tool_launched") is True):
+            return FeedbackRouteAction.REPAIR_CANDIDATE
+        if (item.owner is FeedbackOwner.UNKNOWN
+                and item.stage is FeedbackStage.CSYNTH
+                and item.metadata.get("recovery_authority") == "public_csynth_bounded_trial"
+                and item.metadata.get("execution_evidence_complete") is True
+                and item.metadata.get("repair_eligible") is True):
             return FeedbackRouteAction.REPAIR_CANDIDATE
 
         return FeedbackRouteAction.REVIEW_UNKNOWN

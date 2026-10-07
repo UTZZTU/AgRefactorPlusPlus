@@ -246,6 +246,17 @@
       "confidence": "partial",
       "owner_policy": "resolve_from_evidence",
       "priority": 10
+    },
+    {
+      "id": "hls_214_390_unknown_pointer_phi",
+      "match": {"hls_codes": ["HLS 214-390"], "patterns": ["\\bPointer \\(phi\\) points to an unknown underlying object and therefore cannot be synthesized\\b"]},
+      "stage": "csynth",
+      "category": "unsupported_construct",
+      "summary": "Vitis HLS cannot synthesize a pointer phi with an unknown underlying object",
+      "parser_rule": "unsupported_unknown_pointer_phi",
+      "confidence": "high",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 155
     }
   ]
 }

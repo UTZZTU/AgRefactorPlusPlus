@@ -365,7 +365,13 @@ def _build_candidate_repair_prompt(
             "the Original was qualified on the same frozen inputs. Do not assume a proven candidate cause. "
             "The proposal remains untrusted until the entire validation chain passes."
             if any(
-                item.metadata.get("owner_authority") == "public_reference_qualified"
+                (
+                    item.metadata.get("owner_authority") == "public_reference_qualified"
+                    or (
+                        spec.purpose is PromptPurpose.CANDIDATE_CSYNTH_REPAIR
+                        and item.metadata.get("recovery_authority") == "public_csynth_bounded_trial"
+                    )
+                )
                 for item in inputs.feedback.items if item.blocking
             ) else spec.objective
         ),

@@ -44,6 +44,7 @@ _SAFE_ITEM_METADATA_KEYS = frozenset(
         "tool_launched",
         "process_exit_observed",
         "command_completion_proven",
+        "execution_evidence_complete",
         "evidence_complete",
         "evidence_consistent",
         "returncode_valid",
@@ -64,6 +65,9 @@ _SAFE_ITEM_METADATA_KEYS = frozenset(
         "evidence_requirements",
         "allowed_actions",
         "repair_eligible",
+        "recovery_authority",
+        "evaluation_split",
+        "public_reference_qualified",
         "report_identity_proven",
     }
 )
@@ -149,8 +153,9 @@ class CsynthFeedbackViewAdapter:
             metadata={
                 **{key: report.metadata[key] for key in (
                     "tool_launched", "process_exit_observed", "command_completion_proven",
-                    "evidence_complete", "evidence_consistent", "owner_authority", "repair_eligible",
-                    "report_identity_proven",
+                    "execution_evidence_complete", "evidence_complete", "evidence_consistent",
+                    "owner_authority", "recovery_authority", "evaluation_split",
+                    "public_reference_qualified", "repair_eligible", "report_identity_proven",
                 ) if key in report.metadata},
                 "adapter_version": self.adapter_version,
                 "evidence_view": "agent_safe",

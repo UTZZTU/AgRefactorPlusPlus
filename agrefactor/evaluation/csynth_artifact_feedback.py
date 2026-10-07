@@ -206,10 +206,17 @@ class CsynthArtifactFeedbackEvaluator:
         )
         owner_proven = (completed and returncode != 0 and evidence_consistent and log_current
                         and ownership.evidence_complete)
+        execution_evidence_complete = bool(
+            completed
+            and returncode != 0
+            and evidence_consistent
+            and log_current
+        )
         facts = {
             "tool_launched": execution.get("status") in {"completed", "timeout", "execution_error"},
             "process_exit_observed": completed,
             "command_completion_proven": completed,
+            "execution_evidence_complete": execution_evidence_complete,
             "evidence_complete": owner_proven,
             "evidence_consistent": evidence_consistent,
             "owner_authority": (

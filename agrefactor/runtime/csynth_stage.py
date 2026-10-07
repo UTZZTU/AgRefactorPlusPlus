@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import os
 from pathlib import Path
@@ -225,9 +225,51 @@ class CsynthValidationStageHandler:
             work_dir
         )
 
+        reference_qualified = self._public_reference_qualified(work_dir)
+        blocking_items = tuple(
+            item for item in safe_report.items if item.blocking
+        )
+        bounded_trial = bool(
+            reference_qualified
+            and legacy_status == "csynth_failed"
+            and safe_report.metadata.get("execution_evidence_complete") is True
+            and summary is not None
+            and summary.get("execution_status") == "completed"
+            and blocking_items
+            and all(item.owner is FeedbackOwner.UNKNOWN for item in blocking_items)
+        )
+        if bounded_trial:
+            safe_items = tuple(
+                replace(
+                    item,
+                    metadata={
+                        **item.metadata,
+                        "recovery_authority": "public_csynth_bounded_trial",
+                        "repair_eligible": True,
+                        "public_reference_qualified": True,
+                        "evaluation_split": "public",
+                    },
+                )
+                if item.blocking else item
+                for item in safe_report.items
+            )
+            safe_report = replace(
+                safe_report,
+                items=safe_items,
+                metadata={
+                    **safe_report.metadata,
+                    "recovery_authority": "public_csynth_bounded_trial",
+                    "public_reference_qualified": True,
+                    "evaluation_split": "public",
+                    "feedback_visible_to_agent": True,
+                },
+            )
         metadata = dict(safe_report.metadata)
         metadata.update(
             {
+                "evaluation_split": "public",
+                "feedback_visible_to_agent": True,
+                "public_reference_qualified": reference_qualified,
                 "stage_handler_version": (
                     self.handler_version
                 ),
@@ -307,6 +349,25 @@ class CsynthValidationStageHandler:
             items=safe_report.items,
             source_evidence=source_evidence,
             metadata=metadata,
+        )
+
+    @staticmethod
+    def _public_reference_qualified(work_dir: Path) -> bool:
+        # Preflight writes this typed, identity-bound qualification record in
+        # the same attempt directory.  It is only an execution prerequisite;
+        # it never proves candidate ownership.
+        path = work_dir.parent / "preflight" / "public_reference_qualification.json"
+        if not path.is_file():
+            return False
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return False
+        return (
+            isinstance(value, dict)
+            and value.get("status") == "passed"
+            and value.get("authority") == "original_only_runtime"
+            and value.get("original_entry_executed") is True
         )
 
     def _invocation_path(self) -> Path:

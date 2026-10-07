@@ -31,6 +31,10 @@ class RecoveryAuthorityNormalizationTests(unittest.TestCase):
             RecoveryAuthority.PUBLIC_REFERENCE_QUALIFIED,
         )
         self.assertIs(
+            normalize_recovery_authority("public_csynth_bounded_trial"),
+            RecoveryAuthority.PUBLIC_CSYNTH_BOUNDED_TRIAL,
+        )
+        self.assertIs(
             normalize_recovery_authority("llm_advisory"),
             RecoveryAuthority.LLM_ADVISORY,
         )

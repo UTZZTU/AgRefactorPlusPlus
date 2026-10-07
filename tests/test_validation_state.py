@@ -55,6 +55,17 @@ def make_decision(
         is FeedbackRouteAction.CONTINUE_VALIDATION
         else selected
     )
+    metadata = {"evidence_view": view}
+    if action in {
+        FeedbackRouteAction.REPAIR_CANDIDATE,
+        FeedbackRouteAction.REPAIR_TESTBENCH,
+    }:
+        metadata.update({
+            "owner_authority": "deterministic_proven",
+            "physical_tool_launched": True,
+            "tool_launched": True,
+            "evidence_complete": True,
+        })
     return FeedbackRouteDecision(
         decision_id=f"decision-{action.value}",
         action=action,
@@ -62,7 +73,7 @@ def make_decision(
         source_report_id=source_report_id,
         blocking_feedback_ids=ids,
         selected_feedback_ids=ids,
-        metadata={"evidence_view": view},
+        metadata=metadata,
     )
 
 

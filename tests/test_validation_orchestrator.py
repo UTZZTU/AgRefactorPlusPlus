@@ -108,6 +108,16 @@ def item(
         summary="normalized feedback",
         detail=detail,
         source="test",
+        metadata=(
+            {
+                "owner_authority": "deterministic_proven",
+                "physical_tool_launched": True,
+                "tool_launched": True,
+                "evidence_complete": True,
+            }
+            if owner in {FeedbackOwner.CANDIDATE, FeedbackOwner.TESTBENCH}
+            else {}
+        ),
     )
 
 

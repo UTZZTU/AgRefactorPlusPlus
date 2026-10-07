@@ -738,6 +738,7 @@ class SharedLayeredPromptBuilder:
                 expected_owner is FeedbackOwner.CANDIDATE
                 and request.purpose in {
                     PromptPurpose.CANDIDATE_COMPILE_REPAIR,
+                    PromptPurpose.CANDIDATE_CSYNTH_REPAIR,
                     PromptPurpose.CANDIDATE_PUBLIC_CSIM_REPAIR,
                     PromptPurpose.CANDIDATE_PUBLIC_COSIM_REPAIR,
                 }

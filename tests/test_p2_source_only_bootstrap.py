@@ -5,6 +5,7 @@ from hashlib import sha256
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from agrefactor.cli import build_parser, main
 from agrefactor.compat import (
@@ -349,9 +350,30 @@ class P2SourceOnlyBootstrapTests(unittest.TestCase):
                 trace=trace,
             )
 
-            result = phase(context)
+            captured_contract_calls = []
+
+            def capture_contract(*args, **kwargs):
+                captured_contract_calls.append(dict(kwargs))
+                return PUBLIC_RUNTIME_CONTRACT
+
+            with patch(
+                "flow.tools.tb_optimizer.validate_public_runtime_contract",
+                side_effect=capture_contract,
+            ):
+                result = phase(context)
 
             self.assertTrue(result.succeeded)
+            self.assertEqual(len(captured_contract_calls), 1)
+            contract_call = captured_contract_calls[0]
+            self.assertTrue(Path(contract_call["source_path"]).is_file())
+            self.assertEqual(
+                tuple(contract_call["include_dirs"]),
+                (str(Path(contract_call["source_path"]).parent),),
+            )
+            self.assertEqual(
+                contract_call["compile_flags"],
+                tuple(request.target.compile_flags),
+            )
             self.assertEqual(
                 generation.context_ids[0][:2],
                 formal.context_ids[0],
@@ -399,6 +421,34 @@ class P2SourceOnlyBootstrapTests(unittest.TestCase):
             self.assertEqual(
                 contract_evidence["public_testbench_sha256"],
                 sha256((PUBLIC.rstrip() + "\n").encode("utf-8")).hexdigest(),
+            )
+            observation = json.loads(
+                (
+                    layout.artifact_root
+                    / "bootstrap"
+                    / "contract_observation.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(observation["mode"], "shadow")
+            self.assertEqual(observation["status"], "observed")
+            self.assertEqual(
+                observation["public_testbench_sha256"],
+                contract_evidence["public_testbench_sha256"],
+            )
+            self.assertEqual(
+                observation["public_runtime_contract_sha256"],
+                contract_evidence["runtime_contract_sha256"],
+            )
+            self.assertEqual(
+                observation["observable_mapping"]["comparison"]["status"],
+                "typed",
+            )
+            self.assertEqual(
+                observation["observable_mapping"]["output_parameters"]["status"],
+                "legacy_unverified",
+            )
+            self.assertFalse(
+                observation["hidden_boundary"]["hidden_inputs_included"]
             )
             self.assertEqual(
                 {

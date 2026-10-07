@@ -97,6 +97,13 @@ def make_feedback(
     detail="operator detail must not drive routing",
 ):
     metadata = {"evidence_view": view}
+    if owner is FeedbackOwner.CANDIDATE:
+        metadata.update({
+            "owner_authority": "deterministic_proven",
+            "evidence_complete": True,
+            "tool_launched": True,
+            "physical_tool_launched": True,
+        })
     if state in {ValidationState.PUBLIC_EVALUATION, ValidationState.PUBLIC_COSIM, ValidationState.HIDDEN_EVALUATION}:
         if include_split:
             metadata["evaluation_split"] = (
@@ -121,6 +128,7 @@ def make_feedback(
                 summary=summary,
                 detail=detail,
                 source="test",
+                metadata=metadata,
             ),
         ),
         metadata=metadata,
@@ -140,7 +148,13 @@ def make_route(report, action=FeedbackRouteAction.REPAIR_CANDIDATE, *, source_id
         source_report_id=source_id or report.report_id,
         blocking_feedback_ids=tuple(item.feedback_id for item in report.items if item.blocking),
         selected_feedback_ids=selected,
-        metadata={"evidence_view": report.metadata.get("evidence_view")},
+        metadata={
+            "evidence_view": report.metadata.get("evidence_view"),
+            "owner_authority": report.items[0].metadata.get("owner_authority", "unknown"),
+            "evidence_complete": report.items[0].metadata.get("evidence_complete", False),
+            "tool_launched": report.items[0].metadata.get("tool_launched", False),
+            "physical_tool_launched": report.items[0].metadata.get("physical_tool_launched", False),
+        },
     )
 
 
@@ -309,6 +323,44 @@ class CandidateRepairEntryContractTests(unittest.TestCase):
 
     def test_accepts_csynth_candidate_route(self):
         self.assertIs(make_request().failure_state, ValidationState.CSYNTH)
+
+    def test_accepts_public_csynth_bounded_trial_route(self):
+        report = make_feedback(ValidationState.CSYNTH, owner=FeedbackOwner.UNKNOWN)
+        item = replace(
+            report.items[0],
+            metadata={
+                "recovery_authority": "public_csynth_bounded_trial",
+                "execution_evidence_complete": True,
+                "evidence_complete": False,
+                "repair_eligible": True,
+                "tool_launched": True,
+                "physical_tool_launched": True,
+            },
+        )
+        report = replace(
+            report,
+            items=(item,),
+            metadata={
+                **report.metadata,
+                "evaluation_split": EvaluationSplit.PUBLIC.value,
+                "feedback_visible_to_agent": True,
+            },
+        )
+        route = FeedbackRouteDecision(
+            decision_id="bounded.route",
+            action=FeedbackRouteAction.REPAIR_CANDIDATE,
+            reason="bounded trial",
+            source_report_id=report.report_id,
+            blocking_feedback_ids=(item.feedback_id,),
+            selected_feedback_ids=(item.feedback_id,),
+            metadata={
+                "evidence_view": "agent_safe",
+                "recovery_authority": "public_csynth_bounded_trial",
+                "execution_evidence_complete": True,
+            },
+        )
+        request = make_request(feedback=report, route=route)
+        self.assertIs(request.failure_state, ValidationState.CSYNTH)
 
     def test_accepts_public_candidate_route(self):
         self.assertIs(make_request(state=ValidationState.PUBLIC_EVALUATION).failure_state, ValidationState.PUBLIC_EVALUATION)

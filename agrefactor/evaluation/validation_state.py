@@ -487,7 +487,10 @@ class ValidationStateMachine:
             }[action]
             stage = RecoveryStage(state.value)
             owner_authority = normalize_recovery_authority(
-                decision.metadata.get("owner_authority", "unknown")
+                decision.metadata.get(
+                    "recovery_authority",
+                    decision.metadata.get("owner_authority", "unknown"),
+                )
             )
             policy_decision = self._recovery_policy.decide(
                 RecoveryRequest(
@@ -504,6 +507,9 @@ class ValidationStateMachine:
                     ),
                     evidence_complete=bool(
                         decision.metadata.get("evidence_complete", False)
+                    ),
+                    execution_evidence_complete=bool(
+                        decision.metadata.get("execution_evidence_complete", False)
                     ),
                     advisory_mode=str(
                         decision.metadata.get("advisory_mode", "off")

@@ -417,6 +417,72 @@ class FeedbackRouterTests(unittest.TestCase):
         self.assertTrue(decision.metadata["tool_launched"])
         self.assertTrue(decision.metadata["evidence_complete"])
 
+    def test_public_csynth_bounded_trial_keeps_owner_unknown(self) -> None:
+        bounded = FeedbackItem(
+            feedback_id="report.bounded",
+            stage=FeedbackStage.CSYNTH,
+            category=FeedbackCategory.UNSUPPORTED_CONSTRUCT,
+            severity=FeedbackSeverity.ERROR,
+            owner=FeedbackOwner.UNKNOWN,
+            summary="unknown synthesis construct",
+            detail="safe diagnostic",
+            source="csynth",
+            metadata={
+                "recovery_authority": "public_csynth_bounded_trial",
+                "execution_evidence_complete": True,
+                "evidence_complete": False,
+                "repair_eligible": True,
+                "tool_launched": True,
+                "physical_tool_launched": True,
+            },
+        )
+        decision = self.route(
+            FeedbackReport(
+                report_id="report",
+                source="csynth",
+                items=(bounded,),
+                metadata={
+                    "evidence_view": "agent_safe",
+                    "evaluation_split": "public",
+                    "feedback_visible_to_agent": True,
+                },
+            )
+        )
+        self.assertEqual(decision.action, FeedbackRouteAction.REPAIR_CANDIDATE)
+        self.assertEqual(
+            decision.metadata["recovery_authority"],
+            "public_csynth_bounded_trial",
+        )
+        self.assertFalse(decision.metadata["evidence_complete"])
+        self.assertTrue(decision.metadata["execution_evidence_complete"])
+
+    def test_legacy_reference_authority_does_not_cover_csynth(self) -> None:
+        legacy = FeedbackItem(
+            feedback_id="report.legacy-csynth",
+            stage=FeedbackStage.CSYNTH,
+            category=FeedbackCategory.UNKNOWN,
+            severity=FeedbackSeverity.ERROR,
+            owner=FeedbackOwner.UNKNOWN,
+            summary="legacy authority",
+            detail="safe diagnostic",
+            source="csynth",
+            metadata={
+                "owner_authority": "public_reference_qualified",
+                "repair_eligible": True,
+                "evidence_complete": True,
+                "tool_launched": True,
+            },
+        )
+        decision = self.route(
+            FeedbackReport(
+                report_id="report",
+                source="csynth",
+                items=(legacy,),
+                metadata={"evidence_view": "agent_safe", "evaluation_split": "public"},
+            )
+        )
+        self.assertEqual(decision.action, FeedbackRouteAction.REVIEW_UNKNOWN)
+
     def test_router_uses_no_detail_or_source_evidence(
         self,
     ) -> None:
