@@ -22,8 +22,9 @@ agents:
         - If both sides are invoked in one run, reset Golden-owned storage and Candidate-owned storage with separate operations. Never reset or overwrite Golden outputs after the Original call and before comparison.
         - For each Candidate pointer or array argument, use one fixed backing-storage capacity across every Candidate call. It must cover the largest tested access range; smaller cases vary only their logical length. Never pass variable-sized storage to an interface with one fixed RTL cosimulation depth.
         - Both sides must begin from equivalent clean logical states.
-        - Compare public outputs and observable behavior. On mismatch, print a useful stderr message and return non-zero.
+        - Compare public outputs and observable behavior. Accumulate mismatches and print useful stderr diagnostics, then continue every planned case. After all cases complete, return non-zero if any mismatch occurred; reporting must not relax comparisons or change that failure result.
         - Correctness and a meaningful golden-vs-Candidate comparison take priority over testcase count or coverage.
+        - The executor provides `agrefactor_case_evidence.hpp` when `AGREFACTOR_CASE_EVIDENCE` is defined. Under `#ifdef AGREFACTOR_CASE_EVIDENCE`, call `agrefactor_case_evidence::case_result("<unique-case-id>", <true-if-this-case-matched>)` once after each logical Original-vs-Candidate comparison completes. Call `agrefactor_case_evidence::complete()` only after every planned case finishes along the existing control flow. An early return, exception, or incomplete case must not emit completion. These reporting calls must not alter comparisons, return codes, or whether later tests execute.
         - The Candidate declaration must be HLS-synthesizable and named exactly with `_hls` appended.
 
       Reply with exactly one complete fenced `cpp` block and no commentary.

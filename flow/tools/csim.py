@@ -1,10 +1,18 @@
 import os, json, requests, shlex
+from pathlib import Path
+from uuid import uuid4
 from flow.base_agent import HLSAgentLoader
 from autogen.agentchat.group import ContextVariables # type: ignore
 import flow.tools as tools
 from pydantic import BaseModel
 from typing import Annotated, Optional, Dict, Any
 from agrefactor.config import DEFAULT_CSIM_TIMEOUT_S
+from flow.tools.case_evidence import (
+    EVIDENCE_FILENAME,
+    build_header as build_case_evidence_header,
+    make_identity as make_case_evidence_identity,
+    read_case_counts,
+)
 
 from agrefactor.runtime.budget import (
     BudgetExceededError,
@@ -52,7 +60,8 @@ def _normalize_extra_sources(value: Any) -> tuple[str, ...]:
 def _csim_compile_command(extra_sources: tuple[str, ...]) -> str:
     sources = ("testbench.cpp", "orig_code.cpp", "refactor_code.cpp", *extra_sources)
     return (
-        "g++ -D__SYNTHESIS__ -I$XILINX_HLS/include -O2 "
+        "g++ -D__SYNTHESIS__ -DAGREFACTOR_CASE_EVIDENCE=1 "
+        "-I$XILINX_HLS/include -O2 "
         "-Wno-unknown-pragmas "
         + " ".join(shlex.quote(path) for path in sources)
         + " -o csim"
@@ -72,7 +81,12 @@ def make_csim_script(work_dir: str, cv: ContextVariables):
     with open(os.path.join(work_dir, "refactor_code.cpp"), "w", encoding="utf-8") as f:
         f.write(cv["curr_code"])
     with open(os.path.join(work_dir, "testbench.cpp"), "w", encoding="utf-8") as f:
-        f.write(cv["testbench"])
+        f.write(
+            "#ifdef AGREFACTOR_CASE_EVIDENCE\n"
+            '#include "agrefactor_case_evidence.hpp"\n'
+            "#endif\n"
+            + cv["testbench"]
+        )
 
 def _write_json(path: str, payload: dict[str, Any]) -> None:
     with open(path, "w", encoding="utf-8") as stream:
@@ -121,6 +135,7 @@ def _build_csim_invocation(
     timelimit: int,
     budget: BudgetManager | None,
     extra_sources: tuple[str, ...] = (),
+    case_evidence_identity: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     source_files = [
         "testbench.cpp",
@@ -133,6 +148,11 @@ def _build_csim_invocation(
         "phase": "csim",
         "work_dir": os.path.abspath(work_dir),
         "source_files": source_files,
+        "case_evidence": {
+            "schema_version": 1,
+            "path": EVIDENCE_FILENAME,
+            "identity": (dict(case_evidence_identity) if case_evidence_identity else None),
+        },
         "compile_command": _csim_compile_command(extra_sources),
         "simulation_command": CSIM_CMD,
         "timeout_seconds": timelimit,
@@ -187,6 +207,23 @@ def run_csim(
     budget: BudgetManager | None = None,
 ):
     make_csim_script(work_dir, cv)
+    suite_id = str(cv.get("csim_suite_id") or "csim")
+    case_identity = make_case_evidence_identity(
+        execution_id=uuid4().hex,
+        phase="host_differential_csim",
+        suite_id=suite_id,
+        candidate_code=str(cv["curr_code"]),
+        testbench_code=str(cv["testbench"]),
+    )
+    work_path = Path(work_dir)
+    (work_path / "agrefactor_case_evidence.hpp").write_text(
+        build_case_evidence_header(identity=case_identity), encoding="utf-8"
+    )
+    evidence_path = work_path / EVIDENCE_FILENAME
+    if evidence_path.is_symlink() or evidence_path.exists():
+        if evidence_path.is_symlink() or not evidence_path.is_file():
+            raise ValueError("unsafe stale case evidence path")
+        evidence_path.unlink()
     invocation_path = os.path.join(
         work_dir,
         "csim_invocation.json",
@@ -201,6 +238,7 @@ def run_csim(
         timelimit=timelimit,
         budget=budget,
         extra_sources=extra_sources,
+        case_evidence_identity=case_identity,
     )
     _write_json(invocation_path, invocation)
 
@@ -383,6 +421,36 @@ def run_csim(
         "stdout": _bounded_text(run_res.get("stdout")),
         "stderr": _bounded_text(run_res.get("stderr")),
     }
+    verified_counts = None
+    simulation_returncode = run_res.get("returncode")
+    normal_simulation_exit = (
+        isinstance(simulation_returncode, int)
+        and not isinstance(simulation_returncode, bool)
+        and 0 <= simulation_returncode < 128
+    )
+    if not simulation_timed_out and normal_simulation_exit:
+        verified_counts = read_case_counts(
+            evidence_path,
+            expected_identity=case_identity,
+            declared_case_count=(
+                cv["csim_case_count"]
+                if type(cv.get("csim_case_count")) is int
+                and cv["csim_case_count"] >= 0
+                else None
+            ),
+        )
+    if verified_counts is not None:
+        invocation["case_counts"] = verified_counts
+    elif evidence_path.is_file():
+        invocation["observed_unverified_counts"] = {
+            "path": EVIDENCE_FILENAME,
+            "reason": "missing_or_invalid_structured_completion",
+        }
+    else:
+        invocation["observed_unverified_counts"] = {
+            "path": EVIDENCE_FILENAME,
+            "reason": "structured_case_evidence_missing",
+        }
     _write_json(invocation_path, invocation)
 
     if simulation_timed_out or run_res.get("returncode") != 0:

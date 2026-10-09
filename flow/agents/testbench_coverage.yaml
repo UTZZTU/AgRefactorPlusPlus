@@ -29,6 +29,8 @@ agents:
         - For each Candidate pointer or array argument, use one fixed backing-storage capacity across every Candidate call. The capacity must cover the largest tested access range; smaller cases vary only their logical length. Never pass variable-sized storage to an interface with one fixed RTL cosimulation depth.
         - Give every Candidate forward-declaration parameter an explicit name. When an input-domain contract is supplied, each name must exactly match its declared top-level port; never emit unnamed parameters.
         - Correctness and the real golden-vs-Candidate comparison take priority over testcase count or coverage.
+        - Accumulate mismatch results and continue every planned comparison before returning the existing failure code. Reporting must not relax comparisons or turn a failure into a pass.
+        - The executor provides `agrefactor_case_evidence.hpp` when `AGREFACTOR_CASE_EVIDENCE` is defined. Under `#ifdef AGREFACTOR_CASE_EVIDENCE`, call `agrefactor_case_evidence::case_result("<unique-case-id>", <true-if-this-case-matched>)` once after each logical Original-vs-Candidate comparison completes. Call `agrefactor_case_evidence::complete()` only after every planned case finishes along the existing control flow. An early return, exception, or incomplete case must not emit completion. These reporting calls must not alter comparisons, return codes, or whether later tests execute.
       - For a held-out Testbench request, expected outputs must come from an actual call to the Original top.
       - Never substitute a Testbench-owned semantic reference, golden model, oracle algorithm, or copied implementation for the Original top.
 

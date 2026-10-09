@@ -23,6 +23,11 @@ from flow.tools.csynth import (
     resolve_csynth_command,
 )
 import flow.tools as tools
+from flow.tools.case_evidence import (
+    EVIDENCE_FILENAME,
+    build_header as build_case_evidence_header,
+    read_case_counts,
+)
 from flow.tools.typed_testbench_outcome import (
     build_typed_testbench_adapter,
     make_typed_outcome_identity,
@@ -285,6 +290,7 @@ def make_native_vitis_csim_tcl(
     typed_execution_id: str | None = None,
     typed_phase: str = "public_native_vitis_csim",
     extra_sources: tuple[str, ...] = (),
+    case_evidence_header: str | None = None,
 ) -> str:
     """Build one truthful native Vitis CSIM Tcl program."""
 
@@ -319,8 +325,12 @@ def make_native_vitis_csim_tcl(
     tb_sources.extend((source, f"extra source {index}") for index, source in enumerate(extra_sources, start=1))
     for source, label in tb_sources:
         line = f"add_files -tb {_tcl_quote(source, label)}"
-        if compile_flags:
-            line += " -cflags " + _tcl_quote(compile_flags, "compile flags")
+        tb_flags = compile_flags
+        if source == testbench_source and case_evidence_header is not None:
+            tb_flags = (tb_flags + " -DAGREFACTOR_CASE_EVIDENCE=1 -include "
+                        + case_evidence_header).strip()
+        if tb_flags:
+            line += " -cflags " + _tcl_quote(tb_flags, "compile flags")
         lines.append(line)
 
     csim = "csim_design -clean"
@@ -398,6 +408,11 @@ def make_native_vitis_csim_script(
         if not isinstance(content, str) or not content.strip():
             raise ValueError(f"{name} content must not be empty")
         (root / name).write_text(content, encoding="utf-8")
+    (root / "agrefactor_case_evidence.hpp").write_text(
+        build_case_evidence_header(
+            identity=identity, evidence_path=str(root / EVIDENCE_FILENAME)
+        ), encoding="utf-8"
+    )
     toolchain_header_resolution = _normalize_vitis_toolchain_headers(root)
     typed_outcome_path = root / "agrefactor_csim_outcome.json"
     adapter_path = root / "typed_outcome_adapter.json"
@@ -414,6 +429,7 @@ def make_native_vitis_csim_script(
         typed_phase=identity["phase"],
         target_profile=profile,
         extra_sources=normalized_extra_sources,
+        case_evidence_header=str(root / "agrefactor_case_evidence.hpp"),
     )
     (root / "vitis.tcl").write_text(tcl, encoding="utf-8")
     return {
@@ -530,6 +546,11 @@ def run_vitis_csim(
         "top_kernel": top_kernel,
         "source_files": material["source_files"],
         "typed_outcome_identity": material["typed_outcome_identity"],
+        "case_evidence": {
+            "schema_version": 1,
+            "path": EVIDENCE_FILENAME,
+            "identity": dict(material["typed_outcome_identity"]),
+        },
         "toolchain_header_resolution": material["toolchain_header_resolution"],
         "typed_outcome_adapter_path": str(material["typed_outcome_adapter_path"]),
         "typed_outcome": {"status": "pending"},
@@ -683,8 +704,8 @@ def run_vitis_csim(
 
     typed_outcome_path: Path = material["typed_outcome_path"]
     started_outcome_path = Path(str(typed_outcome_path) + ".started")
-    for stale in (typed_outcome_path, started_outcome_path):
-        if stale.exists():
+    for stale in (typed_outcome_path, started_outcome_path, root / EVIDENCE_FILENAME):
+        if stale.is_symlink() or stale.exists():
             if stale.is_symlink() or not stale.is_file():
                 raise ValueError(f"unsafe stale native CSIM outcome path: {stale}")
             stale.unlink()
@@ -728,6 +749,35 @@ def run_vitis_csim(
         started_outcome_path,
         expected_identity=material["typed_outcome_identity"],
     )
+    case_counts = read_case_counts(
+        root / EVIDENCE_FILENAME,
+        expected_identity=material["typed_outcome_identity"],
+        declared_case_count=(
+            cv["csim_case_count"]
+            if type(cv.get("csim_case_count")) is int
+            and cv["csim_case_count"] >= 0
+            else None
+        ),
+    )
+    native_returncode = execution["returncode"]
+    normal_native_exit = (
+        isinstance(native_returncode, int)
+        and not isinstance(native_returncode, bool)
+        and 0 <= native_returncode < 128
+    )
+    if (case_counts is not None and typed is not None
+            and not execution["timeout"] and normal_native_exit):
+        invocation["case_counts"] = case_counts
+    elif (root / EVIDENCE_FILENAME).is_file():
+        invocation["observed_unverified_counts"] = {
+            "path": EVIDENCE_FILENAME,
+            "reason": "missing_or_invalid_structured_completion",
+        }
+    else:
+        invocation["observed_unverified_counts"] = {
+            "path": EVIDENCE_FILENAME,
+            "reason": "structured_case_evidence_missing",
+        }
     invocation["typed_outcome"] = (
         typed if typed is not None else {"status": "missing_or_invalid"}
     )

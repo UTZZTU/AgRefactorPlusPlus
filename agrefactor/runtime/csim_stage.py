@@ -612,6 +612,7 @@ class CsimValidationStageHandler:
                         self._inputs.execution_backend
                     ),
                     "csim_suite_id": suite.suite_id,
+                    "csim_case_count": suite.case_count,
                     "csim_runtime_contract": (
                         None
                         if suite.runtime_contract is None
