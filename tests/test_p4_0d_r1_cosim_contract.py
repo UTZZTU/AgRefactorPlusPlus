@@ -320,7 +320,7 @@ class P40DR1CosimContractTests(unittest.TestCase):
             self.assertEqual(result["status"], "failed")
             self.assertEqual(
                 result["reason_code"],
-                "cosim_failed_without_typed_owner",
+                "cosim_failed_without_subphase_evidence",
             )
             self.assertEqual(result["failure_owner"], "unknown")
 

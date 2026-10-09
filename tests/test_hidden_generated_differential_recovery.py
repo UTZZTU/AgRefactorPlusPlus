@@ -237,16 +237,33 @@ class HiddenGeneratedDifferentialRecoveryTests(unittest.TestCase):
                                     for record in result["rounds"]))
                 self.assertTrue(all(record["tb_code"] == self.TB
                                     for record in result["rounds"]))
-                self.assertTrue(all(record["ownership_action"] == "regenerate_stub"
-                                    for record in result["rounds"][1:]))
+                self.assertEqual(
+                    [record["ownership_action"] for record in result["rounds"][1:]],
+                    ["regenerate_stub", "repair_testbench", "regenerate_stub"],
+                )
                 self.assertEqual([call.kwargs["artifact_kind"]
                                   for call in requests.call_args_list],
-                                 ["testbench", "stub", "stub", "stub", "stub"])
+                                 ["testbench", "stub", "stub", "testbench", "stub", "stub"])
                 repair_messages = [call.args[1] for call in requests.call_args_list
                                    if call.kwargs["artifact_kind"] == "stub"][1:]
                 for number, message in enumerate(repair_messages, 1):
                     for prior in range(1, number + 1):
                         self.assertIn(f"GENERIC_COMPARISON_FAILURE_{prior}", message)
+
+    def test_unknown_differential_can_switch_to_testbench_with_shared_budget(self):
+        failure = self.failure()
+        failures = []
+        for index in range(1, 5):
+            record = deepcopy(failure)
+            record["run_stderr"] += f"\\nSWITCH_FAILURE_{index}"
+            failures.append(record)
+        result, _requests, _measure = self.run_loop(
+            failures=failures, K=6, max_repairs=3
+        )
+        self.assertEqual(
+            [record["ownership_action"] for record in result["rounds"][1:]],
+            ["regenerate_stub", "repair_testbench", "regenerate_stub"],
+        )
 
     def test_zero_repair_budget_stops_after_initial_qualification(self):
         result, requests, measure = self.run_loop(

@@ -35,6 +35,13 @@ def _candidate_failure_payload(returncode: int = 1) -> dict[str, object]:
         "tool_launched": True,
         "cosim_launched": True,
         "evidence_sha256": "a" * 64,
+        "subphase_evidence": {
+            "phase": "rtl",
+            "rtl_started": True,
+            "rtl_completed": False,
+            "c_testbench_started": True,
+            "c_testbench_completed": True,
+        },
     }
 
 

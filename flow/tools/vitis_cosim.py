@@ -16,6 +16,7 @@ from flow.tools.typed_testbench_outcome import (
     build_typed_testbench_adapter,
     make_typed_outcome_identity,
     read_typed_testbench_outcome,
+    read_typed_testbench_started,
 )
 from agrefactor.config import TargetProfile, resolve_target_profile
 from agrefactor.cpp_interface import extract_top_interface
@@ -674,6 +675,117 @@ def _typed_outcome(
         expected_identity=expected_identity,
     )
 
+
+def _typed_started(
+    path: Path,
+    *,
+    expected_identity: Mapping[str, str],
+) -> dict[str, Any] | None:
+    return read_typed_testbench_started(
+        path,
+        expected_identity=expected_identity,
+    )
+
+
+def _cosim_report_text(root: Path, execution: Mapping[str, Any]) -> tuple[str, list[str]]:
+    # Collect bounded, generic COSIM phase evidence from this invocation.
+    parts = [
+        str(execution.get("stdout") or ""),
+        str(execution.get("stderr") or ""),
+    ]
+    sources = ["execution.stdout", "execution.stderr"]
+    seen: set[str] = set()
+    candidate_roots = [
+        root / "agrefactor_public_cosim" / "solution" / "sim" / "report",
+        root / "agrefactor_public_cosim" / "solution" / "sim",
+    ]
+    for base in candidate_roots:
+        if not base.is_dir() or base.is_symlink():
+            continue
+        for candidate in sorted(base.rglob("*")):
+            if len(sources) >= 24 or not candidate.is_file() or candidate.is_symlink():
+                continue
+            if candidate.suffix.casefold() not in {".log", ".rpt", ".txt", ".jou", ".tcl"}:
+                continue
+            try:
+                relative = str(candidate.relative_to(root))
+                if relative in seen:
+                    continue
+                seen.add(relative)
+                size = candidate.stat().st_size
+                with candidate.open("rb") as handle:
+                    if size > 32768:
+                        handle.seek(-32768, 2)
+                    data = handle.read(32768)
+                content = data.decode("utf-8", errors="replace")
+                parts.append(f"SOURCE {relative}\n{content}")
+                sources.append(relative)
+            except OSError:
+                continue
+    return "\n".join(parts)[-180000:], sources
+
+
+def _derive_cosim_subphase_evidence(
+    root: Path,
+    execution: Mapping[str, Any],
+    command_status: Mapping[str, Any] | None,
+    typed_started: Mapping[str, Any] | None,
+    typed: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    # Classify only observed COSIM subphases; unknown remains explicit.
+    text, sources = _cosim_report_text(root, execution)
+    lowered = text.casefold()
+    c_tb_started = bool(
+        typed_started is not None
+        or typed is not None
+        or re.search(r"starting\s+c\s*tb|c\s*tb\s+testing", lowered)
+    )
+    c_tb_completed = bool(
+        typed is not None
+        or re.search(r"c\s*tb\s+testing\s+(?:passed|failed)|testbench\s+return", lowered)
+    )
+    c_tb_failed = bool(
+        (typed is not None and typed.get("status") == "failed")
+        or re.search(
+            r"c\s*tb\s+(?:simulation\s+)?failed|c/rtl\s+co-?simulation\s+file\s+generation\s+failed|stop\s+generating\s+test\s+vectors",
+            lowered,
+        )
+    )
+    rtl_started = bool(
+        re.search(
+            r"using\s+xsim\s+for\s+rtl\s+simulation|starting\s+(?:verilog\s+)?simulation|starting\s+xsim|rtl\s+simulation\s*:|#\s*xsim\s+v|\#\s*command\s+line:\s*xsim|\bxsim\b[^\n]*(?:start|run|launch)",
+            lowered,
+        )
+    )
+    rtl_completed = bool(
+        re.search(
+            r"rtl\s+simulation\s*:\s*[^\n]*(?:pass|fail|complete|finish)|\$finish\s+called|cosim[^\n]*(?:finished|completed):\s*pass",
+            lowered,
+        )
+    )
+    command_started = command_status is not None or bool(execution.get("cosim_launched"))
+    if rtl_completed or rtl_started:
+        phase = "rtl"
+    elif c_tb_failed or c_tb_completed or c_tb_started:
+        phase = "c_testbench"
+    else:
+        phase = "unconfirmed"
+    return {
+        "schema_version": 1,
+        "phase": phase,
+        "cosim_command_started": command_started,
+        "c_testbench_started": c_tb_started,
+        "c_testbench_completed": c_tb_completed,
+        "c_testbench_failed": c_tb_failed,
+        "rtl_started": rtl_started,
+        "rtl_completed": rtl_completed,
+        "postprocess_completed": bool(
+            command_status is not None and command_status.get("status") == "passed"
+        ),
+        "evidence_sources": sources,
+    }
+
+
 def _command_status(path: Path) -> dict[str, Any] | None:
     value = _read_json_object(path)
     if value is None or set(value) != {
@@ -742,6 +854,10 @@ def _finalize_result(
         "tool_launched": version_probe_launched or cosim_launched,
         "version_probe_launched": version_probe_launched,
         "cosim_launched": cosim_launched,
+        "subphase_evidence": invocation.get(
+            "subphase_evidence",
+            {"schema_version": 1, "phase": "unconfirmed"},
+        ),
     }
     invocation["result_summary"] = summary
     _atomic_json(invocation_path, invocation)
@@ -815,7 +931,8 @@ def run_vitis_cosim(
     tcl_path = root / "vitis.tcl"
     status_path = root / "cosim_command_status.json"
     typed_path = root / "agrefactor_cosim_outcome.json"
-    for stale in (version_path, status_path, typed_path):
+    typed_started_path = root / "agrefactor_cosim_outcome.json.started"
+    for stale in (version_path, status_path, typed_path, typed_started_path):
         if stale.exists():
             if stale.is_symlink() or not stale.is_file():
                 raise ValueError(f"unsafe stale COSIM evidence path: {stale}")
@@ -958,6 +1075,19 @@ def run_vitis_cosim(
         },
         "command_status": {"status": "pending"},
         "typed_outcome": {"status": "pending"},
+        "typed_outcome_started": {"status": "pending"},
+        "subphase_evidence": {
+            "schema_version": 1,
+            "phase": "unconfirmed",
+            "cosim_command_started": False,
+            "c_testbench_started": False,
+            "c_testbench_completed": False,
+            "c_testbench_failed": False,
+            "rtl_started": False,
+            "rtl_completed": False,
+            "postprocess_completed": False,
+            "evidence_sources": [],
+        },
     }
     _atomic_json(invocation_path, invocation)
 
@@ -1100,7 +1230,7 @@ def run_vitis_cosim(
             cosim_launched=False,
         )
 
-    for stale in (status_path, typed_path):
+    for stale in (status_path, typed_path, typed_started_path):
         stale.unlink(missing_ok=True)
     _atomic_text(
         tcl_path,
@@ -1202,6 +1332,10 @@ def run_vitis_cosim(
         typed_path,
         expected_identity=cosim_identity,
     )
+    typed_started = _typed_started(
+        typed_started_path,
+        expected_identity=cosim_identity,
+    )
     invocation["command_status"] = (
         command_status
         if command_status is not None
@@ -1209,6 +1343,16 @@ def run_vitis_cosim(
     )
     invocation["typed_outcome"] = (
         typed if typed is not None else {"status": "missing_or_invalid"}
+    )
+    invocation["typed_outcome_started"] = (
+        typed_started if typed_started is not None else {"status": "missing_or_invalid"}
+    )
+    invocation["subphase_evidence"] = _derive_cosim_subphase_evidence(
+        root,
+        invocation["execution"],
+        command_status,
+        typed_started,
+        typed,
     )
     synthesized_interface = discover_top_io(root, expected_top=top)
     interface_contract_mismatch = False
@@ -1377,6 +1521,10 @@ def run_vitis_cosim(
         and command_status.get("status") == "failed"
         and command_status.get("phase") == "cosim"
         and _candidate_returncode_authorized(runtime_contract, typed_returncode)
+        and (
+            invocation["subphase_evidence"].get("rtl_started") is True
+            or invocation["subphase_evidence"].get("rtl_completed") is True
+        )
     )
     if deterministic_candidate:
         result = _finalize_result(
@@ -1399,13 +1547,19 @@ def run_vitis_cosim(
         result["evidence_sha256"] = _file_sha256(invocation_path)
         return result
 
+    fallback_reason = (
+        "cosim_c_testbench_failure_before_rtl"
+        if invocation["subphase_evidence"].get("c_testbench_failed") is True
+        and not invocation["subphase_evidence"].get("rtl_started")
+        else "cosim_failed_without_subphase_evidence"
+    )
     return _finalize_result(
         invocation_path,
         invocation,
         status="failed",
         failure_kind="ownership_unknown",
         failure_owner="unknown",
-        reason_code="cosim_failed_without_typed_owner",
+        reason_code=fallback_reason,
         timed_out=False,
         returncode=returncode,
         version_probe_launched=True,

@@ -365,6 +365,9 @@ class HiddenOriginalInterfaceRepairLoopTests(unittest.TestCase):
         def artifact(_agent, _message, **kwargs):
             nonlocal request_count
             request_count += 1
+            if kwargs.get("on_event"):
+                kwargs["on_event"]("request")
+                kwargs["on_event"]("response")
             return self.TB if kwargs["artifact_kind"] == "testbench" else self.STUB
 
         measurements = 0
@@ -379,12 +382,14 @@ class HiddenOriginalInterfaceRepairLoopTests(unittest.TestCase):
                 }
             return self.failure(measurements)
 
-        abi_calls = 0
+        initial_error_raised = False
 
-        def validate_abi(*_args, **_kwargs):
-            nonlocal abi_calls
-            abi_calls += 1
-            if initial_error and abi_calls == 1:
+        def validate_abi(source, *_args, **_kwargs):
+            nonlocal initial_error_raised
+            # The Public frozen declaration is checked before generation; the
+            # defect in this scenario belongs only to the generated artifact.
+            if initial_error and source == self.TB and not initial_error_raised:
+                initial_error_raised = True
                 raise tb_optimizer.ModelArtifactError("initial frozen ABI mismatch")
 
         with ExitStack() as stack:
@@ -434,7 +439,9 @@ class HiddenOriginalInterfaceRepairLoopTests(unittest.TestCase):
                     if call.kwargs["artifact_kind"] == "testbench"]
         self.assertEqual(len(messages), 4)
         self.assertEqual(measure.call_count, 3)
-        self.assertTrue(result["rounds"][0]["initial_testbench_contract_repaired"])
+        self.assertEqual(result["artifact_event_counts"]["testbench"]["repair_requests"], 3)
+        self.assertEqual(result["artifact_event_counts"]["testbench"]["format_retries"], 0)
+        self.assertIn("initial frozen ABI mismatch", messages[1].args[1])
         self.assertFalse(result["qualified"])
         self.assertIn("initial frozen ABI mismatch", messages[-1].args[1])
 

@@ -86,6 +86,33 @@ def _safe_diagnostic_detail(value: Any) -> str | None:
     return text[-2048:] or None
 
 
+def _safe_subphase_evidence(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+    phase = value.get("phase")
+    if phase not in {"c_testbench", "rtl", "unconfirmed"}:
+        phase = "unconfirmed"
+    sources = value.get("evidence_sources")
+    safe_sources = []
+    if isinstance(sources, (list, tuple)):
+        for source in sources[:12]:
+            text = _safe_diagnostic_detail(source)
+            if text:
+                safe_sources.append(text)
+    return {
+        "schema_version": 1,
+        "phase": phase,
+        "cosim_command_started": value.get("cosim_command_started") is True,
+        "c_testbench_started": value.get("c_testbench_started") is True,
+        "c_testbench_completed": value.get("c_testbench_completed") is True,
+        "c_testbench_failed": value.get("c_testbench_failed") is True,
+        "rtl_started": value.get("rtl_started") is True,
+        "rtl_completed": value.get("rtl_completed") is True,
+        "postprocess_completed": value.get("postprocess_completed") is True,
+        "evidence_sources": safe_sources,
+    }
+
+
 def _candidate_failure_contract_authorized(
     runtime_contract: Mapping[str, Any] | None,
     returncode: Any,
@@ -566,6 +593,7 @@ class CosimValidationStageHandler:
             ),
             "process_exit_observed": outcome.get("process_exit_observed"),
             "completion_authority": outcome.get("completion_authority"),
+            "subphase_evidence": outcome.get("subphase_evidence"),
         }
         _atomic_json(
             work_dir / "cosim_suite_identity_evidence.json",
@@ -585,6 +613,7 @@ def _normalize_outcome(
     evidence_sha = value.get("evidence_sha256")
     if not isinstance(evidence_sha, str) or _SHA256_RE.fullmatch(evidence_sha) is None:
         evidence_sha = None
+    subphase_evidence = _safe_subphase_evidence(value.get("subphase_evidence"))
 
     if raw_status == "passed":
         physically_proven = (
@@ -639,6 +668,7 @@ def _normalize_outcome(
                     if post_completion_proven
                     else None
                 ),
+                "subphase_evidence": subphase_evidence,
             }
         return {
             "status": "failed",
@@ -659,6 +689,7 @@ def _normalize_outcome(
             "command_completion_proven": False,
             "process_exit_observed": False,
             "completion_authority": None,
+            "subphase_evidence": subphase_evidence,
         }
 
     kind = value.get("failure_kind")
@@ -678,6 +709,11 @@ def _normalize_outcome(
                 or not _candidate_failure_contract_authorized(
                     runtime_contract,
                     value.get("testbench_returncode"),
+                )
+                or subphase_evidence is None
+                or not (
+                    subphase_evidence.get("rtl_started") is True
+                    or subphase_evidence.get("rtl_completed") is True
                 )
             )
         )
@@ -742,10 +778,16 @@ def _normalize_outcome(
                 and value.get("tool_launched") is True
                 and value.get("cosim_launched") is True
                 and evidence_sha is not None
+                and subphase_evidence is not None
+                and (
+                    subphase_evidence.get("rtl_started") is True
+                    or subphase_evidence.get("rtl_completed") is True
+                )
             )
             if timeout is None
             else timeout.evidence_complete
         ),
+        "subphase_evidence": subphase_evidence,
     }
 
 
@@ -782,6 +824,7 @@ def _safe_summary(
         ),
         "process_exit_observed": outcome.get("process_exit_observed"),
         "completion_authority": outcome.get("completion_authority"),
+        "subphase_evidence": outcome.get("subphase_evidence"),
         "evidence_sha256": (
             evidence_sha
             if isinstance(evidence_sha, str)

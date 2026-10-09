@@ -60,7 +60,7 @@ def isolate_reference_program_entry(
         and not any(parameter.mutable_output for parameter in interface.parameters)
         else ()
     )
-    if not template and interface.linkage != 3 and not state:
+    if not template and interface.linkage not in {2, 3} and not state:
         return prepared
     if any(variable.scalar_type is None for variable in state):
         raise ValueError("observable global state boundary is unknown: only scalar and fixed scalar arrays are supported")

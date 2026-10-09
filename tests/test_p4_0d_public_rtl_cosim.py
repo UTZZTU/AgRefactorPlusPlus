@@ -216,7 +216,7 @@ class P4DPublicRtlCosimTests(unittest.TestCase):
             self.assertEqual(outcome["status"], "failed")
             self.assertEqual(
                 outcome["reason_code"],
-                "cosim_failed_without_typed_owner",
+                "cosim_failed_without_subphase_evidence",
             )
 
         with tempfile.TemporaryDirectory() as raw:
@@ -413,6 +413,20 @@ class P4DPublicRtlCosimTests(unittest.TestCase):
                     "tool_launched": True,
                     "cosim_launched": True,
                     "evidence_sha256": "b" * 64,
+            "subphase_evidence": {
+                "phase": "rtl",
+                "rtl_started": True,
+                "rtl_completed": False,
+                "c_testbench_started": True,
+                "c_testbench_completed": True,
+            },
+                    "subphase_evidence": {
+                        "phase": "rtl",
+                        "rtl_started": True,
+                        "rtl_completed": False,
+                        "c_testbench_started": True,
+                        "c_testbench_completed": True,
+                    },
                 },
             )(
                 RunContext(

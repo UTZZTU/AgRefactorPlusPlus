@@ -279,6 +279,14 @@ class TestGenerationExhaustionContractTests(unittest.TestCase):
                 ).to_dict()
             )
             generation = FailedGenerationAdapter(payload)
+            payload.update(
+                counter_source="explicit",
+                artifact_request_count=9,
+                artifact_response_count=8,
+                artifact_format_retry_count=6,
+                coverage_check_count=0,
+                trajectory_summaries=[{"tb_code": "PRIVATE_HIDDEN_CODE"}],
+            )
             phase = SourceBootstrapPhase(
                 request=request,
                 layout=layout,
@@ -320,6 +328,13 @@ class TestGenerationExhaustionContractTests(unittest.TestCase):
         )
         self.assertEqual(result.metadata["attempt_count"], 2)
         self.assertEqual(result.metadata["trajectory_count"], 1)
+        failure = result.metadata["generation_failure"]
+        self.assertEqual(failure["counter_source"], "explicit")
+        self.assertEqual(failure["artifact_request_count"], 9)
+        self.assertEqual(failure["artifact_response_count"], 8)
+        self.assertEqual(failure["artifact_format_retry_count"], 6)
+        self.assertEqual(failure["coverage_check_count"], 0)
+        self.assertNotIn("PRIVATE_HIDDEN_CODE", json.dumps(result.metadata))
         self.assertFalse(
             result.metadata["hidden_testbench_exposed_to_model"]
         )

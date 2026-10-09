@@ -77,6 +77,27 @@ int main(){float a=0,b=0;origin(&a);origin_hls(&b);return a==b ? 0 : 1;}'''
                 original_top_function='private_entry', candidate_top_function='trial',
             )
             self.assertEqual(result.status.value, 'passed', result.stderr)
+
+    def test_static_linkage_bridge_runs_in_original_unit(self):
+        source = 'static int private_entry(int value) {return value*3;}'
+        reference = isolate_reference_program_entry(source, top_function='private_entry')
+        driver = 'int private_entry(int); int trial(int); int main(){return private_entry(7)!=trial(7);}'
+        with tempfile.TemporaryDirectory() as root:
+            result = TestbenchPreflight().compile_and_link(
+                work_dir=root, testbench_code=driver, original_code=reference,
+                candidate_code='int trial(int value){return value*3;}',
+                original_top_function='private_entry', candidate_top_function='trial',
+            )
+            self.assertEqual(result.status.value, 'passed', result.stderr)
+            Path(root, 'reference.cpp').write_text(reference)
+            Path(root, 'driver.cpp').write_text(driver)
+            Path(root, 'candidate.cpp').write_text('int trial(int value){return value*3;}')
+            compiled = subprocess.run(
+                ['g++', 'reference.cpp', 'driver.cpp', 'candidate.cpp', '-o', 'check'],
+                cwd=root, capture_output=True, text=True,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertEqual(subprocess.run([str(Path(root) / 'check')]).returncode, 0)
             self.assertEqual(subprocess.run([str(Path(root)/'testbench_preflight')]).returncode, 0)
 
     def test_template_binding_is_deduced_with_array_references(self):

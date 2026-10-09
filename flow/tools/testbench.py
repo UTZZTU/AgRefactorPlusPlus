@@ -9,8 +9,13 @@ from autogen.agentchat.group import ContextVariables  # type: ignore
 
 from flow.base_agent import HLSAgentLoader
 from agrefactor.reference_source import isolate_reference_program_entry
+from agrefactor.runtime.budget import BudgetExceededError
 import flow.tools as tools
-from flow.tools.result_mapping import freeze_result_mapping, mapping_generation_instruction
+from flow.tools.result_mapping import (
+    ResultMappingVerificationError,
+    freeze_result_mapping,
+    mapping_generation_instruction,
+)
 
 
 _ORIGINAL_EXECUTION_REPAIRS = 3
@@ -162,22 +167,110 @@ def gen_tb_prior(
         "extra_sources": tuple(str(Path(source_root) / name) for name in package.get("extra_sources", ())),
     }
     reference_code = str(cv.get("orig_code") or cv["curr_code"])
+    contract_failures: list[str] = []
+    mapping_failures: list[str] = []
+    public_failures: list[str] = []
+    mapping_rounds: list[Dict[str, Any]] = []
+    mapping_repairs_used = 0
 
-    def validate_mapping_contract(current_tb: str) -> None:
-        adapted_reference_code = isolate_reference_program_entry(
-            str(cv.get("curr_code") or reference_code),
-            top_function=kernel_name,
-            testbench_code=current_tb,
-            **parse_context,
+    def save_mapping_events() -> None:
+        cv["public_result_mapping_qualification"] = {
+            "qualification_checks_used": len(mapping_rounds),
+            "mapping_repair_requests_used": mapping_repairs_used,
+            "rounds": [dict(item) for item in mapping_rounds],
+        }
+
+    def raise_mapping_exhausted(*, verification_incomplete: bool = False) -> None:
+        raise tools.tb_optimizer.TestbenchGenerationExhausted(
+            split="public",
+            stage=("public_abi_mapping_verification" if verification_incomplete
+                   else "public_abi_mapping_qualification"),
+            trajectories=[{
+                "trajectory_idx": 0,
+                "error": "\n".join(mapping_failures),
+                "qualification_checks_used": len(mapping_rounds),
+                "repairs_used": mapping_repairs_used,
+                "mapping_qualification_checks_used": len(mapping_rounds),
+                "mapping_repair_requests_used": mapping_repairs_used,
+                "rounds": [dict(item) for item in mapping_rounds],
+            }],
         )
-        freeze_result_mapping(
-            current_tb,
-            adapted_reference_code,
-            kernel_name,
-            hls_name,
-            require_explicit=True,
-            **parse_context,
+
+    def validate_mapping_contract(current_tb: str, context: str) -> None:
+        event: Dict[str, Any] = {
+            "round": len(mapping_rounds) + 1,
+            "qualification_context": context,
+            "repair_requested": False,
+        }
+        mapping_rounds.append(event)
+        try:
+            adapted_reference_code = isolate_reference_program_entry(
+                str(cv.get("curr_code") or reference_code),
+                top_function=kernel_name,
+                testbench_code=current_tb,
+                **parse_context,
+            )
+            mapping = freeze_result_mapping(
+                current_tb,
+                adapted_reference_code,
+                kernel_name,
+                hls_name,
+                require_explicit=True,
+                **parse_context,
+            )
+        except ValueError as exc:
+            evidence = f"{context}: {exc}"
+            mapping_failures.append(evidence)
+            public_failures.append(evidence)
+            event.update(status="contract_failed", error=str(exc),
+                         failure_owner="testbench", next_action="repair_testbench")
+            if isinstance(exc, ResultMappingVerificationError):
+                cv["public_result_mapping_unverified"] = exc.partial_mapping
+                cv["public_result_mapping_diagnostics"] = exc.diagnostics
+                event.update(partial_mapping=exc.partial_mapping, diagnostics=exc.diagnostics)
+            if isinstance(exc, ResultMappingVerificationError) and not exc.repair_eligible:
+                event.update(status="contract_incomplete", failure_owner="unknown",
+                             next_action="review_unknown", repair_eligible=False)
+                save_mapping_events()
+                raise_mapping_exhausted(verification_incomplete=True)
+            save_mapping_events()
+            raise
+        event.update(status="ok", failure_owner="none", next_action="continue_validation")
+        cv["public_result_mapping"] = mapping
+        cv["public_result_mapping_unverified"] = None
+        cv["public_result_mapping_diagnostics"] = None
+        save_mapping_events()
+
+    def request_mapping_repair(current_tb: str) -> str:
+        nonlocal mapping_repairs_used
+        if mapping_repairs_used >= repair_limit:
+            raise_mapping_exhausted()
+        message = (
+            "All previous Public generation and qualification failures:\n"
+            + "\n\n".join(public_failures)
+            + "\n\nCURRENT PUBLIC TESTBENCH:\n```cpp\n"
+            + current_tb.rstrip()
+            + "\n```\n\nReturn a complete replacement with an explicit shared result mapping. "
+            "Preserve the current Candidate ABI unless the preceding evidence explicitly "
+            "requested coordinated ABI correction.\n\n"
+            + mapping_generation_instruction() + "\n\n"
+            + _build_testbench_request(reference_code, kernel_name,
+                cv.get("input_domain_contract"), cv.get("source_package_context"))
         )
+        request_started = True
+        try:
+            return tools.tb_optimizer._request_cpp_artifact(
+                agent, message, first_turn=False, artifact_kind="testbench_repair",
+                required_symbol=hls_name, max_repairs=0,
+            )
+        except BudgetExceededError:
+            request_started = False
+            raise
+        finally:
+            if request_started:
+                mapping_repairs_used += 1
+                mapping_rounds[-1]["repair_requested"] = True
+                save_mapping_events()
 
     tb = tools.tb_optimizer._request_cpp_artifact(
         agent,
@@ -192,37 +285,8 @@ def gen_tb_prior(
         required_symbol=hls_name,
         max_repairs=repair_limit,
     )
-    contract_failures: list[str] = []
-    mapping_failures: list[str] = []
-    mapping_repairs_used = 0
-
-    def is_mapping_failure(exc: BaseException) -> bool:
-        text = str(exc)
-        return any(marker in text for marker in (
-            "contract_incomplete:",
-            "contract_contradiction:",
-            "common result mapping",
-            "result mapping",
-        ))
-
-    def record_mapping_failure(context: str, exc: BaseException) -> None:
-        mapping_failures.append(f"{context}: {exc}")
-
-    def raise_mapping_exhausted() -> None:
-        evidence = "\n".join(mapping_failures)
-        raise tools.tb_optimizer.TestbenchGenerationExhausted(
-            split="public",
-            stage="public_abi_mapping_qualification",
-            trajectories=[{"trajectory_idx": 0, "error": evidence,
-                           "rounds": [{
-                               "status": "contract_failed",
-                               "failure_owner": "testbench",
-                               "next_action": "repair_testbench",
-                               "contract_failures": list(mapping_failures),
-                               "error": evidence,
-                           }]}],
-        )
     for repair_index in range(repair_limit + 1):
+        mapping_failure = False
         try:
             tools.tb_optimizer.validate_testbench_top_contract(tb, kernel_name, hls_name)
             tools.tb_optimizer.validate_testbench_input_domain(
@@ -233,31 +297,31 @@ def gen_tb_prior(
             try:
                 # Use the same adapted Original context as flow/new.py's final
                 # gate for every generated Testbench revision.
-                validate_mapping_contract(tb)
+                validate_mapping_contract(tb, f"Validation {repair_index}")
             except ValueError as exc:
+                mapping_failure = True
                 raise tools.tb_optimizer.ModelArtifactError(str(exc)) from exc
             break
         except tools.tb_optimizer.ModelArtifactError as exc:
             contract_failures.append(f"Validation {repair_index}: {exc}")
             cv["public_contract_failures"] = list(contract_failures)
+            if mapping_failure:
+                if repair_index == repair_limit:
+                    raise_mapping_exhausted()
+                tb = request_mapping_repair(tb)
+                continue
+            public_failures.append(contract_failures[-1])
             if repair_index == repair_limit:
                 raise
-            mapping_failure = is_mapping_failure(exc)
-            if mapping_failure:
-                record_mapping_failure(f"Validation {repair_index}", exc)
-                mapping_repairs_used += 1
-                if mapping_repairs_used > repair_limit:
-                    raise_mapping_exhausted()
             tb = tools.tb_optimizer._request_cpp_artifact(
                 agent,
-                "Public Testbench contract failures:\n" + "\n".join(contract_failures)
+                "Public Testbench contract failures:\n" + "\n".join(public_failures)
                 + "\nReturn a complete replacement.\n\n"
-                + (mapping_generation_instruction() + "\n\n"
-                   if mapping_failure else "")
+                + mapping_generation_instruction() + "\n\n"
                 + _build_testbench_request(reference_code, kernel_name,
                     cv.get("input_domain_contract"), cv.get("source_package_context")),
                 first_turn=False, artifact_kind="testbench", required_symbol=hls_name,
-                max_repairs=0 if mapping_failure else repair_limit,
+                max_repairs=repair_limit,
             )
 
     qualification_failures: list[str] = []
@@ -292,6 +356,7 @@ def gen_tb_prior(
             f"Validation {repair_index}; owner={owner}; status={original_result.get('status')}\n"
             + "\n".join(str(original_result.get(key) or '') for key in ("compile_stderr", "run_stderr", "run_stdout"))[-6000:]
         )
+        public_failures.append(qualification_failures[-1])
         cv["public_original_qualification_failures"] = list(qualification_failures)
         if repair_index >= repair_limit:
             raise tools.tb_optimizer.ModelArtifactError(
@@ -306,9 +371,9 @@ def gen_tb_prior(
                 testbench_code=tb,
                 result=original_result,
                 input_domain_contract=cv.get("input_domain_contract"),
-                prior_failures=tuple(qualification_failures),
+                prior_failures=tuple(public_failures),
                 source_package_context=cv.get("source_package_context"),
-            ),
+            ) + "\n\n" + mapping_generation_instruction(),
             first_turn=False,
             artifact_kind="testbench_repair",
             required_symbol=hls_name,
@@ -328,30 +393,10 @@ def gen_tb_prior(
         )
         while True:
             try:
-                validate_mapping_contract(tb)
+                validate_mapping_contract(tb, f"Original qualification repair {repair_index}")
                 break
-            except ValueError as exc:
-                record_mapping_failure(f"Original qualification repair {repair_index}", exc)
-                mapping_repairs_used += 1
-                if mapping_repairs_used > repair_limit:
-                    raise_mapping_exhausted()
-                tb = tools.tb_optimizer._request_cpp_artifact(
-                    agent,
-                    "Public Testbench contract failures after Original qualification repair:\n"
-                    + "\n".join(mapping_failures)
-                    + "\nReturn a complete replacement with an explicit shared result mapping.\n\n"
-                    + mapping_generation_instruction() + "\n\n"
-                    + _build_testbench_request(
-                        reference_code,
-                        kernel_name,
-                        cv.get("input_domain_contract"),
-                        cv.get("source_package_context"),
-                    ),
-                    first_turn=False,
-                    artifact_kind="testbench_repair",
-                    required_symbol=hls_name,
-                    max_repairs=0,
-                )
+            except ValueError:
+                tb = request_mapping_repair(tb)
                 tools.tb_optimizer.validate_testbench_top_contract(tb, kernel_name, hls_name)
                 tools.tb_optimizer.validate_testbench_input_domain(
                     tb,
@@ -367,28 +412,81 @@ def gen_tb_prior(
     # hidden-stage contract.
     if cv.get("target_profile"):
         synth_failures: list[str] = []
+        synth_rounds: list[Dict[str, Any]] = []
+        previous_probe = ""
+        probe_repair_requests_used = 0
+        abi_repair_requests_used = 0
+
+        def probe_trajectory() -> Dict[str, Any]:
+            return {
+                "trajectory_idx": 0,
+                "rounds": [dict(item) for item in synth_rounds],
+                "qualification_checks_used": len(synth_rounds),
+                "repairs_used": probe_repair_requests_used + abi_repair_requests_used,
+                "probe_qualification_checks_used": len(synth_rounds),
+                "probe_repair_requests_used": probe_repair_requests_used,
+                "abi_repair_requests_used": abi_repair_requests_used,
+                "synthesis_calls_used": sum(bool(item["synthesis_attempted"]) for item in synth_rounds),
+                "error": "\n\n".join(synth_failures),
+            }
+
         for synth_index in range(repair_limit + 1):
             candidate_decl = tools.tb_optimizer.extract_hls_decl_from_testbench(
                 tb, hls_name, **parse_context,
             )
-            stub = tools.tb_optimizer._request_cpp_artifact(
-                agent,
-                tools.tb_optimizer._empty_stub_request_message(
-                    hls_name,
-                    candidate_decl,
-                    failure_history="\n\n".join(synth_failures),
-                ),
-                first_turn=False,
-                artifact_kind="empty_stub",
-                required_symbol=hls_name,
-                max_repairs=repair_limit,
+            probe_type_contract = tools.tb_optimizer.freeze_public_type_contract(
+                tb, hls_name, **parse_context,
             )
-            tools.tb_optimizer.validate_stub_contract(
-                stub,
-                original_name=kernel_name,
-                candidate_name=hls_name,
-                frozen_hls_decl=candidate_decl,
-            )
+            probe_request_started = True
+            try:
+                stub = tools.tb_optimizer._request_cpp_artifact(
+                    agent,
+                    tools.tb_optimizer._empty_stub_request_message(
+                        hls_name,
+                        candidate_decl,
+                        failure_history="\n\n".join(synth_failures),
+                        previous_stub=previous_probe,
+                    ) + tools.tb_optimizer.frozen_type_instruction(probe_type_contract),
+                    first_turn=False,
+                    artifact_kind="empty_stub",
+                    required_symbol=hls_name,
+                    max_repairs=repair_limit,
+                )
+            except BudgetExceededError:
+                probe_request_started = False
+                raise
+            finally:
+                if synth_index > 0 and probe_request_started:
+                    probe_repair_requests_used += 1
+                cv["public_abi_probe_qualification"] = probe_trajectory()
+            try:
+                tools.tb_optimizer.validate_stub_contract(
+                    stub,
+                    original_name=kernel_name,
+                    candidate_name=hls_name,
+                    frozen_hls_decl=candidate_decl,
+                    frozen_type_contract=probe_type_contract,
+                    **parse_context,
+                )
+            except tools.tb_optimizer.ModelArtifactError as exc:
+                if getattr(exc, "repair_eligible", True) is False:
+                    raise
+                synth_failures.append(str(exc))
+                previous_probe = stub
+                public_failures.append(f"ABI probe contract {synth_index}: {exc}")
+                synth_rounds.append({
+                    "round": synth_index + 1, "status": "probe_contract_failed",
+                    "failure_owner": "stub", "next_action": "regenerate_stub",
+                    "error": str(exc), "compile_stderr": str(exc),
+                    "synthesis_attempted": False,
+                })
+                cv["public_abi_probe_qualification"] = probe_trajectory()
+                if synth_index >= repair_limit:
+                    raise tools.tb_optimizer.TestbenchGenerationExhausted(
+                        split="public", stage="public_abi_probe_qualification",
+                        trajectories=[probe_trajectory()],
+                    ) from exc
+                continue
             with tempfile.TemporaryDirectory(prefix="public_synth_check_") as work_dir:
                 synth_ok, synth_error = tools.tb_optimizer._synth_check(
                     stub,
@@ -400,35 +498,49 @@ def gen_tb_prior(
                         "target_profile": cv.get("target_profile") or {},
                     },
                 )
+            synth_rounds.append({
+                "round": synth_index + 1,
+                "status": "ok" if synth_ok else "synth_failed",
+                "failure_owner": "none" if synth_ok else "unknown",
+                "next_action": "continue_validation" if synth_ok else "review_unknown",
+                "synth_error": synth_error, "synthesis_attempted": True,
+            })
+            cv["public_abi_probe_qualification"] = probe_trajectory()
             if synth_ok:
                 break
             synth_failures.append(synth_error)
+            public_failures.append(f"ABI synthesis qualification {synth_index}: {synth_error}")
             if synth_index >= repair_limit:
                 raise tools.tb_optimizer.TestbenchGenerationExhausted(
                     split="public",
                     stage="public_abi_synthesis_qualification",
-                    trajectories=[{
-                        "trajectory_idx": 0,
-                        "synth_error": "\n\n".join(synth_failures),
-                        "rounds": [{
-                            "status": "synth_failed",
-                            "failure_owner": "unknown",
-                            "next_action": "review_unknown",
-                            "synth_error": "\n\n".join(synth_failures),
-                        }],
-                    }],
+                    trajectories=[probe_trajectory()],
                 )
-            tb = tools.tb_optimizer._request_cpp_artifact(
-                agent,
-                tools.tb_optimizer._hls_friendly_rewrite_message(
-                    hls_name,
-                    "\n\n".join(synth_failures),
-                ),
-                first_turn=False,
-                artifact_kind="testbench",
-                required_symbol=hls_name,
-                max_repairs=repair_limit,
-            )
+            abi_request_started = True
+            try:
+                tb = tools.tb_optimizer._request_cpp_artifact(
+                    agent,
+                    tools.tb_optimizer._hls_friendly_rewrite_message(
+                        hls_name,
+                        "\n\n".join(synth_failures),
+                    ) + "\n\nAll previous Public generation and qualification failures:\n"
+                    + "\n\n".join(public_failures)
+                    + "\n\n" + mapping_generation_instruction()
+                    + "\n\n" + _build_testbench_request(reference_code, kernel_name,
+                        cv.get("input_domain_contract"), cv.get("source_package_context")),
+                    first_turn=False,
+                    artifact_kind="testbench",
+                    required_symbol=hls_name,
+                    max_repairs=repair_limit,
+                )
+            except BudgetExceededError:
+                abi_request_started = False
+                raise
+            finally:
+                if abi_request_started:
+                    abi_repair_requests_used += 1
+                cv["public_abi_probe_qualification"] = probe_trajectory()
+            previous_probe = ""
             tools.tb_optimizer.validate_testbench_top_contract(tb, kernel_name, hls_name)
             tools.tb_optimizer.validate_testbench_input_domain(
                 tb,
@@ -439,31 +551,10 @@ def gen_tb_prior(
             )
             while True:
                 try:
-                    validate_mapping_contract(tb)
+                    validate_mapping_contract(tb, f"ABI correction {synth_index}")
                     break
-                except ValueError as exc:
-                    record_mapping_failure(f"ABI correction {synth_index}", exc)
-                mapping_repairs_used += 1
-                if mapping_repairs_used > repair_limit:
-                    raise_mapping_exhausted()
-                tb = tools.tb_optimizer._request_cpp_artifact(
-                    agent,
-                    "Public Testbench contract failure after ABI correction:\n"
-                    + "\n".join(mapping_failures)
-                    + "\nReturn a complete replacement Testbench with the corrected Candidate ABI and an explicit shared result mapping.\n\n"
-                    + mapping_generation_instruction()
-                    + "\n\n"
-                    + _build_testbench_request(
-                        reference_code,
-                        kernel_name,
-                        cv.get("input_domain_contract"),
-                        cv.get("source_package_context"),
-                    ),
-                    first_turn=False,
-                    artifact_kind="testbench_repair",
-                    required_symbol=hls_name,
-                    max_repairs=0,
-                )
+                except ValueError:
+                    tb = request_mapping_repair(tb)
                 tools.tb_optimizer.validate_testbench_top_contract(tb, kernel_name, hls_name)
                 tools.tb_optimizer.validate_testbench_input_domain(
                     tb,
@@ -592,6 +683,19 @@ def qualify_external_public_testbench(
             require_explicit=require_explicit,
             **parse_context,
         )
+    except ResultMappingVerificationError as exc:
+        cv["public_result_mapping_unverified"] = exc.partial_mapping
+        cv["public_result_mapping_diagnostics"] = exc.diagnostics
+        raise tools.tb_optimizer.TestbenchGenerationExhausted(
+            split="public", stage="external_public_mapping_verification",
+            trajectories=[{
+                "trajectory_idx": 0, "qualification_checks_used": 1,
+                "repairs_used": 0, "error": str(exc),
+                "rounds": [{"status": "contract_incomplete", "error": str(exc),
+                            "failure_owner": "unknown", "next_action": "review_unknown"}],
+            }],
+            qualification_mode="provided",
+        ) from exc
     except ValueError as exc:
         raise tools.tb_optimizer.ModelArtifactError(str(exc)) from exc
     if mapping is not None:
@@ -671,23 +775,43 @@ def qualify_external_public_testbench(
         budget=budget,
     )
     agent = loader.load_agent("tb_creator")
+    probe_type_contract = tools.tb_optimizer.freeze_public_type_contract(
+        testbench_code, hls_name, **parse_context,
+    )
     stub = tools.tb_optimizer._request_cpp_artifact(
         agent,
         tools.tb_optimizer._empty_stub_request_message(
             hls_name,
             candidate_decl,
-        ),
+        ) + tools.tb_optimizer.frozen_type_instruction(probe_type_contract),
         first_turn=False,
         artifact_kind="empty_stub",
         required_symbol=hls_name,
         max_repairs=0,
     )
-    tools.tb_optimizer.validate_stub_contract(
-        stub,
-        original_name=kernel_name,
-        candidate_name=hls_name,
-        frozen_hls_decl=candidate_decl,
-    )
+    try:
+        tools.tb_optimizer.validate_stub_contract(
+            stub,
+            original_name=kernel_name,
+            candidate_name=hls_name,
+            frozen_hls_decl=candidate_decl,
+            frozen_type_contract=probe_type_contract,
+            **parse_context,
+        )
+    except tools.tb_optimizer.ModelArtifactError as exc:
+        failure_owner = "unknown" if getattr(exc, "repair_eligible", True) is False else "stub"
+        if getattr(exc, "type_contract", None) is not None:
+            cv["public_type_contract_unverified"] = exc.type_contract
+        raise tools.tb_optimizer.TestbenchGenerationExhausted(
+            split="public", stage="external_public_probe_qualification",
+            trajectories=[{
+                "trajectory_idx": 0, "qualification_checks_used": 1,
+                "repairs_used": 0, "error": str(exc),
+                "rounds": [{"status": "probe_contract_failed", "error": str(exc),
+                            "failure_owner": failure_owner,
+                            "next_action": "review_unknown" if failure_owner == "unknown" else "regenerate_stub"}],
+            }], qualification_mode="provided",
+        ) from exc
     if stub_dir is None:
         synth_context = tempfile.TemporaryDirectory(
             prefix="external_public_synth_check_"

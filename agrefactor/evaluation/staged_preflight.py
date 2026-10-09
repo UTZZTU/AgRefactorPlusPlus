@@ -29,7 +29,7 @@ from agrefactor.runtime.budget import (
     BudgetManager,
     BudgetUsage,
 )
-from agrefactor.cpp_interface import inspect_top_entry
+from agrefactor.cpp_interface import extract_top_type_contract, inspect_top_entry
 from agrefactor.evaluation.owner_evidence import resolve_source_owner
 from agrefactor.evaluation.diagnostic_catalog import load_catalog
 
@@ -979,6 +979,92 @@ def run_staged_preflight(
                 budget=budget,
             )
 
+    type_evidence_path: Path | None = None
+    if candidate_top is not None:
+        type_include_dirs = [str(item) for item in include_dirs]
+        if os.getenv("XILINX_HLS"):
+            type_include_dirs.append(str(Path(os.environ["XILINX_HLS"]) / "include"))
+        type_context = {
+            "include_dirs": tuple(dict.fromkeys(type_include_dirs)),
+            "compile_flags": extra_flags,
+            "compiler": compiler,
+        }
+        public_types = extract_top_type_contract(
+            testbench_code, candidate_top, require_definition=False,
+            source_path=str(directory / "testbench.cpp"), **type_context,
+        )
+        if public_types.get("has_user_types") or public_types.get("status") != "confirmed":
+            candidate_types = extract_top_type_contract(
+                candidate_code, candidate_top, require_definition=True,
+                source_path=str(directory / "refactor_code.cpp"), **type_context,
+            )
+            type_evidence_path = directory / "candidate_type_contract.json"
+            type_evidence = {
+                "authority": "public_candidate_compiler_type_facts",
+                "public_compile_succeeded": True,
+                "candidate_compile_succeeded": True,
+                "public": public_types, "candidate": candidate_types,
+            }
+            invocation["candidate_type_contract"] = str(type_evidence_path)
+            _write_json(type_evidence_path, type_evidence)
+            confirmed = (
+                public_types.get("status") == "confirmed"
+                and candidate_types.get("status") == "confirmed"
+            )
+            if confirmed and public_types.get("has_user_types"):
+                matches = public_types.get("fingerprint") == candidate_types.get("fingerprint")
+                type_evidence.update(status="matched" if matches else "mismatch", evidence_complete=True)
+                _write_json(type_evidence_path, type_evidence)
+                if not matches:
+                    public_by_name = {item["name"]: item for item in public_types.get("types", [])}
+                    candidate_by_name = {item["name"]: item for item in candidate_types.get("types", [])}
+                    differences = [
+                        {"type": name, "public": public_by_name.get(name),
+                         "candidate": candidate_by_name.get(name)}
+                        for name in sorted(set(public_by_name) | set(candidate_by_name))
+                        if public_by_name.get(name) != candidate_by_name.get(name)
+                    ]
+                    invocation["ownership_evidence"] = {
+                        "owner": "candidate", "authority": "public_candidate_type_difference",
+                        "evidence_complete": True, "artifact": str(type_evidence_path),
+                    }
+                    result = _semantic_failure_result(
+                        directory=directory, substeps=substeps,
+                        reason_codes=(TestbenchPreflightReasonCode.INTERFACE_MISMATCH,),
+                        owner=TestbenchFailureOwner.CANDIDATE,
+                        component=TestbenchPreflightComponent.CANDIDATE,
+                        substage=TestbenchPreflightSubstage.CANDIDATE_INTERFACE_CHECK,
+                        message="Candidate type layout differs from the Public ABI: " + json.dumps(differences, sort_keys=True),
+                        kind=TestbenchFailureKind.LINKAGE_MISMATCH,
+                    )
+                    result = replace(result, artifacts=(*result.artifacts, str(type_evidence_path)))
+                    return _return_failure(
+                        result=result, invocation=invocation,
+                        invocation_path=invocation_path, budget=budget,
+                    )
+            else:
+                type_evidence.update(status="incomplete", evidence_complete=False)
+                _write_json(type_evidence_path, type_evidence)
+                if public_types.get("has_user_types"):
+                    invocation["ownership_evidence"] = {
+                        "owner": "unknown", "authority": "type_facts_incomplete",
+                        "evidence_complete": False, "artifact": str(type_evidence_path),
+                    }
+                    result = _semantic_failure_result(
+                        directory=directory, substeps=substeps,
+                        reason_codes=(TestbenchPreflightReasonCode.OWNERSHIP_UNKNOWN,),
+                        owner=TestbenchFailureOwner.UNKNOWN,
+                        component=TestbenchPreflightComponent.CANDIDATE,
+                        substage=TestbenchPreflightSubstage.CANDIDATE_INTERFACE_CHECK,
+                        message="Candidate/Public user type facts are incomplete; see " + str(type_evidence_path),
+                        kind=TestbenchFailureKind.UNKNOWN,
+                    )
+                    result = replace(result, artifacts=(*result.artifacts, str(type_evidence_path)))
+                    return _return_failure(
+                        result=result, invocation=invocation,
+                        invocation_path=invocation_path, budget=budget,
+                    )
+
     symbol_record_outputs: dict[
         str,
         tuple[dict[str, str], ...],
@@ -1483,6 +1569,8 @@ def run_staged_preflight(
         failed_component=None,
         substeps=tuple(substeps),
     )
+    if type_evidence_path is not None:
+        result = replace(result, artifacts=(*result.artifacts, str(type_evidence_path)))
     _finish_invocation(
         invocation,
         invocation_path,

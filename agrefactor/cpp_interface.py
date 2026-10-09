@@ -7,6 +7,8 @@ defer to the real compile/link/synthesis stages instead of rejecting source.
 from __future__ import annotations
 
 import ctypes
+import hashlib
+import json
 import os
 import re
 import subprocess
@@ -18,6 +20,9 @@ from typing import Optional
 
 
 _DEFAULT_LIBCLANG = Path(
+    "/data/Xilinx/Vitis/2023.2/tps/lnx64/clang-14.0.0/lib/libclang.so"
+)
+_LEGACY_LIBCLANG = Path(
     "/data/Xilinx/Vitis_HLS/2023.2/lnx64/tools/clang-3.9/lib/libclang.so"
 )
 _FUNCTION_DECL = 8
@@ -87,6 +92,10 @@ class _CXSourceRange(ctypes.Structure):
         ("begin_int_data", ctypes.c_uint),
         ("end_int_data", ctypes.c_uint),
     ]
+
+
+class _CXToken(ctypes.Structure):
+    _fields_ = [("int_data", ctypes.c_uint * 4), ("ptr_data", ctypes.c_void_p)]
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +194,10 @@ class _LibClang:
             _CXCursor,
             ctypes.c_void_p,
         )
+        self.inclusion_visitor_type = ctypes.CFUNCTYPE(
+            None, ctypes.c_void_p, ctypes.POINTER(_CXSourceLocation),
+            ctypes.c_uint, ctypes.c_void_p,
+        )
         library.clang_createIndex.argtypes = [ctypes.c_int, ctypes.c_int]
         library.clang_createIndex.restype = ctypes.c_void_p
         library.clang_disposeIndex.argtypes = [ctypes.c_void_p]
@@ -220,6 +233,8 @@ class _LibClang:
         library.clang_visitChildren.restype = ctypes.c_uint
         library.clang_getCursorSpelling.argtypes = [_CXCursor]
         library.clang_getCursorSpelling.restype = _CXString
+        library.clang_getCursorUSR.argtypes = [_CXCursor]
+        library.clang_getCursorUSR.restype = _CXString
         library.clang_Cursor_getMangling.argtypes = [_CXCursor]
         library.clang_Cursor_getMangling.restype = _CXString
         library.clang_getCursorType.argtypes = [_CXCursor]
@@ -273,6 +288,43 @@ class _LibClang:
         ]
         library.clang_getFileName.argtypes = [ctypes.c_void_p]
         library.clang_getFileName.restype = _CXString
+        library.clang_getFile.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        library.clang_getFile.restype = ctypes.c_void_p
+        library.clang_getLocationForOffset.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint]
+        library.clang_getLocationForOffset.restype = _CXSourceLocation
+        library.clang_getRange.argtypes = [_CXSourceLocation, _CXSourceLocation]
+        library.clang_getRange.restype = _CXSourceRange
+        library.clang_tokenize.argtypes = [ctypes.c_void_p, _CXSourceRange, ctypes.POINTER(ctypes.POINTER(_CXToken)), ctypes.POINTER(ctypes.c_uint)]
+        library.clang_disposeTokens.argtypes = [ctypes.c_void_p, ctypes.POINTER(_CXToken), ctypes.c_uint]
+        library.clang_getTokenKind.argtypes = [_CXToken]
+        library.clang_getTokenKind.restype = ctypes.c_uint
+        library.clang_getTokenSpelling.argtypes = [ctypes.c_void_p, _CXToken]
+        library.clang_getTokenSpelling.restype = _CXString
+        library.clang_getTokenExtent.argtypes = [ctypes.c_void_p, _CXToken]
+        library.clang_getTokenExtent.restype = _CXSourceRange
+        library.clang_getTypeDeclaration.argtypes = [_CXType]
+        library.clang_getTypeDeclaration.restype = _CXCursor
+        library.clang_getTypedefDeclUnderlyingType.argtypes = [_CXCursor]
+        library.clang_getTypedefDeclUnderlyingType.restype = _CXType
+        library.clang_getEnumDeclIntegerType.argtypes = [_CXCursor]
+        library.clang_getEnumDeclIntegerType.restype = _CXType
+        library.clang_getEnumConstantDeclValue.argtypes = [_CXCursor]
+        library.clang_getEnumConstantDeclValue.restype = ctypes.c_longlong
+        library.clang_getEnumConstantDeclUnsignedValue.argtypes = [_CXCursor]
+        library.clang_getEnumConstantDeclUnsignedValue.restype = ctypes.c_ulonglong
+        library.clang_Type_getSizeOf.argtypes = [_CXType]
+        library.clang_Type_getSizeOf.restype = ctypes.c_longlong
+        library.clang_Type_getAlignOf.argtypes = [_CXType]
+        library.clang_Type_getAlignOf.restype = ctypes.c_longlong
+        library.clang_Cursor_getOffsetOfField.argtypes = [_CXCursor]
+        library.clang_Cursor_getOffsetOfField.restype = ctypes.c_longlong
+        library.clang_Cursor_isBitField.argtypes = [_CXCursor]
+        library.clang_Cursor_isBitField.restype = ctypes.c_uint
+        library.clang_getFieldDeclBitWidth.argtypes = [_CXCursor]
+        library.clang_getFieldDeclBitWidth.restype = ctypes.c_int
+        library.clang_Location_isInSystemHeader.argtypes = [_CXSourceLocation]
+        library.clang_Location_isInSystemHeader.restype = ctypes.c_int
+        library.clang_getInclusions.argtypes = [ctypes.c_void_p, self.inclusion_visitor_type, ctypes.c_void_p]
         library.clang_getCString.argtypes = [_CXString]
         library.clang_getCString.restype = ctypes.c_char_p
         library.clang_disposeString.argtypes = [_CXString]
@@ -287,21 +339,25 @@ class _LibClang:
 
 def _library_path() -> Path:
     configured = os.getenv("AGREFACTOR_LIBCLANG")
-    return Path(configured) if configured else _DEFAULT_LIBCLANG
+    if configured:
+        return Path(configured)
+    return _DEFAULT_LIBCLANG if _DEFAULT_LIBCLANG.is_file() else _LEGACY_LIBCLANG
 
 
-@lru_cache(maxsize=4)
-def _compiler_include_flags(library_path: Path) -> tuple[str, ...]:
-    driver = library_path.parent.parent / "bin" / "clang++"
-    if not driver.is_file():
-        return ()
+@lru_cache(maxsize=16)
+def _compiler_include_context(
+    compiler: str = "g++",
+    compile_flags: tuple[str, ...] = (),
+) -> dict:
+    # Original-only qualification uses the host compiler. Mixing its libc
+    # with an unrelated vendor C++ library can make valid artifacts unparsable.
     try:
         result = subprocess.run(
-            [str(driver), f"--gcc-toolchain={driver.parent.parent}", "-E", "-x", "c++", "-v", "-"],
+            [compiler, *compile_flags, "-E", "-dM", "-x", "c++", "-v", "-"],
             input="", capture_output=True, text=True, timeout=10,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        return ()
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return {"status": "unknown", "flags": (), "reason": str(error)}
     flags: list[str] = []
     collecting = False
     for line in result.stderr.splitlines():
@@ -311,7 +367,47 @@ def _compiler_include_flags(library_path: Path) -> tuple[str, ...]:
             break
         elif collecting and Path(line.strip()).is_dir():
             flags.extend(("-isystem", line.strip()))
-    return tuple(flags)
+    language = re.search(r"^#define __cplusplus (\d+)L?\s*$", result.stdout, re.MULTILINE)
+    cpp_versions = {199711: "98", 201103: "11", 201402: "14", 201703: "17", 202002: "20", 202100: "23", 202302: "23"}
+    standard = cpp_versions.get(int(language.group(1))) if language else None
+    if standard:
+        strict = re.search(r"^#define __STRICT_ANSI__\s", result.stdout, re.MULTILINE)
+        standard = ("c++" if strict else "gnu++") + standard
+    complete = result.returncode == 0 and flags and standard
+    return {
+        "status": "confirmed" if complete else "unknown",
+        "flags": tuple(flags), "return_code": result.returncode,
+        "language_standard": standard,
+        "reason": None if complete else result.stderr or "compiler language standard unavailable",
+    }
+
+
+def _compiler_include_flags(library_path, compiler="g++", compile_flags=()):
+    return _compiler_include_context(compiler, tuple(compile_flags))["flags"]
+
+
+def _vendor_include_directory():
+    xilinx_hls = os.getenv("XILINX_HLS")
+    return Path(xilinx_hls) / "include" if xilinx_hls else None
+
+
+def _parse_flags(path, include_dirs, compile_flags, compiler):
+    flags = ["-x", "c++"]
+    context = _compiler_include_context(compiler, tuple(compile_flags))
+    if context.get("language_standard"):
+        flags.append("-std=" + context["language_standard"])
+    compiler_includes = _compiler_include_flags(path, compiler, tuple(compile_flags))
+    if compiler_includes:
+        flags.extend(("-nostdinc++", *compiler_includes))
+    # The qualification compiler adds this directory even when source-package
+    # includes only name the user source root. Parse the same header context.
+    directories = list(include_dirs)
+    vendor_include = _vendor_include_directory()
+    if vendor_include is not None:
+        directories.append(str(vendor_include))
+    flags.extend(f"-I{directory}" for directory in dict.fromkeys(directories))
+    flags.extend(compile_flags)
+    return flags
 
 
 def extract_top_interface(
@@ -322,6 +418,7 @@ def extract_top_interface(
     source_path: str | Path | None = None,
     include_dirs: tuple[str, ...] = (),
     compile_flags: tuple[str, ...] = (),
+    compiler: str = "g++",
     _entry_facts: dict | None = None,
 ) -> Optional[CppFunctionInterface]:
     """Return one compiler-resolved top definition, or ``None`` if unknown."""
@@ -345,9 +442,16 @@ def extract_top_interface(
             filename = str(source_path or "agrefactor_interface.cpp").encode("utf-8")
             contents = source.encode("utf-8")
             unsaved = _CXUnsavedFile(filename, contents, len(contents))
-            flags = ["-x", "c++", "-std=c++14", *_compiler_include_flags(path)]
-            flags.extend(f"-I{directory}" for directory in include_dirs)
-            flags.extend(compile_flags)
+            flags = _parse_flags(path, include_dirs, compile_flags, compiler)
+            include_context = _compiler_include_context(compiler, tuple(compile_flags))
+            if _entry_facts is not None:
+                _entry_facts["parse_context"] = {
+                    "libclang": str(path), "compiler": compiler,
+                    "source_path": filename.decode("utf-8"), "arguments": flags,
+                    "include_search_status": include_context["status"],
+                    "include_search_reason": include_context.get("reason"),
+                    "language_standard": include_context.get("language_standard"),
+                }
             arguments = (ctypes.c_char_p * len(flags))(
                 *(flag.encode("utf-8") for flag in flags)
             )
@@ -358,13 +462,19 @@ def extract_top_interface(
                 len(arguments),
                 ctypes.pointer(unsaved),
                 1,
-                0,
+                1,  # CXTranslationUnit_DetailedPreprocessingRecord
             )
             if not translation_unit:
                 return None
             error_offsets: list[int] = []
-            has_errors = False
+            has_errors = include_context["status"] != "confirmed"
             diagnostic_evidence: list[dict] = []
+            if has_errors:
+                diagnostic_evidence.append({
+                    "severity": 3, "message": "qualification compiler include context unavailable: " + str(include_context.get("reason")),
+                    "file": None, "line": None, "column": None, "offset": None,
+                    "source": "compiler_include_probe",
+                })
             for diagnostic_index in range(library.clang_getNumDiagnostics(translation_unit)):
                 diagnostic = library.clang_getDiagnostic(translation_unit, diagnostic_index)
                 try:
@@ -402,12 +512,13 @@ def extract_top_interface(
                     library.clang_disposeDiagnostic(diagnostic)
             if _entry_facts is not None:
                 _entry_facts["diagnostics"] = diagnostic_evidence
+                _entry_facts["translation_unit_complete"] = not has_errors
             if any(diagnostic["severity"] >= 4 for diagnostic in diagnostic_evidence):
                 if _entry_facts is not None:
                     _entry_facts.update(status="unknown", entries=[], translation_unit_complete=False)
                 return None
 
-            matches: list[_CXCursor] = []
+            matches: list[tuple[_CXCursor, dict]] = []
             entries: list[dict] = []
 
             @clang.visitor_type
@@ -428,7 +539,7 @@ def extract_top_interface(
                         start, end = _source_offsets(clang, cursor)
                         declaration = _declaration_text(source, start, end) if library.clang_Location_isFromMainFile(location) else None
                         linkage = int(library.clang_getCursorLinkage(cursor))
-                        entries.append({
+                        entry = {
                             "kind": {_FUNCTION_DECL: "function", _METHOD_DECL: "member", _FUNCTION_TEMPLATE: "template"}[cursor.kind],
                             "name": name,
                             "parent": clang.text(library.clang_getCursorSpelling(_parent)),
@@ -438,54 +549,85 @@ def extract_top_interface(
                                 "unknown",
                             ),
                             "source_path": clang.text(library.clang_getFileName(entry_file)),
+                            "usr": clang.text(library.clang_getCursorUSR(cursor)),
+                            "canonical_function_type": clang.text(library.clang_getTypeSpelling(library.clang_getCanonicalType(library.clang_getCursorType(cursor)))),
+                            "is_definition": bool(library.clang_isCursorDefinition(cursor)),
                             "signature_valid": declaration is not None and not any(start <= offset < start + len(declaration.encode("utf-8")) for offset in error_offsets),
-                        })
+                        }
+                        entries.append(entry)
                         if cursor.kind == _FUNCTION_DECL and library.clang_Location_isFromMainFile(location):
-                            matches.append(cursor)
+                            matches.append((cursor, entry))
                 return _CHILD_VISIT_RECURSE
 
             root = library.clang_getTranslationUnitCursor(translation_unit)
             library.clang_visitChildren(root, visit, None)
+            valid_entries = [
+                entry for entry in entries
+                if entry["signature_valid"] or not has_errors
+            ]
+            # Only compiler-identical redeclarations share an entry. Matching
+            # spelling alone cannot disambiguate overloads or namespaces.
+            groups = {}
+            for position, entry in enumerate(valid_entries):
+                identity = (
+                    entry["usr"] or position,
+                    entry["kind"],
+                    entry["canonical_function_type"],
+                )
+                groups.setdefault(identity, []).append(entry)
+            duplicate_definition = any(
+                sum(entry["is_definition"] for entry in group) > 1
+                for group in groups.values()
+            )
+            if not entries:
+                status = "unknown" if has_errors else "missing"
+            elif len(valid_entries) != len(entries):
+                status = "unknown"
+            elif len(groups) != 1 or duplicate_definition:
+                status = "ambiguous"
+            else:
+                status = "confirmed"
             if _entry_facts is not None:
-                valid_entries = [entry for entry in entries if entry.pop("signature_valid") or not has_errors]
-                _entry_facts.update(
-                    status="confirmed" if len(valid_entries) == 1 else "ambiguous" if valid_entries else "missing" if not entries and not has_errors else "unknown",
-                    entries=valid_entries,
-                )
-                if len(matches) == 1 and not has_errors:
-                    _entry_facts["reachable_calls"] = _reachable_call_facts(
-                        clang, matches[0]
-                    )
-            interfaces = [
-                _interface_from_cursor(clang, cursor, source)
-                for cursor in matches
-            ]
-            interfaces = [
-                item for item in interfaces
-                if item is not None and item.source_declaration is not None
-                and not any(
-                    item.source_start <= offset < item.source_start + len(item.source_declaration.encode("utf-8"))
-                    for offset in error_offsets
-                )
-            ]
-            unique = {
-                (
-                    item.name,
-                    item.result_type,
-                    tuple(
-                        (
-                            parameter.name,
-                            parameter.canonical_type,
-                            parameter.pointer_like,
-                        )
-                        for parameter in item.parameters
-                    ),
-                ): item
-                for item in interfaces
-            }
-            if len(unique) != 1:
+                _entry_facts.update(status=status, entries=valid_entries)
+                if status == "confirmed" and len(valid_entries) > 1:
+                    _entry_facts["equivalent_redeclarations_collapsed"] = len(valid_entries)
+                if status in {"missing", "ambiguous"}:
+                    _entry_facts.setdefault("diagnostics", []).append({
+                        "severity": 3,
+                        "message": (
+                            f"entry declaration `{function_name}` was not found"
+                            if status == "missing" else
+                            f"multiple non-equivalent `{function_name}` declarations or definitions are present"
+                        ),
+                        "file": str(source_path) if source_path else None,
+                        "line": None, "column": None, "offset": None,
+                        "source": "entry_contract",
+                    })
+            if status != "confirmed":
                 return None
-            return next(iter(unique.values()))
+            resolved = []
+            for cursor, entry in matches:
+                if not entry["signature_valid"]:
+                    continue
+                interface = _interface_from_cursor(clang, cursor, source)
+                if interface is not None and interface.source_declaration is not None:
+                    resolved.append((cursor, entry, interface))
+            if not resolved:
+                return None
+            representative, _entry, interface = next(
+                (item for item in resolved if item[1]["is_definition"]),
+                resolved[0],
+            )
+            if _entry_facts is not None:
+                if not has_errors:
+                    _entry_facts["reachable_calls"] = _reachable_call_facts(clang, representative)
+                if _entry_facts.get("_include_type_contract"):
+                    contract = _type_contract_from_cursor(clang, representative, source, translation_unit)
+                    if has_errors and contract["has_user_types"]:
+                        contract.update(status="unknown", fingerprint=None)
+                        contract["unresolved"].append("translation_unit_has_errors")
+                    _entry_facts["type_contract"] = contract
+            return interface
         finally:
             if translation_unit:
                 library.clang_disposeTranslationUnit(translation_unit)
@@ -741,6 +883,496 @@ def inspect_top_entry(source: str, function_name: str, **context) -> dict:
     facts: dict = {"status": "unknown", "entries": []}
     extract_top_interface(source, function_name, _entry_facts=facts, **context)
     return facts
+
+
+def extract_cpp_comments(
+    source: str,
+    *,
+    source_path: str | Path | None = None,
+) -> dict:
+    """Return compiler comment tokens with byte and Python source offsets.
+
+    Tokenization does not require a semantically complete translation unit.
+    The raw spelling is sliced from the original buffer, never reconstructed.
+    """
+    facts = {"status": "unknown", "comments": [], "diagnostics": []}
+    path = _library_path()
+    if not isinstance(source, str) or not path.is_file():
+        facts["reason"] = "source_or_libclang_unavailable"
+        return facts
+    try:
+        clang = _LibClang(path)
+        library = clang.library
+        index = library.clang_createIndex(0, 0)
+        if not index:
+            facts["reason"] = "index_creation_failed"
+            return facts
+        unit = None
+        tokens = ctypes.POINTER(_CXToken)()
+        count = ctypes.c_uint()
+        try:
+            filename = str(source_path or "agrefactor_comments.cpp").encode("utf-8")
+            contents = source.encode("utf-8")
+            unsaved = _CXUnsavedFile(filename, contents, len(contents))
+            args = (ctypes.c_char_p * 3)(b"-x", b"c++", b"-std=c++14")
+            unit = library.clang_parseTranslationUnit(
+                index, filename, args, len(args), ctypes.pointer(unsaved), 1, 0,
+            )
+            if not unit:
+                facts["reason"] = "translation_unit_unavailable"
+                return facts
+            main_file = library.clang_getFile(unit, filename)
+            start = library.clang_getLocationForOffset(unit, main_file, 0)
+            end = library.clang_getLocationForOffset(unit, main_file, len(contents))
+            library.clang_tokenize(unit, library.clang_getRange(start, end), ctypes.byref(tokens), ctypes.byref(count))
+            comments = []
+            for token_index in range(count.value):
+                token = tokens[token_index]
+                if library.clang_getTokenKind(token) != 4:  # CXToken_Comment
+                    continue
+                extent = library.clang_getTokenExtent(unit, token)
+                byte_offsets = []
+                line = ctypes.c_uint()
+                column = ctypes.c_uint()
+                for location in (library.clang_getRangeStart(extent), library.clang_getRangeEnd(extent)):
+                    offset = ctypes.c_uint()
+                    library.clang_getSpellingLocation(location, None, ctypes.byref(line), ctypes.byref(column), ctypes.byref(offset))
+                    byte_offsets.append(int(offset.value))
+                byte_start, byte_end = byte_offsets
+                raw = contents[byte_start:byte_end].decode("utf-8")
+                char_start = len(contents[:byte_start].decode("utf-8"))
+                char_end = len(contents[:byte_end].decode("utf-8"))
+                token_line = source.count("\n", 0, char_start) + 1
+                line_start = source.rfind("\n", 0, char_start) + 1
+                comments.append({
+                    "kind": "line" if raw.startswith("//") else "block",
+                    "text": raw, "start": char_start, "end": char_end,
+                    "byte_start": byte_start, "byte_end": byte_end,
+                    "line": token_line, "column": char_start - line_start + 1,
+                })
+            facts.update(status="confirmed", comments=comments)
+            return facts
+        finally:
+            if tokens:
+                library.clang_disposeTokens(unit, tokens, count.value)
+            if unit:
+                library.clang_disposeTranslationUnit(unit)
+            library.clang_disposeIndex(index)
+    except (AttributeError, OSError, TypeError, ValueError, UnicodeError) as error:
+        facts["reason"] = f"comment_tokenization_failed: {error}"
+        return facts
+
+
+def extract_top_type_contract(
+    source: str,
+    function_name: str,
+    *,
+    require_definition: bool = False,
+    **context,
+) -> dict:
+    """Compiler facts for user types reachable from the entry interface."""
+    facts = {"status": "unknown", "entries": [], "_include_type_contract": True}
+    extract_top_interface(
+        source, function_name, require_definition=require_definition,
+        _entry_facts=facts, **context,
+    )
+    contract = facts.get("type_contract") or {
+        "status": "unknown", "types": [], "declaration_context": "",
+        "fingerprint": None, "has_user_types": None,
+        "required_type_names": [], "unresolved": ["entry_type_facts_unavailable"],
+    }
+    contract.update(
+        diagnostics=facts.get("diagnostics", []),
+        parse_context=facts.get("parse_context", {}),
+        translation_unit_complete=facts.get("translation_unit_complete", False),
+        entry_status=facts.get("status", "unknown"),
+        entries=facts.get("entries", []),
+        equivalent_redeclarations_collapsed=facts.get("equivalent_redeclarations_collapsed", 0),
+    )
+    return contract
+
+
+def type_contract_layout_fingerprint(types):
+    """Identity of compiler layout facts, independent of legal typedef spelling."""
+    layout = []
+    for item in types:
+        if item["kind"] == "typedef":
+            continue
+        facts = dict(item)
+        if "fields" in facts:
+            facts["fields"] = [
+                {key: value for key, value in field.items() if key != "type"}
+                for field in facts["fields"]
+            ]
+        layout.append(facts)
+    return hashlib.sha256(json.dumps(layout, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def _type_contract_from_cursor(clang, top, source, translation_unit):
+    library = clang.library
+    types = {}
+    declaration_spans = []
+    visited = set()
+    unresolved = []
+    anonymous_field_names = {}
+    required_headers = set()
+    vendor_include = _vendor_include_directory()
+    vendor_include = vendor_include.resolve() if vendor_include is not None else None
+    main_filename = None
+    top_file = ctypes.c_void_p()
+    library.clang_getSpellingLocation(library.clang_getCursorLocation(top), ctypes.byref(top_file), None, None, None)
+    if top_file.value:
+        main_filename = clang.text(library.clang_getFileName(top_file))
+    top_start, top_end = _source_offsets(clang, top)
+    top_declaration = _declaration_text(source, top_start, top_end) or ""
+    top_fragment = source.encode("utf-8")[top_start:top_end]
+    top_start += len(top_fragment) - len(top_fragment.lstrip())
+    top_declaration_end = top_start + len(top_declaration.encode("utf-8"))
+
+    def spelling(value):
+        return clang.text(library.clang_getTypeSpelling(value))
+
+    def library_header(cursor):
+        location = library.clang_getCursorLocation(cursor)
+        header = ctypes.c_void_p()
+        library.clang_getSpellingLocation(location, ctypes.byref(header), None, None, None)
+        filename = clang.text(library.clang_getFileName(header)) if header.value else ""
+        if filename and (
+            library.clang_Location_isInSystemHeader(location)
+            or vendor_include is not None and Path(filename).resolve().is_relative_to(vendor_include)
+        ):
+            return filename
+        return None
+
+    def children(cursor):
+        found = []
+        @clang.visitor_type
+        def visit(child, _parent, _data):
+            found.append(child)
+            return 1  # CXChildVisit_Continue: direct fields only.
+        library.clang_visitChildren(cursor, visit, None)
+        return found
+
+    def cursor_name(cursor):
+        names = [clang.text(library.clang_getCursorSpelling(cursor))]
+        parent = library.clang_getCursorSemanticParent(cursor)
+        while parent.kind in {2, 3, 4, 22}:
+            name = clang.text(library.clang_getCursorSpelling(parent))
+            if name:
+                names.insert(0, name)
+            parent = library.clang_getCursorSemanticParent(parent)
+        return "::".join(name for name in names if name)
+
+    def declaration(cursor):
+        location = library.clang_getCursorLocation(cursor)
+        file_handle = ctypes.c_void_p()
+        library.clang_getSpellingLocation(location, ctypes.byref(file_handle), None, None, None)
+        filename = clang.text(library.clang_getFileName(file_handle)) if file_handle.value else ""
+        start, end = _source_offsets(clang, cursor)
+        if library.clang_Location_isFromMainFile(location):
+            contents = source.encode("utf-8")
+        else:
+            try:
+                contents = Path(filename).read_bytes()
+            except OSError:
+                unresolved.append(f"declaration_source_unavailable:{cursor_name(cursor)}")
+                return
+        if end < len(contents) and contents[end:end + 1] == b";":
+            end += 1
+        # Keep enclosing named namespaces in generated context without
+        # including unrelated declarations from the namespace body.
+        namespaces = []
+        parent = library.clang_getCursorSemanticParent(cursor)
+        while parent.kind == 22:
+            namespace = clang.text(library.clang_getCursorSpelling(parent))
+            if namespace:
+                namespaces.insert(0, namespace)
+            parent = library.clang_getCursorSemanticParent(parent)
+        text = contents[start:end].decode("utf-8", errors="replace")
+        if text and not text.rstrip().endswith(";"):
+            text += ";"
+        if filename != main_filename:
+            required_headers.add(filename)
+        declaration_spans.append((filename, start, end, text, namespaces))
+
+    def shape(value):
+        canonical = library.clang_getCanonicalType(value)
+        result = {"type": spelling(value), "canonical_type": spelling(canonical)}
+        layers = []
+        element = canonical
+        while element.kind in {_POINTER_TYPE, *_REFERENCE_TYPES, *_ARRAY_TYPES}:
+            if element.kind in _ARRAY_TYPES:
+                layers.append({"kind": "array", "size": int(library.clang_getArraySize(element))})
+                element = library.clang_getArrayElementType(element)
+            else:
+                layers.append({"kind": "pointer" if element.kind == _POINTER_TYPE else "lvalue_reference" if element.kind == 103 else "rvalue_reference"})
+                element = library.clang_getPointeeType(element)
+            element = library.clang_getCanonicalType(element)
+        result["layers"] = layers
+        leaf_decl = library.clang_getTypeDeclaration(element)
+        stable_name = anonymous_field_names.get(library.clang_hashCursor(leaf_decl))
+        if stable_name:
+            leaf_spelling = spelling(element)
+            for prefix in (leaf_spelling, "struct " + leaf_spelling, "union " + leaf_spelling, "class " + leaf_spelling):
+                result["type"] = result["type"].replace(prefix, stable_name)
+                result["canonical_type"] = result["canonical_type"].replace(prefix, stable_name)
+            if "unnamed" in result["type"] or "anonymous" in result["type"]:
+                result["type"] = result["canonical_type"]
+        return result
+
+    anonymous_owners = {}
+    @clang.visitor_type
+    def find_anonymous_owner(cursor, _parent, _data):
+        if cursor.kind in {20, 36}:
+            target = library.clang_getCanonicalType(library.clang_getTypedefDeclUnderlyingType(cursor))
+            target_decl = library.clang_getTypeDeclaration(target)
+            if target_decl.kind in {2, 3, 4, 5} and not clang.text(library.clang_getCursorSpelling(target_decl)):
+                anonymous_owners[library.clang_hashCursor(target_decl)] = cursor
+        return _CHILD_VISIT_RECURSE
+    library.clang_visitChildren(library.clang_getTranslationUnitCursor(translation_unit), find_anonymous_owner, None)
+
+    def walk(value):
+        canonical = library.clang_getCanonicalType(value)
+        # Preserve typedef declarations as facts before following their
+        # canonical record/array target. The typedef itself is part of ABI
+        # spelling and must remain independently comparable.
+        type_decl = library.clang_getTypeDeclaration(value)
+        type_header = library_header(type_decl) if type_decl.kind in {2, 3, 4, 5, 20, 36} else None
+        if type_header is not None:
+            required_headers.add(type_header)
+            return
+        if type_decl.kind in {20, 36}:
+            identity = library.clang_hashCursor(type_decl)
+            if identity not in visited:
+                visited.add(identity)
+                target = library.clang_getTypedefDeclUnderlyingType(type_decl)
+                name = cursor_name(type_decl) or spelling(value)
+                types[name] = {"kind": "typedef", "name": name, "underlying_type": shape(target)}
+                declaration(type_decl)
+            walk(library.clang_getTypedefDeclUnderlyingType(type_decl))
+            return
+        if canonical.kind in {_POINTER_TYPE, *_REFERENCE_TYPES}:
+            walk(library.clang_getPointeeType(value))
+            return
+        if canonical.kind in _ARRAY_TYPES:
+            walk(library.clang_getArrayElementType(value))
+            return
+        cursor = library.clang_getTypeDeclaration(value)
+        if cursor.kind not in {2, 3, 4, 5, 20, 36}:
+            cursor = library.clang_getTypeDeclaration(canonical)
+        if cursor.kind not in {2, 3, 4, 5, 20, 36}:
+            return
+        type_header = library_header(cursor)
+        if type_header is not None:
+            required_headers.add(type_header)
+            return
+        identity = library.clang_hashCursor(cursor)
+        if identity in visited:
+            return
+        visited.add(identity)
+        owner = anonymous_owners.get(identity)
+        name = anonymous_field_names.get(identity) or cursor_name(cursor) or (
+            {2: "struct", 3: "union", 4: "class", 5: "enum"}[cursor.kind] + " " + cursor_name(owner)
+            if owner is not None else spelling(value)
+        )
+        if owner is not None:
+            declaration(owner)
+        if cursor.kind == 5:
+            underlying = library.clang_getEnumDeclIntegerType(cursor)
+            unsigned = library.clang_getCanonicalType(underlying).kind in {4, 5, 6, 7, 8, 9, 10, 11, 12}
+            facts = {
+                "kind": "enum", "name": name, "underlying_type": spelling(underlying),
+                "enum_values": [{"name": clang.text(library.clang_getCursorSpelling(child)), "value": int(library.clang_getEnumConstantDeclUnsignedValue(child) if unsigned else library.clang_getEnumConstantDeclValue(child))} for child in children(cursor) if child.kind == 7],
+            }
+        else:
+            definition = library.clang_getCursorDefinition(cursor)
+            if definition.kind in {2, 3, 4}:
+                cursor = definition
+            record_type = library.clang_getCursorType(cursor)
+            size = int(library.clang_Type_getSizeOf(record_type))
+            align = int(library.clang_Type_getAlignOf(record_type))
+            fields = []
+            @clang.visitor_type
+            def referenced_extent(child, _parent, _data):
+                if child.kind == 101:  # CXCursor_DeclRefExpr
+                    referenced = library.clang_getCursorReferenced(child)
+                    if referenced.kind == 7:  # CXCursor_EnumConstantDecl
+                        walk(library.clang_getCursorType(referenced))
+                    elif referenced.kind == _VARIABLE_DECL and library.clang_isConstQualifiedType(library.clang_getCursorType(referenced)):
+                        declaration(referenced)
+                return _CHILD_VISIT_RECURSE
+            library.clang_visitChildren(cursor, referenced_extent, None)
+            for child in children(cursor):
+                if child.kind == 6:
+                    field_type = library.clang_getCursorType(child)
+                    leaf_type = library.clang_getCanonicalType(field_type)
+                    while leaf_type.kind in {_POINTER_TYPE, *_REFERENCE_TYPES, *_ARRAY_TYPES}:
+                        leaf_type = library.clang_getArrayElementType(leaf_type) if leaf_type.kind in _ARRAY_TYPES else library.clang_getPointeeType(leaf_type)
+                    leaf_decl = library.clang_getTypeDeclaration(leaf_type)
+                    if leaf_decl.kind in {2, 3, 4, 5} and not clang.text(library.clang_getCursorSpelling(leaf_decl)):
+                        anonymous_field_names[library.clang_hashCursor(leaf_decl)] = name + "::" + clang.text(library.clang_getCursorSpelling(child))
+                    walk(field_type)
+                    field = {"name": clang.text(library.clang_getCursorSpelling(child)), **shape(field_type), "bit_offset": int(library.clang_Cursor_getOffsetOfField(child))}
+                    if library.clang_Cursor_isBitField(child):
+                        field["bit_width"] = int(library.clang_getFieldDeclBitWidth(child))
+                    fields.append(field)
+                elif child.kind == 44:  # C++ base layouts need explicit facts.
+                    unresolved.append(f"base_layout_unavailable:{name}")
+            if size < 0 or align < 0 or any(field["bit_offset"] < 0 for field in fields):
+                unresolved.append(f"record_layout_unavailable:{name}")
+            facts = {"kind": {2: "struct", 3: "union", 4: "class"}[cursor.kind], "name": name, "fields": fields, "size_bytes": size, "align_bytes": align}
+        types[name] = facts
+        declaration(cursor)
+
+    function_type = library.clang_getCursorType(top)
+    walk(library.clang_getResultType(function_type))
+    for argument_index in range(library.clang_Cursor_getNumArguments(top)):
+        walk(library.clang_getCursorType(library.clang_Cursor_getArgument(top, argument_index)))
+    required_include_lines = set()
+    @clang.inclusion_visitor_type
+    def included(file_handle, stack, length, _data):
+        filename = clang.text(library.clang_getFileName(file_handle))
+        if filename not in required_headers or not length:
+            return
+        line = ctypes.c_uint()
+        library.clang_getSpellingLocation(stack[length - 1], None, ctypes.byref(line), None, None)
+        required_include_lines.add(int(line.value))
+    library.clang_getInclusions(translation_unit, included, None)
+    # Macro expansions inside the required declarations are compile context,
+    # not testcase inputs. Preserve only the definitions actually referenced
+    # there (and their macro dependencies), never every main-file define.
+    macro_definitions = {}
+    required_macros = []
+    @clang.visitor_type
+    def collect_macro(cursor, _parent, _data):
+        if cursor.kind not in {501, 502}:
+            return _CHILD_VISIT_RECURSE
+        name = clang.text(library.clang_getCursorSpelling(cursor))
+        location = library.clang_getCursorLocation(cursor)
+        file_handle = ctypes.c_void_p()
+        library.clang_getSpellingLocation(location, ctypes.byref(file_handle), None, None, None)
+        filename = clang.text(library.clang_getFileName(file_handle)) if file_handle.value else ""
+        start, end = _source_offsets(clang, cursor)
+        if cursor.kind == 501:
+            macro_definitions[name] = (filename, start, end, cursor)
+        elif any(
+            file == filename and left <= start < right
+            for file, left, right, _text, _namespaces in declaration_spans
+        ) or (
+            filename == main_filename
+            and top_start <= start < top_declaration_end
+        ):
+            referenced = library.clang_getCursorReferenced(cursor)
+            definition_file = ctypes.c_void_p()
+            library.clang_getSpellingLocation(library.clang_getCursorLocation(referenced), ctypes.byref(definition_file), None, None, None)
+            definition_filename = clang.text(library.clang_getFileName(definition_file)) if definition_file.value else ""
+            definition_start, definition_end = _source_offsets(clang, referenced)
+            required_macros.append((name, (definition_filename, definition_start, definition_end, referenced), dict(macro_definitions)))
+        return _CHILD_VISIT_RECURSE
+    library.clang_visitChildren(library.clang_getTranslationUnitCursor(translation_unit), collect_macro, None)
+    macro_items = []
+    pending_macros = list(required_macros)
+    visited_macros = {}
+    while pending_macros:
+        name, definition, available_definitions = pending_macros.pop()
+        filename, start, end, cursor = definition
+        identity = (filename, start, end)
+        if name in visited_macros:
+            if visited_macros[name] != identity:
+                unresolved.append(f"macro_definition_conflict:{name}")
+            continue
+        visited_macros[name] = identity
+        if not filename or filename.startswith("<"):
+            # Command-line and builtin definitions are already represented
+            # by the qualification compiler's parse context.
+            continue
+        if filename != main_filename:
+            required_headers.add(filename)
+            continue
+        fragment = source.encode("utf-8")[start:end].decode("utf-8")
+        macro_items.append((start, "#define " + fragment))
+        tokens = ctypes.POINTER(_CXToken)()
+        count = ctypes.c_uint()
+        library.clang_tokenize(translation_unit, library.clang_getCursorExtent(cursor), ctypes.byref(tokens), ctypes.byref(count))
+        try:
+            spellings = [clang.text(library.clang_getTokenSpelling(translation_unit, tokens[index])) for index in range(count.value)]
+            body_start = 1
+            parameters = set()
+            if fragment[len(name):].startswith("(") and ")" in spellings:
+                body_start = spellings.index(")") + 1
+                parameters = set(spellings[2:body_start - 1])
+            dependencies = {
+                spellings[index] for index in range(body_start, count.value)
+                if library.clang_getTokenKind(tokens[index]) == 2
+                and spellings[index] not in parameters
+                and spellings[index] in available_definitions
+            }
+            pending_macros.extend((dependency, available_definitions[dependency], available_definitions) for dependency in dependencies)
+        finally:
+            if tokens:
+                library.clang_disposeTokens(translation_unit, tokens, count.value)
+    # Macro-only header dependencies may have been discovered after the first
+    # inclusion pass; the same recorded inclusion identities resolve them.
+    library.clang_getInclusions(translation_unit, included, None)
+    semantic = sorted(types.values(), key=lambda item: (item["name"], item["kind"]))
+    # Source order and surrounding packing directives matter for replay.
+    # Tokenized directives exclude examples embedded in strings/comments.
+    main_items = list(macro_items)
+    encoded = source.encode("utf-8")
+    main_file = library.clang_getFile(translation_unit, main_filename.encode("utf-8"))
+    start_location = library.clang_getLocationForOffset(translation_unit, main_file, 0)
+    end_location = library.clang_getLocationForOffset(translation_unit, main_file, len(encoded))
+    tokens = ctypes.POINTER(_CXToken)()
+    token_count = ctypes.c_uint()
+    library.clang_tokenize(translation_unit, library.clang_getRange(start_location, end_location), ctypes.byref(tokens), ctypes.byref(token_count))
+    try:
+        token_facts = []
+        for token_index in range(token_count.value):
+            token = tokens[token_index]
+            extent = library.clang_getTokenExtent(translation_unit, token)
+            offsets = []
+            line = ctypes.c_uint()
+            for location in (library.clang_getRangeStart(extent), library.clang_getRangeEnd(extent)):
+                offset = ctypes.c_uint()
+                library.clang_getSpellingLocation(location, None, ctypes.byref(line), None, ctypes.byref(offset))
+                offsets.append(int(offset.value))
+            token_facts.append((offsets[0], offsets[1], encoded[offsets[0]:offsets[1]].decode("utf-8"), int(line.value)))
+        for token_index, (start, _end, text, line) in enumerate(token_facts):
+            if text != "#" or token_index + 2 >= len(token_facts):
+                continue
+            line_start = encoded.rfind(b"\n", 0, start) + 1
+            if encoded[line_start:start].strip():
+                continue
+            directive = token_facts[token_index + 1][2]
+            argument = token_facts[token_index + 2][2]
+            if not (directive == "pragma" and argument == "pack" or directive == "include" and line in required_include_lines):
+                continue
+            line_end = encoded.find(b"\n", start)
+            if line_end < 0:
+                line_end = len(encoded)
+            while encoded[start:line_end].rstrip(b"\r").endswith(b"\\") and line_end < len(encoded):
+                following_end = encoded.find(b"\n", line_end + 1)
+                line_end = len(encoded) if following_end < 0 else following_end
+            main_items.append((start, encoded[start:line_end].decode("utf-8")))
+    finally:
+        library.clang_disposeTokens(translation_unit, tokens, token_count.value)
+    for filename, start, end, text, namespaces in declaration_spans:
+        if filename != main_filename:
+            continue
+        if any(other_file == filename and other_start <= start and end <= other_end and (other_start, other_end) != (start, end) for other_file, other_start, other_end, _text, _scope in declaration_spans):
+            continue
+        if namespaces:
+            text = " ".join(f"namespace {name} {{" for name in namespaces) + "\n" + text + "\n" + "}" * len(namespaces)
+        main_items.append((start, text))
+    main_items = sorted(set(main_items), key=lambda item: item[0])
+    context = "\n".join(text for _offset, text in main_items).strip()
+    return {
+        "status": "unknown" if unresolved else "confirmed", "types": semantic,
+        "has_user_types": bool(semantic), "required_type_names": sorted(types),
+        "declaration_context": context,
+        "fingerprint": None if unresolved else type_contract_layout_fingerprint(semantic),
+        "unresolved": unresolved,
+    }
 
 
 def _reachable_call_facts(clang: _LibClang, top: _CXCursor) -> list[dict]:

@@ -119,6 +119,42 @@ class PublicResultMappingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source evidence does not match"):
             self.freeze(testbench([3], manifest))
 
+    def test_observable_extra_and_missing_fields_are_rejected_with_precise_diagnostics(self):
+        for added, removed in (({"read": "status capture", "preservation": "same status"}, ()),
+                               ({}, ("candidate", "source_evidence"))):
+            with self.subTest(added=added, removed=removed):
+                manifest = copy.deepcopy(MANIFEST)
+                item = manifest["observables"][0]
+                item.update(added)
+                for field in removed:
+                    del item[field]
+                with self.assertRaises(ValueError) as caught:
+                    self.freeze(testbench([3], manifest))
+                detail = str(caught.exception)
+                self.assertIn("invalid observable channel; index=0", detail)
+                self.assertIn("expected_keys=" + json.dumps(sorted(MANIFEST["observables"][0])), detail)
+                self.assertIn("actual_type=dict", detail)
+                self.assertIn("actual_keys=" + json.dumps(sorted(item)), detail)
+                self.assertIn("missing_keys=" + json.dumps(sorted(removed)), detail)
+                self.assertIn("extra_keys=" + json.dumps(sorted(added)), detail)
+
+    def test_manifest_fields_and_nonobject_observable_are_rejected_with_schema_evidence(self):
+        with self.assertRaisesRegex(ValueError, 'unexpected result mapping manifest fields.*extra_keys=\\["notes"\\]'):
+            self.freeze(testbench([3], dict(MANIFEST, notes="unexpected")))
+        manifest = copy.deepcopy(MANIFEST)
+        manifest["observables"][0] = "not an object"
+        with self.assertRaisesRegex(ValueError, "invalid observable channel; index=0.*actual_type=str.*missing_keys="):
+            self.freeze(testbench([3], manifest))
+
+    def test_generation_instruction_states_exact_schema_and_comment_safe_evidence(self):
+        instruction = mapping.mapping_generation_instruction()
+        self.assertIn("exactly one key: observables", instruction)
+        self.assertIn("exactly these five keys: id, kind, original, candidate, source_evidence", instruction)
+        self.assertIn("return_value, output_parameter, or post_call_state", instruction)
+        self.assertIn("comments outside the manifest", instruction)
+        self.assertIn("no explanations added to the excerpts", instruction)
+        self.assertIn("encode such text as *\\u002f", instruction)
+
     def test_hidden_may_change_inputs_while_sharing_exact_adapters(self):
         result = self.freeze()
         with patch.object(mapping, "extract_top_interface", side_effect=interface), patch.object(
@@ -190,6 +226,110 @@ class PublicResultMappingTests(unittest.TestCase):
         bypassed = code.replace("mismatch += !agrefactor_compare_observations(original, candidate);", "mismatch += 0;")
         with self.assertRaisesRegex(ValueError, "bypasses frozen result observation"):
             mapping.validate_frozen_result_mapping(bypassed, result)
+
+    def test_protocol_mentions_in_comments_strings_and_continuations_are_not_markers(self):
+        prefix = (
+            '/* Example: ' + mapping.BEGIN + '\n' + mapping.END + ' */\n'
+            'const char *text = "' + mapping.BEGIN + '";\n'
+            'const char *raw = R"tag(' + mapping.MANIFEST_BEGIN + '\n' + mapping.BEGIN + ')tag";\n'
+            '// continued example \\\n' + mapping.BEGIN + '\n'
+            'int ignored; ' + mapping.BEGIN + '\n'
+        )
+        result = self.freeze(prefix + testbench([3]))
+        self.assertEqual(result["shared_cpp"], SHARED)
+
+    def test_real_duplicate_and_reversed_protocol_markers_remain_invalid(self):
+        with self.assertRaisesRegex(ValueError, "BEGIN must occur once.*found=2.*positions"):
+            self.freeze(mapping.BEGIN + '\n' + testbench([3]))
+        with self.assertRaisesRegex(ValueError, "END precedes BEGIN"):
+            self.freeze(mapping.END + '\n' + mapping.BEGIN + '\n')
+
+    def test_manifest_missing_duplicate_and_json_errors_are_distinct(self):
+        code = testbench([3])
+        with self.assertRaisesRegex(ValueError, "manifest must occur once.*found=0"):
+            self.freeze(code.replace(mapping.MANIFEST_BEGIN, '/* misspelled_mapping_manifest'))
+        with self.assertRaisesRegex(ValueError, "manifest must occur once.*found=2"):
+            self.freeze(code + mapping.MANIFEST_BEGIN + '\n{}\n*/')
+        with self.assertRaisesRegex(ValueError, "manifest JSON; line=.*column=.*reason="):
+            self.freeze(code.replace(json.dumps(MANIFEST), '{"observables": ['))
+
+    def test_receiver_gets_manifest_from_actual_frozen_payload(self):
+        frozen = self.freeze()
+        request = mapping.frozen_mapping_instruction(frozen)
+        comments = mapping.extract_cpp_comments(request)["comments"]
+        manifest_comment = next(item["text"] for item in comments
+                                if item["text"].startswith(mapping.MANIFEST_BEGIN))
+        # Construct the receiver from what was sent, not a prefilled Hidden TB.
+        receiver = frozen["shared_cpp"] + '\n' + manifest_comment + '\nint main()' + testbench([5]).split('int main()', 1)[1]
+        with patch.object(mapping, "extract_top_interface", side_effect=interface), patch.object(
+            mapping, "inspect_top_entry", side_effect=compiler_facts
+        ):
+            mapping.validate_frozen_result_mapping(receiver, frozen)
+        self.assertEqual(mapping._manifest_from_source(request)["observables"], MANIFEST["observables"])
+
+    def test_manifest_already_inside_shared_block_is_not_duplicated(self):
+        code = testbench([3])
+        comment = mapping.MANIFEST_BEGIN + '\n' + json.dumps(MANIFEST) + '\n*/'
+        code = code.replace(comment + '\n', '').replace(mapping.END, comment + '\n' + mapping.END)
+        frozen = self.freeze(code)
+        request = mapping.frozen_mapping_instruction(frozen)
+        self.assertEqual(mapping._manifest_from_source(request), MANIFEST)
+
+    def test_json_comment_terminator_is_escaped_without_changing_contract(self):
+        frozen = self.freeze()
+        frozen["observables"][0]["candidate"] = 'read status; text contains */'
+        request = mapping.frozen_mapping_instruction(frozen)
+        self.assertEqual(mapping._manifest_from_source(request)["observables"], frozen["observables"])
+        self.assertIn('*\\u002f', request)
+
+    def test_comment_safe_source_evidence_decodes_verbatim_and_preserves_mapping_identity(self):
+        original = ORIGINAL.replace("return input < 0 ? 7 : 0;", "return input < 0 ? 7 : 0; /* exact evidence */")
+        manifest = copy.deepcopy(MANIFEST)
+        excerpt = "return input < 0 ? 7 : 0; /* exact evidence */"
+        manifest["observables"][0]["source_evidence"] = [excerpt]
+        unsafe = testbench([3], manifest)
+        with self.assertRaisesRegex(ValueError, "manifest JSON;.*Unterminated string.*encode \\*/ inside JSON strings"):
+            self.freeze(unsafe)
+        safe = unsafe.replace(json.dumps(manifest), json.dumps(manifest).replace("*/", "*\\u002f"))
+        with patch.object(mapping, "extract_top_interface", side_effect=interface), patch.object(
+            mapping, "inspect_top_entry", side_effect=compiler_facts
+        ):
+            frozen = mapping.freeze_result_mapping(safe, original, "source_task", "source_task_hls")
+            mapping.validate_frozen_result_mapping(safe, frozen)
+        self.assertEqual(frozen["observables"], manifest["observables"])
+        self.assertEqual(frozen["observables"][0]["source_evidence"], [excerpt])
+        self.assertEqual(frozen["manifest_sha256"], mapping._json_sha(manifest))
+        mapping.validate_result_mapping_identity(frozen)
+        self.assertEqual(mapping._manifest_from_source(mapping.frozen_mapping_instruction(frozen)), manifest)
+
+    def test_explicit_mapping_retains_identity_and_diagnostics_when_ast_facts_missing(self):
+        failure = {"status": "unknown", "diagnostics": [{"severity": 3, "file": '/headers/stdio.h', "message": 'parse failure'}]}
+        with patch.object(mapping, "extract_top_interface", side_effect=interface), patch.object(
+            mapping, "inspect_top_entry", return_value=failure
+        ), self.assertRaises(mapping.ResultMappingVerificationError) as caught:
+            mapping.freeze_result_mapping(testbench([3]), ORIGINAL, 'source_task', 'source_task_hls')
+        partial = caught.exception.partial_mapping
+        self.assertEqual(partial["shared_cpp"], SHARED)
+        self.assertFalse(partial["compiler_structure_verified"])
+        self.assertEqual(partial["verification_diagnostics"], failure["diagnostics"])
+        self.assertFalse(caught.exception.repair_eligible)
+        mapping.validate_result_mapping_identity(partial)
+
+    def test_utf8_and_crlf_source_keeps_original_shared_bytes(self):
+        code = '// Unicode: \u4e2d\u6587\n' + testbench([3]).replace('\n', '\r\n')
+        if mapping.extract_top_interface(code, mapping.HELPERS[0]) is None:
+            self.skipTest('libclang unavailable')
+        result = mapping.freeze_result_mapping(code, ORIGINAL, 'source_task', 'source_task_hls')
+        self.assertEqual(result["shared_cpp"], SHARED.replace('\n', '\r\n'))
+
+    def test_end_marker_trailing_whitespace_does_not_change_legacy_shared_identity(self):
+        result = self.freeze(testbench([3]).replace(mapping.END, mapping.END + '   '))
+        self.assertEqual(result['shared_cpp'], SHARED)
+
+    def test_host_standard_headers_have_complete_real_mapping_facts(self):
+        code = '#include <cstdio>\n#include <vector>\n' + testbench([3])
+        result = mapping.freeze_result_mapping(code, ORIGINAL, 'source_task', 'source_task_hls')
+        self.assertTrue(result["compiler_structure_verified"])
 
 
 if __name__ == "__main__":

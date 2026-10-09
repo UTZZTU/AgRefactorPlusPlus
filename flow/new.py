@@ -8,7 +8,9 @@ from flow.tools.input_domain import (
     input_domain_sha256,
     normalize_input_domain_contract,
 )
-from flow.tools.result_mapping import freeze_result_mapping, frozen_mapping_instruction
+from flow.tools.result_mapping import (
+    ResultMappingVerificationError, freeze_result_mapping, frozen_mapping_instruction,
+)
 from flow.rag.rag_integration import KnowledgeManager
 from flow.base_agent import reset_agrefactorpp_usage_registry, print_agrefactorpp_usage_summary
 from agrefactor.runtime.prompt_evidence import reset_model_prompt_evidence
@@ -148,6 +150,7 @@ def _build_model_data_boundary(
     public_hls_decl: str,
     hidden_generation_enabled: bool,
     input_domain_contract_sha256: str = "",
+    public_type_contract_sha256: str = "",
 ):
     order = list(event_order)
     public_index = order.index("public_generation") if "public_generation" in order else -1
@@ -182,6 +185,7 @@ def _build_model_data_boundary(
             [
                 "original_source",
                 "public_hls_decl",
+                *(["public_type_contract"] if public_type_contract_sha256 else []),
                 *(
                     ["input_domain_contract"]
                     if input_domain_contract_sha256
@@ -195,6 +199,7 @@ def _build_model_data_boundary(
         "hidden_generation_after_candidate": hidden_after_candidate,
         "public_hls_decl_sha256": _sha256_text(public_hls_decl),
         "input_domain_contract_sha256": input_domain_contract_sha256,
+        "public_type_contract_sha256": public_type_contract_sha256,
         "hidden_testbench_exposed_to_generation_model": False,
     }
 
@@ -639,6 +644,7 @@ def hls_refactor_with_rag(
         "public_runtime_contract": None,
         "public_runtime_contract_sha256": "",
         "public_result_mapping": None,
+        "public_type_contract": None,
         "input_domain_contract": copy.deepcopy(input_domain_contract),
         "input_domain_contract_sha256": input_domain_contract_sha256,
         "model_data_boundary": {},
@@ -779,20 +785,60 @@ def hls_refactor_with_rag(
         )
     cv["public_hls_decl_verbatim"] = public_hls_decl
     cv["public_hls_decl_sha256"] = _sha256_text(public_hls_decl)
-    cv["public_result_mapping"] = freeze_result_mapping(
-        cv["testbench"], cv["orig_code"], cv["kernel_name"], cv["new_kernel_name"],
-        # The resolver only requires a block when compiler facts prove an
-        # interface transformation. Provided Public suites therefore retain
-        # legacy behavior for identity interfaces, while transformed suites
-        # cannot silently invent a result mapping.
-        require_explicit=not external_testbench,
-        source_path=str(Path(package_root) / "testbench.cpp"),
-        include_dirs=(package_root,), compile_flags=reference_context["compile_flags"],
-    )
+    try:
+        cv["public_result_mapping"] = freeze_result_mapping(
+            cv["testbench"], cv["orig_code"], cv["kernel_name"], cv["new_kernel_name"],
+            # Provided identity interfaces retain their existing contract.
+            require_explicit=not external_testbench,
+            source_path=str(Path(package_root) / "testbench.cpp"),
+            include_dirs=(package_root,), compile_flags=reference_context["compile_flags"],
+        )
+    except ResultMappingVerificationError as exc:
+        cv["public_result_mapping_unverified"] = exc.partial_mapping
+        cv["public_result_mapping_diagnostics"] = exc.diagnostics
+        with open(os.path.join(output_dir, "public_result_mapping_unverified.json"), "w", encoding="utf-8") as mapping_file:
+            json.dump(exc.partial_mapping, mapping_file, ensure_ascii=False, indent=2)
+        exhaustion = tools.tb_optimizer.TestbenchGenerationExhausted(
+            split="public", stage="public_result_mapping_qualification",
+            qualification_mode="provided" if external_testbench else "generated",
+            trajectories=[{
+                "qualified": False, "trajectory_status": "contract_incomplete",
+                "failure_owner": "unknown", "next_action": "review_unknown",
+                "error": str(exc), "rounds": [],
+                "qualification_checks_used": 1, "repairs_used": 0,
+            }],
+        )
+        return _finish_test_generation_exhaustion(cv, exhaustion, output_dir)
     cv["tb_aligned_instruction"] += frozen_mapping_instruction(cv["public_result_mapping"], for_candidate=True)
     if cv["public_result_mapping"] is not None:
         with open(os.path.join(output_dir, "public_result_mapping.json"), "w", encoding="utf-8") as mapping_file:
             json.dump(cv["public_result_mapping"], mapping_file, ensure_ascii=False, indent=2)
+    try:
+        cv["public_type_contract"] = tools.tb_optimizer.freeze_public_type_contract(
+            cv["testbench"], cv["new_kernel_name"],
+            source_path=str(Path(package_root) / "testbench.cpp"),
+            include_dirs=(package_root,), compile_flags=reference_context["compile_flags"],
+        )
+    except tools.tb_optimizer.ModelArtifactError as exc:
+        cv["public_type_contract_unverified"] = getattr(exc, "type_contract", {})
+        with open(os.path.join(output_dir, "public_type_contract_unverified.json"), "w", encoding="utf-8") as type_file:
+            json.dump(cv["public_type_contract_unverified"], type_file, ensure_ascii=False, indent=2)
+        exhaustion = tools.tb_optimizer.TestbenchGenerationExhausted(
+            split="public", stage="public_type_contract_qualification",
+            qualification_mode="provided" if external_testbench else "generated",
+            trajectories=[{
+                "qualified": False, "trajectory_status": "contract_incomplete",
+                "failure_owner": "unknown", "next_action": "review_unknown",
+                "error": str(exc), "rounds": [],
+                "qualification_checks_used": 1, "repairs_used": 0,
+            }],
+        )
+        return _finish_test_generation_exhaustion(cv, exhaustion, output_dir)
+    cv["tb_aligned_instruction"] += tools.tb_optimizer.frozen_type_instruction(
+        cv["public_type_contract"],
+    )
+    with open(os.path.join(output_dir, "public_type_contract.json"), "w", encoding="utf-8") as type_file:
+        json.dump(cv["public_type_contract"], type_file, ensure_ascii=False, indent=2)
     if not external_testbench:
         cv["public_runtime_contract"] = (
             tools.tb_optimizer.generate_public_runtime_contract(
@@ -861,6 +907,7 @@ def hls_refactor_with_rag(
                 },
                 max_repairs=max_testbench_repair_attempts,
                 pinned_result_mapping=cv["public_result_mapping"],
+                pinned_type_contract=cv["public_type_contract"],
             )
         except tools.tb_optimizer.TestbenchGenerationExhausted as exc:
             return _finish_test_generation_exhaustion(
@@ -877,6 +924,7 @@ def hls_refactor_with_rag(
         public_hls_decl=cv["public_hls_decl_verbatim"],
         hidden_generation_enabled=enable_hidden_tb_eval,
         input_domain_contract_sha256=cv["input_domain_contract_sha256"],
+        public_type_contract_sha256=cv["public_type_contract"].get("fingerprint", ""),
     )
     if not cv["model_data_boundary"]["complete"]:
         raise RuntimeError(

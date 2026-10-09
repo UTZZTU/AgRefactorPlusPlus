@@ -92,6 +92,11 @@ class LightweightHiddenToolRecoveryTests(unittest.TestCase):
             ),
             patch.object(
                 tb_optimizer,
+                "freeze_public_type_contract",
+                return_value={},
+            ),
+            patch.object(
+                tb_optimizer,
                 "_finalize_trajectory",
                 side_effect=finish,
             ),

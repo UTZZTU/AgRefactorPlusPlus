@@ -991,6 +991,11 @@ _GENERATION_FAILURE_SCALAR_KEYS = (
     "retry_guidance",
     "qualification_mode",
     "repair_attempt_count",
+    "counter_source",
+    "artifact_request_count",
+    "artifact_response_count",
+    "artifact_format_retry_count",
+    "coverage_check_count",
     "retry_exhausted",
     "qualification_artifact_dir",
     "qualification_receipt",
@@ -1293,6 +1298,7 @@ def _prepare_public_testbench(
     suite_id: str = "public-readiness",
     source_kind: str = "generated",
     public_result_mapping: Mapping[str, Any] | None = None,
+    public_type_contract: Mapping[str, Any] | None = None,
 ) -> PublicTestbenchPreparationResult:
     'Preflight and, when necessary, repair one Public Testbench.'
 
@@ -1317,6 +1323,7 @@ def _prepare_public_testbench(
         task=task,
         original_top_function=original_top_function,
         candidate_top_function=candidate_top_function,
+        frozen_type_contract=public_type_contract,
     )
 
     # This preparation stage owns the Public Testbench.  If the Testbench
@@ -1465,6 +1472,21 @@ def _prepare_public_testbench(
             result_status = "failed"
             result_code = testbench_code
             result_reason = str(exc) + "; correct an upstream mapping in an independent new run"
+
+    if result_status == "passed" and public_type_contract is not None:
+        from flow.tools.tb_optimizer import ModelArtifactError, validate_frozen_type_contract
+
+        try:
+            validate_frozen_type_contract(
+                result_code, candidate_top_function, public_type_contract,
+                source_path=str(work_dir / "testbench.cpp"),
+                include_dirs=(str(Path(task.kernel_path).parent),),
+                compile_flags=task.target.compile_flags,
+            )
+        except ModelArtifactError as exc:
+            result_status = "failed"
+            result_code = testbench_code
+            result_reason = str(exc)
 
     return PublicTestbenchPreparationResult(
         status=result_status,
@@ -1880,6 +1902,8 @@ class SourceBootstrapPhase:
             )
         if generated.get("public_result_mapping") is not None:
             _atomic_json(bootstrap_root / "public_result_mapping.json", generated["public_result_mapping"])
+        if generated.get("public_type_contract") is not None:
+            _atomic_json(bootstrap_root / "public_type_contract.json", generated["public_type_contract"])
         actual_generation_prompts = get_model_prompt_evidence()
         if actual_generation_prompts.get("actual_call_count", 0) > 0:
             generation_prompt_sha = str(
@@ -1953,6 +1977,7 @@ class SourceBootstrapPhase:
                     else "generated"
                 ),
                 public_result_mapping=generated.get("public_result_mapping"),
+                public_type_contract=generated.get("public_type_contract"),
             )
             self._public_testbench_cost_observations = (
                 public_preparation.cost_observations
@@ -2822,6 +2847,11 @@ class SourceBootstrapPhase:
 
             public_result_mapping = json.loads(json.dumps(dict(public_result_mapping), ensure_ascii=False))
             validate_result_mapping_identity(public_result_mapping)
+        public_type_contract = _mapping_get(context_variables, "public_type_contract")
+        if isinstance(public_type_contract, Mapping):
+            public_type_contract = json.loads(json.dumps(dict(public_type_contract), ensure_ascii=False))
+        else:
+            public_type_contract = None
         model_data_boundary = _mapping_get(
             context_variables,
             "model_data_boundary",
@@ -2920,6 +2950,7 @@ class SourceBootstrapPhase:
                 else ""
             ),
             "public_result_mapping": public_result_mapping,
+            "public_type_contract": public_type_contract,
             "model_data_boundary": copied_boundary,
         }
 
@@ -2983,6 +3014,15 @@ class SourceBootstrapPhase:
 
                     validate_frozen_result_mapping(
                         code, result_mapping, source_path=str(target_path),
+                        include_dirs=(str(self._request.source_path.parent),),
+                        compile_flags=self._request.target.compile_flags,
+                    )
+                if generated.get("public_type_contract") is not None:
+                    from flow.tools.tb_optimizer import validate_frozen_type_contract
+
+                    validate_frozen_type_contract(
+                        code, generated["candidate_top"], generated["public_type_contract"],
+                        source_path=str(target_path),
                         include_dirs=(str(self._request.source_path.parent),),
                         compile_flags=self._request.target.compile_flags,
                     )

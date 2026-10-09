@@ -105,6 +105,500 @@ class FrozenLinkageTests(unittest.TestCase):
             )
 
 
+class PublicTypeContractTests(unittest.TestCase):
+    public = (
+        "struct Payload { int values[3]; unsigned tag; };\n"
+        "void process_top_hls(Payload payload);\n"
+    )
+
+    def freeze(self):
+        return tb_optimizer.freeze_public_type_contract(self.public, "process_top_hls")
+
+    def test_independent_public_facts_reject_same_named_changed_layout(self):
+        frozen = self.freeze()
+        changed = self.public.replace("int values[3]", "int *values")
+        with self.assertRaisesRegex(tb_optimizer.ModelArtifactError, "type layout"):
+            tb_optimizer._validate_frozen_candidate_abi(
+                changed, "process_top_hls", "void process_top_hls(Payload payload);",
+                frozen_type_contract=frozen,
+            )
+
+    def test_identical_sizes_do_not_hide_field_order_changes(self):
+        frozen = self.freeze()
+        changed = self.public.replace(
+            "int values[3]; unsigned tag;", "unsigned tag; int values[3];",
+        )
+        with self.assertRaisesRegex(tb_optimizer.ModelArtifactError, "type layout"):
+            tb_optimizer.validate_frozen_type_contract(changed, "process_top_hls", frozen)
+
+    def test_format_and_unrelated_types_do_not_change_contract(self):
+        frozen = self.freeze()
+        equivalent = (
+            "struct Unused { double private_values[29]; };\n"
+            "struct Payload{int values[3];unsigned tag;};\n"
+            "void process_top_hls( Payload payload );\n"
+            "int main() { int inputs[19] = {}; return inputs[0]; }\n"
+        )
+        tb_optimizer._validate_frozen_candidate_abi(
+            equivalent, "process_top_hls", "void process_top_hls(Payload payload);",
+            frozen_type_contract=frozen,
+        )
+        self.assertNotIn("Unused", frozen["declaration_context"])
+        self.assertNotIn("inputs", frozen["declaration_context"])
+
+    def test_stub_and_probe_must_keep_public_type_facts(self):
+        frozen = self.freeze()
+        valid = self.public.replace("payload);", "payload) {}")
+        tb_optimizer.validate_stub_contract(
+            valid, original_name="process_top", candidate_name="process_top_hls",
+            frozen_hls_decl="void process_top_hls(Payload payload);",
+            frozen_type_contract=frozen,
+        )
+        for fragment in ("int values[5]", "int *values"):
+            with self.subTest(fragment=fragment):
+                with self.assertRaisesRegex(tb_optimizer.ModelArtifactError, "type layout"):
+                    tb_optimizer.validate_stub_contract(
+                        valid.replace("int values[3]", fragment),
+                        original_name="process_top", candidate_name="process_top_hls",
+                        frozen_hls_decl="void process_top_hls(Payload payload);",
+                        frozen_type_contract=frozen,
+                    )
+
+    def test_probe_drift_repairs_probe_before_running_synthesis(self):
+        frozen = self.freeze()
+        valid = self.public.replace("payload);", "payload) {}")
+        bad = valid.replace("int values[3]", "int *values")
+        record = {
+            "round": 1, "status": "ok", "cov_pct": 100.0,
+            "tb_code": self.public, "stub_code": valid,
+            "frozen_public_hls_decl": "void process_top_hls(Payload payload);",
+            "frozen_public_type_contract": frozen,
+        }
+        with patch.object(tb_optimizer, "_request_cpp_artifact", side_effect=[bad, valid]) as request, patch.object(
+            tb_optimizer, "_synth_check", return_value=(True, ""),
+        ) as synth:
+            result = tb_optimizer._finalize_trajectory(
+                Mock(), [record], False, 0, expected_hls_name="process_top_hls",
+                orig_code="void process_top() {}", emit_final_text=False,
+                synth_retry_budget=1,
+            )
+        self.assertTrue(result["qualified"])
+        self.assertEqual(synth.call_count, 1)
+        self.assertEqual([call.kwargs["artifact_kind"] for call in request.call_args_list], ["empty_stub", "empty_stub"])
+        self.assertIn("FROZEN PUBLIC CANDIDATE TYPE CONTRACT", request.call_args_list[0].args[1])
+
+    def test_cache_requires_matching_public_type_fingerprint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tb_optimizer._write_golden_cache(directory, "test", {"orig_sha256": "orig"})
+            self.assertIsNone(tb_optimizer._load_golden_cache(
+                directory, "test", "orig", expected_type_contract_sha="types",
+            ))
+            tb_optimizer._write_golden_cache(directory, "test", {
+                "orig_sha256": "orig", "public_type_contract_sha256": "types",
+            })
+            self.assertIsNotNone(tb_optimizer._load_golden_cache(
+                directory, "test", "orig", expected_type_contract_sha="types",
+            ))
+
+    def test_hidden_request_receives_public_types_and_repairs_layout_drift(self):
+        frozen = self.freeze()
+        valid_tb = self.public + "void process_top(Payload payload); int main(){return 0;}"
+        bad_tb = valid_tb.replace("int values[3]", "int *values")
+        stub = self.public.replace("payload);", "payload) {}")
+        success = {"status": "ok", "cov_pct": 100.0, "lines_total": 1, "lines_hit": 1}
+        responses = [Mock(messages=[{"content": "```cpp\n" + code + "\n```"}])
+                     for code in [bad_tb, valid_tb, stub, stub]]
+        agent = Mock()
+        agent.run.side_effect = responses
+        with patch.object(tb_optimizer, "HLSAgentLoader") as loader, patch.object(
+            tb_optimizer, "_measure_qualified_coverage", return_value=success,
+        ), patch.object(tb_optimizer, "_synth_check", return_value=(True, "")):
+            loader.return_value.load_agent.return_value = agent
+            result = tb_optimizer.run_trajectory(
+                "void process_top() {}", "process_top", 1, 100.0, None, False,
+                pinned_hls_decl="void process_top_hls(Payload payload);",
+                pinned_type_contract=frozen, hidden_generation=True, emit_final_text=False,
+            )
+        self.assertTrue(result["qualified"])
+        self.assertEqual(result["artifact_response_attempts"], 2)
+        self.assertEqual(result["artifact_contract_checks"], 2)
+        self.assertEqual(result["artifact_response_retries"], 1)
+        self.assertEqual(result["qualification_checks_used"], 2)
+        self.assertEqual(result["repairs_used"], 1)
+        self.assertIn(frozen["declaration_context"], agent.run.call_args_list[0].kwargs["message"])
+        self.assertIn("type layout", agent.run.call_args_list[1].kwargs["message"])
+
+    def test_header_parse_failure_is_preserved_without_repairing_environment(self):
+        frozen = self.freeze()
+        invalid = {
+            "status": "unknown", "types": [], "unresolved": ["Payload"],
+            "parse_context": {"source_path": "testbench.cpp"},
+            "diagnostics": [{"severity": 3, "file": "/vendor/header.hpp", "message": "unknown declaration"}],
+        }
+        valid_tb = self.public + "void process_top(Payload payload); int main(){return 0;}"
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            tb_optimizer, "HLSAgentLoader",
+        ) as loader, patch.object(
+            tb_optimizer, "_request_cpp_artifact", return_value=valid_tb,
+        ) as request, patch.object(
+            tb_optimizer, "extract_top_type_contract", return_value=invalid,
+        ):
+            loader.return_value.load_agent.return_value = Mock()
+            with self.assertRaisesRegex(tb_optimizer.ModelArtifactError, "type contract is incomplete"):
+                tb_optimizer.run_trajectory(
+                    "void process_top() {}", "process_top", 1, 100.0, None, False,
+                    pinned_hls_decl="void process_top_hls(Payload payload);",
+                    pinned_type_contract=frozen, hidden_generation=True,
+                    emit_final_text=False, artifact_root=directory,
+                )
+            self.assertEqual(request.call_count, 0)
+            saved = json.loads((Path(directory) / "trajectory_000/type_contract_unverified.json").read_text())
+            self.assertEqual(saved["diagnostics"][0]["file"], "/vendor/header.hpp")
+
+    def test_exhaustion_uses_actual_mapping_checks_and_requests(self):
+        failure = tb_optimizer.TestbenchGenerationExhausted(
+            split="public", stage="public_mapping_qualification",
+            trajectories=[{
+                "trajectory_status": "contract_failed", "rounds": [{"status": "contract_failed"}],
+                "qualification_checks_used": 4, "repairs_used": 3,
+                "mapping_repair_requests_used": 3,
+            }],
+        ).to_dict()
+        self.assertEqual(failure["attempt_count"], 4)
+        self.assertEqual(failure["repair_attempt_count"], 3)
+        self.assertEqual(failure["counter_source"], "explicit")
+        self.assertEqual(failure["trajectory_summaries"][0]["mapping_repair_requests_used"], 3)
+
+class FrozenAbiAndRepairLimitTests(unittest.TestCase):
+    declaration = "int process_top_hls(int value);"
+    testbench = (
+        "int process_top(int value); int process_top_hls(int value); "
+        "int main(){return process_top(1) != process_top_hls(1);}"
+    )
+    stub = "int process_top(int value); int process_top_hls(int value){return process_top(value);}"
+    probe = "int process_top_hls(int value){return value;}"
+    original = "int process_top(int value){return value;}"
+    passed = {"status": "ok", "cov_pct": 100.0, "lines_total": 1, "lines_hit": 1}
+    failed = {
+        "status": "original_run_failed", "failure_owner": "testbench",
+        "next_action": "repair_testbench", "run_stderr": "qualification runtime evidence",
+    }
+
+    def run_artifacts(self, artifacts, coverage, **kwargs):
+        agent = Mock()
+        agent.run.side_effect = [Mock(messages=[{"content": "```cpp\n" + code + "\n```"}])
+                                 for code in artifacts]
+        with patch.object(tb_optimizer, "HLSAgentLoader") as loader, patch.object(
+            tb_optimizer, "_measure_qualified_coverage", side_effect=coverage,
+        ) as measure, patch.object(tb_optimizer, "_synth_check", return_value=(True, "")):
+            loader.return_value.load_agent.return_value = agent
+            result = tb_optimizer.run_trajectory(
+                self.original, "process_top", kwargs.pop("K", 1), 100.0, None, False,
+                pinned_hls_decl=self.declaration, emit_final_text=False, **kwargs,
+            )
+        return result, agent, measure
+
+    def test_scalar_signature_macro_context_and_equivalent_declarations_use_compiler(self):
+        public = "#define WIDTH 5\nvoid process_top_hls(int values[WIDTH]);"
+        frozen = tb_optimizer.freeze_public_type_contract(public, "process_top_hls")
+        self.assertEqual(frozen["types"], [])
+        self.assertIn("#define WIDTH 5", frozen["declaration_context"])
+        self.assertIn("#define WIDTH 5", tb_optimizer.frozen_type_instruction(frozen))
+        tb_optimizer._validate_frozen_candidate_abi(
+            public + "\nvoid process_top_hls(int values[WIDTH]);",
+            "process_top_hls", "void process_top_hls(int values[WIDTH]);",
+            frozen_type_contract=frozen,
+        )
+
+    def test_invalid_frozen_contract_cannot_borrow_generated_typedef_or_be_repaired(self):
+        with self.assertRaises(tb_optimizer.ModelArtifactError) as caught:
+            tb_optimizer._validate_frozen_candidate_abi(
+                "typedef int Missing; int process_top_hls(Missing value);",
+                "process_top_hls", "int process_top_hls(Missing value);",
+            )
+        self.assertFalse(caught.exception.repair_eligible)
+        self.assertTrue(caught.exception.type_contract["diagnostics"])
+        self.assertIn("unknown type name", str(caught.exception))
+
+    def test_invalid_frozen_abi_stops_before_model_generation(self):
+        with patch.object(tb_optimizer, "HLSAgentLoader") as loader, patch.object(
+            tb_optimizer, "_request_cpp_artifact",
+        ) as request, self.assertRaises(tb_optimizer.ModelArtifactError) as caught:
+            loader.return_value.load_agent.return_value = Mock()
+            tb_optimizer.run_trajectory(
+                self.original, "process_top", 1, 100.0, None, False,
+                pinned_hls_decl="int process_top_hls(Missing value);",
+                hidden_generation=True, emit_final_text=False,
+            )
+        request.assert_not_called()
+        self.assertFalse(caught.exception.repair_eligible)
+        self.assertEqual(caught.exception.artifact_counts["repairs_used"], 0)
+
+    def test_generated_missing_and_ambiguous_entry_have_repairable_compiler_facts(self):
+        for source, status in (("int other();", "missing"), (
+                "int process_top_hls(int value); int process_top_hls(float value);", "ambiguous")):
+            with self.subTest(status=status), self.assertRaises(tb_optimizer.ModelArtifactError) as caught:
+                tb_optimizer._validate_frozen_candidate_abi(source, "process_top_hls", self.declaration)
+            self.assertTrue(caught.exception.repair_eligible)
+            self.assertEqual(caught.exception.type_contract["status"], status)
+            self.assertTrue(caught.exception.type_contract["diagnostics"])
+
+    def test_abi_drift_repairs_in_existing_contract_loop(self):
+        wrong = self.testbench.replace("process_top_hls(int value)", "process_top_hls(float value)")
+        result, agent, measure = self.run_artifacts(
+            [wrong, self.testbench, self.stub, self.probe], [self.passed], hidden_generation=True,
+        )
+        self.assertTrue(result["qualified"])
+        self.assertEqual(result["artifact_event_counts"]["testbench"]["repair_requests"], 1)
+        self.assertEqual(result["artifact_response_attempts"], 2)
+        self.assertEqual(measure.call_count, 1)
+        self.assertIn("changed the externally frozen", agent.run.call_args_list[1].kwargs["message"])
+
+    def test_contract_and_coverage_repairs_share_actual_testbench_request_limit(self):
+        wrong = self.testbench.replace("process_top_hls(int value)", "process_top_hls(float value)")
+        result, agent, measure = self.run_artifacts(
+            [wrong, self.testbench, self.stub, wrong, self.testbench, self.stub],
+            [self.failed, self.failed], hidden_generation=True, max_repairs=3,
+        )
+        self.assertFalse(result["qualified"])
+        self.assertEqual(result["artifact_event_counts"]["testbench"]["requests"], 4)
+        self.assertEqual(result["artifact_event_counts"]["testbench"]["repair_requests"], 3)
+        self.assertEqual(measure.call_count, 2)
+        self.assertEqual(agent.run.call_count, 6)
+        self.assertIn("qualification runtime evidence", agent.run.call_args_list[3].kwargs["message"])
+
+    def test_all_inner_contract_failures_survive_later_coverage_repairs(self):
+        wrong = [self.testbench.replace("process_top_hls(int value)",
+                                       f"process_top_hls({kind} value)")
+                 for kind in ("float", "double", "long")]
+        errors = []
+        for source in wrong:
+            with self.assertRaises(tb_optimizer.ModelArtifactError) as caught:
+                tb_optimizer._validate_frozen_candidate_abi(
+                    source, "process_top_hls", self.declaration,
+                )
+            errors.append(str(caught.exception))
+        first = {**self.failed, "run_stderr": "first coverage execution failure"}
+        second = {**self.failed, "run_stderr": "second coverage execution failure"}
+        with tempfile.TemporaryDirectory() as directory:
+            result, agent, measure = self.run_artifacts(
+                [wrong[0], wrong[1], self.testbench, self.stub,
+                 wrong[2], self.testbench, self.stub,
+                 self.testbench, self.stub, self.probe],
+                [first, second, self.passed], hidden_generation=True,
+                max_repairs=5, artifact_root=directory,
+            )
+            histories = [record["testbench_contract_errors"] for record in result["rounds"]]
+            expected = [f"Testbench request {index}: {error}"
+                        for index, error in zip((1, 2, 4), errors)]
+            self.assertEqual(histories, [expected[:2], expected[2:], []])
+            saved = json.loads((Path(directory) / "trajectory_000/round_001/coverage.json").read_text())
+            self.assertEqual(saved["testbench_contract_errors"], expected[:2])
+        self.assertTrue(result["qualified"])
+        self.assertEqual(measure.call_count, 3)
+        self.assertEqual(result["artifact_event_counts"]["testbench"]["repair_requests"], 5)
+        self.assertEqual(result["artifact_event_counts"]["testbench"]["requests"], 6)
+        messages = [call.kwargs["message"] for call in agent.run.call_args_list]
+        for message in (messages[4], messages[5], messages[7]):
+            for error in expected[:2]:
+                self.assertIn(error, message)
+            self.assertIn("first coverage execution failure", message)
+        self.assertIn(errors[2], messages[5])
+        self.assertIn(expected[2], messages[7])
+        self.assertIn("second coverage execution failure", messages[7])
+        final_history = tb_optimizer._failure_history(result["rounds"])
+        for error in expected:
+            self.assertEqual(final_history.count(error), 1)
+
+    def test_successful_round_keeps_contract_evidence_without_stub_only_duplication(self):
+        wrong = self.testbench.replace("process_top_hls(int value)", "process_top_hls(float value)")
+        stub_failure = {**self.failed, "failure_owner": "stub", "next_action": "regenerate_stub"}
+        result, _agent, measure = self.run_artifacts(
+            [wrong, self.testbench, self.stub, self.stub, self.probe],
+            [stub_failure, self.passed], hidden_generation=True, max_repairs=1,
+        )
+        self.assertEqual(measure.call_count, 2)
+        self.assertEqual(len(result["rounds"][0]["testbench_contract_errors"]), 1)
+        self.assertEqual(result["rounds"][1]["testbench_contract_errors"], [])
+        self.assertEqual(tb_optimizer._failure_history(result["rounds"]).count(
+            "Testbench request 1:"), 1)
+        passed, _agent, _measure = self.run_artifacts(
+            [wrong, self.testbench, self.stub, self.probe], [self.passed],
+            hidden_generation=True, max_repairs=1,
+        )
+        self.assertEqual(passed["rounds"][0]["status"], "ok")
+        self.assertIn("changed the externally frozen", tb_optimizer._failure_history(passed["rounds"]))
+
+    def test_exhausted_testbench_limit_does_not_spend_independent_stub_recovery(self):
+        wrong = self.testbench.replace("process_top_hls(int value)", "process_top_hls(float value)")
+        stub_failure = {
+            **self.failed, "failure_owner": "stub", "next_action": "regenerate_stub",
+        }
+        result, agent, measure = self.run_artifacts(
+            [wrong, self.testbench, self.stub, self.stub, self.probe],
+            [stub_failure, self.passed], hidden_generation=True, max_repairs=1,
+        )
+        self.assertTrue(result["qualified"])
+        self.assertEqual(result["artifact_event_counts"]["testbench"]["repair_requests"], 1)
+        self.assertEqual(result["artifact_event_counts"]["stub"]["repair_requests"], 1)
+        self.assertEqual(measure.call_count, 2)
+
+    def test_zero_semantic_limit_stops_before_requesting_abi_replacement(self):
+        wrong = self.testbench.replace("process_top_hls(int value)", "process_top_hls(float value)")
+        agent = Mock()
+        agent.run.return_value = Mock(messages=[{"content": "```cpp\n" + wrong + "\n```"}])
+        with patch.object(tb_optimizer, "HLSAgentLoader") as loader, self.assertRaises(
+            tb_optimizer.ModelArtifactError,
+        ) as caught:
+            loader.return_value.load_agent.return_value = agent
+            tb_optimizer.run_trajectory(
+                self.original, "process_top", 1, 100.0, None, False,
+                pinned_hls_decl=self.declaration, hidden_generation=True,
+                emit_final_text=False, max_repairs=0,
+            )
+        self.assertEqual(agent.run.call_count, 1)
+        self.assertEqual(caught.exception.artifact_counts["repairs_used"], 0)
+
+    def test_normal_input_expansion_is_not_capped_as_semantic_repair(self):
+        coverage = [{**self.passed, "cov_pct": value} for value in (10.0, 40.0, 100.0)]
+        with patch.object(tb_optimizer, "freeze_result_mapping", return_value=None):
+            result, agent, measure = self.run_artifacts(
+                [self.testbench, self.stub, self.testbench, self.testbench, self.probe],
+                coverage, K=3, max_repairs=0,
+            )
+        self.assertTrue(result["qualified"])
+        self.assertEqual(measure.call_count, 3)
+        self.assertEqual(result["artifact_event_counts"]["testbench"]["requests"], 3)
+        self.assertEqual(result["artifact_event_counts"]["testbench"]["repair_requests"], 0)
+
+    def test_corrected_contract_history_survives_refinement_and_probe_requests(self):
+        wrong = self.testbench.replace("process_top_hls(int value)", "process_top_hls(float value)")
+        coverage = [{**self.passed, "cov_pct": value} for value in (10.0, 40.0, 100.0)]
+        with patch.object(tb_optimizer, "freeze_result_mapping", return_value=None):
+            result, agent, measure = self.run_artifacts(
+                [wrong, self.testbench, self.stub, self.testbench, self.testbench, self.probe],
+                coverage, K=3, max_repairs=1,
+            )
+        history = result["rounds"][0]["testbench_contract_errors"][0]
+        self.assertEqual(measure.call_count, 3)
+        self.assertEqual(result["artifact_event_counts"]["testbench"]["repair_requests"], 1)
+        for index in (3, 4, 5):
+            self.assertIn(history, agent.run.call_args_list[index].kwargs["message"])
+
+    def test_abi_rewrite_preserves_each_bounded_history_record(self):
+        rounds = [
+            {"round": 1, "status": "ok", "testbench_contract_errors": ["earliest ABI failure"]},
+            {"round": 2, "status": "compile_failed", "compile_stderr": "first compiler evidence " + "a" * 1200},
+            {"round": 3, "status": "run_failed", "run_stderr": "later runtime evidence " + "b" * 1200},
+        ]
+        history = tb_optimizer._failure_history(rounds)
+        self.assertGreater(len(history), 1500)
+        message = tb_optimizer._hls_friendly_rewrite_message(
+            "process_top_hls", "raw diagnostic prefix " + "x" * 1600,
+            failure_history=history,
+        )
+        self.assertIn(history, message)
+        self.assertIn("earliest ABI failure", message)
+        self.assertNotIn("raw diagnostic prefix", message)
+
+
+class ArtifactEventAccountingTests(unittest.TestCase):
+    @staticmethod
+    def response(content):
+        return Mock(messages=[{"content": content}])
+
+    def hidden_failure(self, agent, artifact_root=None):
+        with patch.object(tb_optimizer, "HLSAgentLoader") as loader:
+            loader.return_value.load_agent.return_value = agent
+            with self.assertRaises(tb_optimizer.TestbenchGenerationExhausted) as caught:
+                tb_optimizer.make_golden_hidden_tb(
+                    "void process_top() {}", "process_top", "void process_top_hls();",
+                    K=1, M=1, artifact_root=artifact_root,
+                )
+        return caught.exception.to_dict()
+
+    def test_invalid_envelopes_exhaust_format_retries_without_semantic_fallback(self):
+        agent = Mock()
+        agent.run.side_effect = [self.response("") for _ in range(4)]
+        with tempfile.TemporaryDirectory() as directory:
+            failure = self.hidden_failure(agent, directory)
+            saved = json.loads((Path(directory) / "trajectory_000/artifact_response_counts.json").read_text())
+        self.assertEqual(agent.run.call_count, 4)
+        self.assertEqual(failure["attempt_count"], 4)
+        self.assertEqual(failure["repair_attempt_count"], 0)
+        self.assertEqual(failure["artifact_request_count"], 4)
+        self.assertEqual(failure["artifact_response_count"], 4)
+        self.assertEqual(failure["artifact_format_retry_count"], 3)
+        self.assertEqual(failure["counter_source"], "explicit")
+        self.assertEqual(saved["qualification_checks_used"], 4)
+        self.assertEqual(failure["trajectory_summaries"][0]["artifact_event_counts"], saved["artifact_event_counts"])
+        self.assertIn(tb_optimizer.mapping_generation_instruction(), agent.run.call_args_list[1].kwargs["message"])
+
+    def test_api_timeout_counts_request_without_response(self):
+        agent = Mock()
+        response = self.response("")
+        response.process.side_effect = TimeoutError("transport unavailable")
+        agent.run.return_value = response
+        failure = self.hidden_failure(agent)
+        self.assertEqual(failure["artifact_request_count"], 1)
+        self.assertEqual(failure["artifact_response_count"], 0)
+        self.assertEqual(failure["attempt_count"], 0)
+        self.assertEqual(failure["repair_attempt_count"], 0)
+
+    def test_budget_rejection_is_not_a_request(self):
+        agent = Mock()
+        agent.run.side_effect = tb_optimizer.BudgetExceededError("llm_calls", 0, 1)
+        failure = self.hidden_failure(agent)
+        self.assertEqual(failure["artifact_request_count"], 0)
+        self.assertEqual(failure["artifact_response_count"], 0)
+        self.assertEqual(failure["repair_attempt_count"], 0)
+
+    def test_normal_result_separates_stub_format_retry_from_semantic_repair(self):
+        testbench = "void process_top(); void process_top_hls(); int main(){process_top();process_top_hls();return 0;}"
+        stub = "void process_top(); void process_top_hls(){process_top();}"
+        agent = Mock()
+        agent.run.side_effect = [self.response(value) for value in [
+            "```cpp\n" + testbench + "\n```", "malformed envelope",
+            "```cpp\n" + stub + "\n```", "```cpp\nvoid process_top_hls(){}\n```",
+        ]]
+        with patch.object(tb_optimizer, "HLSAgentLoader") as loader, patch.object(
+            tb_optimizer, "_measure_qualified_coverage",
+            return_value={"status": "ok", "cov_pct": 100.0, "lines_total": 1, "lines_hit": 1},
+        ), patch.object(tb_optimizer, "_synth_check", return_value=(True, "")):
+            loader.return_value.load_agent.return_value = agent
+            result = tb_optimizer.run_trajectory(
+                "void process_top() {}", "process_top", 1, 100.0, None, False,
+                pinned_hls_decl="void process_top_hls();", hidden_generation=True,
+                emit_final_text=False,
+            )
+        self.assertTrue(result["qualified"])
+        self.assertEqual(result["qualification_checks_used"], 1)
+        self.assertEqual(result["repairs_used"], 0)
+        self.assertEqual(result["coverage_checks_used"], 1)
+        counts = result["artifact_event_counts"]
+        self.assertEqual(counts["stub"]["requests"], 2)
+        self.assertEqual(counts["stub"]["responses"], 2)
+        self.assertEqual(counts["stub"]["format_retries"], 1)
+        self.assertEqual(counts["empty_stub"]["requests"], 1)
+
+    def test_exception_merges_persisted_counts_without_legacy_round_guess(self):
+        counts = {"qualification_checks_used": 5, "repairs_used": 2, "coverage_checks_used": 0}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "trajectory_000/artifact_response_counts.json"
+            path.parent.mkdir()
+            path.write_text(json.dumps(counts))
+            with patch.object(tb_optimizer, "run_trajectory", side_effect=RuntimeError("qualification stopped")):
+                with self.assertRaises(tb_optimizer.TestbenchGenerationExhausted) as caught:
+                    tb_optimizer.make_golden_hidden_tb(
+                        "void process_top() {}", "process_top", "void process_top_hls();",
+                        K=1, M=1, artifact_root=directory,
+                    )
+        failure = caught.exception.to_dict()
+        self.assertEqual(failure["attempt_count"], 5)
+        self.assertEqual(failure["repair_attempt_count"], 2)
+        self.assertEqual(failure["counter_source"], "explicit")
+
+
 class PromptStateSafetyTests(unittest.TestCase):
     def test_initial_prompt_requests_normal_complete_state_safe_testbench(self):
         message = tb_optimizer._initial_user_message(

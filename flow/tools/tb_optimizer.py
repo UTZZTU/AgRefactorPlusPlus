@@ -20,10 +20,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from autogen.agentchat.group import ContextVariables  # type: ignore
 from agrefactor.config import EvaluationSplit, TestSuiteSpec
+from agrefactor.runtime.budget import BudgetExceededError
 from agrefactor.reference_source import isolate_reference_program_entry
 from agrefactor.config.tool_timeouts import DEFAULT_CSYNTH_TIMEOUT_S
 from agrefactor.cpp_interface import (
     extract_top_interface,
+    extract_top_type_contract,
     interfaces_equivalent,
 )
 from flow.base_agent import HLSAgentLoader
@@ -34,6 +36,7 @@ from flow.tools.tb_coverage import (
     measure_coverage,
 )
 from flow.tools.result_mapping import (
+    ResultMappingVerificationError,
     freeze_result_mapping,
     frozen_mapping_instruction,
     mapping_generation_instruction,
@@ -121,10 +124,25 @@ class TestbenchGenerationExhausted(RuntimeError):
             if diagnostic_kinds
             else "generation_qualification_failed"
         )
-        attempt_count = sum(
-            max(1, int(item["round_count"]))
-            for item in summaries
-        )
+        is_provided = qualification_mode == "provided"
+        counter_source = "explicit"
+        if all("qualification_checks_used" in item for item in trajectories if isinstance(item, dict)):
+            attempt_count = sum(
+                int(item.get("qualification_checks_used", 0))
+                for item in trajectories
+            )
+            repair_attempt_count = sum(
+                int(item.get("repairs_used", item.get("mapping_repair_requests_used", 0)))
+                for item in trajectories
+            )
+        else:
+            counter_source = "legacy_round_fallback"
+            attempt_count = sum(max(1, int(item["round_count"])) for item in summaries)
+            repair_attempt_count = 0 if is_provided else attempt_count
+        artifact_events = [
+            counters for trajectory in trajectories
+            for counters in trajectory.get("artifact_event_counts", {}).values()
+        ]
         excerpts = [
             item["diagnostic_excerpt"]
             for item in summaries
@@ -134,7 +152,6 @@ class TestbenchGenerationExhausted(RuntimeError):
             -self._DIAGNOSTIC_LIMIT:
         ]
 
-        is_provided = qualification_mode == "provided"
         self._payload = {
             "schema_version": self.schema_version,
             "failure_kind": (
@@ -154,7 +171,12 @@ class TestbenchGenerationExhausted(RuntimeError):
             "trajectory_count": len(summaries),
             "qualified_count": 0,
             "attempt_count": attempt_count,
-            "repair_attempt_count": 0 if is_provided else attempt_count,
+            "repair_attempt_count": 0 if is_provided else repair_attempt_count,
+            "counter_source": counter_source,
+            "artifact_request_count": sum(item.get("requests", 0) for item in artifact_events),
+            "artifact_response_count": sum(item.get("responses", 0) for item in artifact_events),
+            "artifact_format_retry_count": sum(item.get("format_retries", 0) for item in artifact_events),
+            "coverage_check_count": sum(item.get("coverage_checks_used", 0) for item in trajectories),
             "retry_exhausted": False if is_provided else True,
             "failure_owner": failure_owner,
             "next_action": (
@@ -270,6 +292,15 @@ class TestbenchGenerationExhausted(RuntimeError):
             "next_action": action,
             "diagnostic_kind": diagnostic_kind,
             "diagnostic_excerpt": diagnostic_excerpt,
+            **{
+                key: trajectory[key] for key in (
+                    "qualification_checks_used", "repairs_used",
+                    "mapping_qualification_checks_used", "mapping_repair_requests_used",
+                    "artifact_event_counts", "artifact_response_attempts",
+                    "artifact_contract_checks", "artifact_response_retries",
+                    "coverage_checks_used", "counter_source",
+                ) if key in trajectory
+            },
         }
 
     def to_dict(self) -> Dict[str, Any]:
@@ -450,11 +481,102 @@ def validate_stub_contract(
     original_name: str,
     candidate_name: str,
     frozen_hls_decl: str,
+    frozen_type_contract: Optional[Dict[str, Any]] = None,
+    **parse_context,
 ) -> None:
     """Require one temporary Candidate implementation with the frozen ABI."""
 
     if not isinstance(stub_code, str) or not stub_code.strip():
         raise ModelArtifactError("stub must not be empty")
+    validate_frozen_type_contract(
+        stub_code, candidate_name, frozen_type_contract,
+        require_definition=True, **parse_context,
+    )
+
+
+def freeze_public_type_contract(
+    testbench_code: str,
+    candidate_name: str,
+    **parse_context,
+) -> Dict[str, Any]:
+    facts = extract_top_type_contract(
+        testbench_code, candidate_name, require_definition=False,
+        **parse_context,
+    )
+    if facts.get("status") != "confirmed":
+        raise _incomplete_type_contract_error("Public Candidate", facts)
+    return facts
+
+
+def _incomplete_type_contract_error(component: str, facts: Dict[str, Any]) -> "ModelArtifactError":
+    error = ModelArtifactError(
+        component + " type contract is incomplete: "
+        + json.dumps({
+            "unresolved": facts.get("unresolved", []),
+            "diagnostics": facts.get("diagnostics", []),
+            "entry_status": facts.get("entry_status", facts.get("status")),
+            "entries": facts.get("entries", []),
+        }, sort_keys=True)
+    )
+    error.type_contract = facts
+    source_path = facts.get("parse_context", {}).get("source_path")
+    errors = [item for item in facts.get("diagnostics", []) if item.get("severity", 0) >= 3]
+    error.repair_eligible = bool(
+        component != "frozen Public Candidate" and (
+            facts.get("entry_status", facts.get("status")) in {"missing", "ambiguous"}
+            or (errors and source_path and all(item.get("file") == source_path for item in errors))
+        )
+    )
+    return error
+
+
+def frozen_type_instruction(contract: Optional[Dict[str, Any]]) -> str:
+    if not contract or not (contract.get("types") or contract.get("declaration_context")):
+        return ""
+    return (
+        "\n\nFROZEN PUBLIC CANDIDATE TYPE CONTRACT:\n"
+        "Preserve the required user-defined type declarations below, including "
+        "field names/order/types, nested dependencies, array dimensions and "
+        "packing/alignment. Reuse the official headers for library/vendor "
+        "types; do not redeclare their types. This context contains no test "
+        "inputs. Include each needed declaration once in this translation unit.\n"
+        "```cpp\n" + contract.get("declaration_context", "") + "\n```\n"
+        "Compiler-derived Public type facts:\n"
+        + json.dumps(contract["types"], sort_keys=True)
+    )
+
+
+def validate_frozen_type_contract(
+    source: str,
+    candidate_name: str,
+    contract: Optional[Dict[str, Any]],
+    *,
+    require_definition: bool = False,
+    **parse_context,
+) -> None:
+    # Compare against saved Public facts, never resolve the Public declaration
+    # through the new artifact's typedefs or record definitions.
+    if not contract or not contract.get("types"):
+        return
+    observed = extract_top_type_contract(
+        source, candidate_name, require_definition=require_definition,
+        **parse_context,
+    )
+    if observed.get("status") != "confirmed":
+        raise _incomplete_type_contract_error("generated Candidate", observed)
+    if observed.get("fingerprint") != contract.get("fingerprint"):
+        expected_types = {item["name"]: item for item in contract["types"]}
+        actual_types = {item["name"]: item for item in observed.get("types", [])}
+        differences = [
+            {"type": name, "public": expected_types.get(name),
+             "generated": actual_types.get(name)}
+            for name in sorted(set(expected_types) | set(actual_types))
+            if expected_types.get(name) != actual_types.get(name)
+        ]
+        raise ModelArtifactError(
+            "generated artifact changed the frozen Public Candidate type layout: "
+            + json.dumps(differences, sort_keys=True)
+        )
 
 
 def _freeze_public_contract(
@@ -479,12 +601,14 @@ def _validate_frozen_public_contract(
     candidate_name: str,
     frozen_hls_decl: str,
     frozen_macros: Tuple[str, ...],
+    frozen_type_contract: Optional[Dict[str, Any]] = None,
     **parse_context,
 ) -> None:
     _validate_frozen_candidate_abi(
         testbench_code,
         candidate_name,
         frozen_hls_decl,
+        frozen_type_contract=frozen_type_contract,
         **parse_context,
     )
 
@@ -493,38 +617,33 @@ def _validate_frozen_candidate_abi(
     testbench_code: str,
     candidate_name: str,
     frozen_hls_decl: str,
+    frozen_type_contract: Optional[Dict[str, Any]] = None,
     **parse_context,
 ) -> None:
-    observed = extract_top_interface(
-        testbench_code,
-        candidate_name,
-        require_definition=False,
-        **parse_context,
-    )
+    frozen_facts: Dict[str, Any] = {}
     frozen = extract_top_interface(
-        frozen_hls_decl,
+        ((frozen_type_contract or {}).get("declaration_context", "")
+         + "\n" + frozen_hls_decl),
         candidate_name,
         require_definition=False,
+        _entry_facts=frozen_facts,
         **parse_context,
     )
     if frozen is None:
-        # Frozen declarations may use a typedef or vendor type declared by the
-        # Testbench's source package. Parse the declaration in that context,
-        # while keeping the observed declaration check independent.
-        frozen = extract_top_interface(
-            testbench_code + "\n" + frozen_hls_decl,
-            candidate_name,
-            require_definition=False,
-            **parse_context,
+        raise _incomplete_type_contract_error(
+            "frozen Public Candidate", frozen_facts,
         )
-    if frozen is None:
-        raise ModelArtifactError(
-            "externally frozen Candidate ABI could not be parsed"
-        )
+    validate_frozen_type_contract(
+        testbench_code, candidate_name, frozen_type_contract, **parse_context,
+    )
+    observed_facts: Dict[str, Any] = {}
+    observed = extract_top_interface(
+        testbench_code, candidate_name, require_definition=False,
+        _entry_facts=observed_facts, **parse_context,
+    )
     if observed is None:
-        raise ModelArtifactError(
-            "Testbench does not expose the externally frozen Candidate "
-            "declaration"
+        raise _incomplete_type_contract_error(
+            "generated Candidate", observed_facts,
         )
     if not interfaces_equivalent(observed, frozen):
         raise ModelArtifactError(
@@ -628,8 +747,12 @@ def _hidden_generation_action(record: Dict[str, Any], *, orig_code: Optional[str
                 and _completed_returncode(record, "compile") == 0
                 and differential_returncode is not None and differential_returncode > 0
                 and differential_returncode == record.get("run_returncode")):
-            # This authorizes an unfrozen generation attempt, not ownership.
-            # Keeping the exact Testbench preserves its inputs and oracle.
+            # This authorizes one exploration of the existing generated
+            # artifacts, not ownership. Alternate the existing Stub and
+            # Testbench requests so both directions share the same quota.
+            previous_action = str(record.get("ownership_action") or "")
+            if previous_action in {"regenerate_stub", "repair_testbench_stub"}:
+                return "repair_testbench"
             return "regenerate_stub"
     return _coverage_action(record)
 
@@ -654,6 +777,8 @@ def _coverage_contract_failure(message: str) -> Dict[str, Any]:
 def _failure_history(rounds: List[Dict[str, Any]]) -> str:
     entries = []
     for record in rounds:
+        for error in record.get("testbench_contract_errors", []):
+            entries.append("Testbench contract correction: " + str(error))
         initial_error = str(record.get("initial_testbench_contract_error") or "")
         if initial_error:
             entries.append("Initial Testbench contract correction: " + initial_error)
@@ -842,40 +967,6 @@ def _initial_user_message(
     return "\n".join(parts)
 
 
-def _initial_hidden_testbench_contract_repair_message(
-    kernel_name: str,
-    pinned_hls_decl: str,
-    failure_excerpt: str,
-) -> str:
-    hls_name = f"{kernel_name}_hls"
-    evidence = (failure_excerpt.strip() or "unknown contract failure")[-1500:]
-    return (
-        "Your previous held-out Testbench artifact failed the static "
-        "black-box/frozen-ABI contract before tool qualification.\n\n"
-        "Contract evidence:\n```\n"
-        + evidence
-        + "\n```\n\n"
-        "Return one complete replacement held-out Testbench. Preserve the "
-        "externally frozen Public-derived Candidate declaration below "
-        "character-for-character; do not change linkage, return type, "
-        "function name, parameter order/types, qualifiers, pointer/array "
-        "notation, typedef spelling, or the trailing declaration form.\n"
-        "```cpp\n"
-        + pinned_hls_decl.strip().rstrip(";")
-        + ";\n```\n"
-        f"Forward-declare and actually call both `{kernel_name}` and "
-        f"`{hls_name}`. Do not define, stub, wrap, alias, or reimplement "
-        "either top. Preserve the Original top's C/C++ language linkage "
-        "exactly as shown in the Original source; do not add or remove "
-        '``extern \"C\"``. Expected outputs must come from the actual Original '
-        "call; do not add a local semantic oracle or depend on "
-        "implementation-private state. Keep all external declarations "
-        "within the Original/Candidate black-box surface.\n"
-        "Reply with exactly one complete ```cpp ... ``` block and no "
-        "commentary."
-    )
-
-
 def _stub_request_message(
     kernel_name: Optional[str] = None,
     pinned_hls_decl: Optional[str] = None,
@@ -990,6 +1081,7 @@ def _empty_stub_request_message(
 def _hls_friendly_rewrite_message(
     hls_name: str,
     csynth_err: str,
+    failure_history: str = "",
 ) -> str:
     excerpt = csynth_err.strip()[-1500:] or "(no detailed error)"
     return (
@@ -1001,7 +1093,8 @@ def _hls_friendly_rewrite_message(
         "CSYNTH evidence:\n```\n"
         + excerpt
         + "\n```\n\n"
-        "Rewrite the complete Testbench so that it introduces one new "
+        + ("PREVIOUS FAILED ATTEMPTS (do not repeat them):\n" + failure_history + "\n\n" if failure_history else "")
+        + "Rewrite the complete Testbench so that it introduces one new "
         "HLS-synthesizable Candidate declaration, while preserving the "
         "Original declaration and meaningful golden-vs-Candidate checks. "
         "The Testbench must still only forward-declare the Original and "
@@ -1088,6 +1181,13 @@ def _feedback_message(
             "golden model, oracle algorithm, or copied implementation."
         )
 
+    history_block = ""
+    if failure_history:
+        history_block = (
+            "\n\nPREVIOUS FAILED ATTEMPTS (do not repeat them):\n"
+            + failure_history + "\n"
+        )
+
     if prev_status != "ok":
         evidence = (
             prev_compile_stderr.strip()
@@ -1124,7 +1224,10 @@ def _feedback_message(
             instruction = (
                 "Repair only the complete Testbench. Do not modify or "
                 "reimplement either top, and do not change a frozen ABI or "
-                "frozen Public macros."
+                "frozen Public macros. Inspect the comparator's expected/actual "
+                "consumption, equality polarity, failure counter updates, and "
+                "process exit code against the existing contract; never make "
+                "the comparator unconditionally pass."
             )
         elif next_action == "repair_abi_testbench_stub":
             instruction = (
@@ -1152,15 +1255,6 @@ def _feedback_message(
                 + newline
                 + "Inspect this exact code and the tool output yourself. "
                 + "Do not assume the reported owner is the root cause."
-                + newline
-            )
-        history_block = ""
-        if failure_history:
-            history_block = (
-                newline * 2
-                + "PREVIOUS FAILED ATTEMPTS (do not repeat them):"
-                + newline
-                + failure_history
                 + newline
             )
         scope_block = ""
@@ -1241,6 +1335,7 @@ def _feedback_message(
         "globals/types/helpers. The existing matching Stub will be reused."
         + oracle_block
         + frozen_block
+        + history_block
         + "\n\nOriginal source annotated with `// UNCOVERED` markers:\n"
         "```cpp\n"
         + annotated_source.rstrip()
@@ -1371,16 +1466,25 @@ def _extract_one_cpp_block(
 
 
 
-def _agent_run_once(agent, message: str, first_turn: bool) -> str:
-    if first_turn:
-        response = agent.run(message=message, max_turns=1)
-    else:
-        response = agent.run(
-            message=message,
-            max_turns=1,
-            clear_history=False,
-        )
+def _agent_run_once(agent, message: str, first_turn: bool, *, on_event=None) -> str:
+    if on_event:
+        on_event("request")
+    try:
+        if first_turn:
+            response = agent.run(message=message, max_turns=1)
+        else:
+            response = agent.run(
+                message=message,
+                max_turns=1,
+                clear_history=False,
+            )
+    except BudgetExceededError:
+        if on_event:
+            on_event("request_blocked")
+        raise
     response.process()
+    if on_event:
+        on_event("response")
     messages = getattr(response, "messages", None)
     if not isinstance(messages, list) or not messages:
         raise ModelArtifactError("agent response contains no messages")
@@ -1403,17 +1507,28 @@ def _request_cpp_artifact(
     artifact_kind: str,
     required_symbol: Optional[str],
     max_repairs: int = _ARTIFACT_RESPONSE_RETRIES,
+    on_event=None,
 ) -> str:
     current_message = message
     current_first_turn = first_turn
     last_error: Exception | None = None
     failures: list[str] = []
+    returned_response_count = 0
     for attempt in range(max_repairs + 1):
+        def record_event(event):
+            nonlocal returned_response_count
+            if event == "response":
+                returned_response_count += 1
+            if on_event:
+                if attempt and event in {"request", "request_blocked"}:
+                    event = "format_retry_" + event
+                on_event(event)
         try:
             raw = _agent_run_once(
                 agent,
                 current_message,
                 current_first_turn,
+                on_event=record_event,
             )
             return _extract_one_cpp_block(
                 raw,
@@ -1432,9 +1547,9 @@ def _request_cpp_artifact(
                 + "\nReturn exactly one complete fenced ```cpp block "
                 "for the requested artifact, with no other text.\n\n" + message
             )
-    raise ModelArtifactError(
-        f"model did not return a valid {artifact_kind} artifact"
-    ) from last_error
+    error = ModelArtifactError(f"model did not return a valid {artifact_kind} artifact")
+    error.returned_response_count = returned_response_count
+    raise error from last_error
 
 
 def _public_runtime_contract_prompt(
@@ -1868,6 +1983,7 @@ def run_trajectory(
     max_repairs: int = 3,
     hidden_generation: bool = False,
     pinned_result_mapping: Optional[Dict[str, Any]] = None,
+    pinned_type_contract: Optional[Dict[str, Any]] = None,
     mapping_original_code: Optional[str] = None,
 ) -> Dict[str, Any]:
     if isinstance(K, bool) or not isinstance(K, int) or K < 1:
@@ -1887,6 +2003,7 @@ def run_trajectory(
     }
     hls_name = f"{kernel_name}_hls"
     rounds: List[Dict[str, Any]] = []
+    pending_testbench_contract_errors: List[str] = []
     external_abi_frozen = bool(
         isinstance(pinned_hls_decl, str)
         and pinned_hls_decl.strip()
@@ -1899,12 +2016,70 @@ def run_trajectory(
         else ""
     )
     frozen_macros: Tuple[str, ...] = ()
+    frozen_type_contract = pinned_type_contract
     reusable_stub = ""
+    artifact_counts: Dict[str, Any] = {
+        "artifact_event_counts": {}, "coverage_checks_used": 0,
+        "counter_source": "testbench_stub_probe_events",
+    }
+    stub_requests = 0
+
+    def counts_snapshot() -> Dict[str, Any]:
+        events = artifact_counts["artifact_event_counts"]
+        testbench = events.get("testbench", {})
+        return {
+            **json.loads(json.dumps(artifact_counts)),
+            # One returned Testbench is one qualification attempt, including
+            # invalid response envelopes; coverage/probe checks remain separate.
+            "qualification_checks_used": testbench.get("responses", 0),
+            "repairs_used": sum(item.get("repair_requests", 0) for item in events.values()),
+            "artifact_response_attempts": testbench.get("responses", 0),
+            "artifact_contract_checks": testbench.get("contract_checks", 0),
+            "artifact_response_retries": testbench.get("repair_requests", 0) + testbench.get("format_retries", 0),
+        }
+
+    def persist_artifact_counts() -> None:
+        if artifact_root:
+            count_dir = Path(artifact_root) / f"trajectory_{trajectory_idx:03d}"
+            count_dir.mkdir(parents=True, exist_ok=True)
+            (count_dir / "artifact_response_counts.json").write_text(
+                json.dumps(counts_snapshot(), indent=2), encoding="utf-8",
+            )
+
+    def record_artifact_event(kind: str, event: str, role: str = "initial") -> None:
+        if kind == "coverage":
+            artifact_counts["coverage_checks_used"] += 1
+            persist_artifact_counts()
+            return
+        counts = artifact_counts["artifact_event_counts"].setdefault(kind, {
+            "requests": 0, "responses": 0, "contract_checks": 0,
+            "repair_requests": 0, "format_retries": 0,
+        })
+        if event.startswith("format_retry_"):
+            event = event.removeprefix("format_retry_")
+            role = "format_retry"
+        if event in {"request", "request_blocked"}:
+            delta = -1 if event == "request_blocked" else 1
+            counts["requests"] += delta
+            if role in {"repair", "format_retry"}:
+                counts["repair_requests" if role == "repair" else "format_retries"] += delta
+        elif event in {"response", "contract_check"}:
+            counts["responses" if event == "response" else "contract_checks"] += 1
+        persist_artifact_counts()
+
+    def measure_qualified_coverage(*args, **kwargs):
+        record_artifact_event("coverage", "check")
+        try:
+            return _measure_qualified_coverage(*args, **kwargs)
+        except Exception as exc:
+            exc.artifact_counts = counts_snapshot()
+            raise
 
     def request_testbench(
         message: str,
         *,
         first_turn: bool,
+        refinement: bool = False,
     ) -> str:
         domain_block = _input_domain_block(input_domain_contract)
         if domain_block and "FROZEN LEGAL INPUT-DOMAIN CONTRACT" not in message:
@@ -1912,12 +2087,30 @@ def run_trajectory(
         mapping_block = frozen_mapping_instruction(pinned_result_mapping)
         if mapping_block:
             message += mapping_block
+        message += frozen_type_instruction(pinned_type_contract)
         current_message = message
         current_first_turn = first_turn
         last_error: Exception | None = None
         failures: list[str] = []
-        for attempt in range(_ARTIFACT_RESPONSE_RETRIES + 1):
+        request_role = "initial" if first_turn else "refinement" if refinement else "repair"
+        format_retries = 0
+        attempt = 0
+        while True:
+            response_returned = False
             try:
+                if request_role == "repair" and artifact_counts["artifact_event_counts"].get("testbench", {}).get("repair_requests", 0) >= max_repairs:
+                    failures.append("Testbench semantic repair request limit reached: " + str(max_repairs))
+                    break
+                if external_abi_frozen and current_first_turn:
+                    try:
+                        _validate_frozen_candidate_abi(
+                            (pinned_type_contract or {}).get("declaration_context", "") + "\n" + frozen_hls_decl,
+                            hls_name, frozen_hls_decl,
+                            frozen_type_contract=pinned_type_contract, **parse_context,
+                        )
+                    except ModelArtifactError as exc:
+                        exc.repair_eligible = False
+                        raise
                 value = _request_cpp_artifact(
                     agent,
                     current_message,
@@ -1925,18 +2118,29 @@ def run_trajectory(
                     artifact_kind="testbench",
                     required_symbol=hls_name,
                     max_repairs=0,
+                    on_event=lambda event: record_artifact_event("testbench", event, request_role),
                 )
+                response_returned = True
+                record_artifact_event("testbench", "contract_check")
                 validate_testbench_top_contract(
                     value,
                     kernel_name,
                     hls_name,
                     require_original_call=external_abi_frozen,
                 )
+                if external_abi_frozen:
+                    _validate_frozen_candidate_abi(
+                        value, hls_name, frozen_hls_decl,
+                        frozen_type_contract=pinned_type_contract, **parse_context,
+                    )
                 declaration = extract_hls_decl_from_testbench(value, hls_name, **parse_context)
                 if not declaration:
                     raise ModelArtifactError(
                         "Testbench does not expose a Candidate declaration"
                     )
+                validate_frozen_type_contract(
+                    value, hls_name, pinned_type_contract, **parse_context,
+                )
                 validate_testbench_input_domain(
                     value,
                     hls_name,
@@ -1963,36 +2167,68 @@ def run_trajectory(
                             require_explicit=True,
                             **parse_context,
                         )
+                except ResultMappingVerificationError as exc:
+                    if artifact_root:
+                        error_dir = Path(artifact_root) / f"trajectory_{trajectory_idx:03d}"
+                        error_dir.mkdir(parents=True, exist_ok=True)
+                        (error_dir / "result_mapping_unverified.json").write_text(
+                            json.dumps(exc.partial_mapping, indent=2, ensure_ascii=True),
+                            encoding="utf-8",
+                        )
+                    if not exc.repair_eligible:
+                        raise
+                    raise ModelArtifactError(str(exc)) from exc
                 except ValueError as exc:
                     raise ModelArtifactError(str(exc)) from exc
                 return value
             except ModelArtifactError as exc:
+                if response_returned:
+                    pending_testbench_contract_errors.append(
+                        "Testbench request {}: {}".format(
+                            artifact_counts["artifact_event_counts"]["testbench"]["requests"], exc,
+                        )
+                    )
+                if not getattr(exc, "repair_eligible", True):
+                    exc.artifact_counts = counts_snapshot()
+                    if artifact_root and hasattr(exc, "type_contract"):
+                        error_dir = Path(artifact_root) / f"trajectory_{trajectory_idx:03d}"
+                        error_dir.mkdir(parents=True, exist_ok=True)
+                        (error_dir / "type_contract_unverified.json").write_text(
+                            json.dumps(exc.type_contract, indent=2, ensure_ascii=True), encoding="utf-8",
+                        )
+                    raise
                 last_error = exc
                 failures.append(f"Attempt {attempt}: {exc}")
-                if attempt >= _ARTIFACT_RESPONSE_RETRIES:
-                    break
+                request_role = "repair" if response_returned else "format_retry"
+                if request_role == "format_retry":
+                    if format_retries >= _ARTIFACT_RESPONSE_RETRIES:
+                        break
+                    format_retries += 1
+                attempt += 1
                 current_first_turn = False
                 current_message = (
                     "The previous Testbench violated the required Candidate/Testbench contract: "
                     + "\n".join(failures) + "\nGenerate a complete replacement with simple, directly auditable Candidate calls. "
                     "Every Candidate forward-declaration parameter must have an explicit name matching the frozen contract port name; never omit parameter names."
                     + domain_block + "\n\n" + message
-                    + (
-                        "\n\n" + mapping_generation_instruction()
-                        if "no explicit common result mapping" in str(exc)
-                        else ""
-                    )
+                    + "\n\n" + mapping_generation_instruction()
                 )
-        raise ModelArtifactError(
+            except Exception as exc:
+                exc.artifact_counts = counts_snapshot()
+                raise
+        error = ModelArtifactError(
             "model did not return a Testbench compatible with the required "
             "Candidate/Testbench contract:\n" + "\n".join(failures)[-1500:]
-        ) from last_error
+        )
+        error.artifact_counts = counts_snapshot()
+        raise error from last_error
 
     def request_stub(
         testbench_code: str,
         *,
         message: Optional[str] = None,
     ) -> Tuple[str, str]:
+        nonlocal stub_requests
         declaration = extract_hls_decl_from_testbench(
             testbench_code,
             hls_name,
@@ -2007,9 +2243,17 @@ def run_trajectory(
             if message is not None
             else _stub_request_message(kernel_name, declaration)
         )
+        type_contract = (
+            pinned_type_contract
+            or freeze_public_type_contract(testbench_code, hls_name, **parse_context)
+        )
+        current_message += frozen_type_instruction(type_contract)
         last_error: Exception | None = None
         failures: list[str] = []
+        request_role = "repair" if stub_requests else "initial"
+        stub_requests += 1
         for attempt in range(_ARTIFACT_RESPONSE_RETRIES + 1):
+            response_returned = False
             try:
                 value = _request_cpp_artifact(
                     agent,
@@ -2018,7 +2262,10 @@ def run_trajectory(
                     artifact_kind="stub",
                     required_symbol=hls_name,
                     max_repairs=0,
+                    on_event=lambda event: record_artifact_event("stub", event, request_role),
                 )
+                response_returned = True
+                record_artifact_event("stub", "contract_check")
                 value = _ensure_original_forward_declaration(
                     value,
                     orig_code,
@@ -2030,62 +2277,43 @@ def run_trajectory(
                     original_name=kernel_name,
                     candidate_name=hls_name,
                     frozen_hls_decl=declaration,
+                    frozen_type_contract=type_contract,
+                    **parse_context,
                 )
                 return value, _normalize_declaration(declaration)
             except ModelArtifactError as exc:
+                if not getattr(exc, "repair_eligible", True):
+                    exc.artifact_counts = counts_snapshot()
+                    raise
                 last_error = exc
                 failures.append(f"Attempt {attempt}: {exc}")
                 if attempt >= _ARTIFACT_RESPONSE_RETRIES:
                     break
+                request_role = "repair" if response_returned else "format_retry"
                 current_message = (
                     (message or _stub_request_message(kernel_name, declaration))
                     + "\n\nStub artifact contract failures:\n" + "\n".join(failures)
+                    + frozen_type_instruction(type_contract)
                 )
-        raise ModelArtifactError(
+            except Exception as exc:
+                exc.artifact_counts = counts_snapshot()
+                raise
+        error = ModelArtifactError(
             "model did not return a Stub matching the frozen Candidate ABI"
-        ) from last_error
+        )
+        error.artifact_counts = counts_snapshot()
+        raise error from last_error
 
-    initial_testbench_contract_repaired = False
-    initial_testbench_contract_error = ""
-    try:
-        testbench_code = request_testbench(
-            _initial_user_message(
-                orig_code,
-                kernel_name,
-                pinned_public_hls_decl=pinned_hls_decl,
-                input_domain_contract=input_domain_contract,
-            ),
-            first_turn=True,
-        )
-        if external_abi_frozen:
-            _validate_frozen_candidate_abi(
-                testbench_code,
-                hls_name,
-                frozen_hls_decl,
-                **parse_context,
-            )
-    except ModelArtifactError as exc:
-        if not external_abi_frozen or max_repairs < 1:
-            raise
-        initial_testbench_contract_error = str(exc)
-        testbench_code = request_testbench(
-            _initial_hidden_testbench_contract_repair_message(
-                kernel_name,
-                frozen_hls_decl,
-                initial_testbench_contract_error,
-            ),
-            first_turn=False,
-        )
-        _validate_frozen_candidate_abi(
-            testbench_code,
-            hls_name,
-            frozen_hls_decl,
-            **parse_context,
-        )
-        initial_testbench_contract_repaired = True
+    testbench_code = request_testbench(
+        _initial_user_message(
+            orig_code, kernel_name, pinned_public_hls_decl=pinned_hls_decl,
+            input_domain_contract=input_domain_contract,
+        ),
+        first_turn=True,
+    )
 
     stub_code, current_decl = request_stub(testbench_code)
-    coverage = _measure_qualified_coverage(
+    coverage = measure_qualified_coverage(
         orig_code,
         testbench_code,
         stub_code,
@@ -2107,12 +2335,16 @@ def run_trajectory(
                 testbench_code,
                 hls_name,
                 frozen_hls_decl,
+                frozen_type_contract=frozen_type_contract,
                 **parse_context,
             )
             frozen_macros = observed_macros
         else:
             frozen_hls_decl = observed_decl
             frozen_macros = observed_macros
+            frozen_type_contract = freeze_public_type_contract(
+                testbench_code, hls_name, **parse_context,
+            )
         reusable_stub = stub_code
 
     _append_round(
@@ -2126,27 +2358,23 @@ def run_trajectory(
         ownership_action="initial_generation",
         testbench_reused=False,
         stub_reused=False,
-        initial_testbench_contract_repaired=(
-            initial_testbench_contract_repaired
-        ),
-        initial_testbench_contract_error=(
-            initial_testbench_contract_error[-1500:]
-        ),
         frozen_public_hls_decl=frozen_hls_decl,
         frozen_public_macros=list(frozen_macros),
+        frozen_public_type_contract=frozen_type_contract,
         abi_decl=current_decl,
+        testbench_contract_errors=list(pending_testbench_contract_errors),
     )
+    pending_testbench_contract_errors.clear()
 
     # Lightweight generation keeps one successful round, but an invalid
     # generated Testbench gets three bounded correction rounds. Reusing the
     # normal round machinery preserves the exact tool diagnostic and history.
     lightweight_mode = K == 1
-    remaining_repairs = max(0, max_repairs - int(initial_testbench_contract_repaired))
     if lightweight_mode and rounds[-1].get("status") != "ok":
-        K = remaining_repairs + 1
+        K = max_repairs + 1
     if hidden_generation:
-        K = min(K, remaining_repairs + 1)
-    if K == 1 and remaining_repairs > 0:
+        K = min(K, max_repairs + 1)
+    if K == 1 and max_repairs > 0:
         previous = rounds[-1]
         reported_action = _coverage_action(previous)
         action = (
@@ -2166,7 +2394,10 @@ def run_trajectory(
             "regenerate_stub",
             "repair_testbench",
             "repair_testbench_stub",
-        }:
+        } and (
+            action == "regenerate_stub"
+            or artifact_counts["artifact_event_counts"].get("testbench", {}).get("repair_requests", 0) < max_repairs
+        ):
             testbench_reused = False
             stub_reused = False
 
@@ -2250,11 +2481,12 @@ def run_trajectory(
                         testbench_code,
                         hls_name,
                         frozen_hls_decl,
+                        frozen_type_contract=frozen_type_contract,
                         **parse_context,
                     )
                 stub_code, current_decl = request_stub(testbench_code)
 
-            coverage = _measure_qualified_coverage(
+            coverage = measure_qualified_coverage(
                 orig_code,
                 testbench_code,
                 stub_code,
@@ -2275,12 +2507,16 @@ def run_trajectory(
                         testbench_code,
                         hls_name,
                         frozen_hls_decl,
+                        frozen_type_contract=frozen_type_contract,
                         **parse_context,
                     )
                     frozen_macros = observed_macros
                 else:
                     frozen_hls_decl = observed_decl
                     frozen_macros = observed_macros
+                    frozen_type_contract = freeze_public_type_contract(
+                        testbench_code, hls_name, **parse_context,
+                    )
                 reusable_stub = stub_code
             _append_round(
                 rounds,
@@ -2306,7 +2542,9 @@ def run_trajectory(
                 frozen_public_hls_decl=frozen_hls_decl,
                 frozen_public_macros=list(frozen_macros),
                 abi_decl=current_decl,
+                testbench_contract_errors=list(pending_testbench_contract_errors),
             )
+            pending_testbench_contract_errors.clear()
 
     for round_index in range(2, K + 1):
         previous = rounds[-1]
@@ -2329,6 +2567,8 @@ def run_trajectory(
         ):
             action = "repair_testbench_stub"
         if action in {"review_toolchain", "review_original", "review_unknown"}:
+            break
+        if action in {"repair_testbench", "repair_testbench_stub", "repair_abi_testbench_stub"} and artifact_counts["artifact_event_counts"].get("testbench", {}).get("repair_requests", 0) >= max_repairs:
             break
         testbench_reused = False
         stub_reused = False
@@ -2382,7 +2622,7 @@ def run_trajectory(
                     ),
                     original_interface_evidence=previous.get("original_interface_evidence"),
                     ),
-                    first_turn=False,
+                    first_turn=False, refinement=True,
                 )
                 try:
                     _validate_frozen_public_contract(
@@ -2390,6 +2630,7 @@ def run_trajectory(
                         hls_name,
                         frozen_hls_decl,
                         frozen_macros,
+                        frozen_type_contract=frozen_type_contract,
                         **parse_context,
                     )
                 except ModelArtifactError as exc:
@@ -2407,7 +2648,9 @@ def run_trajectory(
                         frozen_public_hls_decl=frozen_hls_decl,
                         frozen_public_macros=list(frozen_macros),
                         abi_decl=frozen_hls_decl,
+                        testbench_contract_errors=list(pending_testbench_contract_errors),
                     )
+                    pending_testbench_contract_errors.clear()
                     continue
                 stub_code = reusable_stub
                 current_decl = frozen_hls_decl
@@ -2461,6 +2704,7 @@ def run_trajectory(
                         hls_name,
                         frozen_hls_decl,
                         frozen_macros,
+                        frozen_type_contract=frozen_type_contract,
                         **parse_context,
                     )
                 except ModelArtifactError as exc:
@@ -2478,21 +2722,35 @@ def run_trajectory(
                         frozen_public_hls_decl=frozen_hls_decl,
                         frozen_public_macros=list(frozen_macros),
                         abi_decl=frozen_hls_decl,
+                        testbench_contract_errors=list(pending_testbench_contract_errors),
                     )
+                    pending_testbench_contract_errors.clear()
                     continue
                 stub_code = reusable_stub
                 current_decl = frozen_hls_decl
                 stub_reused = True
             else:
                 stub_code, current_decl = request_stub(
-                    testbench_code
+                    testbench_code,
+                    message=_stub_request_message(
+                        kernel_name,
+                        extract_hls_decl_from_testbench(
+                            testbench_code, hls_name, **parse_context
+                        ),
+                        failure_excerpt=_failure_history(rounds),
+                        failure_owner=str(
+                            previous.get("failure_owner") or "unknown"
+                        ),
+                        previous_stub=str(previous.get("stub_code") or ""),
+                    ),
                 )
 
         elif action == "repair_abi_testbench_stub":
             testbench_code = request_testbench(
                 _hls_friendly_rewrite_message(
                     hls_name,
-                    _failure_history(rounds),
+                    str(previous.get("compile_stderr") or previous.get("run_stderr") or ""),
+                    failure_history=_failure_history(rounds),
                 ),
                 first_turn=False,
             )
@@ -2560,6 +2818,7 @@ def run_trajectory(
                     testbench_code,
                     hls_name,
                     frozen_hls_decl,
+                    frozen_type_contract=frozen_type_contract,
                     **parse_context,
                 )
             stub_code, current_decl = request_stub(testbench_code)
@@ -2567,9 +2826,10 @@ def run_trajectory(
         try:
             if external_abi_frozen:
                 _validate_frozen_candidate_abi(
-                    testbench_code, hls_name, frozen_hls_decl, **parse_context,
+                    testbench_code, hls_name, frozen_hls_decl,
+                    frozen_type_contract=frozen_type_contract, **parse_context,
                 )
-            coverage = _measure_qualified_coverage(
+            coverage = measure_qualified_coverage(
                 orig_code,
                 testbench_code,
                 stub_code,
@@ -2593,6 +2853,7 @@ def run_trajectory(
                     testbench_code,
                     hls_name,
                     frozen_hls_decl,
+                    frozen_type_contract=frozen_type_contract,
                     **parse_context,
                 )
                 if frozen_macros:
@@ -2601,6 +2862,7 @@ def run_trajectory(
                         hls_name,
                         frozen_hls_decl,
                         frozen_macros,
+                        frozen_type_contract=frozen_type_contract,
                         **parse_context,
                     )
                 else:
@@ -2611,12 +2873,16 @@ def run_trajectory(
             ):
                 frozen_hls_decl = observed_decl
                 frozen_macros = observed_macros
+                frozen_type_contract = freeze_public_type_contract(
+                    testbench_code, hls_name, **parse_context,
+                )
             else:
                 _validate_frozen_public_contract(
                     testbench_code,
                     hls_name,
                     frozen_hls_decl,
                     frozen_macros,
+                    frozen_type_contract=frozen_type_contract,
                     **parse_context,
                 )
             reusable_stub = stub_code
@@ -2634,6 +2900,7 @@ def run_trajectory(
             stub_reused=stub_reused,
             frozen_public_hls_decl=frozen_hls_decl,
             frozen_public_macros=list(frozen_macros),
+            frozen_public_type_contract=frozen_type_contract,
             abi_decl=current_decl,
             lightweight_bounded_recovery=(
                 lightweight_mode and round_index > 1
@@ -2652,22 +2919,35 @@ def run_trajectory(
                     "repair_abi_testbench_stub",
                 }
             ),
+            testbench_contract_errors=list(pending_testbench_contract_errors),
         )
+        pending_testbench_contract_errors.clear()
 
-    return _finalize_trajectory(
-        agent,
-        rounds,
-        want_sig_spec,
-        trajectory_idx,
-        expected_hls_name=hls_name,
-        orig_code=orig_code,
-        emit_final_text=emit_final_text,
-        budget=budget,
-        artifact_root=artifact_root,
-        allow_abi_correction=not external_abi_frozen,
-        source_context=source_context,
-        synth_retry_budget=max_repairs,
+    try:
+        result = _finalize_trajectory(
+            agent,
+            rounds,
+            want_sig_spec,
+            trajectory_idx,
+            expected_hls_name=hls_name,
+            orig_code=orig_code,
+            emit_final_text=emit_final_text,
+            budget=budget,
+            artifact_root=artifact_root,
+            allow_abi_correction=not external_abi_frozen,
+            source_context=source_context,
+            synth_retry_budget=max_repairs,
+            on_artifact_event=record_artifact_event,
+        )
+    except Exception as exc:
+        exc.artifact_counts = counts_snapshot()
+        raise
+    result.update(
+        artifact_counter_scope="testbench_stub_probe",
+        **counts_snapshot(),
     )
+    persist_artifact_counts()
+    return result
 
 
 def _finalize_trajectory(
@@ -2683,6 +2963,7 @@ def _finalize_trajectory(
     artifact_root: Optional[str] = None,
     allow_abi_correction: bool = True,
     source_context: Optional[Dict[str, Any]] = None,
+    on_artifact_event=None,
 ) -> Dict[str, Any]:
     context = dict(source_context or {})
     parse_context = {
@@ -2749,37 +3030,59 @@ def _finalize_trajectory(
                 raise ModelArtifactError(
                     "qualified Testbench lost its Candidate ABI"
                 )
+            type_contract = (
+                best.get("frozen_public_type_contract")
+                or freeze_public_type_contract(
+                    str(best["tb_code"]), expected_hls_name, **parse_context,
+                )
+            )
+            synth_attempt = synth_retry_budget - retries_left
+            failure_history = _failure_history(rounds) + "\n\n" + "\n\n".join(synth_failures)
             empty_stub = _request_cpp_artifact(
                 agent,
                 _empty_stub_request_message(
                     expected_hls_name,
                     best_decl,
-                    failure_history="\n\n".join(synth_failures),
+                    failure_history=failure_history.strip(),
                     previous_stub=empty_stub,
-                ),
+                ) + frozen_type_instruction(type_contract),
                 first_turn=False,
                 artifact_kind="empty_stub",
                 required_symbol=expected_hls_name,
+                on_event=(lambda event: on_artifact_event(
+                    "empty_stub", event, "repair" if synth_attempt else "initial",
+                )) if on_artifact_event else None,
             )
-            validate_stub_contract(
-                empty_stub,
-                original_name=original_name,
-                candidate_name=expected_hls_name,
-                frozen_hls_decl=best_decl,
-            )
-            synth_attempt = synth_retry_budget - retries_left
-            synth_context = (
-                nullcontext(str(Path(artifact_root) / f"trajectory_{trajectory_idx:03d}" / f"synth_attempt_{synth_attempt:03d}"))
-                if artifact_root else tempfile.TemporaryDirectory(prefix=f"synth_check_traj{trajectory_idx}_")
-            )
-            with synth_context as work_dir:
-                synth_ok, synth_error = _synth_check(
+            probe_contract_failed = False
+            try:
+                if on_artifact_event:
+                    on_artifact_event("empty_stub", "contract_check")
+                validate_stub_contract(
                     empty_stub,
-                    expected_hls_name,
-                    work_dir,
-                    budget=budget,
-                    source_context=source_context,
+                    original_name=original_name,
+                    candidate_name=expected_hls_name,
+                    frozen_hls_decl=best_decl,
+                    frozen_type_contract=type_contract,
+                    **parse_context,
                 )
+            except ModelArtifactError as exc:
+                if not getattr(exc, "repair_eligible", True):
+                    raise
+                synth_ok, synth_error = False, str(exc)
+                probe_contract_failed = True
+            if not probe_contract_failed:
+                synth_context = (
+                    nullcontext(str(Path(artifact_root) / f"trajectory_{trajectory_idx:03d}" / f"synth_attempt_{synth_attempt:03d}"))
+                    if artifact_root else tempfile.TemporaryDirectory(prefix=f"synth_check_traj{trajectory_idx}_")
+                )
+                with synth_context as work_dir:
+                    synth_ok, synth_error = _synth_check(
+                        empty_stub,
+                        expected_hls_name,
+                        work_dir,
+                        budget=budget,
+                        source_context=source_context,
+                    )
             if (
                 synth_ok
                 or retries_left <= 0
@@ -2787,19 +3090,24 @@ def _finalize_trajectory(
                 break
 
             retries_left -= 1
-            synth_failures.append(synth_error)
-            if not allow_abi_correction:
+            synth_failures.append(synth_error[-1500:])
+            failure_history = _failure_history(rounds) + "\n\n" + "\n\n".join(synth_failures)
+            if not allow_abi_correction or probe_contract_failed:
                 continue
             new_tb = _request_cpp_artifact(
                 agent,
                 _hls_friendly_rewrite_message(
                     expected_hls_name,
-                    "\n\n".join(synth_failures),
+                    synth_error,
+                    failure_history=failure_history.strip(),
                 ),
                 first_turn=False,
                 artifact_kind="testbench",
                 required_symbol=expected_hls_name,
+                on_event=(lambda event: on_artifact_event("testbench", event, "repair")) if on_artifact_event else None,
             )
+            if on_artifact_event:
+                on_artifact_event("testbench", "contract_check")
             validate_testbench_top_contract(
                 new_tb,
                 original_name,
@@ -2814,17 +3122,23 @@ def _finalize_trajectory(
                 raise ModelArtifactError(
                     "coordinated ABI correction returned no Candidate ABI"
                 )
+            new_type_contract = freeze_public_type_contract(
+                new_tb, expected_hls_name, **parse_context,
+            )
             new_stub = _request_cpp_artifact(
                 agent,
                 _stub_request_message(
                     original_name,
                     new_decl,
-                    failure_excerpt="\n\n".join(synth_failures),
-                ),
+                    failure_excerpt=failure_history.strip(),
+                ) + frozen_type_instruction(new_type_contract),
                 first_turn=False,
                 artifact_kind="stub",
                 required_symbol=expected_hls_name,
+                on_event=(lambda event: on_artifact_event("stub", event, "repair")) if on_artifact_event else None,
             )
+            if on_artifact_event:
+                on_artifact_event("stub", "contract_check")
             new_stub = _ensure_original_forward_declaration(
                 new_stub,
                 orig_code,
@@ -2836,7 +3150,11 @@ def _finalize_trajectory(
                 original_name=original_name,
                 candidate_name=expected_hls_name,
                 frozen_hls_decl=new_decl,
+                frozen_type_contract=new_type_contract,
+                **parse_context,
             )
+            if on_artifact_event:
+                on_artifact_event("coverage", "check")
             new_coverage = _measure_qualified_coverage(
                 orig_code,
                 new_tb,
@@ -2869,6 +3187,7 @@ def _finalize_trajectory(
                 abi_refrozen=bool(frozen_decl),
                 frozen_public_hls_decl=frozen_decl,
                 frozen_public_macros=list(frozen_macros),
+                frozen_public_type_contract=new_type_contract,
                 abi_decl=_normalize_declaration(new_decl),
             )
             if (
@@ -2909,6 +3228,7 @@ def _finalize_trajectory(
                 "frozen_public_macros",
                 [],
             ),
+            "frozen_public_type_contract": best.get("frozen_public_type_contract"),
         }
 
     common = {
@@ -2934,6 +3254,12 @@ def _finalize_trajectory(
         "frozen_public_macros": best.get(
             "frozen_public_macros",
             [],
+        ),
+        "frozen_public_type_contract": (
+            best.get("frozen_public_type_contract")
+            or (freeze_public_type_contract(
+                str(best["tb_code"]), expected_hls_name, **parse_context,
+            ) if expected_hls_name else None)
         ),
     }
 
@@ -2967,6 +3293,17 @@ def _finalize_trajectory(
 
 
 # -------------------------- public-facing entrypoints --------------------------
+
+def _exception_artifact_counts(exc, artifact_root, trajectory_idx) -> Dict[str, Any]:
+    counts = getattr(exc, "artifact_counts", None)
+    if isinstance(counts, dict):
+        return counts
+    if artifact_root:
+        count_path = Path(artifact_root) / f"trajectory_{trajectory_idx:03d}" / "artifact_response_counts.json"
+        if count_path.is_file():
+            return json.loads(count_path.read_text(encoding="utf-8"))
+    return {}
+
 
 def optimize_tb_public(
     orig_code: str,
@@ -3042,6 +3379,9 @@ def optimize_tb_public(
                             "qualified": False,
                             "trajectory_status": "exception",
                             "error": f"{type(exc).__name__}: {exc}",
+                            **({"failure_owner": "unknown", "next_action": "review_unknown"}
+                               if not getattr(exc, "repair_eligible", True) else {}),
+                            **_exception_artifact_counts(exc, artifact_root, futures[future]),
                         }
                     )
 
@@ -3348,6 +3688,7 @@ def make_golden_hidden_tb(
     source_context: Optional[Dict[str, Any]] = None,
     max_repairs: int = 3,
     pinned_result_mapping: Optional[Dict[str, Any]] = None,
+    pinned_type_contract: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if not isinstance(pinned_public_hls_decl, str) or not (
         pinned_public_hls_decl.strip()
@@ -3375,6 +3716,7 @@ def make_golden_hidden_tb(
     )
     orig_sha = hashlib.sha256(orig_code.encode("utf-8")).hexdigest()
     mapping_sha = pinned_result_mapping.get("sha256", "") if pinned_result_mapping else ""
+    type_sha = pinned_type_contract.get("fingerprint", "") if pinned_type_contract else ""
     cache_key = cache_key or kernel_name
     if cache_dir is not None:
         cached = _load_golden_cache(
@@ -3383,6 +3725,7 @@ def make_golden_hidden_tb(
             orig_sha,
             expected_domain_sha=domain_sha,
             expected_result_mapping_sha=mapping_sha,
+            expected_type_contract_sha=type_sha,
         )
         if (
             cached is not None
@@ -3413,6 +3756,7 @@ def make_golden_hidden_tb(
                 source_context=source_context,
                 max_repairs=max_repairs,
                 pinned_result_mapping=pinned_result_mapping,
+                pinned_type_contract=pinned_type_contract,
             ): index
             for index in range(M)
         }
@@ -3446,6 +3790,9 @@ def make_golden_hidden_tb(
                         "qualified": False,
                         "trajectory_status": "exception",
                         "error": f"{type(exc).__name__}: {exc}",
+                        **({"failure_owner": "unknown", "next_action": "review_unknown"}
+                           if not getattr(exc, "repair_eligible", True) else {}),
+                        **_exception_artifact_counts(exc, artifact_root, futures[future]),
                     }
                 )
 
@@ -3478,6 +3825,7 @@ def make_golden_hidden_tb(
         "public_hls_decl_sha256": public_decl_sha,
         "input_domain_contract_sha256": domain_sha,
         "result_mapping_sha256": mapping_sha,
+        "public_type_contract_sha256": type_sha,
         "best_trajectory": best.get("trajectory_idx", -1),
         "best_round": best["best_round"],
         "synth_ok": True,
@@ -3503,6 +3851,7 @@ def _load_golden_cache(
     expected_sha: str,
     expected_domain_sha: str = "",
     expected_result_mapping_sha: str = "",
+    expected_type_contract_sha: str = "",
 ) -> Optional[Dict[str, Any]]:
     path = _golden_cache_path(cache_dir, kernel_name)
     if not os.path.isfile(path):
@@ -3517,6 +3866,8 @@ def _load_golden_cache(
     if expected_domain_sha and data.get("input_domain_contract_sha256") != expected_domain_sha:
         return None
     if expected_result_mapping_sha and data.get("result_mapping_sha256") != expected_result_mapping_sha:
+        return None
+    if expected_type_contract_sha and data.get("public_type_contract_sha256") != expected_type_contract_sha:
         return None
     return data
 

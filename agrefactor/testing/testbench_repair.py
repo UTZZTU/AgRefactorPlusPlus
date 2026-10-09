@@ -324,6 +324,7 @@ class TestbenchRepairLoop:
         failure_state: ValidationState | None = None,
         prior_failure_summaries: tuple[str, ...] = (),
         before_repair: Callable[[], None] | None = None,
+        frozen_type_contract: Mapping[str, Any] | None = None,
     ) -> TestbenchRepairResult:
         root = Path(work_dir)
         root.mkdir(parents=True, exist_ok=True)
@@ -464,6 +465,19 @@ class TestbenchRepairLoop:
                             compile_flags=task.target.compile_flags,
                         )
                     except ValueError as exc:
+                        raise TestbenchRepairResponseError(str(exc)) from exc
+                if frozen_type_contract is not None and isinstance(proposed, str) and proposed.strip():
+                    from flow.tools.tb_optimizer import ModelArtifactError, validate_frozen_type_contract
+                    from agrefactor.testing.model_testbench_repairer import TestbenchRepairResponseError
+
+                    try:
+                        validate_frozen_type_contract(
+                            proposed, candidate_top, frozen_type_contract,
+                            source_path=str(root / "testbench.cpp"),
+                            include_dirs=(str(Path(task.kernel_path).parent),),
+                            compile_flags=task.target.compile_flags,
+                        )
+                    except ModelArtifactError as exc:
                         raise TestbenchRepairResponseError(str(exc)) from exc
             except Exception as exc:
                 last_repair_error = (

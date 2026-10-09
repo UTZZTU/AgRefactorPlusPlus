@@ -136,6 +136,32 @@ class ResultMappingIntegrationTests(unittest.TestCase):
             self.assertIsNotNone(self.optimizer._load_golden_cache(directory, "cache", "source", "domain", mapping["sha256"]))
             self.assertIsNone(self.optimizer._load_golden_cache(directory, "cache", "source", "domain", "other-mapping"))
 
+    def test_public_repair_cannot_change_frozen_user_type_layout(self):
+        from flow.tools.tb_optimizer import freeze_public_type_contract
+
+        public = '''struct Input { int value; int offset; };
+int source_task(Input *input); int source_task_hls(Input *input);
+int main(){Input a{2,3},b{2,3};return source_task(&a)!=source_task_hls(&b);}'''
+        original = 'struct Input { int value; int offset; }; int source_task(Input *p){return p->value+p->offset;}'
+        candidate = 'struct Input { int value; int offset; }; int source_task_hls(Input *p){return p->value+p->offset;}'
+        frozen = freeze_public_type_contract(public, 'source_task_hls')
+        broken = public.replace('Input a{2,3}', 'Input a{missing_name,3}')
+        changed = public.replace('int value; int offset;', 'int offset; int value;')
+        repairer = Mock()
+        repairer.repair.side_effect = [changed, public]
+        repairer.audit_events = []
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.loop_type(
+                preflight=self.preflight_type(), repairer=repairer, max_repair_attempts=2
+            ).run(
+                work_dir=directory, testbench_code=broken, original_code=original,
+                candidate_code=candidate, original_top_function='source_task',
+                candidate_top_function='source_task_hls', frozen_type_contract=frozen,
+            )
+        self.assertTrue(result.succeeded, result.reason)
+        self.assertEqual(result.repair_attempts_used, 2)
+        self.assertIn('frozen Public Candidate type layout', result.attempts[1].error)
+
 
 if __name__ == "__main__":
     unittest.main()

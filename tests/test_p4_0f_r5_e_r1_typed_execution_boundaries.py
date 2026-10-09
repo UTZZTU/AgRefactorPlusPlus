@@ -650,6 +650,11 @@ class CosimStructuredGenerationTests(unittest.TestCase):
                         json.dumps(_raw_payload(identities["cosim"], returncode=0)),
                         encoding="utf-8",
                     )
+                elif mode == "c_testbench_before_rtl":
+                    typed_path.write_text(
+                        json.dumps(_raw_payload(identities["cosim"], returncode=1)),
+                        encoding="utf-8",
+                    )
                 elif mode == "missing":
                     pass
                 elif mode == "stale_phase":
@@ -659,7 +664,19 @@ class CosimStructuredGenerationTests(unittest.TestCase):
                     )
                 else:
                     raise AssertionError(mode)
-                return {"returncode": 23, "timeout": False}
+                return {
+                    "returncode": 23,
+                    "timeout": False,
+                    "stdout": (
+                        "Starting static elaboration\\n"
+                        "Built simulation snapshot\\n"
+                        "RTL Simulation : FAILED\\n"
+                    ) if mode == "terminal_failure_after_prepass"
+                    else (
+                        "Starting C TB testing\\n"
+                        "C TB simulation failed, stop generating test vectors\\n"
+                    ) if mode == "c_testbench_before_rtl" else "",
+                }
 
             with (
                 patch("flow.tools.vitis_cosim.resolve_csynth_command", return_value=_resolution()),
@@ -693,6 +710,21 @@ class CosimStructuredGenerationTests(unittest.TestCase):
         self.assertEqual(identities["cosim"]["phase"], "cosim")
         self.assertEqual(outcome["failure_owner"], "candidate")
         self.assertEqual(outcome["owner_authority"], "deterministic_proven")
+        self.assertTrue(invocation["subphase_evidence"]["rtl_started"])
+        self.assertEqual(invocation["subphase_evidence"]["phase"], "rtl")
+
+    def test_c_testbench_failure_before_rtl_is_recorded_without_candidate_owner(self):
+        outcome, invocation = self._run("c_testbench_before_rtl")
+        self.assertEqual(outcome["failure_owner"], "unknown")
+        self.assertEqual(
+            outcome["reason_code"], "cosim_c_testbench_failure_before_rtl"
+        )
+        subphase = invocation["subphase_evidence"]
+        self.assertEqual(subphase["phase"], "c_testbench")
+        self.assertTrue(subphase["c_testbench_started"])
+        self.assertTrue(subphase["c_testbench_failed"])
+        self.assertFalse(subphase["rtl_started"])
+        self.assertFalse(subphase["rtl_completed"])
 
     def test_outer_cosim_failure_with_pass_or_missing_typed_terminal_is_unknown(self):
         for mode in ("terminal_pass_conflict", "missing"):
