@@ -7,12 +7,18 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 from typing import Any
 
 from autogen.agentchat.group import ContextVariables
 
 from agrefactor.config import DEFAULT_CSIM_TIMEOUT_S, TargetProfile, resolve_target_profile
+from agrefactor.evaluation.owner_evidence import resolve_source_owner
+from agrefactor.evaluation.testbench_preflight import (
+    classify_compile_failure,
+    parse_compiler_diagnostics,
+)
 from agrefactor.runtime.budget import (
     BudgetExceededError,
     BudgetManager,
@@ -452,14 +458,14 @@ def make_native_vitis_csim_script(
         ],
     }
 
-def _diagnostic(root: Path, result: Mapping[str, Any]) -> str:
+def _diagnostic(root: Path, result: Mapping[str, Any], *, limit: int | None = 12000) -> str:
     parts = [
         str(result.get("stdout") or ""),
         str(result.get("stderr") or ""),
     ]
     for path in (
         root / "native_csim" / "solution" / "solution.log",
-        root / "native_csim" / "solution" / "csim" / "report" / "candidate_csim.log",
+        *sorted((root / "native_csim" / "solution" / "csim" / "report").glob("*_csim.log")),
     ):
         if path.is_file():
             try:
@@ -471,7 +477,75 @@ def _diagnostic(root: Path, result: Mapping[str, Any]) -> str:
                 )
             except OSError:
                 pass
-    return "\n".join(parts).strip()[-12000:]
+    diagnostic = "\n".join(parts).strip()
+    return diagnostic if limit is None else diagnostic[-limit:]
+
+
+def _native_compile_failure(root: Path, material: Mapping[str, Any],
+                            execution: Mapping[str, Any], diagnostic: str) -> dict[str, Any] | None:
+    """Bind compiler errors to Vitis' actual build inputs, not log spelling."""
+
+    if (execution.get("status") != "completed" or execution.get("timeout") is not False
+            or type(execution.get("returncode")) is not int or execution["returncode"] <= 0):
+        return None
+    diagnostics = parse_compiler_diagnostics(
+        diagnostic, default_kind=classify_compile_failure(diagnostic),
+    )
+    if not diagnostics:
+        return None
+    build = root / "native_csim" / "solution" / "csim" / "build"
+    manifest = build / "csim.mk"
+    normalized = [
+        {"file": str((build / item.file).resolve()), "line": item.line,
+         "column": item.column, "message": item.message, "raw": item.raw}
+        for item in diagnostics if item.file
+    ]
+    unresolved = {
+        "stage": "compile", "failure_owner": "unknown", "owner_authority": "unknown",
+        "evidence_complete": False, "diagnostics": normalized,
+        "category": classify_compile_failure(diagnostic).value,
+        "execution_authority": "completed_vitis_build_with_compiler_diagnostics",
+        "outer_returncode": execution["returncode"], "compiler_returncode": None,
+    }
+    if manifest.is_symlink() or not manifest.is_file():
+        return unresolved
+    text = manifest.read_text(encoding="utf-8", errors="replace")
+    match = re.search(r"(?m)^HLS_SOURCES\s*=\s*(.+)$", text)
+    if match is None:
+        return unresolved
+    try:
+        compiled = tuple(str((build / item).resolve()) for item in shlex.split(match.group(1)))
+    except ValueError:
+        return unresolved
+    roles = {
+        str((root / item["path"]).resolve()): {
+            "design": "candidate", "testbench_reference": "unknown",
+            "testbench_driver": "testbench", "testbench_wrapper": "unknown",
+            "extra_source": "configuration",
+        }.get(item["role"], "unknown")
+        for item in material["source_files"]
+    }
+    roles[str(root / "agrefactor_case_evidence.hpp")] = "unknown"
+    evidence = resolve_source_owner(
+        normalized, source_roles=roles, work_dir=root,
+        compile_units=(*compiled, str(root / "agrefactor_case_evidence.hpp")),
+        execution=execution,
+    )
+    return {
+        "stage": "compile", "failure_owner": evidence.owner,
+        "owner_authority": evidence.owner_authority,
+        "evidence_complete": evidence.evidence_complete,
+        "ownership_evidence": evidence.to_dict(), "diagnostics": normalized,
+        "build_manifest": str(manifest),
+        "build_manifest_sha256": __import__("hashlib").sha256(manifest.read_bytes()).hexdigest(),
+        "source_roles": roles, "compile_units": list(compiled),
+        "source_sha256": {path: __import__("hashlib").sha256(Path(path).read_bytes()).hexdigest()
+                          for path in compiled if Path(path).is_file() and not Path(path).is_symlink()},
+        "category": classify_compile_failure(diagnostic).value,
+        "execution_authority": "completed_vitis_build_with_compiler_diagnostics",
+        "outer_returncode": execution["returncode"],
+        "compiler_returncode": None,
+    }
 
 
 def _compatible_toolchain(
@@ -784,7 +858,8 @@ def run_vitis_csim(
     invocation["testbench_started"] = (
         started if started is not None else {"status": "missing_or_invalid"}
     )
-    diagnostic = _diagnostic(root, result)
+    raw_diagnostic = _diagnostic(root, result, limit=None)
+    diagnostic = raw_diagnostic[-12000:]
     if execution["timeout"]:
         invocation["runtime_classification"] = {
             "status": "failed",
@@ -796,6 +871,23 @@ def run_vitis_csim(
         _write_json(invocation_path, invocation)
         return "csim_failed", "Native Vitis CSIM timed out.\n" + diagnostic
     if execution["returncode"] != 0:
+        compile_failure = (
+            _native_compile_failure(root, material, execution, raw_diagnostic)
+            if typed is None and started is None else None
+        )
+        if compile_failure is not None:
+            invocation["compiler_failure"] = compile_failure
+            invocation["simulation_execution"] = {
+                "status": "not_observed", "returncode": None, "timeout": False,
+            }
+            invocation["runtime_classification"] = {
+                "status": "failed", "failure_kind": "source_compile_failed",
+                "failure_owner": compile_failure["failure_owner"],
+                "owner_authority": compile_failure["owner_authority"],
+                "reason_code": "native_csim_source_compile_failed",
+            }
+            _write_json(invocation_path, invocation)
+            return "csim_execution_failed", diagnostic
         typed_returncode = (
             typed.get("testbench_returncode")
             if isinstance(typed, Mapping)

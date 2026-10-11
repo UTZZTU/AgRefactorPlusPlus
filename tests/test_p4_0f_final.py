@@ -72,11 +72,32 @@ class P40FFinalTests(unittest.TestCase):
             optimize.system_defaults,
         )
 
-    def test_full_capacity_can_hold_refactor_plus_optimize_defaults(self):
+    def test_wall_clock_defaults_overrides_and_ceilings(self):
+        expected_defaults = {
+            "refactor": 21600.0,
+            "optimize": 1800.0,
+            "full": 12600.0,
+        }
+        for mode, expected in expected_defaults.items():
+            with self.subTest(mode=mode):
+                profile = run_budget_profile_for_mode(mode)
+                payload = profile.resolve().to_dict()
+                self.assertEqual(payload["system_defaults"]["max_wall_time_s"], expected)
+                self.assertEqual(payload["effective_hard_limits"]["max_wall_time_s"], expected)
+                self.assertEqual(payload["system_safety_ceilings"]["max_wall_time_s"], 43200.0)
+                override = profile.resolve(user_requested={"max_wall_time_s": 43200.0})
+                self.assertEqual(override.effective_hard_limits["max_wall_time_s"], 43200.0)
+                self.assertEqual(override.budget_source_per_field["max_wall_time_s"], "user_requested")
+                with self.assertRaises(ValueError):
+                    profile.resolve(user_requested={"max_wall_time_s": 43201.0})
+
+    def test_full_capacity_can_hold_nonwall_refactor_plus_optimize_defaults(self):
         refactor = run_budget_profile_for_mode("refactor").system_defaults
         optimize = run_budget_profile_for_mode("optimize").system_defaults
         full = run_budget_profile_for_mode("full").system_defaults
         for field in HARD_FIELDS:
+            if field == "max_wall_time_s":
+                continue
             self.assertGreaterEqual(
                 getattr(full, field),
                 getattr(refactor, field) + getattr(optimize, field),

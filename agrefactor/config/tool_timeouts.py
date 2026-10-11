@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
-DEFAULT_CSIM_TIMEOUT_S = 1800
+DEFAULT_CSIM_TIMEOUT_S = 2700
 DEFAULT_CSYNTH_TIMEOUT_S = 5400
 DEFAULT_COSIM_TIMEOUT_S = 9000
-CSIM_TIMEOUT_SAFETY_CEILING = 1800
+CSIM_TIMEOUT_SAFETY_CEILING = 2700
 CSYNTH_TIMEOUT_SAFETY_CEILING = 5400
 # Explicit long-running COSIM runs may use the documented three-hour cap;
 # the product default remains 9000 seconds above.

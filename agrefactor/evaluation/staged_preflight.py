@@ -32,6 +32,7 @@ from agrefactor.runtime.budget import (
 from agrefactor.cpp_interface import extract_top_type_contract, inspect_top_entry
 from agrefactor.evaluation.owner_evidence import resolve_source_owner
 from agrefactor.evaluation.diagnostic_catalog import load_catalog
+from flow.tools.case_evidence import prepare_compile_support
 
 
 _COMPILE_INCREMENT = {"tool_calls": 1, "compile_calls": 1}
@@ -751,6 +752,11 @@ def run_staged_preflight(
     directory.mkdir(parents=True, exist_ok=True)
     include_dirs = tuple(Path(item) for item in include_dirs)
     extra_flags = tuple(str(item) for item in extra_flags)
+    case_support = prepare_compile_support(
+        work_dir=directory, candidate_code=candidate_code,
+        testbench_code=testbench_code, phase="testbench_preflight",
+    )
+    case_support["compiled_testbench_sha256"] = case_support["identity"]["testbench_sha256"]
     sources = {
         "testbench.cpp": testbench_code,
         "orig_code.cpp": original_code,
@@ -789,6 +795,7 @@ def run_staged_preflight(
     invocation: dict[str, Any] = {
         "schema_version": 2,
         "phase": "testbench_preflight_staged",
+        "case_evidence_support": case_support,
         "work_dir": str(directory.resolve()),
         "source_files": [
             *sources,
@@ -797,17 +804,18 @@ def run_staged_preflight(
         ],
         "source_roles": {
             "testbench.cpp": "testbench",
+            "agrefactor_case_evidence.hpp": "unknown",
             "orig_code.cpp": "original",
             "refactor_code.cpp": "candidate",
             **({"template_reference.cpp": "unknown"} if template_reference else {}),
             **{name: "configuration" for name in normalized_extra_sources},
         },
         "compile_units": {
-            "testbench.cpp": ["testbench.cpp"],
+            "testbench.cpp": ["testbench.cpp", "agrefactor_case_evidence.hpp"],
             "orig_code.cpp": ["orig_code.cpp"],
             "refactor_code.cpp": ["refactor_code.cpp"],
             "template_reference.cpp": [
-                "template_reference.cpp", "orig_code.cpp", "testbench.cpp",
+                "template_reference.cpp", "orig_code.cpp", "testbench.cpp", "agrefactor_case_evidence.hpp",
             ],
             **{name: [name] for name in normalized_extra_sources},
         },
@@ -931,9 +939,14 @@ def run_staged_preflight(
         owner,
         reason,
     ) in compile_specs:
+        reporting_flags = (
+            ["-DAGREFACTOR_CASE_EVIDENCE=1", "-include", case_support["header_path"]]
+            if source_name in {"testbench.cpp", "template_reference.cpp"} else []
+        )
         step = _launch(
             command=[
                 *base,
+                *reporting_flags,
                 "-c",
                 source_name,
                 "-o",

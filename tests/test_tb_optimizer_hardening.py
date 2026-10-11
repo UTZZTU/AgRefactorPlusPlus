@@ -334,6 +334,25 @@ class FrozenAbiAndRepairLimitTests(unittest.TestCase):
         self.assertFalse(caught.exception.repair_eligible)
         self.assertEqual(caught.exception.artifact_counts["repairs_used"], 0)
 
+    def test_valid_multiline_frozen_hidden_abi_reaches_existing_qualification(self):
+        declaration = (
+            "int process_top_hls(\n"
+            "  // This comment belongs to the declaration.\n"
+            "  /* Public input */ int value\n"
+            ");"
+        )
+        with patch.object(self, "declaration", declaration):
+            result, agent, measure = self.run_artifacts(
+                [self.testbench, self.stub, self.probe], [self.passed],
+                hidden_generation=True,
+            )
+        self.assertTrue(result["qualified"])
+        self.assertEqual(result["frozen_public_hls_decl"], declaration)
+        self.assertEqual(agent.run.call_count, 3)
+        self.assertEqual(measure.call_count, 1)
+        self.assertEqual(result["artifact_event_counts"]["testbench"]["requests"], 1)
+        self.assertEqual(result["artifact_event_counts"]["testbench"]["repair_requests"], 0)
+
     def test_generated_missing_and_ambiguous_entry_have_repairable_compiler_facts(self):
         for source, status in (("int other();", "missing"), (
                 "int process_top_hls(int value); int process_top_hls(float value);", "ambiguous")):
@@ -671,6 +690,38 @@ class PromptStateSafetyTests(unittest.TestCase):
 
 
 class CompilerOwnedBoundaryTests(unittest.TestCase):
+    def test_commented_multiline_declaration_survives_compiler_roundtrip(self):
+        declaration = (
+            "int process_top_hls(\n"
+            "  int value, // preserve the next parameter\n"
+            "  /* Public adjustment */ int bias\n"
+            ");"
+        )
+        source = declaration + "\nint main(){return 0;}\n"
+        extracted = tb_optimizer.extract_hls_decl_from_testbench(source, "process_top_hls")
+        frozen, macros = tb_optimizer._freeze_public_contract(source, "process_top_hls")
+        self.assertEqual(extracted, declaration)
+        self.assertEqual(frozen, declaration)
+        self.assertEqual(macros, ())
+        contract = tb_optimizer.freeze_public_type_contract(source, "process_top_hls")
+        self.assertEqual(contract["status"], "confirmed")
+        tb_optimizer._validate_frozen_candidate_abi(
+            "int process_top_hls(int value, int bias);", "process_top_hls", frozen,
+            frozen_type_contract=contract,
+        )
+
+    def test_declaration_normalization_preserves_internal_spacing_and_line_comments(self):
+        declaration = (
+            "int process_top_hls(\n"
+            "\tint  value // parameter explanation\n"
+            ")\n;"
+        )
+        self.assertEqual(tb_optimizer._normalize_declaration("  " + declaration + "\n "), declaration)
+        tb_optimizer._validate_frozen_candidate_abi(
+            "int process_top_hls(int value);", "process_top_hls",
+            tb_optimizer._normalize_declaration(declaration),
+        )
+
     def test_type_alias_void_stub_does_not_get_a_return_expression(self):
         declaration = "typedef void Ret; Ret process_top_hls(int *values);"
         stub = tb_coverage._original_only_candidate_stub(declaration, "process_top_hls")

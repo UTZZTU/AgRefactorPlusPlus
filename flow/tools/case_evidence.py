@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import json
+from hashlib import sha256
+from uuid import uuid4
 from pathlib import Path
 from typing import Any
 
@@ -109,6 +111,9 @@ inline bool case_result(const char *case_id, bool passed) {
     if (result) ++detail::passed(); else ++detail::failed();
     return true;
 }
+inline bool case_result(const std::string &case_id, bool passed) {
+    return case_result(case_id.c_str(), passed);
+}
 inline bool complete() {
     if (detail::completed() || detail::write_failed()) return false;
     detail::completed() = true;
@@ -130,6 +135,40 @@ inline bool complete() {
     replacements = {'__EVIDENCE_PATH__': evidence_path, '__SCHEMA__': str(SCHEMA_VERSION), '__EXECUTION_ID__': values['execution_id'], '__PHASE__': values['phase'], '__SUITE_HASH__': values['suite_id_sha256'], '__CANDIDATE_HASH__': values['candidate_sha256'], '__TESTBENCH_HASH__': values['testbench_sha256']}
     for marker, value in replacements.items(): template = template.replace(marker, value)
     return template
+
+
+def instrument_testbench(testbench_code: str) -> str:
+    """Enable the same reporting API in the Testbench's translation unit."""
+
+    return (
+        "#ifndef AGREFACTOR_CASE_EVIDENCE\n#define AGREFACTOR_CASE_EVIDENCE 1\n#endif\n"
+        '#include "agrefactor_case_evidence.hpp"\n'
+        '#line 1 "testbench.cpp"\n'
+        + testbench_code
+        + "\n#undef AGREFACTOR_CASE_EVIDENCE\n"
+    )
+
+
+def prepare_compile_support(*, work_dir: str | Path, candidate_code: str,
+                            testbench_code: str, phase: str) -> dict[str, Any]:
+    """Materialize reporting support without changing the source identity."""
+
+    root = Path(work_dir).resolve()
+    identity = make_identity(
+        execution_id=uuid4().hex, phase=phase, suite_id=phase,
+        candidate_code=candidate_code, testbench_code=testbench_code,
+    )
+    header = root / "agrefactor_case_evidence.hpp"
+    header.write_text(build_header(
+        identity=identity, evidence_path=str(root / EVIDENCE_FILENAME),
+    ), encoding="utf-8")
+    return {
+        "identity": identity,
+        "header_path": str(header),
+        "header_sha256": sha256(header.read_bytes()).hexdigest(),
+        "compiled_testbench_sha256": sha256(instrument_testbench(testbench_code).encode("utf-8")).hexdigest(),
+        "compile_definitions": ["AGREFACTOR_CASE_EVIDENCE=1"],
+    }
 
 
 def read_case_counts(path: Path, *, expected_identity: Mapping[str, str],

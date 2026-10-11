@@ -9,6 +9,7 @@ from autogen.agentchat.group import ContextVariables  # type: ignore
 
 from flow.base_agent import HLSAgentLoader
 from agrefactor.reference_source import isolate_reference_program_entry
+from agrefactor.cpp_interface import extract_top_interface, extract_top_type_contract, interfaces_equivalent
 from agrefactor.runtime.budget import BudgetExceededError
 import flow.tools as tools
 from flow.tools.result_mapping import (
@@ -42,7 +43,12 @@ def _build_testbench_request(
         "the testbench. Do not declare, read, write, or reset implementation-"
         "private globals. Do not copy or depend on implementation-private "
         "types, helper functions, allocator state, or internal data "
-        "structures. Use only public arguments and outputs.\n\n"
+        "structures. Public parameter/return type definitions are part of the interface, "
+        "not implementation-private types. Reuse official headers; when a public "
+        "definition is source-owned, use its actual source-grounded definition. "
+        "Never guess record sizes, fields, alignment, or substitute arbitrary "
+        "byte storage for a required public type. Do not redeclare standard "
+        "library or vendor types. Use only public arguments and outputs.\n\n"
         "Use independent mutable input/output storage for the golden and "
         "Candidate calls, preserve exact C/C++ language linkage, and keep "
         "each side in an equivalent clean logical state. Correctness and a "
@@ -139,6 +145,43 @@ def _original_execution_repair_request(
     )
 
 
+def _public_record_omission_evidence(original_code, testbench_code, original_name, facts, **parse_context):
+    """Prove a generated main-file omission using the read-only public interface."""
+    if (facts.get("entry_status") != "confirmed" or not facts.get("translation_unit_complete")
+            or facts.get("parse_context", {}).get("include_search_status") != "confirmed"):
+        return None
+    missing = [item for item in facts.get("types", [])
+               if item.get("kind") in {"struct", "union", "class"}
+               and (item.get("size_bytes", -1) < 0 or item.get("align_bytes", -1) < 0)]
+    if not missing or set(facts.get("unresolved", [])) != {
+        "record_layout_unavailable:" + item["name"] for item in missing
+    }:
+        return None
+    source = extract_top_type_contract(original_code, original_name, require_definition=True, **parse_context)
+    actual = extract_top_interface(original_code, original_name, **parse_context)
+    declared = extract_top_interface(testbench_code, original_name, require_definition=False, **parse_context)
+    if (source.get("status") != "confirmed" or not source.get("translation_unit_complete")
+            or actual is None or declared is None
+            or not interfaces_equivalent(actual, declared, require_parameter_names=False, semantic_types=True)
+            or not actual.linker_symbol or actual.linker_symbol != declared.linker_symbol):
+        return None
+    origins = {item["declaration"].get("usr"): item for item in source.get("type_provenance", [])
+               if item.get("definition") and item["declaration"].get("usr")}
+    generated = {item["name"]: item for item in facts.get("type_provenance", [])}
+    matched = []
+    for item in missing:
+        provenance = generated.get(item["name"], {})
+        declaration = provenance.get("declaration", {})
+        origin = origins.get(declaration.get("usr"))
+        if (not declaration.get("is_main_file") or provenance.get("definition") is not None
+                or origin is None):
+            return None
+        matched.append({"generated": provenance, "original": origin})
+    return {"owner_authority": "generated_public_source_interface_record_omission",
+            "interface_linker_symbol": actual.linker_symbol, "records": matched,
+            "original_type_contract": source}
+
+
 def gen_tb_prior(
     cv: ContextVariables,
     llm_config: Optional[Dict[str, Any]] = None,
@@ -172,6 +215,9 @@ def gen_tb_prior(
     public_failures: list[str] = []
     mapping_rounds: list[Dict[str, Any]] = []
     mapping_repairs_used = 0
+    type_repairs_used = 0
+    type_rounds: list[Dict[str, Any]] = []
+    type_failure_pending = False
 
     def save_mapping_events() -> None:
         cv["public_result_mapping_qualification"] = {
@@ -181,15 +227,30 @@ def gen_tb_prior(
         }
 
     def raise_mapping_exhausted(*, verification_incomplete: bool = False) -> None:
+        if type_failure_pending:
+            raise tools.tb_optimizer.TestbenchGenerationExhausted(
+                split="public", stage="public_type_qualification",
+                retry_exhausted=not verification_incomplete,
+                trajectories=[{
+                    "trajectory_idx": 0, "rounds": [dict(item) for item in type_rounds],
+                    "qualification_checks_used": len(type_rounds),
+                    "repairs_used": mapping_repairs_used + type_repairs_used,
+                    "type_repair_requests_used": type_repairs_used,
+                    "mapping_repair_requests_used": mapping_repairs_used,
+                    "evidence_ref": "context_test_generation_exhausted.json#public_type_qualification",
+                }],
+            )
         raise tools.tb_optimizer.TestbenchGenerationExhausted(
-            split="public",
+            split="public", retry_exhausted=not verification_incomplete,
             stage=("public_abi_mapping_verification" if verification_incomplete
                    else "public_abi_mapping_qualification"),
             trajectories=[{
                 "trajectory_idx": 0,
                 "error": "\n".join(mapping_failures),
                 "qualification_checks_used": len(mapping_rounds),
-                "repairs_used": mapping_repairs_used,
+                "repairs_used": mapping_repairs_used + type_repairs_used,
+                "type_repair_requests_used": type_repairs_used,
+                "evidence_ref": "context_test_generation_exhausted.json#public_type_qualification",
                 "mapping_qualification_checks_used": len(mapping_rounds),
                 "mapping_repair_requests_used": mapping_repairs_used,
                 "rounds": [dict(item) for item in mapping_rounds],
@@ -241,16 +302,69 @@ def gen_tb_prior(
         cv["public_result_mapping_diagnostics"] = None
         save_mapping_events()
 
-    def request_mapping_repair(current_tb: str) -> str:
-        nonlocal mapping_repairs_used
-        if mapping_repairs_used >= repair_limit:
+    def save_type_events() -> None:
+        cv["public_type_qualification"] = {
+            "qualification_checks_used": len(type_rounds),
+            "type_repair_requests_used": type_repairs_used,
+            "public_contract_repair_requests_used": mapping_repairs_used + type_repairs_used,
+            "repair_scope": "public_contract_replacement",
+            "rounds": [dict(item) for item in type_rounds],
+        }
+
+    def validate_public_contract(current_tb: str, context: str) -> None:
+        nonlocal type_failure_pending
+        type_failure_pending = False
+        validate_mapping_contract(current_tb, context)
+        event: Dict[str, Any] = {"round": len(type_rounds) + 1,
+            "qualification_context": context, "repair_requested": False}
+        type_rounds.append(event)
+        try:
+            facts = tools.tb_optimizer.freeze_public_type_contract(current_tb, hls_name, **parse_context)
+        except tools.tb_optimizer.ModelArtifactError as exc:
+            type_failure_pending = True
+            facts = getattr(exc, "type_contract", {})
+            evidence = _public_record_omission_evidence(
+                reference_code, current_tb, kernel_name, facts, **parse_context,
+            )
+            original_facts = (evidence or {}).get("original_type_contract") or extract_top_type_contract(
+                reference_code, kernel_name, require_definition=True, **parse_context,
+            )
+            generated_context_valid = (
+                facts.get("parse_context", {}).get("include_search_status") == "confirmed"
+                and not any(item.get("severity", 0) >= 4 for item in facts.get("diagnostics", []))
+            )
+            eligible = bool(evidence or (getattr(exc, "repair_eligible", False)
+                and generated_context_valid and original_facts.get("status") == "confirmed"
+                and original_facts.get("translation_unit_complete")))
+            authority = (evidence or {}).get("owner_authority") or (
+                "generated_public_compiler_diagnostic" if eligible else "ownership_unproven")
+            event.update(status="type_contract_failed" if eligible else "type_contract_incomplete",
+                failure_owner="testbench" if eligible else "unknown",
+                next_action="repair_testbench" if eligible else "review_unknown",
+                owner_authority=authority, repair_eligible=eligible, type_contract=facts,
+                source_evidence=evidence, original_type_contract=original_facts, error=str(exc))
+            cv["public_type_contract_unverified"] = facts
+            public_failures.append(context + ": " + str(exc) + "\nPublic compiler source evidence:\n"
+                                   + json.dumps(evidence or facts, ensure_ascii=False, sort_keys=True))
+            save_type_events()
+            if not eligible:
+                raise_mapping_exhausted(verification_incomplete=True)
+            raise
+        event.update(status="ok", failure_owner="none", next_action="continue_validation")
+        cv["public_type_contract"] = facts
+        cv["public_type_contract_unverified"] = None
+        save_type_events()
+
+    def request_public_contract_repair(current_tb: str) -> str:
+        nonlocal mapping_repairs_used, type_repairs_used
+        if mapping_repairs_used + type_repairs_used >= repair_limit:
             raise_mapping_exhausted()
         message = (
             "All previous Public generation and qualification failures:\n"
             + "\n\n".join(public_failures)
             + "\n\nCURRENT PUBLIC TESTBENCH:\n```cpp\n"
             + current_tb.rstrip()
-            + "\n```\n\nReturn a complete replacement with an explicit shared result mapping. "
+            + "\n```\n\nReturn a complete replacement that fixes the preceding Public contract evidence. Preserve complete source-grounded public types and the result mapping. "
             "Preserve the current Candidate ABI unless the preceding evidence explicitly "
             "requested coordinated ABI correction.\n\n"
             + mapping_generation_instruction() + "\n\n"
@@ -268,9 +382,15 @@ def gen_tb_prior(
             raise
         finally:
             if request_started:
-                mapping_repairs_used += 1
-                mapping_rounds[-1]["repair_requested"] = True
-                save_mapping_events()
+                if type_failure_pending:
+                    type_repairs_used += 1
+                    type_rounds[-1]["repair_requested"] = True
+                    save_type_events()
+                else:
+                    mapping_repairs_used += 1
+                    mapping_rounds[-1]["repair_requested"] = True
+                    save_mapping_events()
+                    save_type_events()
 
     tb = tools.tb_optimizer._request_cpp_artifact(
         agent,
@@ -286,7 +406,7 @@ def gen_tb_prior(
         max_repairs=repair_limit,
     )
     for repair_index in range(repair_limit + 1):
-        mapping_failure = False
+        public_contract_failure = False
         try:
             tools.tb_optimizer.validate_testbench_top_contract(tb, kernel_name, hls_name)
             tools.tb_optimizer.validate_testbench_input_domain(
@@ -297,18 +417,18 @@ def gen_tb_prior(
             try:
                 # Use the same adapted Original context as flow/new.py's final
                 # gate for every generated Testbench revision.
-                validate_mapping_contract(tb, f"Validation {repair_index}")
+                validate_public_contract(tb, f"Validation {repair_index}")
             except ValueError as exc:
-                mapping_failure = True
+                public_contract_failure = True
                 raise tools.tb_optimizer.ModelArtifactError(str(exc)) from exc
             break
         except tools.tb_optimizer.ModelArtifactError as exc:
             contract_failures.append(f"Validation {repair_index}: {exc}")
             cv["public_contract_failures"] = list(contract_failures)
-            if mapping_failure:
+            if public_contract_failure:
                 if repair_index == repair_limit:
                     raise_mapping_exhausted()
-                tb = request_mapping_repair(tb)
+                tb = request_public_contract_repair(tb)
                 continue
             public_failures.append(contract_failures[-1])
             if repair_index == repair_limit:
@@ -393,10 +513,10 @@ def gen_tb_prior(
         )
         while True:
             try:
-                validate_mapping_contract(tb, f"Original qualification repair {repair_index}")
+                validate_public_contract(tb, f"Original qualification repair {repair_index}")
                 break
             except ValueError:
-                tb = request_mapping_repair(tb)
+                tb = request_public_contract_repair(tb)
                 tools.tb_optimizer.validate_testbench_top_contract(tb, kernel_name, hls_name)
                 tools.tb_optimizer.validate_testbench_input_domain(
                     tb,
@@ -434,9 +554,7 @@ def gen_tb_prior(
             candidate_decl = tools.tb_optimizer.extract_hls_decl_from_testbench(
                 tb, hls_name, **parse_context,
             )
-            probe_type_contract = tools.tb_optimizer.freeze_public_type_contract(
-                tb, hls_name, **parse_context,
-            )
+            probe_type_contract = cv["public_type_contract"]
             probe_request_started = True
             try:
                 stub = tools.tb_optimizer._request_cpp_artifact(
@@ -551,10 +669,10 @@ def gen_tb_prior(
             )
             while True:
                 try:
-                    validate_mapping_contract(tb, f"ABI correction {synth_index}")
+                    validate_public_contract(tb, f"ABI correction {synth_index}")
                     break
                 except ValueError:
-                    tb = request_mapping_repair(tb)
+                    tb = request_public_contract_repair(tb)
                 tools.tb_optimizer.validate_testbench_top_contract(tb, kernel_name, hls_name)
                 tools.tb_optimizer.validate_testbench_input_domain(
                     tb,

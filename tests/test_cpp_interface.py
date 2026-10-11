@@ -1,11 +1,81 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
+from pathlib import Path
 
-from agrefactor.cpp_interface import extract_global_variables, extract_top_interface
+from agrefactor.cpp_interface import extract_global_variables, extract_top_interface, extract_top_type_contract, inspect_top_entry
 
 
 class CppInterfaceTests(unittest.TestCase):
+    def test_incomplete_record_keeps_compiler_declaration_provenance(self):
+        contract = extract_top_type_contract(
+            "struct Packet;\nvoid top(Packet *state);", "top",
+            source_path="generated_public.cpp",
+        )
+        self.assertEqual(contract["entry_status"], "confirmed")
+        self.assertIn("record_layout_unavailable:Packet", contract["unresolved"])
+        record = contract["type_provenance"][0]
+        self.assertEqual(record["name"], "Packet")
+        self.assertIsNone(record["definition"])
+        declaration = record["declaration"]
+        self.assertEqual(declaration["source_path"], "generated_public.cpp")
+        self.assertEqual(declaration["line"], 1)
+        self.assertTrue(declaration["usr"])
+        self.assertTrue(declaration["is_main_file"])
+        self.assertFalse(declaration["is_definition"])
+        self.assertGreater(declaration["source_end"], declaration["source_start"])
+
+    def test_record_definition_provenance_is_separate_from_layout_identity(self):
+        definition = "struct Packet { unsigned count; double values[3]; };"
+        with tempfile.TemporaryDirectory() as temporary:
+            header = Path(temporary) / "public_packet.h"
+            header.write_text(definition, encoding="utf-8")
+            from_header = extract_top_type_contract(
+                '#include "public_packet.h"\nvoid top(Packet *state);', "top",
+                source_path=Path(temporary) / "original.cpp",
+            )
+            from_main = extract_top_type_contract(
+                "\n\n" + definition + "\nvoid top(Packet *state);", "top",
+                source_path=Path(temporary) / "generated_public.cpp",
+            )
+            self.assertEqual(from_header["status"], "confirmed")
+            self.assertEqual(from_main["status"], "confirmed")
+            header_definition = from_header["type_provenance"][0]["definition"]
+            main_definition = from_main["type_provenance"][0]["definition"]
+            self.assertEqual(header_definition["source_path"], str(header))
+            self.assertEqual(header_definition["line"], 1)
+            self.assertFalse(header_definition["is_main_file"])
+            self.assertTrue(header_definition["is_definition"])
+            self.assertEqual(main_definition["line"], 3)
+            self.assertTrue(main_definition["is_main_file"])
+            self.assertEqual(header_definition["usr"], main_definition["usr"])
+            self.assertEqual(from_header["types"], from_main["types"])
+            self.assertEqual(from_header["fingerprint"], from_main["fingerprint"])
+            self.assertNotEqual(from_header["type_provenance"], from_main["type_provenance"])
+
+    def test_template_declaration_and_instantiated_calls_keep_compiler_identity(self):
+        source = """
+template<int Extent, class Element>
+void transform(Element input[Extent][Extent], Element (&output)[Extent][Extent]) {}
+template<int Extent> void adapter() {
+    double input[Extent][Extent], output[Extent][Extent];
+    transform<Extent, double>(input, output);
+}
+void observe() { adapter<3>(); adapter<5>(); }
+"""
+        interface = extract_top_interface(source, "transform")
+        self.assertIsNotNone(interface)
+        self.assertEqual([item["name"] for item in interface.template_parameters], ["Extent", "Element"])
+        self.assertEqual(len(interface.parameters), 2)
+        self.assertIn("(&)", interface.parameters[1].canonical_type)
+        calls = inspect_top_entry(source, "observe")["reachable_calls"]
+        instances = [item for item in calls if item.get("template_usr") == interface.usr]
+        self.assertEqual(len(instances), 2)
+        self.assertEqual(len({item["usr"] for item in instances}), 2)
+        self.assertTrue(all(item["linker_symbol"] and item["source_path"] and item["source_end"] > item["source_start"] for item in instances))
+        self.assertTrue(all("double (&)[" in item["canonical_function_type"] for item in instances))
+
     def test_resolves_typedef_and_definition_after_declaration(self) -> None:
         source = """
 typedef int row[4];

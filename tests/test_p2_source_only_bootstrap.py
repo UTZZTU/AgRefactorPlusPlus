@@ -1,6 +1,7 @@
 
 import io
 import json
+from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
 import tempfile
@@ -17,6 +18,7 @@ from agrefactor.config import (
     EvaluationSplit,
     OverallTestSourceMode,
     RunMode,
+    SourcePackageSpec,
     TaskSpec,
     TestSourceSelectionMode,
     resolve_target_profile,
@@ -190,6 +192,110 @@ def make_request(root, *, plan):
 
 
 class P2SourceOnlyBootstrapTests(unittest.TestCase):
+    def test_internal_free_function_uses_existing_reference_bridge(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = make_request(root, plan=build_test_source_plan())
+            request.source_path.write_text(
+                "namespace { int top(int x) { return x; } }\n",
+                encoding="utf-8",
+            )
+            layout = SourceRunLayout.create(
+                request.run_id, artifact_base=root / "artifacts", work_base=root / "work",
+            )
+            layout.artifact_root.mkdir(parents=True)
+            class InternalGeneration(FakeGenerationAdapter):
+                def __call__(self, context):
+                    result = super().__call__(context)
+                    for key in ("testbench", "generated_hidden_testbench"):
+                        self.last_raw_result[1][key] = self.last_raw_result[1][key].replace(
+                            'extern "C" int top(int);', 'int top(int);',
+                        )
+                    return result
+
+            generation = InternalGeneration()
+            formal = CapturingFormalBuilder()
+            phase = SourceBootstrapPhase(
+                request=request, layout=layout, generation_adapter=generation,
+                formal_phase_builder=formal,
+            )
+            context = RunContext(
+                run_id=request.run_id,
+                task=TaskSpec(task_id="internal-entry", kernel_path=str(request.source_path), kernel_name="top"),
+                budget=BudgetManager(request.budget_contract.to_budget_limits()),
+                trace=TraceRecorder(request.run_id, task_id="internal-entry"),
+            )
+            with patch("flow.tools.tb_optimizer.validate_public_runtime_contract", return_value=PUBLIC_RUNTIME_CONTRACT):
+                result = phase(context)
+            self.assertTrue(result.succeeded, result)
+            self.assertEqual(len(generation.context_ids), 1)
+            entry_paths = list(layout.artifact_root.rglob("source_entry.json"))
+            self.assertEqual(len(entry_paths), 1)
+            entry = json.loads(entry_paths[0].read_text())
+            self.assertEqual(entry["reference_bridge"]["status"], "prepared")
+            self.assertFalse(entry["reference_bridge"]["qualified"])
+            prepared = entry_paths[0].parent / "prepared_reference.cpp"
+            self.assertTrue(prepared.is_file())
+            self.assertEqual(prepared.read_text().count("#define top agrefactor_reference_impl_top"), 1)
+
+    def test_ambiguous_internal_entry_cannot_reach_generation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = make_request(root, plan=build_test_source_plan())
+            request.source_path.write_text(
+                "static int top(int x) { return x; }\nstatic int top() { return 7; }\n",
+                encoding="utf-8",
+            )
+            layout = SourceRunLayout.create(
+                request.run_id, artifact_base=root / "artifacts", work_base=root / "work",
+            )
+            layout.artifact_root.mkdir(parents=True)
+            generation = FakeGenerationAdapter()
+            phase = SourceBootstrapPhase(
+                request=request, layout=layout, generation_adapter=generation,
+                formal_phase_builder=CapturingFormalBuilder(),
+            )
+            context = RunContext(
+                run_id=request.run_id,
+                task=TaskSpec(task_id="ambiguous-entry", kernel_path=str(request.source_path), kernel_name="top"),
+                budget=BudgetManager(request.budget_contract.to_budget_limits()),
+                trace=TraceRecorder(request.run_id, task_id="ambiguous-entry"),
+            )
+            result = phase(context)
+            self.assertFalse(result.succeeded)
+            self.assertEqual(result.metadata["diagnostic_kind"], "internal_linkage_bridge_unproven")
+            self.assertEqual(generation.context_ids, [])
+
+    def test_internal_entry_in_extra_unit_is_not_bridged_from_wrong_source(self):
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as work:
+            root = Path(directory)
+            request = make_request(root, plan=build_test_source_plan())
+            request.source_path.write_text("int support() { return 7; }\n", encoding="utf-8")
+            extra = root / "extra.cpp"
+            extra.write_text("static int top(int x) { return x; }\n", encoding="utf-8")
+            request = replace(request, source_package=SourcePackageSpec(
+                root=root, target=request.source_path, extra_sources=(extra,),
+            ))
+            layout = SourceRunLayout.create(
+                request.run_id, artifact_base=Path(work) / "artifacts", work_base=Path(work) / "work",
+            )
+            layout.artifact_root.mkdir(parents=True)
+            generation = FakeGenerationAdapter()
+            phase = SourceBootstrapPhase(
+                request=request, layout=layout, generation_adapter=generation,
+                formal_phase_builder=CapturingFormalBuilder(),
+            )
+            context = RunContext(
+                run_id=request.run_id,
+                task=TaskSpec(task_id="extra-internal-entry", kernel_path=str(request.source_path), kernel_name="top"),
+                budget=BudgetManager(request.budget_contract.to_budget_limits()),
+                trace=TraceRecorder(request.run_id, task_id="extra-internal-entry"),
+            )
+            result = phase(context)
+            self.assertFalse(result.succeeded)
+            self.assertEqual(result.metadata["diagnostic_kind"], "internal_linkage_bridge_unproven")
+            self.assertEqual(generation.context_ids, [])
+
     def test_r5_capture_flag_is_absent_from_default_request_artifact(self):
         with tempfile.TemporaryDirectory() as directory:
             request = make_request(

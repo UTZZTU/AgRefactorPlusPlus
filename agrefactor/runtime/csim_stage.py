@@ -23,6 +23,7 @@ from agrefactor.evaluation.csim_suite import (
     CsimSuiteEvaluationResult,
     CsimSuiteEvaluator,
 )
+from agrefactor.evaluation.owner_evidence import resolve_source_owner
 from agrefactor.evaluation.test_evaluation_feedback import (
     TestEvaluationFeedbackAdapter,
 )
@@ -173,6 +174,7 @@ def _native_candidate_runtime_classification(
         path = Path(artifact)
         if path.name != "csim_invocation.json" or path.is_symlink() or not path.is_file():
             continue
+        unresolved = None
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -269,6 +271,42 @@ def _native_candidate_runtime_classification(
         ):
             return dict(value)
         return None
+    return None
+
+
+def _native_source_compile_classification(result: CsimSuiteEvaluationResult) -> dict[str, Any] | None:
+    """Recheck source provenance before consuming native compiler ownership."""
+
+    for artifact in result.evidence.artifacts:
+        path = Path(artifact)
+        if path.name != "csim_invocation.json" or path.is_symlink() or not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            value = payload.get("compiler_failure")
+            if not isinstance(value, Mapping):
+                return None
+            unresolved = {**dict(value), "owner": "unknown", "owner_authority": "unknown", "evidence_complete": False}
+            if not value.get("build_manifest"):
+                return unresolved
+            manifest = Path(value["build_manifest"])
+            if (manifest.is_symlink() or not manifest.is_file()
+                    or sha256(manifest.read_bytes()).hexdigest() != value["build_manifest_sha256"]):
+                return unresolved
+            for source, digest in value["source_sha256"].items():
+                source_path = Path(source)
+                if (source_path.is_symlink() or not source_path.is_file()
+                        or sha256(source_path.read_bytes()).hexdigest() != digest):
+                    return unresolved
+            evidence = resolve_source_owner(
+                value["diagnostics"], source_roles=value["source_roles"],
+                work_dir=path.parent,
+                compile_units=(*value["compile_units"], str(path.parent / "agrefactor_case_evidence.hpp")),
+                execution=payload["execution"],
+            )
+        except (OSError, ValueError, TypeError, KeyError):
+            return unresolved
+        return {**dict(value), **evidence.to_dict()}
     return None
 
 
@@ -677,7 +715,9 @@ class CsimValidationStageHandler:
                         and any(item.blocking and item.owner is FeedbackOwner.UNKNOWN for item in report.items)):
                     invocation = self._read_invocation(suite_work_dir / "csim_invocation.json") or {}
                     execution = invocation.get("execution", {})
-                    if execution.get("status") not in {"launch_error", "configuration_error"} and execution.get("returncode") is not None:
+                    if (not isinstance(invocation.get("compiler_failure"), Mapping)
+                            and execution.get("status") not in {"launch_error", "configuration_error"}
+                            and execution.get("returncode") is not None):
                         from flow.tools.vitis_csim import _original_isolation_evidence, _write_json
 
                         isolation = _original_isolation_evidence(
@@ -935,6 +975,24 @@ class CsimValidationStageHandler:
             }[timeout.owner.value]
             stage = FeedbackStage.CSIM
             metadata_update.update(timeout.to_dict())
+        elif (self._inputs.execution_backend == "native_vitis"
+              and (compile_failure := _native_source_compile_classification(result)) is not None):
+            category = _KIND_TO_CATEGORY.get(
+                TestbenchFailureKind(compile_failure["category"]), FeedbackCategory.UNKNOWN,
+            )
+            owner = FeedbackOwner(compile_failure["owner"])
+            stage = FeedbackStage.COMPILE
+            metadata_update.update({
+                "owner_authority": compile_failure["owner_authority"],
+                "evidence_complete": compile_failure["evidence_complete"],
+                "repair_eligible": compile_failure["evidence_complete"] and owner in {FeedbackOwner.CANDIDATE, FeedbackOwner.TESTBENCH},
+                "tool_launched": True, "physical_tool_launched": True,
+                "failure_kind": "source_compile_failed",
+                "failure_reason": "native_csim_source_compile_failed",
+                "compiler_diagnostics": compile_failure["diagnostics"],
+                "compiler_returncode": None,
+                "outer_returncode": compile_failure["outer_returncode"],
+            })
         elif result.legacy_status == "csim_failed":
             if self._inputs.execution_backend == "native_vitis":
                 classification = _native_candidate_runtime_classification(result)

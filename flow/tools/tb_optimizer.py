@@ -70,6 +70,7 @@ class TestbenchGenerationExhausted(RuntimeError):
         stage: str,
         trajectories: List[Dict[str, Any]],
         qualification_mode: str = "generated",
+        retry_exhausted: Optional[bool] = None,
     ) -> None:
         if split not in {"public", "hidden"}:
             raise ValueError("split must be public or hidden")
@@ -177,7 +178,7 @@ class TestbenchGenerationExhausted(RuntimeError):
             "artifact_response_count": sum(item.get("responses", 0) for item in artifact_events),
             "artifact_format_retry_count": sum(item.get("format_retries", 0) for item in artifact_events),
             "coverage_check_count": sum(item.get("coverage_checks_used", 0) for item in trajectories),
-            "retry_exhausted": False if is_provided else True,
+            "retry_exhausted": False if is_provided else (True if retry_exhausted is None else retry_exhausted),
             "failure_owner": failure_owner,
             "next_action": (
                 "review_required_provided"
@@ -220,7 +221,7 @@ class TestbenchGenerationExhausted(RuntimeError):
         else:
             message = (
                 f"{compatibility_prefix} produced no qualified trajectory: "
-                f"exhausted {len(summaries)} trajectory(s) after "
+                f"{'exhausted' if self._payload['retry_exhausted'] else 'stopped'} {len(summaries)} trajectory(s) after "
                 f"{attempt_count} bounded qualification attempt(s); "
                 f"owner={failure_owner}; kind={diagnostic_kind}"
             )
@@ -292,13 +293,14 @@ class TestbenchGenerationExhausted(RuntimeError):
             "next_action": action,
             "diagnostic_kind": diagnostic_kind,
             "diagnostic_excerpt": diagnostic_excerpt,
+            **({"owner_authority": last["owner_authority"]} if "owner_authority" in last else {}),
             **{
                 key: trajectory[key] for key in (
                     "qualification_checks_used", "repairs_used",
                     "mapping_qualification_checks_used", "mapping_repair_requests_used",
                     "artifact_event_counts", "artifact_response_attempts",
                     "artifact_contract_checks", "artifact_response_retries",
-                    "coverage_checks_used", "counter_source",
+                    "coverage_checks_used", "counter_source", "type_repair_requests_used", "evidence_ref",
                 ) if key in trajectory
             },
         }
@@ -343,11 +345,7 @@ def extract_hls_decl_from_testbench(
 
 
 def _normalize_declaration(value: str) -> str:
-    return re.sub(
-        r"\s+",
-        " ",
-        value.strip().rstrip(";"),
-    ) + ";"
+    return value.strip().rstrip(";") + ";"
 
 
 def public_runtime_contract_depth_ports(

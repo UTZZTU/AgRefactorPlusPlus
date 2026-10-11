@@ -50,8 +50,14 @@ def isolate_reference_program_entry(
     ):
         return prepared
     template = has_template
+    if template and not testbench_code:
+        return prepared
     if template and testbench_code:
         interface = extract_top_interface(testbench_code, top_function, require_definition=False, **context)
+        if interface is not None and interface.template_parameters:
+            # A real template call is instantiated in the existing shared-TU
+            # path. Its dependent parameters cannot become concrete aliases.
+            return prepared
     if interface is None:
         return prepared
     state = (

@@ -33,7 +33,7 @@ _TRANSLATION_UNIT = 300
 _CHILD_VISIT_RECURSE = 2
 _POINTER_TYPE = 101
 _REFERENCE_TYPES = frozenset({103, 104})
-_ARRAY_TYPES = frozenset({112, 113, 114, 115})
+_ARRAY_TYPES = frozenset({112, 113, 114, 115, 116})
 _FUNCTION_TYPES = frozenset({110, 111})
 
 # libclang CXLinkage values used by the vendor libclang shipped with Vitis.
@@ -124,6 +124,8 @@ class CppFunctionInterface:
     global_state: tuple[CppVariable, ...] = ()
     canonical_function_type: str | None = None
     linker_symbol: str | None = None
+    usr: str | None = None
+    template_parameters: tuple[dict, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,6 +247,8 @@ class _LibClang:
         library.clang_getCursorReferenced.restype = _CXCursor
         library.clang_getCursorDefinition.argtypes = [_CXCursor]
         library.clang_getCursorDefinition.restype = _CXCursor
+        library.clang_getSpecializedCursorTemplate.argtypes = [_CXCursor]
+        library.clang_getSpecializedCursorTemplate.restype = _CXCursor
         library.clang_getCursorSemanticParent.argtypes = [_CXCursor]
         library.clang_getCursorSemanticParent.restype = _CXCursor
         library.clang_hashCursor.argtypes = [_CXCursor]
@@ -553,9 +557,11 @@ def extract_top_interface(
                             "canonical_function_type": clang.text(library.clang_getTypeSpelling(library.clang_getCanonicalType(library.clang_getCursorType(cursor)))),
                             "is_definition": bool(library.clang_isCursorDefinition(cursor)),
                             "signature_valid": declaration is not None and not any(start <= offset < start + len(declaration.encode("utf-8")) for offset in error_offsets),
+                            "source_start": start,
+                            "source_end": end,
                         }
                         entries.append(entry)
-                        if cursor.kind == _FUNCTION_DECL and library.clang_Location_isFromMainFile(location):
+                        if cursor.kind in {_FUNCTION_DECL, _FUNCTION_TEMPLATE} and library.clang_Location_isFromMainFile(location):
                             matches.append((cursor, entry))
                 return _CHILD_VISIT_RECURSE
 
@@ -807,10 +813,26 @@ def _interface_from_cursor(
     )
     parameters: list[CppParameter] = []
     argument_count = library.clang_Cursor_getNumArguments(cursor)
-    if argument_count < 0:
+    arguments = []
+    template_parameters = []
+    if cursor.kind == _FUNCTION_TEMPLATE:
+        @clang.visitor_type
+        def visit_parameter(child, _parent, _data):
+            if child.kind == 10:  # CXCursor_ParmDecl
+                arguments.append(child)
+            elif child.kind in {27, 28, 29}:  # template type/value/template parameters
+                template_parameters.append({
+                    "kind": int(child.kind),
+                    "name": clang.text(library.clang_getCursorSpelling(child)),
+                    "type": clang.text(library.clang_getTypeSpelling(library.clang_getCursorType(child))),
+                })
+            return 1  # direct children only
+        library.clang_visitChildren(cursor, visit_parameter, None)
+    elif argument_count >= 0:
+        arguments = [library.clang_Cursor_getArgument(cursor, index) for index in range(argument_count)]
+    else:
         return None
-    for index_value in range(argument_count):
-        argument = library.clang_Cursor_getArgument(cursor, index_value)
+    for argument in arguments:
         name = clang.text(library.clang_getCursorSpelling(argument))
         argument_type = library.clang_getCursorType(argument)
         canonical = library.clang_getCanonicalType(argument_type)
@@ -876,6 +898,8 @@ def _interface_from_cursor(
             )
         ),
         linker_symbol=clang.text(library.clang_Cursor_getMangling(cursor)),
+        usr=clang.text(library.clang_getCursorUSR(cursor)),
+        template_parameters=tuple(template_parameters),
     )
 
 
@@ -979,7 +1003,8 @@ def extract_top_type_contract(
     contract = facts.get("type_contract") or {
         "status": "unknown", "types": [], "declaration_context": "",
         "fingerprint": None, "has_user_types": None,
-        "required_type_names": [], "unresolved": ["entry_type_facts_unavailable"],
+        "required_type_names": [], "type_provenance": [],
+        "unresolved": ["entry_type_facts_unavailable"],
     }
     contract.update(
         diagnostics=facts.get("diagnostics", []),
@@ -1011,6 +1036,7 @@ def type_contract_layout_fingerprint(types):
 def _type_contract_from_cursor(clang, top, source, translation_unit):
     library = clang.library
     types = {}
+    type_provenance = {}
     declaration_spans = []
     visited = set()
     unresolved = []
@@ -1062,6 +1088,25 @@ def _type_contract_from_cursor(clang, top, source, translation_unit):
                 names.insert(0, name)
             parent = library.clang_getCursorSemanticParent(parent)
         return "::".join(name for name in names if name)
+
+    def cursor_provenance(cursor):
+        location = library.clang_getCursorLocation(cursor)
+        file_handle = ctypes.c_void_p()
+        line = ctypes.c_uint()
+        column = ctypes.c_uint()
+        library.clang_getSpellingLocation(
+            location, ctypes.byref(file_handle), ctypes.byref(line),
+            ctypes.byref(column), None,
+        )
+        start, end = _source_offsets(clang, cursor)
+        return {
+            "usr": clang.text(library.clang_getCursorUSR(cursor)),
+            "source_path": clang.text(library.clang_getFileName(file_handle)) if file_handle.value else None,
+            "line": int(line.value), "column": int(column.value),
+            "source_start": start, "source_end": end,
+            "is_main_file": bool(library.clang_Location_isFromMainFile(location)),
+            "is_definition": bool(library.clang_isCursorDefinition(cursor)),
+        }
 
     def declaration(cursor):
         location = library.clang_getCursorLocation(cursor)
@@ -1186,6 +1231,11 @@ def _type_contract_from_cursor(clang, top, source, translation_unit):
             }
         else:
             definition = library.clang_getCursorDefinition(cursor)
+            type_provenance[name] = {
+                "name": name, "kind": {2: "struct", 3: "union", 4: "class"}[cursor.kind],
+                "declaration": cursor_provenance(cursor),
+                "definition": cursor_provenance(definition) if definition.kind in {2, 3, 4} else None,
+            }
             if definition.kind in {2, 3, 4}:
                 cursor = definition
             record_type = library.clang_getCursorType(cursor)
@@ -1372,6 +1422,7 @@ def _type_contract_from_cursor(clang, top, source, translation_unit):
         "declaration_context": context,
         "fingerprint": None if unresolved else type_contract_layout_fingerprint(semantic),
         "unresolved": unresolved,
+        "type_provenance": [type_provenance[name] for name in sorted(type_provenance)],
     }
 
 
@@ -1391,10 +1442,23 @@ def _reachable_call_facts(clang: _LibClang, top: _CXCursor) -> list[dict]:
         def visit(cursor, _parent, _data):
             if cursor.kind == 103:  # CXCursor_CallExpr
                 declaration = library.clang_getCursorReferenced(cursor)
-                if declaration.kind == _FUNCTION_DECL:
+                if declaration.kind in {_FUNCTION_DECL, _FUNCTION_TEMPLATE}:
+                    primary = library.clang_getSpecializedCursorTemplate(declaration)
+                    location = library.clang_getCursorLocation(cursor)
+                    source_file = ctypes.c_void_p()
+                    line = ctypes.c_uint()
+                    column = ctypes.c_uint()
+                    library.clang_getSpellingLocation(location, ctypes.byref(source_file), ctypes.byref(line), ctypes.byref(column), None)
+                    start, end = _source_offsets(clang, cursor)
                     calls[library.clang_hashCursor(declaration)] = {
                         "name": clang.text(library.clang_getCursorSpelling(declaration)),
                         "linker_symbol": clang.text(library.clang_Cursor_getMangling(declaration)),
+                        "usr": clang.text(library.clang_getCursorUSR(declaration)),
+                        "template_usr": clang.text(library.clang_getCursorUSR(primary)) if primary.kind == _FUNCTION_TEMPLATE else None,
+                        "canonical_function_type": clang.text(library.clang_getTypeSpelling(library.clang_getCanonicalType(library.clang_getCursorType(declaration)))),
+                        "source_path": clang.text(library.clang_getFileName(source_file)) if source_file.value else None,
+                        "source_start": start, "source_end": end,
+                        "line": int(line.value), "column": int(column.value),
                     }
                     definition = library.clang_getCursorDefinition(declaration)
                     if library.clang_Location_isFromMainFile(library.clang_getCursorLocation(definition)):

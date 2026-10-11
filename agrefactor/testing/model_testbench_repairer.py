@@ -180,6 +180,13 @@ _TESTBENCH_FORBIDDEN_ACTIONS = (
 
 _TESTBENCH_OUTPUT_REQUIREMENTS = (
     (
+        "The executor provides agrefactor_case_evidence.hpp when "
+        "AGREFACTOR_CASE_EVIDENCE is defined. case_result accepts const char* "
+        "or const std::string& and bool. Preserve existing per-case reporting "
+        "and complete() only after all planned comparisons finish. Reporting "
+        "must not change comparisons, return codes, or test execution."
+    ),
+    (
         "If the current Testbench contains an explicitly frozen "
         "AGREFACTOR_SHARED_RESULT_MAPPING_BEGIN/END helper block, retain "
         "that block verbatim and keep using its observation helpers. Do not "

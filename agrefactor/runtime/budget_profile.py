@@ -415,7 +415,7 @@ class RunBudgetProfile:
 SOURCE_RUN_SAFETY_CEILINGS = BudgetLimits(
     max_llm_calls=256, max_tool_calls=512, max_compile_calls=192,
     max_csim_calls=128, max_csynth_calls=64, max_cosim_calls=64,
-    max_tokens=None, max_cost_usd=None, max_wall_time_s=14400.0,
+    max_tokens=None, max_cost_usd=None, max_wall_time_s=43200.0,
 )
 
 REFACTOR_RUN_BUDGET_PROFILE = RunBudgetProfile(
@@ -423,7 +423,7 @@ REFACTOR_RUN_BUDGET_PROFILE = RunBudgetProfile(
     system_defaults=BudgetLimits(
         max_llm_calls=96, max_tool_calls=192, max_compile_calls=96,
         max_csim_calls=64, max_csynth_calls=32, max_cosim_calls=32,
-        max_tokens=None, max_cost_usd=None, max_wall_time_s=10800.0,
+        max_tokens=None, max_cost_usd=None, max_wall_time_s=21600.0,
     ),
     system_safety_ceilings=SOURCE_RUN_SAFETY_CEILINGS,
 )

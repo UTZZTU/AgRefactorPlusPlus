@@ -31,6 +31,7 @@ from agrefactor.cpp_interface import (
 from agrefactor.reference_source import isolate_reference_program_entry
 from agrefactor.evaluation.owner_evidence import OwnerEvidence, resolve_source_owner
 from agrefactor.evaluation.diagnostic_catalog import load_catalog
+from flow.tools.case_evidence import instrument_testbench, prepare_compile_support
 from agrefactor.evaluation.testbench_preflight import (
     classify_compile_failure,
     parse_compiler_diagnostics,
@@ -313,8 +314,10 @@ def _entry_contract_failure(
         compile_flags=compile_flags,
     )
     entries = facts.get("entries", ())
+    if any(entry.get("kind") == "member" for entry in entries):
+        return "class_member_entry", facts
     if any(entry.get("linkage") == 2 for entry in entries):
-        return "internal_linkage_entry", facts
+        return "internal_linkage_bridge_unproven", facts
     diagnostics = facts.get("diagnostics", ())
     if any(
         (
@@ -328,6 +331,66 @@ def _entry_contract_failure(
     ):
         return "missing_external_dependency", facts
     return None
+
+
+def _prepare_original_reference(
+    source: str,
+    entry_name: str | None,
+    *,
+    testbench_code: str,
+    source_root: str | None,
+    work_dir: str,
+    compile_flags: tuple[str, ...],
+    source_provenance: list[dict],
+) -> str:
+    context = {
+        "source_path": os.path.join(source_root or work_dir, "orig_code.cpp"),
+        "include_dirs": (source_root,) if source_root else (),
+        "compile_flags": compile_flags,
+    }
+    if entry_name:
+        facts = inspect_top_entry(source, entry_name, **context)
+        entries = facts.get("entries", ())
+        internal_entries = [entry for entry in entries if entry.get("linkage") == 2]
+        implementation = inspect_top_entry(
+            source, f"agrefactor_reference_impl_{entry_name}", **context,
+        )
+        implementation_usrs = {
+            entry.get("usr") for entry in implementation.get("entries", ())
+            if entry.get("usr") and entry.get("is_definition")
+        }
+        if (
+            facts.get("status") == "confirmed"
+            and all(entry.get("linkage") == 4 for entry in facts.get("entries", ()))
+            and any(call.get("usr") in implementation_usrs for call in facts.get("reachable_calls", ()))
+        ):
+            # A compiler-resolved call to the existing same-TU implementation
+            # proves that this reference was already prepared. Rewrapping it
+            # would change the ABI of observable-global-state bridges.
+            encoded = source.encode("utf-8")
+            for inspection, owner, authority in (
+                (implementation, "original", "original_implementation_cursor"),
+                (facts, "unknown", "generated_reference_bridge"),
+            ):
+                for entry in inspection.get("entries", ()):
+                    start, end = entry.get("source_start"), entry.get("source_end")
+                    if isinstance(start, int) and isinstance(end, int):
+                        source_provenance.append({
+                            "line_start": encoded[:start].count(b"\n") + 1,
+                            "line_end": encoded[:end].count(b"\n") + 1,
+                            "owner": owner, "authority": authority,
+                        })
+            return source
+    return isolate_reference_program_entry(
+        source,
+        top_function=(
+            entry_name if entry_name and (
+                internal_entries or any(entry.get("kind") == "template" for entry in entries)
+            ) else None
+        ),
+        testbench_code=testbench_code,
+        source_provenance=source_provenance, **context,
+    )
 
 
 def _finish_failure(
@@ -478,25 +541,6 @@ def check_original_execution(
         original_name = original_name or (
             candidate_name[:-4] if candidate_name.endswith("_hls") else None
         )
-        entry_failure = _entry_contract_failure(
-            orig_code,
-            original_name,
-            source_root=source_root,
-            compile_flags=compile_flags,
-        )
-        if entry_failure is not None:
-            reason, entry_facts = entry_failure
-            result.update(
-                status="entry_contract_failed",
-                failure_owner="configuration",
-                next_action="review_configuration",
-                diagnostic_kind=reason,
-                source_entry=entry_facts,
-                failure_evidence_source="libclang source entry contract",
-                owner_authority="source_entry_contract",
-                evidence_complete=True,
-            )
-            return result
         template_original = bool(
             original_name
             and _is_function_template(
@@ -510,31 +554,50 @@ def check_original_execution(
         if declaration:
             stub += _noop_candidate_definition(declaration, body, candidate_name)
         reference_spans: list[dict] = []
+        try:
+            reference = _prepare_original_reference(
+                orig_code, original_name, testbench_code=tb_code,
+                source_root=source_root, work_dir=tmp,
+                compile_flags=compile_flags, source_provenance=reference_spans,
+            )
+        except ValueError as exc:
+            result.update(
+                diagnostic_kind="reference_bridge_unproven", compile_stderr=str(exc),
+            )
+            return _finish_failure(
+                result, status="entry_contract_failed", owner="configuration",
+                action="review_configuration", evidence_source="reference bridge preparation",
+            )
+        entry_failure = _entry_contract_failure(
+            reference, original_name, source_root=source_root,
+            compile_flags=compile_flags,
+        )
+        if entry_failure is not None:
+            reason, entry_facts = entry_failure
+            result.update(
+                status="entry_contract_failed", failure_owner="configuration",
+                next_action="review_configuration", diagnostic_kind=reason,
+                source_entry=entry_facts,
+                failure_evidence_source="libclang prepared reference entry contract",
+                owner_authority="source_entry_contract", evidence_complete=True,
+            )
+            return result
         if template_original:
             # Function templates must be instantiated where their definition
             # is visible. Keep the Original and Testbench in one TU and omit
             # the separate Original object from the compile command below.
-            reference = isolate_reference_program_entry(
-                orig_code,
-                top_function=original_name,
-                testbench_code=tb_code,
-                source_path=os.path.join(source_root or tmp, "orig_code.cpp"),
-                include_dirs=(source_root,) if source_root else (),
-                compile_flags=compile_flags,
-                source_provenance=reference_spans,
-            )
             stub = (
                 '#include "orig_code.cpp"\n'
                 '#include "testbench.cpp"\n'
                 + _candidate_definition(stub)
             )
-        else:
-            reference = isolate_reference_program_entry(
-                orig_code, source_provenance=reference_spans,
-            )
+        result["case_evidence_support"] = prepare_compile_support(
+            work_dir=tmp, candidate_code=stub, testbench_code=tb_code,
+            phase="original_qualification",
+        )
         files = {
             "orig_code.cpp": reference,
-            "testbench.cpp": tb_code,
+            "testbench.cpp": instrument_testbench(tb_code),
             "original_only_candidate.cpp": stub,
         }
         for name, content in files.items():
@@ -542,6 +605,7 @@ def check_original_execution(
                 file.write(content)
         result["source_roles"] = {
             "testbench.cpp": "testbench",
+            "agrefactor_case_evidence.hpp": "unknown",
             # The template bridge is generated into the reference file, so
             # file-level evidence cannot distinguish it from Original code.
             "orig_code.cpp": "unknown" if template_original else "original",
@@ -549,6 +613,7 @@ def check_original_execution(
             **{name: "configuration" for name in extra_sources},
         }
         result["source_spans"] = {"orig_code.cpp": reference_spans}
+        result["prepared_reference_sha256"] = hashlib.sha256(reference.encode("utf-8")).hexdigest()
 
         compiled = False
         for include_flag in (None, f"-I{XILINX_INCLUDE_FALLBACK}"):
@@ -566,7 +631,7 @@ def check_original_execution(
                 cmd.insert(1, include_flag)
             result["compile_units"] = {
                 "original_only_candidate.cpp": [
-                    "original_only_candidate.cpp", "testbench.cpp",
+                    "original_only_candidate.cpp", "testbench.cpp", "agrefactor_case_evidence.hpp",
                     *(["orig_code.cpp"] if template_original else []),
                 ],
                 **({} if template_original else {"orig_code.cpp": ["orig_code.cpp"]}),
@@ -615,7 +680,7 @@ def check_original_execution(
         # Interface facts supplement the real execution; an unresolved AST
         # never prevents compilation or grants a repair opportunity.
         interface_evidence = _original_interface_evidence(
-            orig_code, tb_code, original_name,
+            reference, tb_code, original_name,
             source_root=source_root,
             work_dir=tmp,
             compile_flags=compile_flags,
@@ -892,30 +957,35 @@ def measure_coverage(
         refactor_contents = stub_code
         compile_sources = list(SOURCES)
         reference_spans: list[dict] = []
+        try:
+            original_contents = _prepare_original_reference(
+                orig_code, original_name, testbench_code=tb_code,
+                source_root=source_root, work_dir=tmp,
+                compile_flags=compile_flags, source_provenance=reference_spans,
+            )
+        except ValueError as exc:
+            res.update(diagnostic_kind="reference_bridge_unproven", compile_stderr=str(exc))
+            return _finish_failure(
+                res, status="entry_contract_failed", owner="configuration",
+                action="review_configuration", evidence_source="reference bridge preparation",
+            )
         if template_original:
             # The template definition and its instantiating testbench must
             # share a translation unit. The candidate stub remains the final
             # definition in that unit.
-            original_contents = isolate_reference_program_entry(
-                orig_code,
-                top_function=original_name,
-                testbench_code=tb_code,
-                source_path=os.path.join(source_root or tmp, "orig_code.cpp"),
-                include_dirs=(source_root,) if source_root else (),
-                compile_flags=compile_flags,
-                source_provenance=reference_spans,
-            )
             refactor_contents = (
                 '#include "orig_code.cpp"\n'
                 '#include "testbench.cpp"\n'
                 + _candidate_definition(stub_code)
             )
             compile_sources = ["refactor_code.cpp"]
-        else:
-            original_contents = orig_code
+        res["case_evidence_support"] = prepare_compile_support(
+            work_dir=tmp, candidate_code=stub_code, testbench_code=tb_code,
+            phase="generation_coverage",
+        )
         contents = {
             "orig_code.cpp": original_contents,
-            "testbench.cpp": tb_code,
+            "testbench.cpp": instrument_testbench(tb_code),
             "refactor_code.cpp": refactor_contents,
         }
         for name, content in contents.items():
@@ -928,14 +998,17 @@ def measure_coverage(
         res["source_roles"] = {
             "orig_code.cpp": "unknown" if template_original else "original",
             "testbench.cpp": "testbench",
+            "agrefactor_case_evidence.hpp": "unknown",
             "refactor_code.cpp": "stub",
             **{name: "configuration" for name in extra_sources},
         }
-        res["source_spans"] = {"orig_code.cpp": reference_spans} if template_original else {}
+        res["source_spans"] = {"orig_code.cpp": reference_spans}
+        res["prepared_reference_sha256"] = hashlib.sha256(original_contents.encode("utf-8")).hexdigest()
         res["compile_units"] = {
             name: (
-                ["refactor_code.cpp", "orig_code.cpp", "testbench.cpp"]
+                ["refactor_code.cpp", "orig_code.cpp", "testbench.cpp", "agrefactor_case_evidence.hpp"]
                 if template_original and name == "refactor_code.cpp"
+                else [name, "agrefactor_case_evidence.hpp"] if name == "testbench.cpp"
                 else [name]
             )
             for name in (*compile_sources, *extra_sources)

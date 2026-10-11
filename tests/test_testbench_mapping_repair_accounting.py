@@ -192,5 +192,183 @@ class MappingRepairAccountingTests(unittest.TestCase):
         synth.assert_not_called()
 
 
+
+class PublicTypeQualificationTests(unittest.TestCase):
+    harness = MappingRepairAccountingTests.harness
+    ORIGINAL = "struct Parcel { long value; short tag; }; void origin(Parcel *p) { ++p->value; }"
+    INCOMPLETE = "struct Parcel; void origin(Parcel*); void origin_hls(Parcel*); int main(){origin(nullptr);origin_hls(nullptr);}"
+    COMPLETE = "struct Parcel { long value; short tag; }; void origin(Parcel*); void origin_hls(Parcel*); int main(){Parcel p{};origin(&p);origin_hls(&p);}"
+
+    def setup_type_harness(self, *, requests, mapping_results=None, target=False):
+        freeze = tb_optimizer.freeze_public_type_contract
+        context, request = self.harness(mapping_results=mapping_results or [None] * 12,
+                                        requests=requests, target=target)
+        context["curr_code"] = self.ORIGINAL
+        self.addCleanup(patch.stopall)
+        patch.object(tb_optimizer, "freeze_public_type_contract", side_effect=freeze).start()
+        synth = patch.object(tb_optimizer, "_synth_check", return_value=(True, "")).start()
+        return context, request, synth
+
+    def test_source_proven_omission_reuses_public_replacement_and_requalifies(self):
+        context, request, synth = self.setup_type_harness(
+            requests=[self.INCOMPLETE, self.COMPLETE, self.COMPLETE], target=True)
+        with patch.object(testbench.tools.tb_coverage, "check_original_execution", return_value={"status": "ok"}) as original:
+            generated, _, _ = testbench.gen_tb_prior(context)
+        self.assertEqual(generated, self.COMPLETE)
+        qualification = context["public_type_qualification"]
+        self.assertEqual(qualification["type_repair_requests_used"], 1)
+        self.assertEqual(qualification["qualification_checks_used"], 2)
+        first = qualification["rounds"][0]
+        self.assertEqual(first["failure_owner"], "testbench")
+        self.assertEqual(first["owner_authority"], "generated_public_source_interface_record_omission")
+        self.assertTrue(first["source_evidence"]["records"])
+        self.assertEqual(context["public_type_contract"]["status"], "confirmed")
+        original.assert_called_once()
+        self.assertEqual(original.call_args.args[1], self.COMPLETE)
+        synth.assert_called_once()
+        self.assertEqual([call.kwargs["artifact_kind"] for call in request.call_args_list],
+                         ["testbench", "testbench_repair", "empty_stub"])
+        prompt = request.call_args_list[1].args[1]
+        self.assertIn(self.INCOMPLETE, prompt)
+        self.assertIn("record_layout_unavailable", prompt)
+        self.assertIn(self.ORIGINAL, prompt)
+        self.assertEqual(request.call_args_list[1].kwargs["max_repairs"], 0)
+
+    def test_incomplete_type_stops_after_existing_three_replacements(self):
+        context, request, synth = self.setup_type_harness(requests=[self.INCOMPLETE] * 4, target=True)
+        with self.assertRaises(tb_optimizer.TestbenchGenerationExhausted) as caught:
+            testbench.gen_tb_prior(context)
+        payload = caught.exception.to_dict()
+        self.assertEqual(payload["stage"], "public_type_qualification")
+        self.assertEqual(payload["failure_owner"], "testbench")
+        self.assertEqual(payload["attempt_count"], 4)
+        self.assertEqual(payload["repair_attempt_count"], 3)
+        self.assertTrue(payload["retry_exhausted"])
+        self.assertEqual(request.call_count, 4)
+        self.assertIn("public_type_qualification", payload["trajectory_summaries"][0]["evidence_ref"])
+        synth.assert_not_called()
+
+    def test_type_and_mapping_share_the_existing_contract_replacement_quota(self):
+        context, request, _ = self.setup_type_harness(requests=[self.INCOMPLETE] * 4,
+            mapping_results=[ValueError("mapping-one"), ValueError("mapping-two"), None, None])
+        with self.assertRaises(tb_optimizer.TestbenchGenerationExhausted) as caught:
+            testbench.gen_tb_prior(context)
+        self.assertEqual(context["public_result_mapping_qualification"]["mapping_repair_requests_used"], 2)
+        self.assertEqual(context["public_type_qualification"]["type_repair_requests_used"], 1)
+        self.assertEqual(caught.exception.to_dict()["repair_attempt_count"], 3)
+        self.assertEqual(request.call_count, 4)
+
+    def test_type_then_mapping_exhaustion_reports_the_shared_total(self):
+        context, request, _ = self.setup_type_harness(
+            requests=[self.INCOMPLETE, self.COMPLETE, self.COMPLETE, self.COMPLETE],
+            mapping_results=[None, ValueError("mapping-one"), ValueError("mapping-two"), ValueError("mapping-three")])
+        with self.assertRaises(tb_optimizer.TestbenchGenerationExhausted) as caught:
+            testbench.gen_tb_prior(context)
+        payload = caught.exception.to_dict()
+        self.assertEqual(payload["repair_attempt_count"], 3)
+        self.assertEqual(payload["trajectory_summaries"][0]["type_repair_requests_used"], 1)
+        self.assertEqual(context["public_type_qualification"]["public_contract_repair_requests_used"], 3)
+        self.assertEqual(request.call_count, 4)
+
+    def test_missing_header_is_not_forced_to_testbench_repair(self):
+        context, request, synth = self.setup_type_harness(
+            requests=['#include "nonexistent_public_dependency.hpp"\n' + self.INCOMPLETE])
+        with self.assertRaises(tb_optimizer.TestbenchGenerationExhausted) as caught:
+            testbench.gen_tb_prior(context)
+        payload = caught.exception.to_dict()
+        self.assertEqual(payload["failure_owner"], "unknown")
+        self.assertFalse(payload["retry_exhausted"])
+        self.assertEqual(payload["repair_attempt_count"], 0)
+        self.assertEqual(request.call_count, 1)
+        self.assertTrue(context["public_type_contract_unverified"]["diagnostics"])
+        synth.assert_not_called()
+
+    def test_typedef_return_spelling_uses_existing_semantic_interface_equivalence(self):
+        from agrefactor.cpp_interface import extract_top_type_contract
+        original = "struct Parcel { double value; }; using Handle = Parcel*; Handle origin(){return nullptr;}"
+        generated = "struct Parcel; Parcel *origin(); Parcel *origin_hls(); int main(){origin();origin_hls();}"
+        facts = extract_top_type_contract(generated, "origin_hls", require_definition=False)
+        evidence = testbench._public_record_omission_evidence(original, generated, "origin", facts)
+        self.assertIsNotNone(evidence)
+        self.assertEqual(evidence["owner_authority"], "generated_public_source_interface_record_omission")
+
+    def test_record_source_proof_does_not_depend_on_layout_size(self):
+        from agrefactor.cpp_interface import extract_top_type_contract
+        for definition in ("struct Parcel { char bytes[7]; unsigned flag; };", "struct Parcel { double matrix[3][5]; long key; };"):
+            with self.subTest(definition=definition):
+                original = definition + " void origin(Parcel *p) {}"
+                facts = extract_top_type_contract(self.INCOMPLETE, "origin_hls", require_definition=False)
+                evidence = testbench._public_record_omission_evidence(original, self.INCOMPLETE, "origin", facts)
+                self.assertIsNotNone(evidence)
+                self.assertEqual(evidence["owner_authority"], "generated_public_source_interface_record_omission")
+
+    def test_type_repair_budget_denial_is_zero_dispatched_repairs(self):
+        context, _, synth = self.setup_type_harness(requests=[self.INCOMPLETE, BudgetExceededError("llm_calls", 1, 2)])
+        with self.assertRaises(BudgetExceededError):
+            testbench.gen_tb_prior(context)
+        event = context["public_type_qualification"]
+        self.assertEqual(event["type_repair_requests_used"], 0)
+        self.assertFalse(event["rounds"][0]["repair_requested"])
+        synth.assert_not_called()
+
+    def test_opaque_original_stops_without_claiming_quota_exhaustion(self):
+        context, request, synth = self.setup_type_harness(requests=[self.INCOMPLETE])
+        context["curr_code"] = "struct Parcel; void origin(Parcel *p) {}"
+        with self.assertRaises(tb_optimizer.TestbenchGenerationExhausted) as caught:
+            testbench.gen_tb_prior(context)
+        payload = caught.exception.to_dict()
+        self.assertEqual(payload["failure_owner"], "unknown")
+        self.assertEqual(payload["next_action"], "review_unknown")
+        self.assertFalse(payload["retry_exhausted"])
+        self.assertEqual(payload["repair_attempt_count"], 0)
+        self.assertEqual(request.call_count, 1)
+        synth.assert_not_called()
+
+    def test_original_replacement_rechecks_type_and_execution(self):
+        context, request, _ = self.setup_type_harness(requests=[self.COMPLETE, self.INCOMPLETE, self.COMPLETE])
+        outcomes = [{"status": "original_run_failed", "failure_owner": "unknown", "run_stderr": "bad public input"}, {"status": "ok"}]
+        with patch.object(testbench.tools.tb_coverage, "check_original_execution", side_effect=outcomes) as original:
+            generated, _, _ = testbench.gen_tb_prior(context)
+        self.assertEqual(generated, self.COMPLETE)
+        self.assertEqual(original.call_count, 2)
+        self.assertEqual(context["public_type_qualification"]["qualification_checks_used"], 3)
+        self.assertEqual(context["public_type_qualification"]["type_repair_requests_used"], 1)
+        self.assertIn("bad public input", request.call_args_list[-1].args[1])
+
+    def test_abi_replacement_rechecks_type_before_another_probe(self):
+        context, request, synth = self.setup_type_harness(
+            requests=[self.COMPLETE, self.COMPLETE, self.INCOMPLETE, self.COMPLETE, self.COMPLETE], target=True)
+        synth.side_effect = [(False, "generic ABI failure"), (True, "")]
+        generated, _, _ = testbench.gen_tb_prior(context)
+        self.assertEqual(generated, self.COMPLETE)
+        self.assertEqual(context["public_type_qualification"]["qualification_checks_used"], 3)
+        self.assertEqual(context["public_type_qualification"]["type_repair_requests_used"], 1)
+        self.assertEqual(context["public_abi_probe_qualification"]["abi_repair_requests_used"], 1)
+        self.assertEqual(synth.call_count, 2)
+        self.assertIn("generic ABI failure", request.call_args_list[3].args[1])
+
+    def test_failed_parse_context_is_not_inferred_as_record_omission(self):
+        from agrefactor.cpp_interface import extract_top_type_contract
+        facts = extract_top_type_contract(self.INCOMPLETE, "origin_hls", require_definition=False)
+        facts["translation_unit_complete"] = False
+        self.assertIsNone(testbench._public_record_omission_evidence(
+            self.ORIGINAL, self.INCOMPLETE, "origin", facts))
+
+    def test_same_name_in_other_namespace_is_not_compiler_correspondence(self):
+        from agrefactor.cpp_interface import extract_top_type_contract
+        original = "namespace remote { struct Parcel { double value; }; } void origin(remote::Parcel *p) {}"
+        facts = extract_top_type_contract(self.INCOMPLETE, "origin_hls", require_definition=False)
+        self.assertIsNone(testbench._public_record_omission_evidence(
+            original, self.INCOMPLETE, "origin", facts))
+
+    def test_confirmed_different_candidate_type_uses_existing_mapping_path(self):
+        adapted = "struct Alternate { unsigned words[3]; }; struct Parcel { long value; short tag; }; void origin(Parcel*); void origin_hls(Alternate*); int main(){Parcel p{}; Alternate q{};origin(&p);origin_hls(&q);}"
+        context, request, _ = self.setup_type_harness(requests=[adapted])
+        generated, _, _ = testbench.gen_tb_prior(context)
+        self.assertEqual(generated, adapted)
+        self.assertEqual(context["public_type_qualification"]["type_repair_requests_used"], 0)
+        request.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

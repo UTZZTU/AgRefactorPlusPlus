@@ -30,9 +30,10 @@ hidden_tests=auto
 test_generation_profile=lightweight
 max_testbench_repairs=3
 max_candidate_repairs=3
-csim_timeout_s=1800
+csim_timeout_s=2700
 csynth_timeout_s=5400
 cosim_timeout_s=9000
+max_wall_time_s=21600
 ```
 
 完整参数见 [CLI 参数参考](CLI_PARAMETER_REFERENCE.md)。
@@ -150,7 +151,9 @@ python -m agrefactor.cli refactor \
   --max-wall-time-s 7200
 ```
 
-调用次数和 wall time 是硬预算。Token/Cost 是 observed-only，不会中止执行。
+单次 CSIM／CSYNTH／COSIM 默认时限为 2700／5400／9000 秒（45／90／150 分钟），显式上限为 2700／5400／10800 秒。普通 refactor 总墙钟默认 21600 秒（6 小时）；所有普通模式的总墙钟可配置安全上限为 43200 秒（12 小时）。Optimize／Full 的总墙钟默认仍为 1800／12600 秒。
+
+调用次数和 wall time 是硬预算；所有生成、资格检查、工具及修复共享整轮预算。单次工具时限不会自动缩为剩余墙钟预算，工具返回后超限可能阻止后续阶段。Token/Cost 是 observed-only，不会中止执行。
 
 ## 6. 指定持久输出目录
 

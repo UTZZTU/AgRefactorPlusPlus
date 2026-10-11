@@ -196,7 +196,7 @@ class CliParameterContractTests(unittest.TestCase):
                 ceilings.max_csynth_calls,
                 ceilings.max_wall_time_s,
             ),
-            (256, 512, 192, 128, 64, 14400.0),
+            (256, 512, 192, 128, 64, 43200.0),
         )
 
     def test_model_request_timeout_is_240(self):
@@ -211,6 +211,7 @@ class CliParameterContractTests(unittest.TestCase):
             source.csynth_timeout_s,
             DEFAULT_CSYNTH_TIMEOUT_S,
         )
+        self.assertEqual(source.cosim_timeout_s, DEFAULT_COSIM_TIMEOUT_S)
         advanced = build_parser().parse_args(
             ["run", "task.json", "--dry-run"]
         )
@@ -222,25 +223,45 @@ class CliParameterContractTests(unittest.TestCase):
             advanced.csynth_timelimit,
             DEFAULT_CSYNTH_TIMEOUT_S,
         )
-        self.assertEqual(CSIM_TIMEOUT_SAFETY_CEILING, 1800)
+        self.assertEqual(
+            advanced.cosim_timelimit,
+            DEFAULT_COSIM_TIMEOUT_S,
+        )
+        self.assertEqual(CSIM_TIMEOUT_SAFETY_CEILING, 2700)
         self.assertEqual(CSYNTH_TIMEOUT_SAFETY_CEILING, 5400)
-        self.assertEqual(DEFAULT_CSIM_TIMEOUT_S, 1800)
+        self.assertEqual(DEFAULT_CSIM_TIMEOUT_S, 2700)
         self.assertEqual(DEFAULT_CSYNTH_TIMEOUT_S, 5400)
         self.assertEqual(DEFAULT_COSIM_TIMEOUT_S, 9000)
 
     def test_timeout_ceilings_are_enforced(self):
         source_args(
             "--csim-timeout-s",
-            "1800",
+            "2700",
             "--csynth-timeout-s",
             "5400",
         )
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
-                source_args("--csim-timeout-s", "1801")
+                source_args("--csim-timeout-s", "2701")
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
                 source_args("--csynth-timeout-s", "5401")
+        source_args("--cosim-timeout-s", "9000")
+        source_args("--cosim-timeout-s", "10800")
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                source_args("--cosim-timeout-s", "10801")
+
+    def test_valid_explicit_tool_timeouts_are_retained(self):
+        source = source_args(
+            "--csim-timeout-s", "600",
+            "--csynth-timeout-s", "1200",
+            "--cosim-timeout-s", "2400",
+        )
+        self.assertEqual(
+            (source.csim_timeout_s, source.csynth_timeout_s, source.cosim_timeout_s),
+            (600, 1200, 2400),
+        )
 
     def test_replace_compile_flag_replaces_profile_defaults(self):
         args = source_args(

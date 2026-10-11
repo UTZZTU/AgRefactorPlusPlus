@@ -74,6 +74,67 @@ def compiler_facts(source, name, **_):
 
 
 class PublicResultMappingTests(unittest.TestCase):
+    def template_mapping_source(self):
+        original = "template<int Extent, class Element> void transform(Element (&values)[Extent]) { values[0] += Element(2); }"
+        shared = """// AGREFACTOR_SHARED_RESULT_MAPPING_BEGIN
+template<int Extent, class Element> void transform(Element (&values)[Extent]);
+void transform_hls(double *values, int extent);
+struct Observation { double value; };
+template<int Extent> Observation call_original() {
+    double values[Extent] = {};
+    transform<Extent, double>(values);
+    return Observation{values[0]};
+}
+Observation agrefactor_observe_original() { return call_original<3>(); }
+Observation agrefactor_observe_candidate() {
+    double values[3] = {};
+    transform_hls(values, 3);
+    return Observation{values[0]};
+}
+bool agrefactor_compare_observations(Observation a, Observation b) { return a.value == b.value; }
+// AGREFACTOR_SHARED_RESULT_MAPPING_END"""
+        manifest = {"observables": [{"id": "values", "kind": "output_parameter", "original": "first output element",
+                                    "candidate": "first output element", "source_evidence": ["values[0] += Element(2);"]}]}
+        code = shared + "\n" + mapping.MANIFEST_BEGIN + "\n" + json.dumps(manifest) + "\n*/\n" + "int main(){return !agrefactor_compare_observations(agrefactor_observe_original(), agrefactor_observe_candidate());}"
+        return original, code
+
+    def test_template_mapping_uses_real_specialization_identity_and_compiles(self):
+        from agrefactor.reference_source import isolate_reference_program_entry
+        original, code = self.template_mapping_source()
+        prepared = isolate_reference_program_entry(original, top_function="transform", testbench_code=code)
+        frozen = mapping.freeze_result_mapping(code, prepared, "transform", "transform_hls")
+        self.assertTrue(frozen["compiler_structure_verified"])
+        mapping.validate_result_mapping_identity(frozen)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "all.cpp").write_text(prepared + code + "\nvoid transform_hls(double* values, int) { values[0] += 2; }")
+            compiled = subprocess.run(["g++", "-std=c++11", "all.cpp", "-o", "check"], cwd=root, capture_output=True, text=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertEqual(subprocess.run([str(root / "check")]).returncode, 0)
+
+    def test_template_mapping_rejects_nonidentical_original_declaration(self):
+        original, code = self.template_mapping_source()
+        changed = code.replace("template<int Extent, class Element> void transform(Element (&values)[Extent]);",
+                               "template<int Extent, class Element> void transform(Element *values);")
+        with self.assertRaisesRegex(ValueError, "template declaration differs from Original"):
+            mapping.freeze_result_mapping(changed, original, "transform", "transform_hls")
+
+    def test_mapping_distinguishes_unavailable_calls_from_unproven_template_binding(self):
+        original, code = self.template_mapping_source()
+        with patch.object(mapping, "inspect_top_entry", return_value={"status": "unknown", "diagnostics": []}):
+            with self.assertRaisesRegex(mapping.ResultMappingVerificationError, "helper_reachable_calls_unavailable"):
+                mapping.freeze_result_mapping(code, original, "transform", "transform_hls")
+        real_inspect = mapping.inspect_top_entry
+        def without_binding(source, name, **context):
+            facts = real_inspect(source, name, **context)
+            if name == mapping.HELPERS[0]:
+                facts["reachable_calls"] = []
+            return facts
+        with patch.object(mapping, "inspect_top_entry", side_effect=without_binding):
+            with self.assertRaisesRegex(mapping.ResultMappingVerificationError, "template_binding_not_proven") as caught:
+                mapping.freeze_result_mapping(code, original, "transform", "transform_hls")
+            self.assertIn("reachable_calls", caught.exception.partial_mapping["verification_facts"])
+
     def freeze(self, code=None, **kwargs):
         with patch.object(mapping, "extract_top_interface", side_effect=interface), patch.object(
             mapping, "inspect_top_entry", side_effect=compiler_facts

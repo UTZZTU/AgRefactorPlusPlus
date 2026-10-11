@@ -34,6 +34,10 @@ class ResultMappingVerificationError(ValueError):
         self.diagnostics = facts.get("diagnostics", [])
         self.partial_mapping["verification_diagnostics"] = self.diagnostics
         self.partial_mapping["verification_reason"] = reason
+        self.partial_mapping["verification_facts"] = {
+            key: facts[key] for key in ("parse_context", "entries", "reachable_calls", "translation_unit_complete")
+            if key in facts
+        }
         self.partial_mapping["sha256"] = _json_sha(self.partial_mapping)
         errors = [item for item in self.diagnostics if item.get("severity", 0) >= 3]
         source_path = facts.get("parse_context", {}).get("source_path")
@@ -220,9 +224,22 @@ def freeze_result_mapping(testbench_code, original_code, original_name, candidat
         facts = inspect_top_entry(testbench_code, helper, **context)
         calls = facts.get("reachable_calls")
         top_interface = extract_top_interface(testbench_code, top, require_definition=False, **context)
-        if not isinstance(calls, list) or top_interface is None:
-            raise ResultMappingVerificationError("helper calls: " + helper, result, facts)
-        if top_interface.linker_symbol not in {item.get("linker_symbol") for item in calls}:
+        if not isinstance(calls, list):
+            raise ResultMappingVerificationError("helper_reachable_calls_unavailable: " + helper, result, facts)
+        if top_interface is None:
+            top_facts = inspect_top_entry(testbench_code, top, require_definition=False, **context)
+            kind = "template" if any(item.get("kind") == "template" for item in top_facts.get("entries", ())) else "ordinary"
+            raise ResultMappingVerificationError(kind + "_top_interface_unavailable: " + top, result, top_facts)
+        if getattr(top_interface, "template_parameters", ()):
+            original_top = extract_top_interface(original_code, original_name, **context) if top == original_name else None
+            if original_top is not None and top_interface.usr != original_top.usr:
+                raise ValueError("contract_contradiction: Testbench template declaration differs from Original")
+            if not top_interface.usr or not any(
+                item.get("template_usr") == top_interface.usr and item.get("usr") and item.get("linker_symbol")
+                for item in calls
+            ):
+                raise ResultMappingVerificationError("template_binding_not_proven: " + helper, result, facts)
+        elif not top_interface.linker_symbol or top_interface.linker_symbol not in {item.get("linker_symbol") for item in calls}:
             raise ValueError("contract_contradiction: observation helper does not call its real top")
     original_interface = extract_top_interface(original_code, original_name, **context)
     if original_interface is None:

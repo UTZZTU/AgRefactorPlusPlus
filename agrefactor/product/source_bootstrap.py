@@ -1730,6 +1730,58 @@ class SourceBootstrapPhase:
             entry.get("linkage") == 2
             for entry in entries
         )
+        prepared_internal_reference = None
+        bridge_evidence = None
+        if (
+            internal_entry and entry_status == "confirmed" and entries[0]["kind"] == "function"
+            and entries[0].get("source_path")
+            and Path(entries[0]["source_path"]).resolve() == self._request.source_path.resolve()
+        ):
+            bridge_context = {
+                "source_path": self._request.source_path,
+                "include_dirs": (
+                    str(self._request.source_path.parent),
+                    *((str(self._request.source_package.root),) if self._request.source_package else ()),
+                ),
+                "compile_flags": self._request.target.compile_flags,
+            }
+            bridge_spans: list[dict] = []
+            try:
+                reference = isolate_reference_program_entry(
+                    _read_code(self._request.source_path, "source entry unit"),
+                    top_function=self._request.top_function,
+                    source_provenance=bridge_spans,
+                    **bridge_context,
+                )
+                bridge_facts = inspect_top_entry(
+                    reference, self._request.top_function, **bridge_context,
+                )
+                bridge_entries = bridge_facts.get("entries", ())
+                if (
+                    bridge_facts["status"] == "confirmed"
+                    and len(bridge_entries) == 1
+                    and bridge_entries[0]["kind"] == "function"
+                    and bridge_entries[0]["linkage"] == 4
+                    and bridge_entries[0]["signature_valid"]
+                    and bridge_facts.get("translation_unit_complete")
+                    and any(
+                        call.get("name") == f"agrefactor_reference_impl_{self._request.top_function}"
+                        and call.get("usr")
+                        for call in bridge_facts.get("reachable_calls", ())
+                    )
+                ):
+                    prepared_internal_reference = reference
+                bridge_evidence = {
+                    "status": "prepared" if prepared_internal_reference else "unproven",
+                    "source_entry": bridge_facts,
+                    "source_spans": bridge_spans,
+                    "reference_sha256": _sha256_text(reference),
+                    "qualified": False,
+                }
+            except ValueError as exc:
+                bridge_evidence = {"status": "unproven", "error": str(exc), "qualified": False}
+            entry_evidence["reference_bridge"] = bridge_evidence
+            _atomic_json(bootstrap_root / "source_entry.json", entry_evidence)
         entry_diagnostics = [
             diagnostic
             for inspection in inspections
@@ -1744,9 +1796,11 @@ class SourceBootstrapPhase:
                 )
                 for diagnostic in entry_diagnostics
             )
-        if entry_status == "missing" or member_entry or internal_entry or missing_dependency:
-            if internal_entry:
-                reason = "internal_linkage_entry_unsupported"
+        if entry_status == "missing" or member_entry or (internal_entry and prepared_internal_reference is None) or missing_dependency:
+            if member_entry:
+                reason = "class_member_entry_unsupported"
+            elif internal_entry:
+                reason = "internal_linkage_bridge_unproven"
             elif missing_dependency:
                 reason = "missing_external_dependency"
             else:
@@ -1868,7 +1922,7 @@ class SourceBootstrapPhase:
             bootstrap_root / "model_data_boundary.json",
             model_data_boundary,
         )
-        original_code = isolate_reference_program_entry(
+        original_code = prepared_internal_reference or isolate_reference_program_entry(
             _read_code(
                 self._request.source_path,
                 "source file",
@@ -1879,6 +1933,8 @@ class SourceBootstrapPhase:
             include_dirs=(str(self._request.source_path.parent),),
             compile_flags=self._request.target.compile_flags,
         )
+        if prepared_internal_reference is not None:
+            _atomic_text(bootstrap_root / "prepared_reference.cpp", original_code)
         candidate_code = generated["candidate_code"]
         candidate_top = generated["candidate_top"]
         if candidate_top == self._request.top_function:

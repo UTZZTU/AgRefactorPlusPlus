@@ -102,9 +102,9 @@ Thinking       → enabled
 |---|---:|---:|---|
 | `--max-testbench-repairs` | 3 | 1..20 | Public Testbench repair |
 | `--max-candidate-repairs` | 3 | 1..20 | Refactor Candidate repair |
-| `--csim-timeout-s` | 900 | 1..900 | 单次 CSIM（15 分钟） |
-| `--csynth-timeout-s` | 2700 | 1..3600 | 单次 CSYNTH（45 分钟） |
-| `--cosim-timeout-s` | 4500 | 1..7200 | 单次 Public RTL COSIM（75 分钟） |
+| `--csim-timeout-s` | 2700 | 1..2700 | 单次 CSIM（45 分钟） |
+| `--csynth-timeout-s` | 5400 | 1..5400 | 单次 CSYNTH（90 分钟） |
+| `--cosim-timeout-s` | 9000 | 1..10800 | 单次 Public RTL COSIM（150 分钟） |
 | `--cosim-policy` | `required` | `required/off` | `off` 仅用于开发，表示未完成完整硬件验证 |
 
 当前统一资格顺序为：
@@ -121,19 +121,21 @@ Source integrity
 
 ## 当前统一 hard budgets
 
-P4-0F 尚未引入 mode-specific profile；当前三个普通命令仍共享 `source-run-default`：
+普通命令使用各自的 `refactor-default`、`optimize-default`、`full-default` profile，共享安全上限：
 
-| 参数 | 系统默认 | 安全上限 |
-|---|---:|---:|
-| `--max-llm-calls` | 64 | 256 |
-| `--max-tool-calls` | 128 | 512 |
-| `--max-compile-calls` | 48 | 192 |
-| `--max-csim-calls` | 32 | 128 |
-| `--max-csynth-calls` | 16 | 64 |
-| `--max-cosim-calls` | 16 | 64 |
-| `--max-wall-time-s` | 7200 | 14400 |
+| 参数 | Refactor 默认 | Optimize 默认 | Full 默认 | 安全上限 |
+|---|---:|---:|---:|---:|
+| `--max-llm-calls` | 96 | 24 | 120 | 256 |
+| `--max-tool-calls` | 192 | 160 | 352 | 512 |
+| `--max-compile-calls` | 96 | 72 | 168 | 192 |
+| `--max-csim-calls` | 64 | 24 | 88 | 128 |
+| `--max-csynth-calls` | 32 | 12 | 44 | 64 |
+| `--max-cosim-calls` | 32 | 12 | 44 | 64 |
+| `--max-wall-time-s` | 21600 | 1800 | 12600 | 43200 |
 
-用户值可低于或高于默认值，但不能超过安全上限；`0` 是合法硬限制。P4-0F 将基于真实测量决定 `refactor-default/optimize-default/full-default` 和 Full Optimize reserves，当前文档不预先虚构这些值。
+Refactor 总墙钟默认 6 小时，共享可配置上限 12 小时；Optimize／Full 的默认保持 30 分钟／3.5 小时。Full 在 refactor 阶段为后续 Optimize 保留 Optimize 默认资源。本轮扩大 Refactor 墙钟默认，并不扩大 Full 默认；Full 的墙钟容量不等于两个独立模式默认之和。
+
+用户值可低于或高于默认值，但不能超过安全上限；`0` 是合法硬限制。所有生成、资格检查、工具及修复共享整轮预算；单次工具时限不会自动缩为剩余墙钟预算，工具返回后超限可能阻止后续阶段。工具 timeout 与整轮预算耗尽分别记录。
 
 ## Observed-only budgets
 
@@ -157,7 +159,6 @@ P4-0F 尚未引入 mode-specific profile；当前三个普通命令仍共享 `so
 ## 当前未开放
 
 - `dynamic-v1` 及其 rounds/candidates/hypotheses 控制；
-- mode-specific budget profiles 和 Full Optimize reserves；
 - authorized auto model routing；
 - 每个内部角色单独选择模型；
 - 一般 sampling 参数；
