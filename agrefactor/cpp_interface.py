@@ -105,6 +105,10 @@ class CppParameter:
     canonical_type: str
     pointer_like: bool
     mutable_output: bool = False
+    # Compiler shape facts, not a claim about the synthesized AXI protocol.
+    reference_target_kind: str | None = None
+    reference_target_canonical_type: str | None = None
+    reference_target_provenance: dict | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,6 +239,8 @@ class _LibClang:
         library.clang_visitChildren.restype = ctypes.c_uint
         library.clang_getCursorSpelling.argtypes = [_CXCursor]
         library.clang_getCursorSpelling.restype = _CXString
+        library.clang_getCursorKindSpelling.argtypes = [ctypes.c_uint]
+        library.clang_getCursorKindSpelling.restype = _CXString
         library.clang_getCursorUSR.argtypes = [_CXCursor]
         library.clang_getCursorUSR.restype = _CXString
         library.clang_Cursor_getMangling.argtypes = [_CXCursor]
@@ -245,6 +251,13 @@ class _LibClang:
         library.clang_getCursorLinkage.restype = ctypes.c_int
         library.clang_getCursorReferenced.argtypes = [_CXCursor]
         library.clang_getCursorReferenced.restype = _CXCursor
+        library.clang_Cursor_Evaluate.argtypes = [_CXCursor]
+        library.clang_Cursor_Evaluate.restype = ctypes.c_void_p
+        library.clang_EvalResult_getAsInt.argtypes = [ctypes.c_void_p]
+        library.clang_EvalResult_getAsInt.restype = ctypes.c_int
+        library.clang_EvalResult_dispose.argtypes = [ctypes.c_void_p]
+        library.clang_isPODType.argtypes = [_CXType]
+        library.clang_isPODType.restype = ctypes.c_uint
         library.clang_getCursorDefinition.argtypes = [_CXCursor]
         library.clang_getCursorDefinition.restype = _CXCursor
         library.clang_getSpecializedCursorTemplate.argtypes = [_CXCursor]
@@ -290,6 +303,7 @@ class _LibClang:
             ctypes.POINTER(ctypes.c_uint),
             ctypes.POINTER(ctypes.c_uint),
         ]
+        library.clang_getExpansionLocation.argtypes = library.clang_getSpellingLocation.argtypes
         library.clang_getFileName.argtypes = [ctypes.c_void_p]
         library.clang_getFileName.restype = _CXString
         library.clang_getFile.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
@@ -627,6 +641,8 @@ def extract_top_interface(
             if _entry_facts is not None:
                 if not has_errors:
                     _entry_facts["reachable_calls"] = _reachable_call_facts(clang, representative)
+                    if _entry_facts.get("_include_body_facts"):
+                        _entry_facts["body"] = _function_body_facts(clang, representative, source, translation_unit)
                 if _entry_facts.get("_include_type_contract"):
                     contract = _type_contract_from_cursor(clang, representative, source, translation_unit)
                     if has_errors and contract["has_user_types"]:
@@ -663,6 +679,27 @@ def _source_offsets(
         )
         offsets.append(offset.value)
     return offsets[0], offsets[1]
+
+
+def _cursor_provenance(clang: _LibClang, cursor: _CXCursor) -> dict:
+    library = clang.library
+    location = library.clang_getCursorLocation(cursor)
+    file_handle = ctypes.c_void_p()
+    line = ctypes.c_uint()
+    column = ctypes.c_uint()
+    library.clang_getSpellingLocation(
+        location, ctypes.byref(file_handle), ctypes.byref(line),
+        ctypes.byref(column), None,
+    )
+    start, end = _source_offsets(clang, cursor)
+    return {
+        "usr": clang.text(library.clang_getCursorUSR(cursor)),
+        "source_path": clang.text(library.clang_getFileName(file_handle)) if file_handle.value else None,
+        "line": int(line.value), "column": int(column.value),
+        "source_start": start, "source_end": end,
+        "is_main_file": bool(library.clang_Location_isFromMainFile(location)),
+        "is_definition": bool(library.clang_isCursorDefinition(cursor)),
+    }
 
 
 def _declaration_text(source: str, start: int, end: int) -> str | None:
@@ -851,6 +888,25 @@ def _interface_from_cursor(
         mutable_target = canonical
         if kind == _POINTER_TYPE or kind in _REFERENCE_TYPES:
             mutable_target = library.clang_getPointeeType(canonical)
+        reference_target_kind = None
+        reference_target_type = None
+        reference_target_provenance = None
+        if kind in _REFERENCE_TYPES:
+            target = library.clang_getCanonicalType(mutable_target)
+            reference_target_type = clang.text(library.clang_getTypeSpelling(target))
+            declaration = library.clang_getTypeDeclaration(target)
+            if target.kind == 105 and declaration.kind in {2, 3, 4}:
+                reference_target_kind = "record"
+                definition = library.clang_getCursorDefinition(declaration)
+                reference_target_provenance = _cursor_provenance(
+                    clang, definition if definition.kind in {2, 3, 4} else declaration,
+                )
+            elif target.kind in _ARRAY_TYPES:
+                reference_target_kind = "array"
+            elif target.kind == _POINTER_TYPE:
+                reference_target_kind = "pointer"
+            elif 2 <= target.kind <= 30 or target.kind == 106:
+                reference_target_kind = "scalar"
         parameters.append(
             CppParameter(
                 name=name,
@@ -878,6 +934,9 @@ def _interface_from_cursor(
                     )
                     and not library.clang_isConstQualifiedType(mutable_target)
                 ),
+                reference_target_kind=reference_target_kind,
+                reference_target_canonical_type=reference_target_type,
+                reference_target_provenance=reference_target_provenance,
             )
         )
     start, end = _source_offsets(clang, cursor)
@@ -907,6 +966,166 @@ def inspect_top_entry(source: str, function_name: str, **context) -> dict:
     facts: dict = {"status": "unknown", "entries": []}
     extract_top_interface(source, function_name, _entry_facts=facts, **context)
     return facts
+
+
+def inspect_function_body(source: str, function_name: str, **context) -> dict:
+    """Facts for one function body; no alias, semantic, or ownership inference."""
+    facts = {"status": "unknown", "entries": [], "_include_body_facts": True}
+    extract_top_interface(source, function_name, _entry_facts=facts, **context)
+    facts.setdefault("body", {"status": "unknown", "parameters": [], "statements": []})
+    facts.pop("_include_body_facts", None)
+    return facts
+
+
+def _function_body_facts(clang, function, source, translation_unit):
+    library = clang.library
+    encoded = source.encode("utf-8")
+
+    def children(cursor):
+        result = []
+        @clang.visitor_type
+        def visit(child, _parent, _data):
+            result.append(child)
+            return 1
+        library.clang_visitChildren(cursor, visit, None)
+        return result
+
+    def token_spellings(cursor):
+        tokens = ctypes.POINTER(_CXToken)()
+        count = ctypes.c_uint()
+        library.clang_tokenize(translation_unit, library.clang_getCursorExtent(cursor), ctypes.byref(tokens), ctypes.byref(count))
+        try:
+            return [
+                clang.text(library.clang_getTokenSpelling(translation_unit, tokens[index]))
+                for index in range(count.value) if library.clang_getTokenKind(tokens[index]) != 4
+            ]
+        finally:
+            if tokens:
+                library.clang_disposeTokens(translation_unit, tokens, count.value)
+
+    def expansion_range(cursor):
+        locations = library.clang_getCursorExtent(cursor)
+        offsets = []
+        file_handle = ctypes.c_void_p()
+        for location in (library.clang_getRangeStart(locations), library.clang_getRangeEnd(locations)):
+            offset = ctypes.c_uint()
+            library.clang_getExpansionLocation(location, ctypes.byref(file_handle), None, None, ctypes.byref(offset))
+            offsets.append(int(offset.value))
+        return clang.text(library.clang_getFileName(file_handle)) if file_handle.value else None, offsets
+
+    macro_operators = []
+    macro_assignments = []
+    comparison_operators = {"==", "!=", "<", ">", "<=", ">="}
+    @clang.visitor_type
+    def macros(cursor, _parent, _data):
+        if cursor.kind == 502:  # CXCursor_MacroExpansion
+            definition = library.clang_getCursorReferenced(cursor)
+            spellings = token_spellings(definition)
+            operators = [token for token in spellings if token in comparison_operators]
+            if len(operators) == 1 and not any(token in {"&&", "||", "?"} for token in spellings):
+                filename, (start, end) = expansion_range(cursor)
+                macro_operators.append((filename, start, end, operators[0], _cursor_provenance(clang, definition)))
+                if spellings.count("=") == 1:
+                    assignment = spellings.index("=")
+                    if 0 < assignment < len(spellings) - 1 and re.fullmatch(r"[A-Za-z_]\w*", spellings[assignment - 1]) and spellings[assignment + 1] in {"true", "false"}:
+                        macro_assignments.append((filename, start, end, spellings[assignment - 1], spellings[assignment + 1] == "true", _cursor_provenance(clang, definition)))
+        return _CHILD_VISIT_RECURSE
+    library.clang_visitChildren(library.clang_getTranslationUnitCursor(translation_unit), macros, None)
+
+    def node(cursor, *, macro_condition=False):
+        provenance = _cursor_provenance(clang, cursor)
+        value_type = library.clang_getCursorType(cursor)
+        canonical = library.clang_getCanonicalType(value_type)
+        result = {
+            **provenance, "kind": int(cursor.kind),
+            "kind_name": clang.text(library.clang_getCursorKindSpelling(cursor.kind)),
+            "spelling": clang.text(library.clang_getCursorSpelling(cursor)),
+            "type": clang.text(library.clang_getTypeSpelling(value_type)),
+            "canonical_type": clang.text(library.clang_getTypeSpelling(canonical)),
+            "type_kind": int(value_type.kind), "canonical_type_kind": int(canonical.kind),
+            "is_pod_type": bool(library.clang_isPODType(canonical)),
+            "text": encoded[provenance["source_start"]:provenance["source_end"]].decode("utf-8", errors="replace") if provenance["is_main_file"] else None,
+        }
+        referenced = library.clang_getCursorReferenced(cursor)
+        if referenced.kind and referenced.kind < 70:
+            referenced_type = library.clang_getCanonicalType(library.clang_getCursorType(referenced))
+            result["referenced"] = {
+                **_cursor_provenance(clang, referenced),
+                "name": clang.text(library.clang_getCursorSpelling(referenced)),
+                "kind": int(referenced.kind),
+                "kind_name": clang.text(library.clang_getCursorKindSpelling(referenced.kind)),
+                "canonical_type": clang.text(library.clang_getTypeSpelling(referenced_type)),
+                "canonical_type_kind": int(referenced_type.kind),
+            }
+        child_cursors = children(cursor)
+        result["children"] = [
+            node(child, macro_condition=(
+                cursor.kind == 205 and index == 0  # IfStmt condition.
+                or macro_condition and cursor.kind in {100, 111, 117}  # Transparent expression wrappers.
+            ))
+            for index, child in enumerate(child_cursors)
+        ]
+        if cursor.kind == 114 and len(result["children"]) == 2:  # BinaryOperator
+            left, right = result["children"]
+            gap = encoded[left["source_end"]:right["source_start"]].decode("utf-8", errors="replace")
+            operator = _strip_cpp_comments_preserving_layout(gap).strip()
+            if operator in {"=", "+", "-", "*", "/", "%", "&&", "||", "&", "|", "^", "<<", ">>", *comparison_operators}:
+                result.update(operator=operator, operator_provenance={"kind": "operand_source_gap"})
+            elif canonical.kind == 3 and macro_condition:  # One macro-expanded comparison in an if condition.
+                filename, (start, _end) = expansion_range(cursor)
+                matches = [item for item in macro_operators if item[0] == filename and item[1] <= start < item[2]]
+                if len(matches) == 1:
+                    result.update(operator=matches[0][3], operator_provenance={"kind": "macro_definition_tokens", "definition": matches[0][4]})
+            elif canonical.kind == 3 and not macro_condition:
+                # A uniquely spelled direct bool assignment in the same macro
+                # expansion can be bound to compiler-resolved operands.
+                target, assigned = left, right
+                while assigned["kind"] in {100, 111, 117} and len(assigned["children"]) == 1:
+                    assigned = assigned["children"][0]
+                filename, (start, _end) = expansion_range(cursor)
+                matches = [item for item in macro_assignments if item[0] == filename and item[1] <= start < item[2]
+                           and target["kind"] == 101 and target.get("referenced", {}).get("usr")
+                           and target["referenced"]["name"] == item[3]
+                           and assigned.get("bool_value") == item[4]]
+                if len(matches) == 1:
+                    result.update(operator="=", operator_provenance={"kind": "macro_definition_tokens", "definition": matches[0][5]})
+        if cursor.kind == 103 and referenced.kind in {_FUNCTION_DECL, _FUNCTION_TEMPLATE}:
+            interface = _interface_from_cursor(clang, referenced, source)
+            if interface is not None:
+                result["parameters"] = [
+                    {"name": item.name, "type_spelling": item.type_spelling,
+                     "canonical_type": item.canonical_type, "pointer_like": item.pointer_like,
+                     "mutable_output": item.mutable_output,
+                     "reference_target_kind": item.reference_target_kind,
+                     "reference_target_canonical_type": item.reference_target_canonical_type,
+                     "reference_target_provenance": item.reference_target_provenance}
+                    for item in interface.parameters
+                ]
+                result["callee_usr"] = interface.usr
+                count = library.clang_Cursor_getNumArguments(cursor)
+                result["arguments"] = [node(library.clang_Cursor_getArgument(cursor, index)) for index in range(max(0, count))]
+        if result["kind_name"] == "CXXBoolLiteralExpr":
+            evaluated = library.clang_Cursor_Evaluate(cursor)
+            if evaluated:
+                try:
+                    result["bool_value"] = bool(library.clang_EvalResult_getAsInt(evaluated))
+                finally:
+                    library.clang_EvalResult_dispose(evaluated)
+        if result["kind_name"] in {"CXXConstructExpr", "CXXBindTemporaryExpr", "MaterializeTemporaryExpr"}:
+            result["trivial_record_transfer"] = bool(
+                result["is_pod_type"] and len(result["children"]) == 1
+            )
+        return result
+
+    direct_children = children(function)
+    compound = next((cursor for cursor in direct_children if cursor.kind == 202), None)
+    return {
+        "status": "confirmed" if compound is not None else "unknown",
+        "parameters": [node(cursor) for cursor in direct_children if cursor.kind == 10],
+        "statements": [node(cursor) for cursor in children(compound)] if compound is not None else [],
+        "source_start": _source_offsets(clang, compound)[0] if compound is not None else None,
+        "source_end": _source_offsets(clang, compound)[1] if compound is not None else None,
+    }
 
 
 def extract_cpp_comments(
@@ -1037,6 +1256,8 @@ def _type_contract_from_cursor(clang, top, source, translation_unit):
     library = clang.library
     types = {}
     type_provenance = {}
+    value_dependencies = {}
+    visited_values = set()
     declaration_spans = []
     visited = set()
     unresolved = []
@@ -1090,23 +1311,7 @@ def _type_contract_from_cursor(clang, top, source, translation_unit):
         return "::".join(name for name in names if name)
 
     def cursor_provenance(cursor):
-        location = library.clang_getCursorLocation(cursor)
-        file_handle = ctypes.c_void_p()
-        line = ctypes.c_uint()
-        column = ctypes.c_uint()
-        library.clang_getSpellingLocation(
-            location, ctypes.byref(file_handle), ctypes.byref(line),
-            ctypes.byref(column), None,
-        )
-        start, end = _source_offsets(clang, cursor)
-        return {
-            "usr": clang.text(library.clang_getCursorUSR(cursor)),
-            "source_path": clang.text(library.clang_getFileName(file_handle)) if file_handle.value else None,
-            "line": int(line.value), "column": int(column.value),
-            "source_start": start, "source_end": end,
-            "is_main_file": bool(library.clang_Location_isFromMainFile(location)),
-            "is_definition": bool(library.clang_isCursorDefinition(cursor)),
-        }
+        return _cursor_provenance(clang, cursor)
 
     def declaration(cursor):
         location = library.clang_getCursorLocation(cursor)
@@ -1176,6 +1381,82 @@ def _type_contract_from_cursor(clang, top, source, translation_unit):
         return _CHILD_VISIT_RECURSE
     library.clang_visitChildren(library.clang_getTranslationUnitCursor(translation_unit), find_anonymous_owner, None)
 
+    def collect_value_dependencies(cursor, *, declaration_only=False, include_enum_types=False):
+        dependencies = set()
+        @clang.visitor_type
+        def referenced_value(child, _parent, _data):
+            if child.kind == 202:  # CXCursor_CompoundStmt: never collect a function body.
+                return 1
+            if declaration_only:
+                location = library.clang_getCursorLocation(child)
+                start, _end = _source_offsets(clang, child)
+                if not library.clang_Location_isFromMainFile(location) or not top_start <= start < top_declaration_end:
+                    return 1
+            if child.kind == 103:  # constexpr evaluation is outside declaration extraction.
+                referenced = library.clang_getCursorReferenced(child)
+                unresolved.append("constant_initializer_requires_function:" + cursor_name(referenced))
+                return 1
+            if child.kind == 43 and _parent.kind != 101:  # sizeof/cast, not a value's class qualifier.
+                walk(library.clang_getCursorType(child))
+            if child.kind == 101:  # CXCursor_DeclRefExpr
+                referenced = library.clang_getCursorReferenced(child)
+                if referenced.kind in {7, _VARIABLE_DECL}:
+                    if include_enum_types and referenced.kind == 7:
+                        # Preserve existing enum layout facts for record dimensions.
+                        walk(library.clang_getCursorType(referenced))
+                    identity = collect_value(referenced)
+                    if identity:
+                        dependencies.add(identity)
+            return _CHILD_VISIT_RECURSE
+        library.clang_visitChildren(cursor, referenced_value, None)
+        return sorted(dependencies)
+
+    def collect_value(cursor):
+        identity = clang.text(library.clang_getCursorUSR(cursor)) or str(library.clang_hashCursor(cursor))
+        if identity in visited_values:
+            return identity
+        visited_values.add(identity)
+        name = cursor_name(cursor)
+        if cursor.kind == _VARIABLE_DECL:
+            value_type = library.clang_getCursorType(cursor)
+            if not library.clang_isConstQualifiedType(value_type):
+                unresolved.append("nonconstant_declaration_dependency:" + name)
+                return None
+            definition = library.clang_getCursorDefinition(cursor)
+            if definition.kind == _VARIABLE_DECL:
+                cursor = definition
+            parent = library.clang_getCursorSemanticParent(cursor)
+            if parent.kind in {2, 3, 4}:
+                if library.clang_hashCursor(parent) not in visited and any(
+                    child.kind in {_FUNCTION_DECL, _METHOD_DECL, _FUNCTION_TEMPLATE, 24, 25, 26}
+                    and library.clang_isCursorDefinition(child)
+                    for child in children(parent)
+                ):
+                    unresolved.append("constant_scope_requires_function_body:" + name)
+                    return None
+                walk(library.clang_getCursorType(parent))
+            elif parent.kind in {_TRANSLATION_UNIT, 22}:
+                declaration(cursor)
+            else:
+                unresolved.append("constant_scope_unavailable:" + name)
+                return None
+            walk(value_type)
+            initializer = cursor
+        else:  # enum values require their containing declaration, not a copied literal.
+            parent = library.clang_getCursorSemanticParent(cursor)
+            owner = anonymous_owners.get(library.clang_hashCursor(parent))
+            declaration(owner or parent)
+            initializer = parent
+        value_dependencies[identity] = {
+            "name": name, "kind": "enum_constant" if cursor.kind == 7 else "const_variable",
+            "declaration": cursor_provenance(cursor), "dependencies": [],
+        }
+        value_dependencies[identity]["dependencies"] = [
+            dependency for dependency in collect_value_dependencies(initializer)
+            if dependency != identity
+        ]
+        return identity
+
     def walk(value):
         canonical = library.clang_getCanonicalType(value)
         # Preserve typedef declarations as facts before following their
@@ -1242,18 +1523,9 @@ def _type_contract_from_cursor(clang, top, source, translation_unit):
             size = int(library.clang_Type_getSizeOf(record_type))
             align = int(library.clang_Type_getAlignOf(record_type))
             fields = []
-            @clang.visitor_type
-            def referenced_extent(child, _parent, _data):
-                if child.kind == 101:  # CXCursor_DeclRefExpr
-                    referenced = library.clang_getCursorReferenced(child)
-                    if referenced.kind == 7:  # CXCursor_EnumConstantDecl
-                        walk(library.clang_getCursorType(referenced))
-                    elif referenced.kind == _VARIABLE_DECL and library.clang_isConstQualifiedType(library.clang_getCursorType(referenced)):
-                        declaration(referenced)
-                return _CHILD_VISIT_RECURSE
-            library.clang_visitChildren(cursor, referenced_extent, None)
             for child in children(cursor):
                 if child.kind == 6:
+                    collect_value_dependencies(child, include_enum_types=True)
                     field_type = library.clang_getCursorType(child)
                     leaf_type = library.clang_getCanonicalType(field_type)
                     while leaf_type.kind in {_POINTER_TYPE, *_REFERENCE_TYPES, *_ARRAY_TYPES}:
@@ -1278,6 +1550,7 @@ def _type_contract_from_cursor(clang, top, source, translation_unit):
     walk(library.clang_getResultType(function_type))
     for argument_index in range(library.clang_Cursor_getNumArguments(top)):
         walk(library.clang_getCursorType(library.clang_Cursor_getArgument(top, argument_index)))
+    collect_value_dependencies(top, declaration_only=True)
     required_include_lines = set()
     @clang.inclusion_visitor_type
     def included(file_handle, stack, length, _data):
@@ -1423,6 +1696,7 @@ def _type_contract_from_cursor(clang, top, source, translation_unit):
         "fingerprint": None if unresolved else type_contract_layout_fingerprint(semantic),
         "unresolved": unresolved,
         "type_provenance": [type_provenance[name] for name in sorted(type_provenance)],
+        "value_dependencies": [value_dependencies[identity] for identity in sorted(value_dependencies)],
     }
 
 

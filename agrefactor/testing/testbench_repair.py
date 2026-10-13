@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -451,6 +452,7 @@ class TestbenchRepairLoop:
             repair_attempts_used += 1
             attempt_before = self._budget_snapshot(budget)
             audit_count_before = self._audit_event_count()
+            proposed = None
             try:
                 proposed = self._repairer.repair(request)
                 if frozen_result_helpers is not None and isinstance(proposed, str) and proposed.strip():
@@ -465,7 +467,9 @@ class TestbenchRepairLoop:
                             compile_flags=task.target.compile_flags,
                         )
                     except ValueError as exc:
-                        raise TestbenchRepairResponseError(str(exc)) from exc
+                        error = TestbenchRepairResponseError(str(exc))
+                        error.contract_evidence = getattr(exc, "contract_evidence", None)
+                        raise error from exc
                 if frozen_type_contract is not None and isinstance(proposed, str) and proposed.strip():
                     from flow.tools.tb_optimizer import ModelArtifactError, validate_frozen_type_contract
                     from agrefactor.testing.model_testbench_repairer import TestbenchRepairResponseError
@@ -484,6 +488,29 @@ class TestbenchRepairLoop:
                     "testbench repair provider raised "
                     f"{type(exc).__name__}: {exc}"
                 )
+                contract_evidence = getattr(exc, "contract_evidence", None)
+                if isinstance(contract_evidence, Mapping):
+                    evidence_ref = f"attempt_{attempt_number:02d}/contract_failure.json"
+                    evidence_path = root / evidence_ref
+                    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+                    evidence_path.write_text(
+                        json.dumps({
+                            "evidence_view": "operator_full",
+                            "attempt": attempt_number,
+                            "contract_evidence": dict(contract_evidence),
+                            "proposed_testbench_sha256": (
+                                hashlib.sha256(proposed.encode("utf-8")).hexdigest()
+                                if isinstance(proposed, str) else None
+                            ),
+                            "frozen_result_mapping_identity": {
+                                key: frozen_result_helpers[key]
+                                for key in ("shared_cpp_sha256", "manifest_sha256")
+                                if frozen_result_helpers is not None and key in frozen_result_helpers
+                            },
+                        }, indent=2, ensure_ascii=False),
+                        encoding="utf-8",
+                    )
+                    last_repair_error += "\nevidence_ref=" + evidence_ref
                 observation = self._new_model_observation(
                     audit_count_before
                 )

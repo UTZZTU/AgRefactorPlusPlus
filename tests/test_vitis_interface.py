@@ -4,7 +4,11 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from agrefactor.vitis_interface import discover_top_io, parse_top_io
+from agrefactor.vitis_interface import (
+    discover_top_io,
+    parse_current_top_io,
+    parse_top_io,
+)
 
 
 XML = """<root><kernel src_name="top_hls"><args>
@@ -37,6 +41,29 @@ class VitisInterfaceTests(unittest.TestCase):
             self.assertIsNotNone(discover_top_io(root, expected_top="top_hls"))
             path.write_text("not xml", encoding="utf-8")
             self.assertIsNone(discover_top_io(root, expected_top="top_hls"))
+
+    def test_current_interface_allows_scalar_enum_without_vitis_source_type(self) -> None:
+        xml = XML.replace(
+            'src_name="count" src_type="int"',
+            'src_name="kind" src_type=""',
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "top-io-fe.xml"
+            path.write_text(xml, encoding="utf-8")
+            interface = parse_current_top_io(path, expected_top="top_hls")
+            self.assertIsNotNone(interface)
+            assert interface is not None
+            self.assertEqual(interface.maxi_pointer_ports, ("height",))
+
+    def test_current_interface_rejects_pointer_without_source_type(self) -> None:
+        xml = XML.replace(
+            'src_name="height" src_type="int const *"',
+            'src_name="height" src_type=""',
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "top-io-fe.xml"
+            path.write_text(xml, encoding="utf-8")
+            self.assertIsNone(parse_current_top_io(path, expected_top="top_hls"))
 
 
 if __name__ == "__main__":

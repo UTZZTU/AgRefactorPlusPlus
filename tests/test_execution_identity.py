@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from agrefactor.config import RunMode, TaskSpec
+from agrefactor.config import RunMode, TaskSpec, TestSuiteSpec
 from agrefactor.runtime import (
     BudgetLimits,
     PhaseResult,
@@ -272,6 +272,40 @@ class ExecutionIdentityTests(unittest.TestCase):
                 first["cache_identity_sha256"],
                 second["cache_identity_sha256"],
             )
+
+    def test_runtime_depth_contract_changes_identity_without_changing_qualification(self):
+        with tempfile.TemporaryDirectory() as directory:
+            values = self._fixture(Path(directory))
+            no_contract = build_execution_identity_bundle(**values)
+            self.assertNotIn("runtime_contract_sha256", no_contract["suites"][0])
+            contract = TestSuiteSpec(
+                suite_id="public-001",
+                runtime_contract={
+                    "schema_version": 2,
+                    "kind": "public_differential_self_check_v1",
+                    "candidate_mismatch_returncodes": [2],
+                    "cosim_interface_depths": {"buffer": 8},
+                },
+            ).to_dict()["runtime_contract"]
+            values["suite_manifests"][0]["runtime_contract"] = contract
+            first = build_execution_identity_bundle(**values)
+            changed = json.loads(json.dumps(contract))
+            changed["cosim_interface_depths"]["buffer"] = 16
+            values["suite_manifests"][0]["runtime_contract"] = TestSuiteSpec(
+                suite_id="public-001", runtime_contract=changed,
+            ).to_dict()["runtime_contract"]
+            second = build_execution_identity_bundle(**values)
+            for name in ("request_identity_sha256", "cache_identity_sha256"):
+                self.assertNotEqual(first[name], second[name])
+            for bundle, expected in ((first, contract), (second, changed)):
+                validate_execution_identity_bundle(bundle, require_accepted_ready=True)
+                suite = dict(bundle["suites"][0])
+                self.assertEqual(
+                    suite.pop("runtime_contract_sha256"),
+                    canonical_json_sha256(expected),
+                )
+                self.assertEqual(suite, no_contract["suites"][0])
+                self.assertTrue(bundle["completeness"]["accepted_ready"])
 
     def test_model_pricing_and_budget_changes_change_cache_identity(self):
         with tempfile.TemporaryDirectory() as directory:

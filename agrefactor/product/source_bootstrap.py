@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 import json
@@ -997,6 +997,8 @@ _GENERATION_FAILURE_SCALAR_KEYS = (
     "artifact_format_retry_count",
     "coverage_check_count",
     "retry_exhausted",
+    "termination_reason",
+    "repair_eligible",
     "qualification_artifact_dir",
     "qualification_receipt",
     "qualification_synth_invocation",
@@ -1048,6 +1050,18 @@ def _extract_generation_failure_metadata(
         if isinstance(value, (str, int, bool)) or value is None:
             failure[key] = value
 
+    # Keep code-free per-trajectory causes when some stop before requests and
+    # others genuinely exhaust their allowance.
+    summaries = raw_failure.get("trajectory_summaries")
+    if isinstance(summaries, list):
+        summary_keys = {"trajectory_idx", "trajectory_status", "termination_reason", "retry_exhausted",
+                        "repair_eligible", "failure_owner", "next_action", "round_count",
+                        "qualification_checks_used", "repairs_used"}
+        failure["trajectory_summaries"] = [
+            {key: value for key, value in item.items()
+             if key in summary_keys and isinstance(value, (str, int, bool))}
+            for item in summaries if isinstance(item, Mapping)
+        ]
     failure_kind = failure.get("failure_kind")
     if failure_kind not in {
         "testbench_generation_exhausted",
@@ -1093,7 +1107,9 @@ def _extract_generation_failure_metadata(
         "trajectory_count": failure.get("trajectory_count", 0),
         "qualification_mode": qualification_mode,
         "repair_attempt_count": failure.get("repair_attempt_count", 0),
-        "retry_exhausted": failure.get("retry_exhausted", True),
+        "retry_exhausted": failure.get("retry_exhausted", False),
+        "termination_reason": failure.get("termination_reason"),
+        "repair_eligible": failure.get("repair_eligible", False),
         "qualification_artifact_dir": failure.get(
             "qualification_artifact_dir"
         ),
@@ -1104,6 +1120,16 @@ def _extract_generation_failure_metadata(
         "hidden_testbench_exposed_to_model": False,
         "generation_failure": failure,
     }
+
+
+def _apply_public_runtime_contract_updates(suites, updates):
+    if not isinstance(updates, Mapping) or not updates:
+        return tuple(suites)
+    public_ids = {suite.suite_id for suite in suites if suite.split is EvaluationSplit.PUBLIC}
+    if set(updates) - public_ids:
+        raise ValueError("runtime contract refresh must identify an existing Public suite")
+    return tuple(replace(suite, runtime_contract=updates[suite.suite_id])
+                 if suite.suite_id in updates else suite for suite in suites)
 
 
 @dataclass(frozen=True, slots=True)
@@ -2143,6 +2169,7 @@ class SourceBootstrapPhase:
             original_code=original_code,
             preflight_testbench_code=preflight_code,
             suite_testbench_codes=suite_codes,
+            public_observation_qualification=generated.get("public_observation_qualification"),
             prompt_public_testbench_code=(
                 preflight_code
                 + (
@@ -2242,6 +2269,13 @@ class SourceBootstrapPhase:
                 "formal phase builder must return a PhaseResult handler"
             )
         metadata = dict(formal_result.metadata)
+        if metadata.get("updated_public_runtime_contracts"):
+            suites = _apply_public_runtime_contract_updates(suites, metadata["updated_public_runtime_contracts"])
+            formal_task = replace(formal_task, test_suites=suites)
+            identity_task = _product_identity_task(formal_task, self._request.mode)
+            public_suites = tuple(suite for suite in suites if suite.split is EvaluationSplit.PUBLIC)
+            _atomic_json(bootstrap_root / "final_public_runtime_contracts.json",
+                         metadata["updated_public_runtime_contracts"])
         accepted = bool(metadata.get("accepted", False))
         final_candidate_path = (
             self._layout.artifact_root
@@ -3006,6 +3040,7 @@ class SourceBootstrapPhase:
                 else ""
             ),
             "public_result_mapping": public_result_mapping,
+            "public_observation_qualification": _mapping_get(context_variables, "public_observation_qualification"),
             "public_type_contract": public_type_contract,
             "model_data_boundary": copied_boundary,
         }

@@ -246,6 +246,9 @@ def _finish_test_generation_exhaustion(
     cv["attempt_count"] = failure["attempt_count"]
     cv["trajectory_count"] = failure["trajectory_count"]
     cv["qualification_mode"] = qualification_mode
+    cv["termination_reason"] = failure.get("termination_reason")
+    cv["retry_exhausted"] = failure["retry_exhausted"]
+    cv["repair_eligible"] = failure.get("repair_eligible", False)
     cv["hidden_testbench_exposed_to_model"] = False
 
     event_name = (
@@ -803,6 +806,8 @@ def hls_refactor_with_rag(
             qualification_mode="provided" if external_testbench else "generated",
             trajectories=[{
                 "qualified": False, "trajectory_status": "contract_incomplete",
+                "termination_reason": "qualification_precondition_failed", "retry_exhausted": False,
+                "repair_eligible": False,
                 "failure_owner": "unknown", "next_action": "review_unknown",
                 "error": str(exc), "rounds": [],
                 "qualification_checks_used": 1, "repairs_used": 0,
@@ -828,6 +833,8 @@ def hls_refactor_with_rag(
             qualification_mode="provided" if external_testbench else "generated",
             trajectories=[{
                 "qualified": False, "trajectory_status": "contract_incomplete",
+                "termination_reason": "qualification_precondition_failed", "retry_exhausted": False,
+                "repair_eligible": False,
                 "failure_owner": "unknown", "next_action": "review_unknown",
                 "error": str(exc), "rounds": [],
                 "qualification_checks_used": 1, "repairs_used": 0,
@@ -924,7 +931,7 @@ def hls_refactor_with_rag(
         public_hls_decl=cv["public_hls_decl_verbatim"],
         hidden_generation_enabled=enable_hidden_tb_eval,
         input_domain_contract_sha256=cv["input_domain_contract_sha256"],
-        public_type_contract_sha256=cv["public_type_contract"].get("fingerprint", ""),
+        public_type_contract_sha256=tools.tb_optimizer.public_type_contract_sha256(cv["public_type_contract"]),
     )
     if not cv["model_data_boundary"]["complete"]:
         raise RuntimeError(

@@ -1,8 +1,11 @@
+import json
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
 from flow.tools.input_domain import (
     _source_parameters,
+    generate_input_domain_contract,
     input_domain_sha256,
     normalize_input_domain_contract,
 )
@@ -27,6 +30,182 @@ def vector_contract():
         "dimensions": {"n": {"port": "n", "min": 1, "max": 512}},
         "buffers": {"data": {"extent": ["n"], "max_elements": 512}},
     }
+
+
+class InputDomainFeedbackTests(unittest.TestCase):
+    def error_for(self, value):
+        with self.assertRaises(ValueError) as raised:
+            normalize_input_domain_contract(
+                value, source_code=VECTOR_SOURCE, kernel_name="process_top"
+            )
+        return str(raised.exception)
+
+    def test_reports_each_independent_port_error_and_dynamic_allowed_ports(self):
+        error = self.error_for({
+            "dimensions": {
+                "rows": {"port": "header.rows", "min": 1, "max": 8},
+                "columns": {"port": "missing", "min": 1, "max": 4},
+            },
+            "buffers": {
+                "data": {"extent": [], "max_elements": 8},
+                "header.data": {"extent": [], "max_elements": 8},
+            },
+        })
+        for detail in (
+            "path=/dimensions/rows/port", 'actual="header.rows"',
+            "path=/dimensions/columns/port", 'actual="missing"',
+            "path=/buffers/header.data", 'actual="header.data"',
+            'allowed_ports=["data", "n"]',
+        ):
+            self.assertIn(detail, error)
+
+    def test_json_pointer_escapes_invalid_names_without_hiding_actual_value(self):
+        error = self.error_for({
+            "dimensions": {"row/~name": {"port": "n", "min": 1, "max": 4}},
+            "buffers": {"data": {"extent": [], "max_elements": 4}},
+        })
+        self.assertIn("path=/dimensions/row~1~0name", error)
+        self.assertIn('actual="row/~name"', error)
+
+    def test_invalid_dimension_prevents_dependent_extent_and_capacity_errors(self):
+        error = self.error_for({
+            "dimensions": {"n": {"port": "n", "min": "bad", "max": 8}},
+            "buffers": {"data": {"extent": ["n"], "max_elements": 1}},
+        })
+        self.assertIn("path=/dimensions/n/min", error)
+        self.assertIn('actual="bad"', error)
+        self.assertNotIn("unknown dimensions", error)
+        self.assertNotIn("maximum extent", error)
+
+    def test_invalid_container_has_precise_error_without_cascading(self):
+        error = self.error_for({"dimensions": [], "buffers": "bad"})
+        self.assertIn("path=/dimensions", error)
+        self.assertIn("path=/buffers", error)
+        self.assertNotIn("missing buffer capacity", error)
+
+    def test_invalid_buffer_capacity_is_not_also_reported_as_missing(self):
+        error = self.error_for({
+            "dimensions": {},
+            "buffers": {"data": {"extent": [], "max_elements": 0}},
+        })
+        self.assertIn("path=/buffers/data/max_elements", error)
+        self.assertIn("actual=0", error)
+        self.assertNotIn("missing buffer capacity", error)
+
+    def test_unknown_extent_reports_specific_index_and_known_dimensions(self):
+        contract = vector_contract()
+        contract["buffers"]["data"]["extent"] = ["n", "other"]
+        error = self.error_for(contract)
+        self.assertIn("path=/buffers/data/extent/1", error)
+        self.assertIn('actual="other"', error)
+        self.assertIn('allowed_dimensions=["n"]', error)
+
+    def test_unavailable_interface_does_not_invent_ports_or_reject_valid_names(self):
+        with patch("flow.tools.input_domain._source_parameters", return_value=None):
+            normalized = normalize_input_domain_contract(
+                vector_contract(), source_code=VECTOR_SOURCE, kernel_name="process_top"
+            )
+            error = self.error_for({
+                "dimensions": {"n": {"port": "header.n", "min": 1, "max": 8}},
+                "buffers": {"data": {"extent": [], "max_elements": 8}},
+            })
+        self.assertEqual(normalized["buffers"]["data"]["max_elements"], 512)
+        self.assertIn("interface_facts=unavailable", error)
+        self.assertNotIn("allowed_ports=", error)
+
+    def test_accepted_normalization_and_hash_remain_unchanged(self):
+        contract = vector_contract()
+        contract.update(schema_version=99, kind="ignored", origin="provided", finite_domain=True)
+        contract["dimensions"]["n"]["ignored"] = 3
+        contract["buffers"]["data"]["ignored"] = 4
+        expected = {
+            "schema_version": 1, "kind": "input_domain_v1",
+            "dimensions": {"n": {"port": "n", "min": 1, "max": 512}},
+            "buffers": {"data": {"extent": ["n"], "max_elements": 512}},
+            "origin": "provided", "finite_domain": True,
+        }
+        normalized = normalize_input_domain_contract(
+            contract, source_code=VECTOR_SOURCE, kernel_name="process_top"
+        )
+        self.assertEqual(normalized, expected)
+        self.assertEqual(input_domain_sha256(normalized), input_domain_sha256(expected))
+
+    def test_capacity_above_product_remains_accepted_and_short_capacity_rejected(self):
+        contract = vector_contract()
+        contract["buffers"]["data"]["max_elements"] = 640
+        self.assertEqual(normalize_input_domain_contract(
+            contract, source_code=VECTOR_SOURCE, kernel_name="process_top"
+        )["buffers"]["data"]["max_elements"], 640)
+        contract["buffers"]["data"]["max_elements"] = 511
+        error = self.error_for(contract)
+        self.assertIn("maximum extent", error)
+        self.assertIn("actual=511", error)
+        self.assertIn("512", error)
+
+    def test_repair_requests_include_specific_feedback_and_complete_history(self):
+        contracts = []
+        for port in ("header.n", "first_missing", "second_missing"):
+            contract = vector_contract()
+            contract["dimensions"]["n"]["port"] = port
+            contracts.append(json.dumps(contract))
+        requests = []
+        responses = iter(contracts + [json.dumps(vector_contract())])
+
+        class Response:
+            def __init__(self, content):
+                self.messages = [{"content": content}]
+
+            def process(self):
+                return None
+
+        class Agent:
+            def run(self, **kwargs):
+                requests.append((kwargs["message"], "clear_history" not in kwargs))
+                self.options.append(kwargs)
+                return Response(next(responses))
+
+        agent = Agent()
+        agent.options = []
+
+        budget = object()
+        with patch("flow.tools.input_domain.HLSAgentLoader") as loader:
+            loader.return_value.load_agent.return_value = agent
+            normalized = generate_input_domain_contract(
+                orig_code=VECTOR_SOURCE, kernel_name="process_top", budget=budget
+            )
+        self.assertIs(loader.call_args.kwargs["budget"], budget)
+        self.assertEqual(normalized["buffers"]["data"]["max_elements"], 512)
+        self.assertEqual(len(requests), 4)
+        self.assertEqual([first for _, first in requests], [True, False, False, False])
+        self.assertTrue(all(options["max_turns"] == 1 for options in agent.options))
+        self.assertTrue(all(options["clear_history"] is False for options in agent.options[1:]))
+        self.assertIn('allowed_ports=["data", "n"]', requests[0][0])
+        for index, port in enumerate(("header.n", "first_missing", "second_missing")):
+            for message, _ in requests[index + 1:]:
+                self.assertIn(f'actual="{port}"', message)
+                self.assertIn("path=/dimensions/n/port", message)
+
+    def test_exhaustion_preserves_four_causes_and_json_error_coordinates(self):
+        invalid = vector_contract()
+        invalid["dimensions"]["n"]["port"] = "unknown_last"
+        responses = ["{", "[]", json.dumps({"dimensions": [], "buffers": {}}), json.dumps(invalid)]
+        with patch("flow.tools.input_domain.HLSAgentLoader"), \
+                patch("flow.tools.input_domain._json_response", side_effect=responses) as request:
+            with self.assertRaises(ValueError) as raised:
+                generate_input_domain_contract(orig_code=VECTOR_SOURCE, kernel_name="process_top")
+        error = str(raised.exception)
+        self.assertEqual(request.call_count, 4)
+        for attempt in range(4):
+            self.assertIn(f"Attempt {attempt}:", error)
+        self.assertIn("line 1 column 2", error)
+        self.assertIn('actual="unknown_last"', error)
+        self.assertIsInstance(raised.exception.__cause__, ValueError)
+        self.assertIn('actual="unknown_last"', str(raised.exception.__cause__))
+
+    def test_agent_capacity_instruction_matches_existing_validator(self):
+        message = (Path(__file__).resolve().parents[1] / "flow/agents/input_domain.yaml").read_text()
+        self.assertNotIn("max_elements exactly", message)
+        self.assertIn("at least", message)
 
 
 class InputDomainContractTests(unittest.TestCase):

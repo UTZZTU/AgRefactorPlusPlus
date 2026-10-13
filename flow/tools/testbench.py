@@ -216,6 +216,7 @@ def gen_tb_prior(
     mapping_rounds: list[Dict[str, Any]] = []
     mapping_repairs_used = 0
     type_repairs_used = 0
+    original_repairs_used = 0
     type_rounds: list[Dict[str, Any]] = []
     type_failure_pending = False
 
@@ -223,6 +224,7 @@ def gen_tb_prior(
         cv["public_result_mapping_qualification"] = {
             "qualification_checks_used": len(mapping_rounds),
             "mapping_repair_requests_used": mapping_repairs_used,
+            "original_repair_requests_used": original_repairs_used,
             "rounds": [dict(item) for item in mapping_rounds],
         }
 
@@ -250,7 +252,7 @@ def gen_tb_prior(
                 "qualification_checks_used": len(mapping_rounds),
                 "repairs_used": mapping_repairs_used + type_repairs_used,
                 "type_repair_requests_used": type_repairs_used,
-                "evidence_ref": "context_test_generation_exhausted.json#public_type_qualification",
+                "evidence_ref": "context_test_generation_exhausted.json#public_result_mapping_qualification",
                 "mapping_qualification_checks_used": len(mapping_rounds),
                 "mapping_repair_requests_used": mapping_repairs_used,
                 "rounds": [dict(item) for item in mapping_rounds],
@@ -285,6 +287,8 @@ def gen_tb_prior(
             public_failures.append(evidence)
             event.update(status="contract_failed", error=str(exc),
                          failure_owner="testbench", next_action="repair_testbench")
+            if getattr(exc, "contract_evidence", None) is not None:
+                event["contract_evidence"] = exc.contract_evidence
             if isinstance(exc, ResultMappingVerificationError):
                 cv["public_result_mapping_unverified"] = exc.partial_mapping
                 cv["public_result_mapping_diagnostics"] = exc.diagnostics
@@ -445,86 +449,138 @@ def gen_tb_prior(
             )
 
     qualification_failures: list[str] = []
-    for repair_index in range(repair_limit + 1):
-        candidate_decl = tools.tb_optimizer.extract_hls_decl_from_testbench(
-            tb,
-            hls_name,
-            **parse_context,
-        )
-        original_result = tools.tb_coverage.check_original_execution(
-            isolate_reference_program_entry(
-                str(cv["curr_code"]), top_function=kernel_name, testbench_code=tb,
-                source_path=parse_context["source_path"], include_dirs=parse_context["include_dirs"],
-                compile_flags=compile_flags,
-            ),
-            tb,
-            candidate_decl,
-            hls_name,
-            budget=budget,
-            original_name=kernel_name,
-            **execution_context,
-        )
-        if original_result.get("status") == "ok":
-            break
-        owner = original_result.get("failure_owner", "unknown")
-        if owner in {"stub", "toolchain"}:
-            raise tools.tb_optimizer.TestbenchGenerationExhausted(
-                split="public", stage="public_original_qualification",
-                trajectories=[{"trajectory_idx": 0, "rounds": [original_result]}],
-            )
-        qualification_failures.append(
-            f"Validation {repair_index}; owner={owner}; status={original_result.get('status')}\n"
-            + "\n".join(str(original_result.get(key) or '') for key in ("compile_stderr", "run_stderr", "run_stdout"))[-6000:]
-        )
-        public_failures.append(qualification_failures[-1])
-        cv["public_original_qualification_failures"] = list(qualification_failures)
-        if repair_index >= repair_limit:
-            raise tools.tb_optimizer.ModelArtifactError(
-                "Public Testbench still fails Original-only execution after "
-                f"{repair_limit} repair attempts"
-            )
-        tb = tools.tb_optimizer._request_cpp_artifact(
-            agent,
-            _original_execution_repair_request(
-                original_code=reference_code,
-                kernel_name=kernel_name,
-                testbench_code=tb,
-                result=original_result,
-                input_domain_contract=cv.get("input_domain_contract"),
-                prior_failures=tuple(public_failures),
-                source_package_context=cv.get("source_package_context"),
-            ) + "\n\n" + mapping_generation_instruction(),
-            first_turn=False,
-            artifact_kind="testbench_repair",
-            required_symbol=hls_name,
-            max_repairs=repair_limit,
-        )
-        tools.tb_optimizer.validate_testbench_top_contract(
-            tb,
-            kernel_name,
-            hls_name,
-        )
-        tools.tb_optimizer.validate_testbench_input_domain(
-            tb,
-            hls_name,
-            tools.tb_optimizer.extract_hls_decl_from_testbench(tb, hls_name, **parse_context),
-            cv.get("input_domain_contract"),
-            require_maximum=True,
-        )
+    qualification_checks = 0
+
+    def qualify_public_original(current_tb: str) -> str:
+        nonlocal original_repairs_used, qualification_checks
+        tb = current_tb
         while True:
-            try:
-                validate_public_contract(tb, f"Original qualification repair {repair_index}")
-                break
-            except ValueError:
+            qualification_checks += 1
+            candidate_decl = tools.tb_optimizer.extract_hls_decl_from_testbench(
+                tb,
+                hls_name,
+                **parse_context,
+            )
+            original_result = tools.tb_coverage.check_original_execution(
+                isolate_reference_program_entry(
+                    str(cv["curr_code"]), top_function=kernel_name, testbench_code=tb,
+                    source_path=parse_context["source_path"], include_dirs=parse_context["include_dirs"],
+                    compile_flags=compile_flags,
+                ),
+                tb,
+                candidate_decl,
+                hls_name,
+                budget=budget,
+                original_name=kernel_name,
+                result_mapping=cv.get("public_result_mapping"),
+                keep_dir=(str(Path(cv["public_tb_artifact_dir"]) / "original_qualification" / f"round_{qualification_checks:03d}")
+                          if cv.get("public_tb_artifact_dir") else None),
+                **execution_context,
+            )
+            observation_evidence = original_result.get("public_observation_qualification")
+            if observation_evidence is not None:
+                cv["public_observation_qualification"] = observation_evidence
+                mapping_rounds[-1]["observation_qualification"] = observation_evidence
+                save_mapping_events()
+            if (original_result.get("owner_authority") == "public_observation_mapping_contradiction"
+                    and original_result.get("evidence_complete") is True):
+                evidence = ("Public observation mapping contradiction: exact comparison reads a Candidate-independent "
+                            "input proxy that differs from the qualified Original post-call capture. Fix the observer "
+                            "using actual available Candidate outputs; if the generated ABI cannot express this required "
+                            "state, this evidence requests coordinated ABI correction before final freeze. Preserve "
+                            "Original, the required observation, input domain and comparator semantics. Do not remove "
+                            "a channel/case, copy golden values or invent constant output.\n"
+                            + json.dumps(observation_evidence, ensure_ascii=False, sort_keys=True))
+                public_failures.append(evidence)
+                mapping_failures.append(evidence)
+                mapping_rounds[-1].update(status="observation_contract_failed", failure_owner="testbench",
+                                         owner_authority="public_observation_mapping_contradiction", next_action="repair_testbench")
+                save_mapping_events()
                 tb = request_public_contract_repair(tb)
-                tools.tb_optimizer.validate_testbench_top_contract(tb, kernel_name, hls_name)
-                tools.tb_optimizer.validate_testbench_input_domain(
-                    tb,
-                    hls_name,
-                    tools.tb_optimizer.extract_hls_decl_from_testbench(tb, hls_name, **parse_context),
-                    cv.get("input_domain_contract"),
-                    require_maximum=True,
+                while True:
+                    tools.tb_optimizer.validate_testbench_top_contract(tb, kernel_name, hls_name)
+                    tools.tb_optimizer.validate_testbench_input_domain(
+                        tb, hls_name, tools.tb_optimizer.extract_hls_decl_from_testbench(tb, hls_name, **parse_context),
+                        cv.get("input_domain_contract"), require_maximum=True,
+                    )
+                    try:
+                        validate_public_contract(tb, f"Observation qualification repair {qualification_checks}")
+                        break
+                    except ValueError:
+                        tb = request_public_contract_repair(tb)
+                continue
+            if original_result.get("status") == "ok":
+                return tb
+            owner = original_result.get("failure_owner", "unknown")
+            if owner in {"stub", "toolchain"}:
+                raise tools.tb_optimizer.TestbenchGenerationExhausted(
+                    split="public", stage="public_original_qualification",
+                    trajectories=[{"trajectory_idx": 0, "rounds": [original_result]}],
                 )
+            qualification_failures.append(
+                f"Validation {qualification_checks}; owner={owner}; status={original_result.get('status')}\n"
+                + "\n".join(str(original_result.get(key) or '') for key in ("compile_stderr", "run_stderr", "run_stdout"))[-6000:]
+            )
+            public_failures.append(qualification_failures[-1])
+            cv["public_original_qualification_failures"] = list(qualification_failures)
+            if original_repairs_used >= repair_limit:
+                raise tools.tb_optimizer.ModelArtifactError(
+                    "Public Testbench still fails Original-only execution after "
+                    f"{repair_limit} repair attempts"
+                )
+            request_started = True
+            try:
+                tb = tools.tb_optimizer._request_cpp_artifact(
+                    agent,
+                    _original_execution_repair_request(
+                        original_code=reference_code,
+                        kernel_name=kernel_name,
+                        testbench_code=tb,
+                        result=original_result,
+                        input_domain_contract=cv.get("input_domain_contract"),
+                        prior_failures=tuple(public_failures),
+                        source_package_context=cv.get("source_package_context"),
+                    ) + "\n\n" + mapping_generation_instruction(),
+                    first_turn=False,
+                    artifact_kind="testbench_repair",
+                    required_symbol=hls_name,
+                    max_repairs=repair_limit,
+                )
+            except BudgetExceededError:
+                request_started = False
+                raise
+            finally:
+                if request_started:
+                    original_repairs_used += 1
+                    save_mapping_events()
+            tools.tb_optimizer.validate_testbench_top_contract(
+                tb,
+                kernel_name,
+                hls_name,
+            )
+            tools.tb_optimizer.validate_testbench_input_domain(
+                tb,
+                hls_name,
+                tools.tb_optimizer.extract_hls_decl_from_testbench(tb, hls_name, **parse_context),
+                cv.get("input_domain_contract"),
+                require_maximum=True,
+            )
+            while True:
+                try:
+                    validate_public_contract(tb, f"Original qualification repair {qualification_checks}")
+                    break
+                except ValueError:
+                    tb = request_public_contract_repair(tb)
+                    tools.tb_optimizer.validate_testbench_top_contract(tb, kernel_name, hls_name)
+                    tools.tb_optimizer.validate_testbench_input_domain(
+                        tb,
+                        hls_name,
+                        tools.tb_optimizer.extract_hls_decl_from_testbench(tb, hls_name, **parse_context),
+                        cv.get("input_domain_contract"),
+                        require_maximum=True,
+                    )
+
+    tb = qualify_public_original(tb)
 
     # Validate the public Candidate ABI with the same Vitis probe used by the
     # held-out path before freezing it for downstream stages. This keeps an
@@ -681,25 +737,7 @@ def gen_tb_prior(
                     cv.get("input_domain_contract"),
                     require_maximum=True,
                 )
-            original_result = tools.tb_coverage.check_original_execution(
-                isolate_reference_program_entry(
-                    str(cv["curr_code"]), top_function=kernel_name, testbench_code=tb,
-                    source_path=parse_context["source_path"], include_dirs=parse_context["include_dirs"],
-                    compile_flags=compile_flags,
-                ),
-                tb,
-                tools.tb_optimizer.extract_hls_decl_from_testbench(tb, hls_name, **parse_context),
-                hls_name,
-                budget=budget,
-                original_name=kernel_name,
-                **execution_context,
-            )
-            if original_result.get("status") != "ok":
-                raise tools.tb_optimizer.TestbenchGenerationExhausted(
-                    split="public",
-                    stage="public_original_qualification_after_abi_correction",
-                    trajectories=[{"trajectory_idx": 0, "rounds": [original_result]}],
-                )
+            tb = qualify_public_original(tb)
 
     response = agent.run(
         message=_build_instruction_request(kernel_name, hls_name),

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import tempfile
 import unittest
@@ -123,6 +124,59 @@ class TestbenchRepairLoopTests(unittest.TestCase):
             artifact["attempts"][1]["preflight"]["status"],
             "passed",
         )
+
+    def test_custom_repairer_keeps_complete_mapping_failure_artifact(self) -> None:
+        from flow.tools.result_mapping import shared_helper_identity
+        from tests.test_public_result_mapping import ORIGINAL as mapping_original, testbench
+
+        public = testbench([3, -2])
+        broken = public.replace("int mismatch = 0;", "int mismatch = missing_name;")
+        actual = "different observation " * 1000
+        altered = public.replace("Original call return status", actual)
+        candidate = """void source_task_hls(int input, int *out, int *status) {
+            *out = input * 2;
+            *status = input < 0 ? 7 : 0;
+        }"""
+        repairer = RecordingRepairer([altered, public])
+        frozen = shared_helper_identity(public)
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.make_loop(repairer).run(
+                work_dir=directory,
+                testbench_code=broken,
+                original_code=mapping_original,
+                candidate_code=candidate,
+                original_top_function="source_task",
+                candidate_top_function="source_task_hls",
+            )
+            saved = json.loads(Path(result.artifact_path).read_text(encoding="utf-8"))
+            failure = saved["attempts"][1]
+            self.assertIn("evidence_ref=", failure["error"])
+            reference = failure["error"].split("\nevidence_ref=", 1)[1]
+            artifact = json.loads((Path(directory) / reference).read_text(encoding="utf-8"))
+            self.assertEqual(artifact["evidence_view"], "operator_full")
+            self.assertEqual(artifact["attempt"], 1)
+            self.assertEqual(artifact["proposed_testbench_sha256"],
+                             hashlib.sha256(altered.encode("utf-8")).hexdigest())
+            self.assertEqual(artifact["frozen_result_mapping_identity"], {
+                "shared_cpp_sha256": frozen["shared_cpp_sha256"],
+                "manifest_sha256": frozen["manifest_sha256"],
+            })
+            difference = artifact["contract_evidence"]["differences"][0]
+            self.assertEqual(difference["path"], "/observables/0/original")
+            self.assertEqual(difference["expected"], "Original call return status")
+            self.assertEqual(difference["actual"], actual)
+            self.assertIsNone(json.loads(Path(result.repair_attempt_paths[1]).read_text())["model_response"])
+
+        self.assertTrue(result.succeeded, result.reason)
+        self.assertEqual(result.repair_attempts_used, 2)
+        self.assertEqual(len(repairer.requests), 2)
+        summary = repairer.requests[1].prior_attempt_summaries[-1]
+        self.assertLessEqual(len(summary), 2200)
+        self.assertIn("/observables/0/original", summary)
+        self.assertIn("expected", summary)
+        self.assertIn("truncated", summary)
+        self.assertNotIn(actual, summary)
 
     def test_candidate_failure_does_not_call_testbench_repairer(self) -> None:
         bad_candidate = CANDIDATE.replace(

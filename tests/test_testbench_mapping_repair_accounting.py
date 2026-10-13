@@ -42,6 +42,25 @@ class MappingRepairAccountingTests(unittest.TestCase):
             context["target_profile"] = {"compile_flags": ()}
         return context, request
 
+    def test_mapping_exhaustion_reference_resolves_to_its_saved_qualification(self):
+        context, _request = self.harness(mapping_results=[ValueError('mapping-detail') for _ in range(4)])
+        with self.assertRaises(tb_optimizer.TestbenchGenerationExhausted) as caught:
+            testbench.gen_tb_prior(context)
+        reference = caught.exception.to_dict()['trajectory_summaries'][0]['evidence_ref']
+        key = reference.split('#', 1)[1]
+        self.assertIn(key, context)
+        self.assertEqual(context[key]['qualification_checks_used'], 4)
+        self.assertEqual(context[key]['rounds'][0]['error'], 'mapping-detail')
+
+    def test_public_mapping_replacement_keeps_full_operator_difference(self):
+        failure = ValueError('manifest changed; path=/observables/0/original; expected=frozen; actual=edited')
+        failure.contract_evidence = {'differences': [{'path': '/observables/0/original', 'expected': 'frozen', 'actual': 'edited'}]}
+        context, request = self.harness(mapping_results=[failure, None])
+        testbench.gen_tb_prior(context)
+        self.assertIn('/observables/0/original', request.call_args_list[1].args[1])
+        first = context['public_result_mapping_qualification']['rounds'][0]
+        self.assertEqual(first['contract_evidence'], failure.contract_evidence)
+
     def test_four_failed_checks_report_three_actual_repair_requests(self):
         context, request = self.harness(mapping_results=[ValueError(f"manifest-failure-{i}") for i in range(4)])
         with self.assertRaises(tb_optimizer.TestbenchGenerationExhausted) as caught:

@@ -44,6 +44,7 @@ _ALLOWED_FAILURES = frozenset(
         "timeout",
         "ownership_unknown",
         "budget_exhausted",
+        "runtime_contract_interface_mismatch",
     }
 )
 _EXPECTED_OWNER = {
@@ -54,6 +55,7 @@ _EXPECTED_OWNER = {
     "timeout": None,
     "ownership_unknown": "unknown",
     "budget_exhausted": "configuration",
+    "runtime_contract_interface_mismatch": None,
 }
 _OWNER = {
     "candidate_rtl_functional_failure": FeedbackOwner.CANDIDATE,
@@ -63,6 +65,7 @@ _OWNER = {
     "timeout": FeedbackOwner.UNKNOWN,
     "ownership_unknown": FeedbackOwner.UNKNOWN,
     "budget_exhausted": FeedbackOwner.CONFIGURATION,
+    "runtime_contract_interface_mismatch": FeedbackOwner.UNKNOWN,
 }
 _CATEGORY = {
     "candidate_rtl_functional_failure": FeedbackCategory.FUNCTIONAL_MISMATCH,
@@ -72,6 +75,7 @@ _CATEGORY = {
     "timeout": FeedbackCategory.TIMEOUT,
     "ownership_unknown": FeedbackCategory.UNKNOWN,
     "budget_exhausted": FeedbackCategory.BUDGET_EXHAUSTED,
+    "runtime_contract_interface_mismatch": FeedbackCategory.INVALID_CONFIGURATION,
 }
 
 
@@ -197,6 +201,8 @@ class CosimStageInputs:
     policy: str = "required"
     extra_sources: tuple[str, ...] = ()
     reference_top_function: str | None = None
+    csynth_work_dir: str | os.PathLike[str] | None = None
+    public_observation_qualification: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -398,26 +404,79 @@ class CosimValidationStageHandler:
             if context.task.source_package is not None:
                 context.task.source_package.stage_into(work)
             try:
-                raw = self._executor(
-                    work_dir=work,
-                    original_code=self._inputs.original_code,
-                    candidate_code=self._inputs.candidate_code,
-                    testbench_code=self._inputs.suite_testbench_codes[suite_id],
-                    candidate_top_function=(
-                        self._inputs.candidate_top_function
-                    ),
-                    target_profile=self._inputs.target_profile,
-                    timelimit=self._inputs.timelimit,
-                    budget=context.budget,
-                    suite_id=suite_id,
-                    runtime_contract=suite.runtime_contract,
-                    extra_sources=self._inputs.extra_sources,
-                )
+                interface_evidence = None
+                if self._inputs.csynth_work_dir is not None:
+                    from agrefactor.vitis_interface import current_csynth_interface
+                    interface_evidence = current_csynth_interface(
+                        self._inputs.csynth_work_dir,
+                        candidate_code=self._inputs.candidate_code,
+                        expected_top=self._inputs.candidate_top_function,
+                        target_profile=self._inputs.target_profile.to_dict(),
+                    )
+                declared = sorted((suite.runtime_contract or {}).get("cosim_interface_depths", {}))
+                if interface_evidence is not None and interface_evidence.get("status") != "verified":
+                    raw = {
+                        "status": "failed", "failure_kind": "ownership_unknown",
+                        "failure_owner": "unknown", "reason_code": interface_evidence["reason_code"],
+                        "timed_out": False, "tool_launched": False, "cosim_launched": False,
+                        "returncode": None, "interface_contract_evidence": interface_evidence,
+                    }
+                elif (interface_evidence is not None
+                      and declared != interface_evidence["actual_maxi_ports"]):
+                    proof = {**interface_evidence, "declared_depth_ports": declared,
+                             "expected_depth_ports": interface_evidence["actual_maxi_ports"],
+                             "interface_mapping_status": "verified",
+                             "failure_substage": "runtime_contract_qualification"}
+                    _atomic_json(work / "runtime_contract_interface_evidence.json", proof)
+                    raw = {
+                        "status": "failed", "failure_kind": "runtime_contract_interface_mismatch",
+                        "failure_owner": "testbench", "reason_code": "cosim_depth_contract_requires_current_interface_refresh",
+                        "timed_out": False, "tool_launched": False, "cosim_launched": False,
+                        "returncode": None, "evidence_sha256": proof["receipt_sha256"],
+                        "interface_contract_evidence": proof,
+                    }
+                else:
+                    executor_kwargs = ({"synthesized_interface_evidence": interface_evidence}
+                                       if interface_evidence is not None else {})
+                    raw = self._executor(
+                        work_dir=work,
+                        original_code=self._inputs.original_code,
+                        candidate_code=self._inputs.candidate_code,
+                        testbench_code=self._inputs.suite_testbench_codes[suite_id],
+                        candidate_top_function=(
+                            self._inputs.candidate_top_function
+                        ),
+                        target_profile=self._inputs.target_profile,
+                        timelimit=self._inputs.timelimit,
+                        budget=context.budget,
+                        suite_id=suite_id,
+                        runtime_contract=suite.runtime_contract,
+                        extra_sources=self._inputs.extra_sources,
+                        **executor_kwargs,
+                    )
                 outcome = _normalize_outcome(
                     raw,
                     runtime_contract=suite.runtime_contract,
                 )
+                if outcome.get("status") != "passed":
+                    from flow.tools.result_mapping import validated_observation_contradiction
+                    contradiction = validated_observation_contradiction(
+                        self._inputs.public_observation_qualification,
+                        testbench_code=self._inputs.suite_testbench_codes[suite_id],
+                        original_code=self._inputs.original_code,
+                    )
+                    if contradiction is not None:
+                        outcome.update(
+                            failure_kind="public_testbench_failure", failure_owner="testbench",
+                            reason_code="frozen_public_observation_contract_requires_regeneration",
+                            owner_authority="public_observation_mapping_contradiction",
+                            repair_eligible=False, evidence_complete=True,
+                            public_observation_contradiction=contradiction,
+                        )
                 if (outcome.get("failure_owner") == "unknown"
+                        and outcome.get("raw_failure_kind") != "runtime_contract_interface_mismatch"
+                        and (outcome.get("interface_contract_evidence") or {}).get("failure_substage")
+                        not in {"runtime_contract_qualification", "post_cosim_interface_validation"}
                         and self._inputs.reference_top_function is not None
                         and outcome.get("tool_launched") is True
                         and outcome.get("cosim_launched") is True
@@ -491,7 +550,8 @@ class CosimValidationStageHandler:
                 FeedbackItem(
                     feedback_id=f"{context.run_id}.public-cosim.{index}",
                     stage=FeedbackStage.COSIM,
-                    category=_CATEGORY[kind],
+                    category=(FeedbackCategory.INVALID_CONFIGURATION
+                              if outcome.get("public_observation_contradiction") else _CATEGORY[kind]),
                     severity=(
                         FeedbackSeverity.FATAL
                         if kind
@@ -529,6 +589,7 @@ class CosimValidationStageHandler:
             metadata={
                 **base_metadata,
                 "cosim_skipped": False,
+                "physical_execution": any(summary.get("cosim_launched") is True for summary in summaries),
                 "attempted_suite_ids": attempted_suite_ids,
                 "attempted_suite_count": len(attempted_suite_ids),
                 "stopped_early": len(attempted_suite_ids) < len(suites),
@@ -594,6 +655,7 @@ class CosimValidationStageHandler:
             "process_exit_observed": outcome.get("process_exit_observed"),
             "completion_authority": outcome.get("completion_authority"),
             "subphase_evidence": outcome.get("subphase_evidence"),
+        "public_observation_contradiction": outcome.get("public_observation_contradiction"),
         }
         _atomic_json(
             work_dir / "cosim_suite_identity_evidence.json",
@@ -614,6 +676,8 @@ def _normalize_outcome(
     if not isinstance(evidence_sha, str) or _SHA256_RE.fullmatch(evidence_sha) is None:
         evidence_sha = None
     subphase_evidence = _safe_subphase_evidence(value.get("subphase_evidence"))
+    contract_evidence = value.get("interface_contract_evidence")
+    contract_proven = _interface_contract_failure_proven(value, contract_evidence)
 
     if raw_status == "passed":
         physically_proven = (
@@ -699,6 +763,11 @@ def _normalize_outcome(
         timeout = classify_public_timeout(value, stage="public_cosim")
         kind = "timeout"
         owner = timeout.owner.value
+    elif kind == "runtime_contract_interface_mismatch":
+        owner = "testbench" if contract_proven else (
+            "configuration" if value.get("reason_code") == "cosim_source_to_hardware_mapping_unresolved"
+            and value.get("cosim_launched") is False else "unknown"
+        )
     elif (
         kind not in _ALLOWED_FAILURES
         or owner != _EXPECTED_OWNER.get(kind)
@@ -731,6 +800,7 @@ def _normalize_outcome(
     return {
         "status": status,
         "failure_kind": kind,
+        "raw_failure_kind": value.get("failure_kind"),
         "failure_owner": owner,
         "reason_code": reason.strip()[:300],
         "detail": _safe_diagnostic_detail(
@@ -755,15 +825,15 @@ def _normalize_outcome(
             else None
         ),
         "owner_authority": (
-            value.get("owner_authority")
+            ("deterministic_proven" if contract_proven else value.get("owner_authority"))
             if timeout is None
             else timeout.owner_authority
         ),
         "repair_eligible": (
             (
-                kind == "candidate_rtl_functional_failure"
+                contract_proven or (kind == "candidate_rtl_functional_failure"
                 and owner == "candidate"
-                and value.get("owner_authority") == "deterministic_proven"
+                and value.get("owner_authority") == "deterministic_proven")
             )
             if timeout is None
             else timeout.repair_eligible
@@ -773,7 +843,7 @@ def _normalize_outcome(
         ),
         "evidence_complete": (
             (
-                kind == "candidate_rtl_functional_failure"
+                contract_proven or (kind == "candidate_rtl_functional_failure"
                 and owner == "candidate"
                 and value.get("tool_launched") is True
                 and value.get("cosim_launched") is True
@@ -782,13 +852,46 @@ def _normalize_outcome(
                 and (
                     subphase_evidence.get("rtl_started") is True
                     or subphase_evidence.get("rtl_completed") is True
-                )
+                ))
             )
             if timeout is None
             else timeout.evidence_complete
         ),
         "subphase_evidence": subphase_evidence,
+        "interface_contract_evidence": _safe_interface_contract_evidence(contract_evidence),
     }
+
+
+def _interface_contract_failure_proven(value: Mapping[str, Any], evidence: Any) -> bool:
+    if value.get("failure_kind") != "runtime_contract_interface_mismatch" or not isinstance(evidence, Mapping):
+        return False
+    if not (evidence.get("status") == "verified"
+            and evidence.get("interface_mapping_status") == "verified"
+            and isinstance(evidence.get("actual_maxi_ports"), list)
+            and isinstance(evidence.get("declared_depth_ports"), list)
+            and evidence.get("actual_maxi_ports") != evidence.get("declared_depth_ports")
+            and _SHA256_RE.fullmatch(str(evidence.get("report_sha256", "")))
+            and value.get("timed_out") is not True):
+        return False
+    if evidence.get("failure_substage") == "runtime_contract_qualification":
+        return bool(evidence.get("receipt_sha256") == value.get("evidence_sha256")
+                    and evidence.get("csynth_tool_launched") is True
+                    and value.get("tool_launched") is False and value.get("cosim_launched") is False)
+    return bool(evidence.get("failure_substage") == "post_cosim_interface_validation"
+                and value.get("cosim_launched") is True
+                and value.get("returncode") == 0
+                and evidence.get("typed_status") == "passed"
+                and evidence.get("typed_identity_verified") is True)
+
+
+def _safe_interface_contract_evidence(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+    keys = ("status", "reason_code", "failure_substage", "interface_mapping_status",
+            "candidate_sha256", "top_name", "receipt_sha256", "report_sha256", "csynth_tool_launched",
+            "actual_maxi_ports", "expected_depth_ports", "declared_depth_ports",
+            "source_to_hardware", "typed_status", "typed_identity_verified")
+    return {key: value[key] for key in keys if key in value}
 
 
 def _safe_summary(
@@ -800,6 +903,8 @@ def _safe_summary(
         "suite_id": suite_id,
         "status": outcome.get("status"),
         "failure_kind": outcome.get("failure_kind"),
+        "raw_failure_kind": outcome.get("raw_failure_kind"),
+        "interface_contract_evidence": outcome.get("interface_contract_evidence"),
         "failure_owner": outcome.get("failure_owner"),
         "reason_code": outcome.get("reason_code"),
         "detail": outcome.get("detail"),
@@ -825,6 +930,7 @@ def _safe_summary(
         "process_exit_observed": outcome.get("process_exit_observed"),
         "completion_authority": outcome.get("completion_authority"),
         "subphase_evidence": outcome.get("subphase_evidence"),
+        "public_observation_contradiction": outcome.get("public_observation_contradiction"),
         "evidence_sha256": (
             evidence_sha
             if isinstance(evidence_sha, str)

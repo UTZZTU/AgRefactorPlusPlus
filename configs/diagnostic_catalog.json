@@ -1,6 +1,12 @@
 {
   "schema_version": 1,
   "categories": {
+    "runtime_contract_interface_mismatch": {
+      "feedback_category": "invalid_configuration",
+      "description": "Public runtime depths differ from an identity-bound synthesized interface.",
+      "evidence_requirements": ["runtime_contract", "invocation_identity", "report_identity", "tool_launched", "execution_completed"],
+      "allowed_actions": ["repair_testbench_if_proven", "review_unknown", "fix_configuration"]
+    },
     "invalid_configuration": {
       "description": "The tool reports an invalid synthesis configuration.",
       "evidence_requirements": ["tool_launched", "execution_completed"],
@@ -49,6 +55,17 @@
     }
   },
   "rules": [
+    {
+      "id": "cosim_runtime_contract_interface_mismatch",
+      "match": {"patterns": ["\\bruntime_contract_interface_mismatch\\b"]},
+      "stage": "cosim",
+      "category": "runtime_contract_interface_mismatch",
+      "summary": "Public runtime interface contract requires evidence-based qualification",
+      "parser_rule": "runtime_contract_interface_mismatch",
+      "confidence": "high",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 300
+    },
     {
       "id": "hls_214_133_global_definition",
       "match": {"hls_codes": ["HLS 214-133"], "patterns": ["\\bGlobal variable\\s+['\"](?P<symbol>[A-Za-z_][A-Za-z0-9_]*)['\"]\\s+must have definition\\b"]},

@@ -152,8 +152,12 @@ class CandidateValidationPlanRequest:
     validation_id: str
     reference_top_function: str | None = None
     candidate_top_function: str | None = None
+    public_observation_qualification: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
+        if self.public_observation_qualification is not None:
+            object.__setattr__(self, "public_observation_qualification",
+                               _json_mapping(self.public_observation_qualification, "public_observation_qualification"))
         if not isinstance(self.task, TaskSpec):
             raise TypeError("task must be a TaskSpec")
         _required_text(self.candidate_code, "candidate_code")
@@ -212,12 +216,16 @@ class CandidateRepairOrchestrationRequest:
     family_instruction: str | None = None
     reference_top_function: str | None = None
     candidate_top_function: str | None = None
+    public_observation_qualification: Mapping[str, Any] | None = None
     approved_memory_snippets: tuple[str, ...] = ()
     recovery_profile: str = "conservative-v1"
     llm_advisory_mode: str = "off"
     r5_arm: str | None = None
 
     def __post_init__(self) -> None:
+        if self.public_observation_qualification is not None:
+            object.__setattr__(self, "public_observation_qualification",
+                               _json_mapping(self.public_observation_qualification, "public_observation_qualification"))
         _required_text(self.initial_candidate, "initial_candidate")
         _required_text(self.original_code, "original_code")
         _required_text(
@@ -591,6 +599,7 @@ class LocalCandidateValidationHandlerFactory:
                     target_profile=request.task.target,
                     extra_sources=extra_sources,
                     reference_top_function=request.reference_top_function,
+                    public_observation_qualification=request.public_observation_qualification,
                 ),
                 split=EvaluationSplit.PUBLIC,
             )
@@ -617,6 +626,8 @@ class LocalCandidateValidationHandlerFactory:
                     policy=self._cosim_policy,
                     extra_sources=extra_sources,
                     reference_top_function=request.reference_top_function,
+                    csynth_work_dir=run_dir / "csynth",
+                    public_observation_qualification=request.public_observation_qualification,
                 )
             )
 
@@ -636,6 +647,7 @@ class LocalCandidateValidationHandlerFactory:
                     ),
                     timelimit=self._csim_timelimit,
                     extra_sources=extra_sources,
+                    public_observation_qualification=request.public_observation_qualification,
                 ),
                 split=EvaluationSplit.HIDDEN,
             )
@@ -724,6 +736,7 @@ class _OrchestratedCandidateValidator:
                 self._request.candidate_top_function
                 or request.task.kernel_name
             ),
+            public_observation_qualification=self._request.public_observation_qualification,
         )
         handlers = _build_handlers(
             self._handler_factory,
@@ -915,6 +928,7 @@ class CandidateRepairValidationOrchestrator:
                 request.candidate_top_function
                 or context.task.kernel_name
             ),
+            public_observation_qualification=request.public_observation_qualification,
         )
         initial_handlers = _build_handlers(
             self._handler_factory,
@@ -989,6 +1003,7 @@ class CandidateRepairValidationOrchestrator:
             }
         ):
             (
+                context,
                 active_request,
                 active_outcome,
                 testbench_metadata,
@@ -1177,6 +1192,7 @@ class CandidateRepairValidationOrchestrator:
         validation_id: str,
         ledger: RecoveryLedger,
     ) -> tuple[
+        RunContext,
         CandidateRepairOrchestrationRequest,
         ValidationExecutionOutcome,
         dict[str, Any],
@@ -1186,6 +1202,7 @@ class CandidateRepairValidationOrchestrator:
         diagnostics: list[dict[str, Any]] = []
         used = 0
         metadata: dict[str, Any] = {}
+        updated_contracts: dict[str, Any] = {}
         while used < request.max_testbench_repairs:
             report = outcome.terminal_report
             if report is None or report.metadata.get("evidence_view") != "agent_safe":
@@ -1195,7 +1212,7 @@ class CandidateRepairValidationOrchestrator:
                 for item in report.items if item.blocking
             )
             try:
-                request, outcome, metadata = self._repair_public_testbench_once(
+                context, request, outcome, metadata = self._repair_public_testbench_once(
                     context=context, request=request, outcome=outcome,
                     validation_id=validation_id, ledger=ledger,
                     remaining=request.max_testbench_repairs - used,
@@ -1206,6 +1223,7 @@ class CandidateRepairValidationOrchestrator:
                 metadata = {"runtime_testbench_recovery_status": exc.reason_code}
                 break
             repair = metadata.get("runtime_testbench_recovery", {})
+            updated_contracts.update(metadata.get("updated_public_runtime_contracts", {}))
             spent = repair.get("repair_attempts_used", 0)
             used += spent
             rounds.append(metadata)
@@ -1215,16 +1233,19 @@ class CandidateRepairValidationOrchestrator:
                 for item in repair.get("attempts", []) if item.get("index", 0) > 0
             )
             decision = outcome.terminal_decision
-            if (spent == 0 or not metadata.get("runtime_testbench_revalidation")
+            refresh = metadata.get("runtime_contract_refresh", {})
+            changed_contract = refresh.get("old_contract") != refresh.get("new_contract") and bool(refresh)
+            if ((spent == 0 and not changed_contract) or not metadata.get("runtime_testbench_revalidation")
                     or outcome.result.final_state is not ValidationState.REPAIR_PENDING
                     or decision is None
                     or decision.action is not FeedbackRouteAction.REPAIR_TESTBENCH):
                 break
-        return request, outcome, {
+        return context, request, outcome, {
             **metadata,
             "runtime_testbench_repair_attempts_used": used,
             "runtime_testbench_recovery_rounds": rounds,
             "diagnostic_events": diagnostics,
+            "updated_public_runtime_contracts": updated_contracts,
         }
 
     def _repair_public_testbench_once(
@@ -1234,11 +1255,19 @@ class CandidateRepairValidationOrchestrator:
         validation_id: str, ledger: RecoveryLedger,
         remaining: int, round_index: int,
         prior_failure_summaries: tuple[str, ...],
-    ) -> tuple[CandidateRepairOrchestrationRequest, ValidationExecutionOutcome, dict[str, Any]]:
+    ) -> tuple[RunContext, CandidateRepairOrchestrationRequest, ValidationExecutionOutcome, dict[str, Any]]:
         report = outcome.terminal_report
         decision = outcome.terminal_decision
         if report is None or decision is None:
             raise RuntimeError("testbench recovery requires terminal feedback")
+        if any(item.metadata.get("owner_authority") == "public_observation_mapping_contradiction"
+               and item.metadata.get("repair_eligible") is not True for item in report.items if item.blocking):
+            return context, request, outcome, {
+                "runtime_testbench_recovery_status": "frozen_public_contract_requires_regeneration",
+                "runtime_testbench_recovery_reason": "frozen_public_observation_contract_requires_regeneration",
+                "runtime_testbench_recovery": {"repair_attempts_used": 0, "attempts": []},
+                "diagnostic_events": [],
+            }
         failure_state = outcome.result.steps[-1].state
         if failure_state not in {
             ValidationState.PREFLIGHT,
@@ -1289,7 +1318,7 @@ class CandidateRepairValidationOrchestrator:
             source_kind=source_kind,
         )
         if authorization != "auto_public_bounded":
-            return request, outcome, {
+            return context, request, outcome, {
                 "runtime_testbench_suite_id": suite_id,
                 "runtime_testbench_failure_state": failure_state.value,
                 "runtime_testbench_source_kind": source_kind,
@@ -1317,6 +1346,22 @@ class CandidateRepairValidationOrchestrator:
                 timeout_class=decision.metadata.get("timeout_class"),
                 ), budget=context.budget,
                 restart_reserve=default_restart_reserve(stage),
+            )
+        selected_contract_proofs = [
+            selected[item_id].metadata.get("interface_contract_evidence")
+            for item_id in decision.selected_feedback_ids
+            if item_id in selected
+            and selected[item_id].metadata.get("failure_kind") == "runtime_contract_interface_mismatch"
+            and selected[item_id].metadata.get("owner_authority") == "deterministic_proven"
+            and selected[item_id].metadata.get("evidence_complete") is True
+        ]
+        if len(selected_contract_proofs) == 1 and isinstance(selected_contract_proofs[0], Mapping):
+            return self._refresh_public_runtime_contract(
+                context=context, request=request, outcome=outcome, suite=suite,
+                proof=selected_contract_proofs[0], validation_id=validation_id,
+                ledger=ledger, stage=stage, remaining=remaining,
+                round_index=round_index, reserve_repair=reserve_repair,
+                prior_failure_summaries=prior_failure_summaries,
             )
         repairer = build_openai_compatible_testbench_repairer(
             effective_config=self._model_adapter.effective_config,
@@ -1366,7 +1411,7 @@ class CandidateRepairValidationOrchestrator:
             "diagnostic_events": [],
         }
         if not repair.succeeded:
-            return request, outcome, metadata
+            return context, request, outcome, metadata
 
         semantic_revision = build_testbench_semantic_revision(
             request.suite_testbench_codes[suite_id],
@@ -1386,7 +1431,7 @@ class CandidateRepairValidationOrchestrator:
             metadata["runtime_testbench_recovery_status"] = (
                 "blocked_semantic_weakening"
             )
-            return request, outcome, metadata
+            return context, request, outcome, metadata
 
         codes = dict(request.suite_testbench_codes)
         old_code = codes[suite_id]
@@ -1423,6 +1468,7 @@ class CandidateRepairValidationOrchestrator:
             candidate_top_function=(
                 updated.candidate_top_function or context.task.kernel_name
             ),
+            public_observation_qualification=updated.public_observation_qualification,
         )
         child = RunContext(
             run_id=f"{context.run_id}.testbench-repair.{round_index}",
@@ -1447,7 +1493,134 @@ class CandidateRepairValidationOrchestrator:
         )
         if revalidation_diagnostic is not None:
             metadata["diagnostic_events"].append(revalidation_diagnostic)
-        return updated, revalidated, metadata
+        return context, updated, revalidated, metadata
+
+    def _refresh_public_runtime_contract(
+        self, *, context, request, outcome, suite, proof, validation_id,
+        ledger, stage, remaining, round_index, reserve_repair,
+        prior_failure_summaries,
+    ):
+        """Refresh generated depth metadata through the existing Public lane."""
+        from flow.tools.tb_optimizer import (
+            ModelArtifactError, extract_hls_decl_from_testbench,
+            generate_public_runtime_contract, validate_public_runtime_contract,
+        )
+        from agrefactor.compat.legacy_refactor import build_effective_legacy_llm_config
+        from agrefactor.models import ModelCallRole
+
+        metadata = {"runtime_testbench_suite_id": suite.suite_id,
+                    "runtime_testbench_failure_state": stage.value,
+                    "diagnostic_events": []}
+        candidate_sha = sha256(request.initial_candidate.encode("utf-8")).hexdigest()
+        ports = proof.get("actual_maxi_ports")
+        if not (proof.get("status") == "verified"
+                and proof.get("candidate_sha256") == candidate_sha
+                and isinstance(ports, list)
+                and set(proof.get("source_to_hardware", {})) == set(ports)):
+            metadata["runtime_testbench_recovery_status"] = "runtime_contract_evidence_incomplete"
+            return context, request, outcome, metadata
+        code = request.suite_testbench_codes[suite.suite_id]
+        parse_context = {
+            "source_path": str(Path(context.task.kernel_path).parent / "testbench.cpp"),
+            "include_dirs": (str(Path(context.task.kernel_path).parent),),
+            "compile_flags": context.task.target.compile_flags,
+        }
+        top = request.candidate_top_function or context.task.kernel_name
+        declaration = extract_hls_decl_from_testbench(code, top, **parse_context)
+        old_contract = dict(suite.runtime_contract or {})
+        old_depths = old_contract.get("cosim_interface_depths", {})
+        used = 0
+        def before_request():
+            nonlocal used
+            reserve_repair()
+            used += 1
+        try:
+            if set(ports).issubset(old_depths):
+                contract = {key: value for key, value in old_contract.items()
+                            if key != "cosim_interface_depths"}
+                contract["schema_version"] = 2 if ports else 1
+                if ports:
+                    contract["cosim_interface_depths"] = {port: old_depths[port] for port in ports}
+                contract = validate_public_runtime_contract(
+                    contract, testbench_code=code, candidate_top_function=top,
+                    frozen_hls_decl=declaration, confirmed_depth_ports=tuple(ports), **parse_context,
+                )
+            else:
+                generated = generate_public_runtime_contract(
+                    orig_code=request.original_code, testbench_code=code,
+                    candidate_top_function=top, frozen_hls_decl=declaration,
+                    confirmed_depth_ports=tuple(ports), max_response_attempts=remaining,
+                    before_request=before_request, budget=context.budget,
+                    failure_feedback={"interface_evidence": dict(proof), "old_contract": old_contract,
+                                      "prior_failure_summaries": list(prior_failure_summaries)},
+                    llm_config=build_effective_legacy_llm_config(
+                        self._model_adapter.effective_config, ModelCallRole.TESTBENCH_REPAIR),
+                    **parse_context,
+                )
+                # Depth repair cannot rewrite the existing comparison protocol.
+                contract = {**old_contract, "schema_version": generated["schema_version"],
+                            "cosim_interface_depths": generated["cosim_interface_depths"]}
+                contract = validate_public_runtime_contract(
+                    contract, testbench_code=code, candidate_top_function=top,
+                    frozen_hls_decl=declaration, confirmed_depth_ports=tuple(ports), **parse_context,
+                )
+        except (RecoveryDeniedError, RecoveryBudgetBlockedError) as exc:
+            metadata.update(
+                runtime_testbench_recovery_status=exc.reason_code,
+                runtime_testbench_recovery={"repair_attempts_used": used, "attempts": []},
+                runtime_contract_error=str(exc),
+                runtime_contract_recovery_ledger=ledger.to_dict(),
+            )
+            return context, request, outcome, metadata
+        except ModelArtifactError as exc:
+            metadata.update(runtime_testbench_recovery_status="runtime_contract_generation_failed",
+                            runtime_testbench_recovery={"repair_attempts_used": used, "attempts": []},
+                            runtime_contract_error=str(exc))
+            return context, request, outcome, metadata
+        contract_sha = sha256(json.dumps(contract, sort_keys=True).encode("utf-8")).hexdigest()
+        refreshed = replace(suite, runtime_contract=contract)
+        task = replace(context.task, test_suites=tuple(
+            refreshed if item.suite_id == suite.suite_id else item
+            for item in context.task.test_suites
+        ))
+        child = replace(context, task=task, run_id=f"{context.run_id}.runtime-contract.{round_index}")
+        try:
+            ledger.record_validation_restart(
+                lineage_id=task.task_id, stage=stage, budget=context.budget,
+                restart_reserve=default_restart_reserve(stage),
+            )
+        except (RecoveryDeniedError, RecoveryBudgetBlockedError) as exc:
+            metadata.update(
+                runtime_testbench_recovery_status=exc.reason_code,
+                runtime_testbench_recovery={"repair_attempts_used": used, "attempts": []},
+                runtime_contract_error=str(exc),
+                runtime_contract_recovery_ledger=ledger.to_dict(),
+                runtime_contract_refresh={"old_contract": old_contract, "new_contract": contract,
+                                          "model_requests": used, "revalidation_started": False},
+            )
+            return context, request, outcome, metadata
+        plan = CandidateValidationPlanRequest(
+            task=task, candidate_code=request.initial_candidate,
+            original_code=request.original_code,
+            preflight_testbench_code=request.preflight_testbench_code,
+            suite_testbench_codes=request.suite_testbench_codes,
+            attempt=round_index, validation_id=f"{validation_id}.runtime-contract.{round_index}",
+            reference_top_function=request.reference_top_function,
+            candidate_top_function=top,
+            public_observation_qualification=request.public_observation_qualification,
+        )
+        revalidated = ValidationOrchestrator(_build_handlers(self._handler_factory, plan)).run_detailed(
+            child, validation_id=plan.validation_id,
+        )
+        metadata.update(
+            runtime_testbench_recovery={"succeeded": True, "repair_attempts_used": used, "attempts": []},
+            runtime_testbench_revalidation=revalidated.result.to_dict(),
+            runtime_contract_refresh={"old_contract": old_contract, "new_contract": contract,
+                                      "contract_sha256": contract_sha, "model_requests": used,
+                                      "interface_evidence": dict(proof)},
+            updated_public_runtime_contracts={suite.suite_id: contract},
+        )
+        return replace(context, task=task), request, revalidated, metadata
 
     def _finish(
         self,

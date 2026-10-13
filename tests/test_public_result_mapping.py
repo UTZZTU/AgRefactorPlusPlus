@@ -116,8 +116,10 @@ bool agrefactor_compare_observations(Observation a, Observation b) { return a.va
         original, code = self.template_mapping_source()
         changed = code.replace("template<int Extent, class Element> void transform(Element (&values)[Extent]);",
                                "template<int Extent, class Element> void transform(Element *values);")
-        with self.assertRaisesRegex(ValueError, "template declaration differs from Original"):
+        with self.assertRaisesRegex(ValueError, "template declaration differs from Original") as caught:
             mapping.freeze_result_mapping(changed, original, "transform", "transform_hls")
+        self.assertIn('expected_usr', str(caught.exception))
+        self.assertIn('actual_usr', str(caught.exception))
 
     def test_mapping_distinguishes_unavailable_calls_from_unproven_template_binding(self):
         original, code = self.template_mapping_source()
@@ -134,6 +136,9 @@ bool agrefactor_compare_observations(Observation a, Observation b) { return a.va
             with self.assertRaisesRegex(mapping.ResultMappingVerificationError, "template_binding_not_proven") as caught:
                 mapping.freeze_result_mapping(code, original, "transform", "transform_hls")
             self.assertIn("reachable_calls", caught.exception.partial_mapping["verification_facts"])
+            self.assertIn('template_usr', str(caught.exception))
+            self.assertIn('reachable_calls', str(caught.exception))
+            self.assertFalse(caught.exception.repair_eligible)
 
     def freeze(self, code=None, **kwargs):
         with patch.object(mapping, "extract_top_interface", side_effect=interface), patch.object(
@@ -391,6 +396,143 @@ bool agrefactor_compare_observations(Observation a, Observation b) { return a.va
         code = '#include <cstdio>\n#include <vector>\n' + testbench([3])
         result = mapping.freeze_result_mapping(code, ORIGINAL, 'source_task', 'source_task_hls')
         self.assertTrue(result["compiler_structure_verified"])
+
+    def test_frozen_manifest_reports_exact_leaf_and_keeps_complete_evidence(self):
+        result = self.freeze()
+        manifest = copy.deepcopy(MANIFEST)
+        manifest['observables'][1]['original'] = 'out before Original call'
+        with self.assertRaises(ValueError) as caught:
+            mapping.validate_frozen_result_mapping(testbench([5], manifest), result)
+        detail = str(caught.exception)
+        self.assertIn('/observables/1/original', detail)
+        self.assertIn('out after Original call', detail)
+        self.assertIn('out before Original call', detail)
+        self.assertEqual(caught.exception.contract_evidence['differences'][0]['expected'], MANIFEST['observables'][1]['original'])
+        self.assertEqual(caught.exception.contract_evidence['differences'][0]['actual'], manifest['observables'][1]['original'])
+
+    def test_frozen_manifest_shape_order_and_missing_values_remain_rejected(self):
+        for observables, expected_path in ((MANIFEST['observables'][:1], '/observables/1'),
+                                          (list(reversed(MANIFEST['observables'])), '/observables/0/id'),
+                                          ('changed', '/observables')):
+            with self.subTest(observables=observables), self.assertRaises(ValueError) as caught:
+                mapping.validate_frozen_result_mapping(testbench([5], {'observables': observables}), self.freeze())
+            self.assertIn(expected_path, str(caught.exception))
+        changed = copy.deepcopy(MANIFEST)
+        del changed['observables'][0]['candidate']
+        changed['observables'][0]['notes/a~b'] = None
+        with self.assertRaises(ValueError) as caught:
+            mapping.validate_frozen_result_mapping(testbench([5], changed), self.freeze())
+        paths = {item['path'] for item in caught.exception.contract_evidence['differences']}
+        self.assertIn('/observables/0/candidate', paths)
+        self.assertIn('/observables/0/notes~1a~0b', paths)
+        missing = next(item for item in caught.exception.contract_evidence['differences'] if item['path'].endswith('/candidate'))
+        self.assertFalse(missing['actual_present'])
+
+    def test_long_frozen_difference_is_bounded_but_not_lost(self):
+        result = self.freeze()
+        manifest = copy.deepcopy(MANIFEST)
+        manifest['observables'][0]['candidate'] = 'different observation ' * 1000
+        with self.assertRaises(ValueError) as caught:
+            mapping.validate_frozen_result_mapping(testbench([5], manifest), result)
+        detail = str(caught.exception)
+        self.assertLess(len(detail), 2000)
+        self.assertIn('/observables/0/candidate', detail)
+        self.assertIn('truncated', detail)
+        self.assertEqual(caught.exception.contract_evidence['differences'][0]['actual'], manifest['observables'][0]['candidate'])
+
+    def test_frozen_shared_code_reports_local_change_and_hashes(self):
+        result = self.freeze()
+        changed = testbench([5]).replace('original.output == candidate.output', 'original.output != candidate.output')
+        with self.assertRaises(ValueError) as caught:
+            mapping.validate_frozen_result_mapping(changed, result)
+        self.assertIn('expected_sha256', str(caught.exception))
+        self.assertIn('actual_sha256', str(caught.exception))
+        self.assertIn('original.output != candidate.output', str(caught.exception))
+        self.assertEqual(caught.exception.contract_evidence['expected_shared_cpp'], SHARED)
+        with self.assertRaises(ValueError) as caught:
+            mapping.validate_frozen_result_mapping('int main(){return 0;}', result)
+        self.assertIn('shared_block_present', str(caught.exception))
+        self.assertIn(mapping.BEGIN, str(caught.exception))
+
+    def test_frozen_baseline_identity_reports_claimed_and_computed_hash(self):
+        for field in ('shared_cpp_sha256', 'sha256'):
+            result = self.freeze()
+            result[field] = 'invalid-identity'
+            with self.subTest(field=field), self.assertRaises(ValueError) as caught:
+                mapping.validate_result_mapping_identity(result)
+            self.assertIn(field, str(caught.exception))
+            self.assertIn('invalid-identity', str(caught.exception))
+            self.assertIn('computed', str(caught.exception))
+            self.assertEqual(caught.exception.contract_evidence['scope'], 'frozen_baseline')
+        result = self.freeze()
+        result['manifest_sha256'] = 'wrong-manifest-hash'
+        with self.assertRaises(ValueError) as caught:
+            mapping.validate_frozen_result_mapping(testbench([5]), result)
+        self.assertIn('manifest_sha256', str(caught.exception))
+        self.assertIn('wrong-manifest-hash', str(caught.exception))
+        self.assertIn('computed', str(caught.exception))
+
+    def test_channel_diagnostics_name_empty_duplicate_and_invalid_fields(self):
+        mutations = ((0, 'original', '', '/observables/0/original'),
+                     (1, 'id', 'status', '/observables/1/id'),
+                     (1, 'kind', 'made_up_kind', '/observables/1/kind'))
+        for index, field, value, path in mutations:
+            manifest = copy.deepcopy(MANIFEST)
+            manifest['observables'][index][field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError) as caught:
+                self.freeze(testbench([3], manifest))
+            self.assertIn(path, str(caught.exception))
+            self.assertIn('actual', str(caught.exception))
+            self.assertTrue(caught.exception.contract_evidence)
+
+    def test_helper_and_main_diagnostics_show_compiler_target_and_missing_calls(self):
+        real_facts = compiler_facts
+        def wrong_target(source, name, **context):
+            facts = real_facts(source, name, **context)
+            if name == mapping.HELPERS[0]:
+                facts['reachable_calls'] = [{'linker_symbol': 'different_top'}]
+            return facts
+        with patch.object(mapping, 'extract_top_interface', side_effect=interface), patch.object(
+            mapping, 'inspect_top_entry', side_effect=wrong_target
+        ), self.assertRaises(ValueError) as caught:
+            mapping.freeze_result_mapping(testbench([3]), ORIGINAL, 'source_task', 'source_task_hls')
+        self.assertIn(mapping.HELPERS[0], str(caught.exception))
+        self.assertIn('source_task', str(caught.exception))
+        self.assertIn('different_top', str(caught.exception))
+        result = self.freeze()
+        with patch.object(mapping, 'extract_top_interface', side_effect=interface), patch.object(
+            mapping, 'inspect_top_entry', return_value={'reachable_calls': [{'linker_symbol': mapping.HELPERS[0]}]}
+        ), self.assertRaises(ValueError) as caught:
+            mapping.validate_frozen_result_mapping(testbench([3]), result)
+        self.assertIn('missing', str(caught.exception))
+        self.assertIn(mapping.HELPERS[2], str(caught.exception))
+
+    def test_missing_return_observation_and_outside_helper_have_precise_facts(self):
+        manifest = copy.deepcopy(MANIFEST)
+        manifest['observables'].pop(0)
+        with self.assertRaises(ValueError) as caught:
+            self.freeze(testbench([3], manifest))
+        self.assertIn('return_type', str(caught.exception))
+        self.assertIn('output_parameter', str(caught.exception))
+        def outside(source, name, **context):
+            result = interface(source, name, **context)
+            if name == mapping.HELPERS[0]:
+                result.source_end = len(source)
+            return result
+        with patch.object(mapping, 'extract_top_interface', side_effect=outside), self.assertRaises(ValueError) as caught:
+            mapping.freeze_result_mapping(testbench([3]), ORIGINAL, 'source_task', 'source_task_hls')
+        self.assertIn('actual_source_range', str(caught.exception))
+        self.assertIn('expected_block_range', str(caught.exception))
+        self.assertIn(mapping.HELPERS[0], str(caught.exception))
+
+    def test_unavailable_compiler_facts_are_explained_without_new_repair_permission(self):
+        facts = {'status': 'unknown', 'entries': [{'usr': 'known-template'}],
+                 'reachable_calls': [], 'translation_unit_complete': False, 'diagnostics': []}
+        error = mapping.ResultMappingVerificationError('template_binding_not_proven: arbitrary_helper', {}, facts)
+        self.assertIn('known-template', str(error))
+        self.assertIn('reachable_calls', str(error))
+        self.assertFalse(error.repair_eligible)
+        self.assertEqual(error.contract_evidence['compiler_facts']['entries'], facts['entries'])
 
 
 if __name__ == "__main__":

@@ -54,77 +54,131 @@ def normalize_input_domain_contract(
     kernel_name: str,
 ) -> dict[str, Any]:
     """Validate and normalize the small, deliberately finite contract."""
+    errors: list[str] = []
+
+    def report(reason: str, path: str, actual: Any, expected: str) -> None:
+        try:
+            rendered = json.dumps(actual, ensure_ascii=False, default=repr)
+        except (TypeError, ValueError):
+            rendered = repr(actual)
+        errors.append(f"{reason}; path={path}; actual={rendered}; expected={expected}")
+
+    def pointer_key(key: Any) -> str:
+        return str(key).replace("~", "~0").replace("/", "~1")
+
     if not isinstance(value, Mapping):
-        raise ValueError("input domain must be a JSON object")
+        report("input domain must be a JSON object", "/", value, "JSON object")
+        raise ValueError("\n".join(errors))
     allowed = {"schema_version", "kind", "dimensions", "buffers", "origin", "finite_domain"}
     if set(value) - allowed:
-        raise ValueError("input domain contains unexpected fields")
+        for key in value:
+            if key not in allowed:
+                report("input domain contains unexpected fields", "/" + pointer_key(key),
+                       value[key], "allowed fields " + json.dumps(sorted(allowed)))
     dimensions = value.get("dimensions")
     buffers = value.get("buffers")
-    if not isinstance(dimensions, Mapping) or not isinstance(buffers, Mapping):
-        raise ValueError("input domain requires dimensions and buffers mappings")
+    for field, mapping in (("dimensions", dimensions), ("buffers", buffers)):
+        if not isinstance(mapping, Mapping):
+            report("input domain requires dimensions and buffers mappings", "/" + field,
+                   mapping, "JSON object")
     if value.get("finite_domain", True) is not True:
-        raise ValueError("input domain must be finite")
+        report("input domain must be finite", "/finite_domain", value["finite_domain"], "true")
+    if not isinstance(dimensions, Mapping) or not isinstance(buffers, Mapping):
+        raise ValueError("\n".join(errors))
     params = _source_parameters(source_code, kernel_name)
+    port_facts = (
+        "allowed_ports=" + json.dumps(sorted(params))
+        if params is not None else "interface_facts=unavailable"
+    )
     normalized_dims: dict[str, dict[str, Any]] = {}
     for name, spec in dimensions.items():
+        before = len(errors)
+        path = "/dimensions/" + pointer_key(name)
         if not isinstance(name, str) or not _IDENTIFIER.fullmatch(name):
-            raise ValueError("dimension names must be C identifiers")
+            report("dimension names must be C identifiers", path, name, "C identifier")
         if not isinstance(spec, Mapping):
-            raise ValueError(f"dimension {name} must be an object")
+            report(f"dimension {name} must be an object", path, spec, "JSON object")
+            continue
         port = spec.get("port")
         lo = spec.get("min")
         hi = spec.get("max")
         if not isinstance(port, str) or not _IDENTIFIER.fullmatch(port):
-            raise ValueError(f"dimension {name} must name a C identifier port")
-        if params is not None and port not in params:
-            raise ValueError(f"dimension {name} refers to unknown port")
-        if isinstance(lo, bool) or not isinstance(lo, int):
-            raise ValueError(f"dimension {name}.min must be an integer")
-        if isinstance(hi, bool) or not isinstance(hi, int) or hi < lo:
-            raise ValueError(f"dimension {name}.max must be an integer >= min")
-        normalized_dims[name] = {"port": port, "min": lo, "max": hi}
+            report(f"dimension {name} must name a C identifier port", path + "/port",
+                   port, "existing top-level C identifier port; " + port_facts)
+        elif params is not None and port not in params:
+            report(f"dimension {name} refers to unknown port", path + "/port",
+                   port, "existing top-level port; " + port_facts)
+        lo_valid = not isinstance(lo, bool) and isinstance(lo, int)
+        hi_valid = not isinstance(hi, bool) and isinstance(hi, int)
+        if not lo_valid:
+            report(f"dimension {name}.min must be an integer", path + "/min", lo, "integer")
+        if not hi_valid or (lo_valid and hi < lo):
+            report(f"dimension {name}.max must be an integer >= min", path + "/max", hi,
+                   "integer >= min " + json.dumps(lo) if lo_valid else "integer")
+        if len(errors) == before:
+            normalized_dims[name] = {"port": port, "min": lo, "max": hi}
 
     normalized_buffers: dict[str, dict[str, Any]] = {}
     for port, spec in buffers.items():
+        before = len(errors)
+        path = "/buffers/" + pointer_key(port)
         if not isinstance(port, str) or not _IDENTIFIER.fullmatch(port):
-            raise ValueError("buffer port names must be C identifiers")
-        if params is not None and port not in params:
-            raise ValueError(f"buffer refers to unknown port {port!r}")
+            report("buffer port names must be C identifiers", path, port,
+                   "existing top-level C identifier port; " + port_facts)
+        elif params is not None and port not in params:
+            report(f"buffer refers to unknown port {port!r}", path, port,
+                   "existing top-level port; " + port_facts)
         if not isinstance(spec, Mapping):
-            raise ValueError(f"buffer {port} must be an object")
+            report(f"buffer {port} must be an object", path, spec, "JSON object")
+            continue
         extent = spec.get("extent", [])
-        if not isinstance(extent, list) or any(
-            not isinstance(item, str) or item not in normalized_dims
-            for item in extent
-        ):
-            raise ValueError(f"buffer {port}.extent contains unknown dimensions")
+        extent_valid = isinstance(extent, list)
+        if not extent_valid:
+            report(f"buffer {port}.extent contains unknown dimensions", path + "/extent",
+                   extent, "list of declared dimension names")
+        else:
+            for index, item in enumerate(extent):
+                if not isinstance(item, str) or item not in dimensions:
+                    report(f"buffer {port}.extent contains unknown dimensions",
+                           path + f"/extent/{index}", item,
+                           "declared dimension; allowed_dimensions=" + json.dumps(sorted(normalized_dims)))
+                if not isinstance(item, str) or item not in normalized_dims:
+                    extent_valid = False
         max_elements = spec.get("max_elements")
-        if isinstance(max_elements, bool) or not isinstance(max_elements, int) or max_elements < 1:
-            raise ValueError(f"buffer {port}.max_elements must be positive")
-        if any(normalized_dims[item]["max"] < 1 for item in extent):
-            raise ValueError(
-                f"buffer {port}.extent dimensions must have a positive maximum"
-            )
-        expected = math.prod(normalized_dims[item]["max"] for item in extent) if extent else 1
-        if max_elements < expected:
-            raise ValueError(
-                f"buffer {port}.max_elements must cover the declared maximum extent ({expected})"
-            )
-        if params is not None and not params[port] and extent:
-            raise ValueError(f"scalar port {port} cannot have a non-empty extent")
-        normalized_buffers[port] = {"extent": list(extent), "max_elements": max_elements}
+        capacity_valid = not isinstance(max_elements, bool) and isinstance(max_elements, int) and max_elements > 0
+        if not capacity_valid:
+            report(f"buffer {port}.max_elements must be positive", path + "/max_elements",
+                   max_elements, "positive integer")
+        if extent_valid:
+            for index, item in enumerate(extent):
+                if normalized_dims[item]["max"] < 1:
+                    report(f"buffer {port}.extent dimensions must have a positive maximum",
+                           path + f"/extent/{index}", normalized_dims[item]["max"],
+                           f"dimension {item}.max >= 1")
+                    extent_valid = False
+            if extent_valid and capacity_valid:
+                expected = math.prod(normalized_dims[item]["max"] for item in extent) if extent else 1
+                if max_elements < expected:
+                    report(f"buffer {port}.max_elements must cover the declared maximum extent ({expected})",
+                           path + "/max_elements", max_elements, f"integer >= {expected}")
+        if params is not None and port in params and not params[port] and isinstance(extent, list) and extent:
+            report(f"scalar port {port} cannot have a non-empty extent", path + "/extent",
+                   extent, "empty extent for scalar port")
+        if len(errors) == before and extent_valid:
+            normalized_buffers[port] = {"extent": list(extent), "max_elements": max_elements}
     if params is not None:
         missing = [
             name
             for name, is_pointer in params.items()
-            if is_pointer and name not in normalized_buffers
+            if is_pointer and name not in buffers
         ]
         if missing:
-            raise ValueError(
-                "missing buffer capacity for pointer ports: "
-                + ", ".join(missing)
-            )
+            for name in missing:
+                report("missing buffer capacity for pointer ports: " + name,
+                       "/buffers/" + pointer_key(name), "<missing>",
+                       "buffer capacity for pointer port; " + port_facts)
+    if errors:
+        raise ValueError("\n".join(errors))
     return {
         "schema_version": 1,
         "kind": "input_domain_v1",
@@ -154,6 +208,12 @@ def generate_input_domain_contract(
         budget=budget,
     )
     agent = loader.load_agent("input_domain_planner")
+    params = _source_parameters(orig_code, kernel_name)
+    interface_facts = (
+        "Compiler interface facts: allowed_ports=" + json.dumps(sorted(params))
+        + "; pointer_array_ports=" + json.dumps(sorted(name for name, pointer in params.items() if pointer))
+        if params is not None else "Compiler interface facts: interface_facts=unavailable; no port list was inferred."
+    )
     message = (
         "Read the original HLS top below and freeze one finite legal input-domain contract "
         "before any Public test, Candidate code, or Hidden test is generated. "
@@ -165,6 +225,7 @@ def generate_input_domain_contract(
         "Do not infer a pointer capacity from one spelling or one visible access pattern; "
         "derive it from the complete source behavior. "
         "Return exactly one JSON object with only dimensions and buffers.\n\n"
+        f"{interface_facts}\n"
         f"Top function: {kernel_name}\nOriginal source:\n```cpp\n{orig_code.rstrip()}\n```\n\n"
         "Required shape: {\"dimensions\": {\"n\": {\"port\": \"n\", \"min\": 1, \"max\": 128}}, "
         "\"buffers\": {\"data\": {\"extent\": [\"n\"], \"max_elements\": 128}}}"
@@ -190,4 +251,6 @@ def generate_input_domain_contract(
                 "even when no scalar length parameter exists. Return one strict JSON object "
                 "matching the requested shape, with no markdown.\n\n" + initial_message
             )
-    raise ValueError("model did not return a valid input-domain contract") from last_error
+    raise ValueError(
+        "model did not return a valid input-domain contract\n" + "\n".join(failures)
+    ) from last_error

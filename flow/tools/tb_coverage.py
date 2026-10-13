@@ -31,7 +31,8 @@ from agrefactor.cpp_interface import (
 from agrefactor.reference_source import isolate_reference_program_entry
 from agrefactor.evaluation.owner_evidence import OwnerEvidence, resolve_source_owner
 from agrefactor.evaluation.diagnostic_catalog import load_catalog
-from flow.tools.case_evidence import instrument_testbench, prepare_compile_support
+from flow.tools.case_evidence import instrument_testbench, prepare_compile_support, read_case_counts, EVIDENCE_FILENAME
+from flow.tools.result_mapping import observation_qualification_probe, complete_observation_qualification, _json_sha
 from agrefactor.evaluation.testbench_preflight import (
     classify_compile_failure,
     parse_compiler_diagnostics,
@@ -496,6 +497,7 @@ def check_original_execution(
     compile_flags: tuple[str, ...] = (),
     required_original_entry: str | None = None,
     original_name: str | None = None,
+    result_mapping: dict | None = None,
 ) -> dict:
     """Run the generated Testbench with a no-op Candidate and sanitizers.
 
@@ -595,14 +597,23 @@ def check_original_execution(
             work_dir=tmp, candidate_code=stub, testbench_code=tb_code,
             phase="original_qualification",
         )
+        qualified_tb, observation_probe = observation_qualification_probe(
+            tb_code, orig_code, result_mapping, original_name, candidate_name,
+            source_path=os.path.join(source_root or tmp, "testbench.cpp"),
+            include_dirs=(source_root,) if source_root else (), compile_flags=compile_flags,
+            recording_execution_id=result["case_evidence_support"]["identity"]["execution_id"],
+        )
         files = {
             "orig_code.cpp": reference,
-            "testbench.cpp": instrument_testbench(tb_code),
+            "testbench.cpp": instrument_testbench(qualified_tb),
             "original_only_candidate.cpp": stub,
         }
         for name, content in files.items():
             with open(os.path.join(tmp, name), "w", encoding="utf-8") as file:
                 file.write(content)
+        result["case_evidence_support"]["compiled_testbench_sha256"] = hashlib.sha256(
+            files["testbench.cpp"].encode("utf-8")
+        ).hexdigest()
         result["source_roles"] = {
             "testbench.cpp": "testbench",
             "agrefactor_case_evidence.hpp": "unknown",
@@ -884,6 +895,38 @@ def check_original_execution(
                 )
                 return result
 
+        case_path = Path(tmp) / EVIDENCE_FILENAME
+        case_counts = read_case_counts(
+            case_path, expected_identity=result["case_evidence_support"]["identity"],
+        )
+        observation_evidence = complete_observation_qualification(
+            observation_probe, work_dir=tmp, execution_complete=True,
+            case_counts=case_counts,
+            original_executed=result.get("original_entry_executed") is True,
+        )
+        if observation_evidence.get("status") in {"contradiction_proven", "no_contradiction_observed"}:
+            observation_evidence.pop("evidence_sha256", None)
+            observation_evidence.update(
+                compiled_testbench_sha256=result["case_evidence_support"]["compiled_testbench_sha256"],
+                compiled_testbench_path=str(Path(tmp) / "testbench.cpp"),
+                prepared_reference_sha256=result["prepared_reference_sha256"],
+                prepared_reference_path=str(Path(tmp) / "orig_code.cpp"),
+                execution_identity=result["case_evidence_support"]["identity"],
+                executions=result["executions"],
+                case_evidence_path=str(case_path),
+                case_evidence_sha256=hashlib.sha256(case_path.read_bytes()).hexdigest(),
+            )
+            observation_evidence["evidence_sha256"] = _json_sha(observation_evidence)
+            (Path(tmp) / "public_observation_qualification.json").write_text(
+                json.dumps(observation_evidence, ensure_ascii=False, indent=2), encoding="utf-8",
+            )
+        result["public_observation_qualification"] = observation_evidence
+        if observation_evidence.get("status") == "contradiction_proven":
+            result.update(owner_authority="public_observation_mapping_contradiction", evidence_complete=True)
+            return _finish_failure(
+                result, status="contract_failed", owner="testbench",
+                evidence_source="compiler-bound input proxy and qualified Original execution",
+            )
         result.update(
             status="ok",
             failure_owner="none",

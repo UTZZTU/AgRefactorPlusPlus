@@ -1,6 +1,7 @@
 import hashlib
 import json, os, re, requests, shlex, shutil, subprocess, tempfile
 from collections.abc import Mapping
+from pathlib import Path
 from flow.base_agent import HLSAgentLoader
 from autogen.agentchat.group import ContextVariables # type: ignore
 import flow.tools as tools
@@ -771,6 +772,20 @@ def run_csynth(
         f"{top_kernel_name}_csynth.rpt",
     )
     log_path = os.path.join(work_dir, "csynth", "solution", "solution.log")
+    top_io_root = Path(work_dir) / "csynth"
+    old_top_io = list(top_io_root.rglob("top-io-fe.xml"))
+    archived_top_io = []
+    for path in old_top_io:
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("unsafe previous synthesis interface artifact")
+        archive_dir = tempfile.mkdtemp(prefix="csynth_previous_interface_", dir=work_dir)
+        archive_path = os.path.join(archive_dir, path.name)
+        os.replace(path, archive_path)
+        archived_top_io.append({"path": str(path), "archive_path": archive_path})
+    invocation["top_io"] = {
+        "isolated_before_launch": not any(top_io_root.rglob("top-io-fe.xml")),
+        "archived_previous": archived_top_io, "artifacts": [],
+    }
     artifacts = (
         ("expected_report", report_path, "archived_previous_report"),
         ("diagnostic_log", log_path, "archived_previous_log"),
@@ -850,6 +865,12 @@ def run_csynth(
                 and invocation[name]["isolated_before_launch"]
             ),
         })
+    invocation["top_io"]["artifacts"] = [
+        {"path": str(path.resolve()), "sha256": _file_sha256(str(path)),
+         "produced_by_current_invocation": invocation["top_io"]["isolated_before_launch"]}
+        for path in top_io_root.rglob("top-io-fe.xml")
+        if path.is_file() and not path.is_symlink() and path.stat().st_size > 0
+    ]
     report_current = invocation["expected_report"]["produced_by_current_invocation"]
     if result.get("timeout", False):
         status = "timeout"

@@ -16,6 +16,82 @@ from agrefactor.cpp_interface import (
 
 
 class CppContractFactsTests(unittest.TestCase):
+    def test_entry_constant_dependency_closure_replays_without_body_inputs(self):
+        source = '''
+constexpr int BASE = 3;
+const int WIDTH = BASE + 2;
+enum Dimensions { HEIGHT = WIDTH + 1 };
+constexpr int BODY_INPUT = 97;
+void top(int values[WIDTH][HEIGHT]) {
+    const int LOCAL_INPUT = BODY_INPUT;
+    values[0][0] = LOCAL_INPUT;
+}
+'''
+        facts = extract_top_type_contract(source, 'top')
+        self.assertEqual(facts['status'], 'confirmed', facts)
+        self.assertIn('constexpr int BASE', facts['declaration_context'])
+        self.assertIn('const int WIDTH', facts['declaration_context'])
+        self.assertIn('enum Dimensions', facts['declaration_context'])
+        self.assertNotIn('BODY_INPUT', facts['declaration_context'])
+        self.assertNotIn('LOCAL_INPUT', facts['declaration_context'])
+        replay = extract_top_type_contract(
+            facts['declaration_context'] + '\nvoid top(int values[WIDTH][HEIGHT]);', 'top',
+        )
+        self.assertEqual(replay['status'], 'confirmed', replay)
+        self.assertTrue(replay['translation_unit_complete'], replay)
+        self.assertEqual(facts['types'], [])
+        self.assertEqual(replay['fingerprint'], facts['fingerprint'])
+        self.assertEqual({item['name'] for item in facts['value_dependencies']}, {'BASE', 'WIDTH', 'HEIGHT'})
+
+    def test_record_constant_dependency_closure_replays(self):
+        source = 'constexpr int BASE=2; const int WIDTH=BASE+1; struct Data { int rows[WIDTH]; }; void top(Data *p);'
+        facts = extract_top_type_contract(source, 'top')
+        replay = extract_top_type_contract(facts['declaration_context'] + '\nvoid top(Data *p);', 'top')
+        self.assertEqual(replay['status'], 'confirmed', replay)
+        self.assertTrue(replay['translation_unit_complete'], replay)
+        self.assertEqual(replay['fingerprint'], facts['fingerprint'])
+
+    def test_constant_initializer_type_dependency_is_replayable(self):
+        source = 'struct Dimensions { int items[2]; }; constexpr int WIDTH=sizeof(Dimensions); void top(int values[WIDTH]);'
+        facts = extract_top_type_contract(source, 'top')
+        replay = extract_top_type_contract(facts['declaration_context'] + '\nvoid top(int values[WIDTH]);', 'top')
+        self.assertTrue(replay['translation_unit_complete'], replay)
+        self.assertEqual(replay['status'], 'confirmed', replay)
+        self.assertEqual(replay['fingerprint'], facts['fingerprint'])
+
+    def test_entry_namespace_and_header_constants_have_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            header = root / 'sizes.hpp'
+            header.write_text('namespace limits { constexpr int BASE=2; enum { HEIGHT=BASE+1 }; }\n', encoding='utf-8')
+            source = '#include "sizes.hpp"\nnamespace local { constexpr int WIDTH=limits::BASE+3; }\nvoid top(int values[local::WIDTH][limits::HEIGHT]);'
+            facts = extract_top_type_contract(source, 'top', include_dirs=(directory,))
+            self.assertEqual(facts['status'], 'confirmed', facts)
+            self.assertIn('#include "sizes.hpp"', facts['declaration_context'])
+            self.assertIn('namespace local', facts['declaration_context'])
+            replay = extract_top_type_contract(
+                facts['declaration_context'] + '\nvoid top(int values[local::WIDTH][limits::HEIGHT]);',
+                'top', include_dirs=(directory,),
+            )
+            self.assertTrue(replay['translation_unit_complete'], replay)
+            dependencies = {item['name']:item for item in facts['value_dependencies']}
+            self.assertEqual(dependencies['limits::BASE']['declaration']['source_path'], str(header))
+            self.assertTrue(dependencies['local::WIDTH']['dependencies'])
+
+    def test_complex_constant_function_is_not_copied_into_context(self):
+        source = 'constexpr int extent() { return 4; } constexpr int WIDTH=extent(); void top(int values[WIDTH]);'
+        facts = extract_top_type_contract(source, 'top')
+        self.assertEqual(facts['status'], 'unknown', facts)
+        self.assertTrue(any('constant_initializer_requires_function' in item for item in facts['unresolved']))
+        self.assertNotIn('return 4', facts['declaration_context'])
+
+    def test_class_constant_does_not_copy_unrelated_function_bodies(self):
+        source = 'struct Limits { static constexpr int WIDTH=4; static constexpr int calculate() { return 99; } }; void top(int values[Limits::WIDTH]);'
+        facts = extract_top_type_contract(source, 'top')
+        self.assertEqual(facts['status'], 'unknown', facts)
+        self.assertTrue(any('constant_scope_requires_function_body' in item for item in facts['unresolved']))
+        self.assertNotIn('return 99', facts['declaration_context'])
+
     def test_comment_tokens_exclude_literals_and_keep_utf8_crlf_offsets(self):
         source = (
             '// 中文\r\nconst char *a="// BEGIN";\r\n'

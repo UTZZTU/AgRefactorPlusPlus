@@ -904,6 +904,21 @@ def run_vitis_csim(
                 material["typed_outcome_identity"],
             )
         )
+        if deterministic_candidate and cv.get("csim_public_observation_qualification"):
+            from flow.tools.result_mapping import validated_observation_contradiction
+
+            contradiction = validated_observation_contradiction(
+                cv["csim_public_observation_qualification"], testbench_code=cv["testbench"], original_code=cv["orig_code"],
+            )
+            if contradiction is not None:
+                invocation["runtime_classification"] = {
+                    "status": "failed", "failure_kind": "public_observation_mapping_contradiction",
+                    "failure_owner": "testbench", "owner_authority": "public_observation_mapping_contradiction",
+                    "reason_code": "frozen_public_observation_contract_requires_regeneration",
+                    "repair_eligible": False, "evidence_complete": True, "observation_qualification": contradiction,
+                }
+                _write_json(invocation_path, invocation)
+                return "csim_failed", diagnostic
         if deterministic_candidate:
             invocation["runtime_classification"] = {
                 "status": "failed",

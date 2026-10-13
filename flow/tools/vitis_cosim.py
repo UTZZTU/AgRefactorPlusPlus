@@ -20,7 +20,7 @@ from flow.tools.typed_testbench_outcome import (
 )
 from agrefactor.config import TargetProfile, resolve_target_profile
 from agrefactor.cpp_interface import extract_top_interface
-from agrefactor.vitis_interface import discover_top_io
+from agrefactor.vitis_interface import discover_top_io, parse_current_top_io
 from agrefactor.runtime.budget import (
     BudgetExceededError,
     BudgetManager,
@@ -866,6 +866,7 @@ def _finalize_result(
         raise RuntimeError("COSIM invocation evidence was not persisted")
     return {
         **summary,
+        "interface_contract_evidence": invocation.get("interface_contract_evidence"),
         "diagnostic": _invocation_diagnostic(invocation) or None,
         "evidence_sha256": evidence_sha,
         "invocation_path": str(invocation_path),
@@ -885,6 +886,7 @@ def run_vitis_cosim(
     suite_id: str = "public",
     runtime_contract: Mapping[str, Any] | None = None,
     extra_sources: tuple[str, ...] = (),
+    synthesized_interface_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run one Public suite through a real Vitis RTL COSIM chain."""
 
@@ -963,7 +965,21 @@ def run_vitis_cosim(
     for index, path in enumerate(normalized_extra_sources, start=1):
         files[f"extra_source_{index:03d}"] = root / path
 
-    if interface_depths:
+    if synthesized_interface_evidence is not None:
+        evidence = synthesized_interface_evidence
+        if not (evidence.get("status") == "verified"
+                and evidence.get("candidate_sha256") == sha256(candidate_code.encode("utf-8")).hexdigest()
+                and evidence.get("top_name") == top
+                and evidence.get("target_profile") == profile.to_dict()
+                and set(evidence.get("actual_maxi_ports", ())) == set(interface_depths)
+                and set(evidence.get("source_to_hardware", {})) == set(interface_depths)):
+            raise ValueError("COSIM current synthesis interface identity or contract mismatch")
+        source_to_hardware = dict(evidence["source_to_hardware"])
+        for port, bundle in source_to_hardware.items():
+            hardware_depths[bundle] = max(hardware_depths.get(bundle, 0), interface_depths[port])
+        directive_depths = dict(interface_depths)
+        interface_mapping_status = "verified"
+    elif interface_depths:
         (
             hardware_depths,
             source_to_hardware,
@@ -1003,6 +1019,7 @@ def run_vitis_cosim(
             "status": interface_mapping_status,
             "reason": interface_mapping_reason,
         },
+        "csynth_interface_evidence": synthesized_interface_evidence,
         "typed_outcome_adapter": {
             "kind": "raw_runtime_atomic_wrapper_v2",
             "evidence_path": str(
@@ -1090,6 +1107,14 @@ def run_vitis_cosim(
         },
     }
     _atomic_json(invocation_path, invocation)
+
+    # The COSIM prerequisite synthesis must not reuse a previous top-io report.
+    project_root = root / "agrefactor_public_cosim"
+    for path in project_root.rglob("top-io-fe.xml"):
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("unsafe previous COSIM interface artifact")
+        archive = Path(tempfile.mkdtemp(prefix="cosim_previous_interface_", dir=root))
+        os.replace(path, archive / path.name)
 
     version_probe_launched = False
     if interface_mapping_status in {"conflicting", "incomplete"}:
@@ -1354,7 +1379,26 @@ def run_vitis_cosim(
         typed_started,
         typed,
     )
-    synthesized_interface = discover_top_io(root, expected_top=top)
+    synthesized_interface = discover_top_io(project_root, expected_top=top)
+    if synthesized_interface_evidence is not None:
+        if synthesized_interface is not None:
+            synthesized_interface = parse_current_top_io(
+                synthesized_interface.evidence_path, expected_top=top,
+            )
+        if synthesized_interface is None:
+            invocation["synthesized_interface"] = {"status": "incomplete"}
+            invocation["interface_contract_evidence"] = {
+                "status": "incomplete", "failure_substage": "post_cosim_interface_validation",
+                "reason_code": "cosim_current_interface_report_incomplete",
+                "expected_depth_ports": sorted(interface_depths),
+            }
+            return _finalize_result(
+                invocation_path, invocation, status="failed",
+                failure_kind="ownership_unknown", failure_owner="unknown",
+                reason_code="cosim_current_interface_report_incomplete",
+                timed_out=timed_out, returncode=returncode,
+                version_probe_launched=True, cosim_launched=True,
+            )
     interface_contract_mismatch = False
     if synthesized_interface is None:
         invocation["synthesized_interface"] = {"status": "unknown"}
@@ -1363,18 +1407,18 @@ def run_vitis_cosim(
         declared_depth_ports = set(interface_depths)
         declared_maxi_depth_ports = set(
             source_to_hardware
-            if interface_mapping_status == "inferred"
+            if interface_mapping_status in {"inferred", "verified"}
             else declared_depth_ports
         )
         actual_source_to_hardware = synthesized_interface.source_to_maxi_hardware
         actual_hardware_ports = set(synthesized_interface.maxi_hardware_ports)
         declared_hardware_ports = set(
             hardware_depths
-            if interface_mapping_status in {"inferred", "default_bundle"}
+            if interface_mapping_status in {"inferred", "default_bundle", "verified"}
             else interface_depths
         )
         source_mapping_mismatch = (
-            interface_mapping_status == "inferred"
+            interface_mapping_status in {"inferred", "verified"}
             and actual_source_to_hardware != source_to_hardware
         )
         source_port_mismatch = (
@@ -1414,6 +1458,20 @@ def run_vitis_cosim(
         }
 
     if interface_contract_mismatch:
+        invocation["interface_contract_evidence"] = {
+            "status": "verified",
+            "failure_substage": "post_cosim_interface_validation",
+            "interface_mapping_status": "verified" if synthesized_interface is not None else "unknown",
+            "candidate_sha256": sha256(candidate_code.encode("utf-8")).hexdigest(),
+            "top_name": top,
+            "report_sha256": _file_sha256(Path(synthesized_interface.evidence_path)),
+            "actual_maxi_ports": sorted(actual_depth_ports),
+            "expected_depth_ports": sorted(actual_depth_ports),
+            "declared_depth_ports": sorted(declared_maxi_depth_ports),
+            "source_to_hardware": actual_source_to_hardware,
+            "typed_status": typed.get("status") if typed is not None else None,
+            "typed_identity_verified": typed is not None and typed.get("identity_verified") is True,
+        }
         return _finalize_result(
             invocation_path,
             invocation,

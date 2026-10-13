@@ -136,6 +136,30 @@ class ResultMappingIntegrationTests(unittest.TestCase):
             self.assertIsNotNone(self.optimizer._load_golden_cache(directory, "cache", "source", "domain", mapping["sha256"]))
             self.assertIsNone(self.optimizer._load_golden_cache(directory, "cache", "source", "domain", "other-mapping"))
 
+    def test_public_repair_summary_retains_bounded_manifest_difference(self):
+        public = testbench([3, -2])
+        broken = public.replace('int mismatch = 0;', 'int mismatch = missing_name;')
+        altered = public.replace('Original call return status', 'different observation ' * 1000)
+        repairer = Mock()
+        repairer.repair.side_effect = [altered, public]
+        repairer.audit_events = []
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.loop_type(
+                preflight=self.preflight_type(), repairer=repairer, max_repair_attempts=2
+            ).run(
+                work_dir=directory, testbench_code=broken,
+                original_code=ORIGINAL, candidate_code=CANDIDATE,
+                original_top_function='source_task', candidate_top_function='source_task_hls',
+            )
+        self.assertTrue(result.succeeded, result.reason)
+        self.assertEqual(result.repair_attempts_used, 2)
+        summary = repairer.repair.call_args_list[1].args[0].prior_attempt_summaries[-1]
+        self.assertIn('/observables/0/original', summary)
+        self.assertIn('Original call return status', summary)
+        self.assertIn('truncated', summary)
+        self.assertIn('encoded_length', summary)
+        self.assertIn('expected', summary)
+
     def test_public_repair_cannot_change_frozen_user_type_layout(self):
         from flow.tools.tb_optimizer import freeze_public_type_contract
 

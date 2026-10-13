@@ -521,6 +521,119 @@ class FrozenAbiAndRepairLimitTests(unittest.TestCase):
         self.assertNotIn("raw diagnostic prefix", message)
 
 
+    def test_abi_feedback_names_actual_compiler_difference(self):
+        changes = [
+            ('float process_top_hls(int value);', '/result_type', 'float'),
+            ('int process_top_hls(double value);', '/parameters/0/canonical_type', 'double'),
+            ('int process_top_hls(int renamed);', '/parameters/0/name', 'renamed'),
+            ('int process_top_hls(int value, int extra);', '/parameters/length', '2'),
+            ('extern "C" int process_top_hls(int value);', '/language_linkage', 'c'),
+        ]
+        for declaration, path, actual in changes:
+            with self.subTest(path=path), self.assertRaises(tb_optimizer.ModelArtifactError) as caught:
+                tb_optimizer._validate_frozen_candidate_abi(
+                    declaration, 'process_top_hls', self.declaration,
+                )
+            message = str(caught.exception)
+            self.assertIn(path, message)
+            self.assertIn('expected', message)
+            self.assertIn('actual', message)
+            self.assertIn(actual, message)
+            self.assertTrue(caught.exception.contract_evidence['differences'])
+
+    def test_actual_hidden_repair_request_and_artifact_keep_abi_difference(self):
+        wrong = self.testbench.replace('process_top_hls(int value)', 'process_top_hls(float changed)')
+        with tempfile.TemporaryDirectory() as directory:
+            result, agent, _measure = self.run_artifacts(
+                [wrong, self.testbench, self.stub, self.probe], [self.passed],
+                hidden_generation=True, artifact_root=directory,
+            )
+            message = agent.run.call_args_list[1].kwargs['message']
+            for value in ('/parameters/0/canonical_type', '/parameters/0/name', 'float', 'changed'):
+                self.assertIn(value, message)
+            evidence = json.loads((Path(directory) / 'trajectory_000/contract_failures.json').read_text())
+            self.assertEqual(evidence['evidence_view'], 'operator_full')
+            self.assertEqual(len(evidence['failures']), 1)
+            failure = evidence['failures'][0]
+            self.assertEqual(failure['split'], 'hidden')
+            self.assertEqual(failure['request'], 1)
+            self.assertTrue(failure['response_sha256'])
+            self.assertEqual(len(failure['details']['differences']), 2)
+            self.assertEqual(result['artifact_event_counts']['testbench']['repair_requests'], 1)
+
+    def test_wrapped_mapping_error_preserves_complete_details_without_round(self):
+        failure = ValueError('contract_contradiction: frozen manifest changed; path=/observables/0/original; expected=known; actual=changed')
+        failure.contract_evidence = {'differences': [{'path': '/observables/0/original', 'expected': 'known', 'actual': 'changed' * 500}]}
+        agent = Mock()
+        agent.run.return_value = Mock(messages=[{'content': '```cpp\n' + self.testbench + '\n```'}])
+        with tempfile.TemporaryDirectory() as directory, patch.object(tb_optimizer, 'HLSAgentLoader') as loader, patch.object(
+            tb_optimizer, 'validate_frozen_result_mapping', side_effect=failure,
+        ), self.assertRaises(tb_optimizer.ModelArtifactError) as caught:
+            loader.return_value.load_agent.return_value = agent
+            tb_optimizer.run_trajectory(
+                self.original, 'process_top', 1, 100.0, None, False,
+                pinned_hls_decl=self.declaration, pinned_result_mapping={'sha256': 'frozen-identity', 'shared_cpp': '// frozen', 'observables': []},
+                hidden_generation=True, emit_final_text=False, max_repairs=1, artifact_root=directory,
+            )
+        self.assertEqual(agent.run.call_count, 2)
+        self.assertEqual(caught.exception.artifact_counts['repairs_used'], 1)
+        self.assertEqual(len(caught.exception.contract_failures), 2)
+        self.assertEqual(caught.exception.contract_failures[0]['details'], failure.contract_evidence)
+        self.assertIn('contract_failures.json', caught.exception.evidence_ref)
+
+    def test_prior_contract_evidence_survives_provider_interruption(self):
+        wrong = self.testbench.replace('process_top_hls(int value)', 'process_top_hls(double value)')
+        agent = Mock()
+        agent.run.side_effect = [Mock(messages=[{'content': '```cpp\n' + wrong + '\n```'}]), TimeoutError('provider interrupted')]
+        with tempfile.TemporaryDirectory() as directory, patch.object(tb_optimizer, 'HLSAgentLoader') as loader, self.assertRaises(TimeoutError) as caught:
+            loader.return_value.load_agent.return_value = agent
+            tb_optimizer.run_trajectory(
+                self.original, 'process_top', 1, 100.0, None, False,
+                pinned_hls_decl=self.declaration, hidden_generation=True,
+                emit_final_text=False, artifact_root=directory,
+            )
+        error = caught.exception
+        self.assertEqual(len(error.contract_failures), 1)
+        self.assertEqual(error.contract_failures[0]['details']['differences'][0]['path'], '/parameters/0/canonical_type')
+        self.assertEqual(error.artifact_counts['artifact_event_counts']['testbench']['requests'], 2)
+        self.assertEqual(error.artifact_counts['artifact_event_counts']['testbench']['responses'], 1)
+        self.assertIn('contract_failures.json', error.evidence_ref)
+
+    def test_prior_contract_evidence_survives_later_stub_interruption(self):
+        wrong = self.testbench.replace('process_top_hls(int value)', 'process_top_hls(double value)')
+        agent = Mock()
+        agent.run.side_effect = [
+            Mock(messages=[{'content': '```cpp\n' + wrong + '\n```'}]),
+            Mock(messages=[{'content': '```cpp\n' + self.testbench + '\n```'}]),
+            TimeoutError('stub provider interrupted'),
+        ]
+        with tempfile.TemporaryDirectory() as directory, patch.object(tb_optimizer, 'HLSAgentLoader') as loader, self.assertRaises(TimeoutError) as caught:
+            loader.return_value.load_agent.return_value = agent
+            tb_optimizer.run_trajectory(
+                self.original, 'process_top', 1, 100.0, None, False,
+                pinned_hls_decl=self.declaration, hidden_generation=True,
+                emit_final_text=False, artifact_root=directory,
+            )
+        error = caught.exception
+        self.assertEqual(len(error.contract_failures), 1)
+        self.assertEqual(error.contract_failures[0]['details']['differences'][0]['path'], '/parameters/0/canonical_type')
+        events = error.artifact_counts['artifact_event_counts']
+        self.assertEqual((events['testbench']['requests'], events['testbench']['responses']), (2, 2))
+        self.assertEqual((events['stub']['requests'], events['stub']['responses']), (1, 0))
+        self.assertIn('contract_failures.json', error.evidence_ref)
+
+    def test_hidden_shared_exhaustion_keeps_reference_without_exposing_details(self):
+        secret = 'private-held-out-response'
+        payload = tb_optimizer.TestbenchGenerationExhausted(
+            split='hidden', stage='hidden_generation_qualification', trajectories=[{
+                'trajectory_idx': 0, 'error': secret, 'qualified': False,
+                'failure_owner': 'unknown', 'evidence_ref': 'trajectory_000/contract_failures.json',
+                'qualification_checks_used': 2, 'repairs_used': 1,
+            }],
+        ).to_dict()
+        self.assertNotIn(secret, json.dumps(payload))
+        self.assertEqual(payload['trajectory_summaries'][0]['evidence_ref'], 'trajectory_000/contract_failures.json')
+
 class ArtifactEventAccountingTests(unittest.TestCase):
     @staticmethod
     def response(content):

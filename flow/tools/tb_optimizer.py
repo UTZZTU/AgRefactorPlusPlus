@@ -153,6 +153,11 @@ class TestbenchGenerationExhausted(RuntimeError):
             -self._DIAGNOSTIC_LIMIT:
         ]
 
+        reasons = {item.get("termination_reason", "qualification_stopped") for item in summaries}
+        termination_reason = next(iter(reasons)) if len(reasons) == 1 else "mixed_termination"
+        actual_exhaustion = all(item.get("retry_exhausted", False) for item in summaries)
+        if retry_exhausted is not None:
+            actual_exhaustion = retry_exhausted
         self._payload = {
             "schema_version": self.schema_version,
             "failure_kind": (
@@ -178,7 +183,9 @@ class TestbenchGenerationExhausted(RuntimeError):
             "artifact_response_count": sum(item.get("responses", 0) for item in artifact_events),
             "artifact_format_retry_count": sum(item.get("format_retries", 0) for item in artifact_events),
             "coverage_check_count": sum(item.get("coverage_checks_used", 0) for item in trajectories),
-            "retry_exhausted": False if is_provided else (True if retry_exhausted is None else retry_exhausted),
+            "retry_exhausted": False if is_provided else actual_exhaustion,
+            "termination_reason": "provided_qualification_failed" if is_provided else termination_reason,
+            "repair_eligible": False if is_provided else any(item.get("repair_eligible", True) for item in summaries),
             "failure_owner": failure_owner,
             "next_action": (
                 "review_required_provided"
@@ -293,6 +300,9 @@ class TestbenchGenerationExhausted(RuntimeError):
             "next_action": action,
             "diagnostic_kind": diagnostic_kind,
             "diagnostic_excerpt": diagnostic_excerpt,
+            "termination_reason": trajectory.get("termination_reason", "qualification_stopped"),
+            "retry_exhausted": bool(trajectory.get("retry_exhausted", False)),
+            "repair_eligible": bool(trajectory.get("repair_eligible", True)),
             **({"owner_authority": last["owner_authority"]} if "owner_authority" in last else {}),
             **{
                 key: trajectory[key] for key in (
@@ -356,8 +366,9 @@ def public_runtime_contract_depth_ports(
     source_path: Optional[str] = None,
     include_dirs: Tuple[str, ...] = (),
     compile_flags: Tuple[str, ...] = (),
+    confirmed_depth_ports: Optional[Tuple[str, ...]] = None,
 ) -> Tuple[str, ...]:
-    """Return pointer/array Candidate ports that require COSIM depths."""
+    """Return compiler memory candidates, or report-confirmed MAXI ports."""
 
     if not isinstance(testbench_code, str):
         raise TypeError("testbench_code must be a string")
@@ -388,12 +399,17 @@ def public_runtime_contract_depth_ports(
             compile_flags=compile_flags,
         )
     if interface is None:
-        return ()
+        raise ModelArtifactError("Public runtime contract interface facts are incomplete")
+    if confirmed_depth_ports is not None:
+        unknown = set(confirmed_depth_ports) - {parameter.name for parameter in interface.parameters}
+        if unknown:
+            raise ModelArtifactError("synthesized source ports are absent from frozen ABI: " + ", ".join(sorted(unknown)))
+        return tuple(sorted(set(confirmed_depth_ports)))
     return tuple(
         sorted(
             parameter.name
             for parameter in interface.parameters
-            if parameter.pointer_like
+            if parameter.pointer_like or parameter.reference_target_kind == "record"
         )
     )
 
@@ -407,6 +423,7 @@ def validate_public_runtime_contract(
     source_path: Optional[str] = None,
     include_dirs: Tuple[str, ...] = (),
     compile_flags: Tuple[str, ...] = (),
+    confirmed_depth_ports: Optional[Tuple[str, ...]] = None,
 ) -> Dict[str, Any]:
     """Normalize a generated contract and bind it to the frozen Public ABI."""
 
@@ -428,6 +445,7 @@ def validate_public_runtime_contract(
             source_path=source_path,
             include_dirs=include_dirs,
             compile_flags=compile_flags,
+            confirmed_depth_ports=confirmed_depth_ports,
         )
     )
 
@@ -503,6 +521,21 @@ def freeze_public_type_contract(
     )
     if facts.get("status") != "confirmed":
         raise _incomplete_type_contract_error("Public Candidate", facts)
+    declaration = extract_hls_decl_from_testbench(testbench_code, candidate_name, **parse_context)
+    replay_facts: Dict[str, Any] = {}
+    replay = extract_top_interface(
+        facts.get("declaration_context", "") + "\n" + (declaration or ""),
+        candidate_name, require_definition=False, _entry_facts=replay_facts, **parse_context,
+    )
+    replay_diagnostics = replay_facts.get("diagnostics", [])
+    replay_complete = replay_facts.get("translation_unit_complete", True)
+    replay_errors = [item for item in replay_diagnostics if isinstance(item, dict) and item.get("severity", 0) >= 3]
+    if replay is None or not replay_complete or replay_errors:
+        error = _incomplete_type_contract_error("frozen Public Candidate", replay_facts)
+        error.contract_evidence = {"check": "frozen_declaration_replay", "origin": "declaration_extraction",
+                                   "translation_unit_complete": replay_complete,
+                                   "diagnostics": replay_diagnostics}
+        raise error
     return facts
 
 
@@ -525,7 +558,17 @@ def _incomplete_type_contract_error(component: str, facts: Dict[str, Any]) -> "M
             or (errors and source_path and all(item.get("file") == source_path for item in errors))
         )
     )
+    if component == "frozen Public Candidate":
+        error.termination_reason = "frozen_contract_precondition_failed"
+        error.retry_exhausted = False
     return error
+
+
+def public_type_contract_sha256(contract: Optional[Dict[str, Any]]) -> str:
+    if not contract:
+        return ""
+    return hashlib.sha256(json.dumps(contract, sort_keys=True, separators=(",", ":"),
+                                     ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
 def frozen_type_instruction(contract: Optional[Dict[str, Any]]) -> str:
@@ -644,9 +687,29 @@ def _validate_frozen_candidate_abi(
             "generated Candidate", observed_facts,
         )
     if not interfaces_equivalent(observed, frozen):
-        raise ModelArtifactError(
-            "Testbench changed the externally frozen Public-derived ABI"
+        differences = []
+        for field in ("name", "result_type", "language_linkage"):
+            expected, actual = getattr(frozen, field), getattr(observed, field)
+            if field == "language_linkage" and (expected is None or actual is None):
+                continue
+            if expected != actual:
+                differences.append({"path": "/" + field, "expected": expected, "actual": actual})
+        if len(frozen.parameters) != len(observed.parameters):
+            differences.append({"path": "/parameters/length", "expected": len(frozen.parameters),
+                                "actual": len(observed.parameters)})
+        for index, (expected, actual) in enumerate(zip(frozen.parameters, observed.parameters)):
+            for field in ("canonical_type", "name"):
+                if getattr(expected, field) != getattr(actual, field):
+                    differences.append({"path": f"/parameters/{index}/{field}",
+                                        "expected": getattr(expected, field), "actual": getattr(actual, field)})
+        error = ModelArtifactError(
+            "Testbench changed the externally frozen Public-derived ABI; differences="
+            + json.dumps(differences[:8], ensure_ascii=False)
+            + "; difference_count=" + str(len(differences))
+            + "; omitted_difference_count=" + str(max(0, len(differences) - 8))
         )
+        error.contract_evidence = {"check": "frozen_candidate_abi", "differences": differences}
+        raise error
 
 
 def _validate_original_language_linkage(
@@ -1560,13 +1623,15 @@ def _public_runtime_contract_prompt(
 ) -> str:
     return (
         "Determine conservative Vitis HLS C/RTL cosimulation depths for the "
-        "frozen Candidate pointer/array interfaces used by this Public "
-        "testbench. A depth counts objects of the immediate pointee type, "
+        "frozen Candidate pointer/array and record-reference memory candidates used by this Public "
+        "testbench. Record references are provisional candidates; the current synthesis report "
+        "decides MAXI versus AXI-Lite. A depth counts objects of the immediate pointee type, "
         "not scalar values recursively contained inside that type. For "
         "example, an int* that points to int values[64] needs depth 64, but "
         "T (*p)[R][C] passed the address of one T[R][C] object needs depth "
         "1, not R*C. A pointer to an array of structs similarly counts "
-        "struct objects, not their fields. Use the maximum contiguous "
+        "struct objects, not their fields. A reference to one record uses one immediate object; "
+        "do not multiply its internal fields or arrays. Use the maximum contiguous "
         "top-level object span used by any single Candidate call. Do not "
         "add depths across sequential test cases or repeated calls that "
         "reuse storage. Prefer a safe upper bound in these top-level units "
@@ -1597,6 +1662,7 @@ def _runtime_contract_from_model_response(
     source_path: Optional[str] = None,
     include_dirs: Tuple[str, ...] = (),
     compile_flags: Tuple[str, ...] = (),
+    confirmed_depth_ports: Optional[Tuple[str, ...]] = None,
 ) -> Dict[str, Any]:
     if not isinstance(content, str):
         raise ModelArtifactError("model response content must be a string")
@@ -1627,6 +1693,7 @@ def _runtime_contract_from_model_response(
         source_path=source_path,
         include_dirs=include_dirs,
         compile_flags=compile_flags,
+        confirmed_depth_ports=confirmed_depth_ports,
     )
 
 
@@ -1642,6 +1709,10 @@ def generate_public_runtime_contract(
     source_path: Optional[str] = None,
     include_dirs: Tuple[str, ...] = (),
     compile_flags: Tuple[str, ...] = (),
+    confirmed_depth_ports: Optional[Tuple[str, ...]] = None,
+    max_response_attempts: Optional[int] = None,
+    before_request: Any = None,
+    failure_feedback: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Generate and validate the Public COSIM depth contract."""
 
@@ -1652,6 +1723,7 @@ def generate_public_runtime_contract(
         source_path=source_path,
         include_dirs=include_dirs,
         compile_flags=compile_flags,
+        confirmed_depth_ports=confirmed_depth_ports,
     )
     if not required_ports:
         return {
@@ -1672,12 +1744,20 @@ def generate_public_runtime_contract(
         frozen_hls_decl=frozen_hls_decl,
         required_ports=required_ports,
     )
+    if failure_feedback is not None:
+        message += "\nCurrent Public contract evidence and complete repair history:\n" + json.dumps(failure_feedback, sort_keys=True)
     first_turn = True
     initial_message = message
     failures: list[str] = []
     last_error: Exception | None = None
-    for attempt in range(_ARTIFACT_RESPONSE_RETRIES + 1):
+    response_limit = (_ARTIFACT_RESPONSE_RETRIES + 1
+                      if max_response_attempts is None else max_response_attempts)
+    if isinstance(response_limit, bool) or not isinstance(response_limit, int) or response_limit <= 0:
+        raise ValueError("max_response_attempts must be positive")
+    for attempt in range(response_limit):
         try:
+            if before_request is not None:
+                before_request()
             raw = _agent_run_once(agent, message, first_turn)
             return _runtime_contract_from_model_response(
                 raw,
@@ -1687,11 +1767,12 @@ def generate_public_runtime_contract(
                 source_path=source_path,
                 include_dirs=include_dirs,
                 compile_flags=compile_flags,
+                confirmed_depth_ports=confirmed_depth_ports,
             )
         except ModelArtifactError as exc:
             last_error = exc
             failures.append(f"Attempt {attempt}: {exc}")
-            if attempt >= _ARTIFACT_RESPONSE_RETRIES:
+            if attempt + 1 >= response_limit:
                 break
             first_turn = False
             message = (
@@ -2002,6 +2083,7 @@ def run_trajectory(
     hls_name = f"{kernel_name}_hls"
     rounds: List[Dict[str, Any]] = []
     pending_testbench_contract_errors: List[str] = []
+    testbench_contract_failures: List[Dict[str, Any]] = []
     external_abi_frozen = bool(
         isinstance(pinned_hls_decl, str)
         and pinned_hls_decl.strip()
@@ -2044,6 +2126,35 @@ def run_trajectory(
                 json.dumps(counts_snapshot(), indent=2), encoding="utf-8",
             )
 
+    def attach_contract_history(exc):
+        if testbench_contract_failures:
+            exc.contract_failures = list(testbench_contract_failures)
+            if artifact_root:
+                exc.evidence_ref = f"trajectory_{trajectory_idx:03d}/contract_failures.json"
+
+    def preserve_contract_failure(exc, attempt, response_code):
+        record = {
+            "split": "hidden" if hidden_generation else "public",
+            "attempt": attempt,
+            "request": artifact_counts["artifact_event_counts"].get("testbench", {}).get("requests", 0),
+            "error_type": type(exc).__name__, "message": str(exc),
+            "details": getattr(exc, "contract_evidence", None),
+            "response_sha256": hashlib.sha256(response_code.encode("utf-8")).hexdigest() if response_code is not None else None,
+            "frozen_abi_sha256": hashlib.sha256(frozen_hls_decl.encode("utf-8")).hexdigest() if frozen_hls_decl else None,
+            "frozen_mapping_sha256": (pinned_result_mapping or {}).get("sha256"),
+        }
+        testbench_contract_failures.append(record)
+        exc.contract_failures = list(testbench_contract_failures)
+        if artifact_root:
+            error_dir = Path(artifact_root) / f"trajectory_{trajectory_idx:03d}"
+            error_dir.mkdir(parents=True, exist_ok=True)
+            evidence_ref = f"trajectory_{trajectory_idx:03d}/contract_failures.json"
+            (Path(artifact_root) / evidence_ref).write_text(
+                json.dumps({"evidence_view": "operator_full", "failures": testbench_contract_failures},
+                           indent=2, ensure_ascii=False), encoding="utf-8",
+            )
+            exc.evidence_ref = evidence_ref
+
     def record_artifact_event(kind: str, event: str, role: str = "initial") -> None:
         if kind == "coverage":
             artifact_counts["coverage_checks_used"] += 1
@@ -2071,6 +2182,7 @@ def run_trajectory(
             return _measure_qualified_coverage(*args, **kwargs)
         except Exception as exc:
             exc.artifact_counts = counts_snapshot()
+            attach_contract_history(exc)
             raise
 
     def request_testbench(
@@ -2108,6 +2220,8 @@ def run_trajectory(
                         )
                     except ModelArtifactError as exc:
                         exc.repair_eligible = False
+                        exc.termination_reason = "frozen_contract_precondition_failed"
+                        exc.retry_exhausted = False
                         raise
                 value = _request_cpp_artifact(
                     agent,
@@ -2175,11 +2289,16 @@ def run_trajectory(
                         )
                     if not exc.repair_eligible:
                         raise
-                    raise ModelArtifactError(str(exc)) from exc
+                    error = ModelArtifactError(str(exc))
+                    error.contract_evidence = getattr(exc, "contract_evidence", None)
+                    raise error from exc
                 except ValueError as exc:
-                    raise ModelArtifactError(str(exc)) from exc
+                    error = ModelArtifactError(str(exc))
+                    error.contract_evidence = getattr(exc, "contract_evidence", None)
+                    raise error from exc
                 return value
             except ModelArtifactError as exc:
+                preserve_contract_failure(exc, attempt, value if response_returned else None)
                 if response_returned:
                     pending_testbench_contract_errors.append(
                         "Testbench request {}: {}".format(
@@ -2188,6 +2307,7 @@ def run_trajectory(
                     )
                 if not getattr(exc, "repair_eligible", True):
                     exc.artifact_counts = counts_snapshot()
+                    attach_contract_history(exc)
                     if artifact_root and hasattr(exc, "type_contract"):
                         error_dir = Path(artifact_root) / f"trajectory_{trajectory_idx:03d}"
                         error_dir.mkdir(parents=True, exist_ok=True)
@@ -2213,12 +2333,19 @@ def run_trajectory(
                 )
             except Exception as exc:
                 exc.artifact_counts = counts_snapshot()
+                attach_contract_history(exc)
                 raise
         error = ModelArtifactError(
             "model did not return a Testbench compatible with the required "
-            "Candidate/Testbench contract:\n" + "\n".join(failures)[-1500:]
+            "Candidate/Testbench contract:\n" + "\n".join(
+                failure if len(failure) <= 1200 else failure[:1200] + " [truncated; full evidence retained]"
+                for failure in failures
+            )
         )
         error.artifact_counts = counts_snapshot()
+        error.termination_reason = "bounded_generation_exhausted"
+        error.retry_exhausted = True
+        attach_contract_history(error)
         raise error from last_error
 
     def request_stub(
@@ -2282,6 +2409,7 @@ def run_trajectory(
             except ModelArtifactError as exc:
                 if not getattr(exc, "repair_eligible", True):
                     exc.artifact_counts = counts_snapshot()
+                    attach_contract_history(exc)
                     raise
                 last_error = exc
                 failures.append(f"Attempt {attempt}: {exc}")
@@ -2295,11 +2423,15 @@ def run_trajectory(
                 )
             except Exception as exc:
                 exc.artifact_counts = counts_snapshot()
+                attach_contract_history(exc)
                 raise
         error = ModelArtifactError(
             "model did not return a Stub matching the frozen Candidate ABI"
         )
         error.artifact_counts = counts_snapshot()
+        error.termination_reason = "bounded_generation_exhausted"
+        error.retry_exhausted = True
+        attach_contract_history(error)
         raise error from last_error
 
     testbench_code = request_testbench(
@@ -2544,6 +2676,8 @@ def run_trajectory(
             )
             pending_testbench_contract_errors.clear()
 
+    termination_reason = "bounded_generation_exhausted"
+    retry_exhausted = True
     for round_index in range(2, K + 1):
         previous = rounds[-1]
         if (
@@ -2565,6 +2699,8 @@ def run_trajectory(
         ):
             action = "repair_testbench_stub"
         if action in {"review_toolchain", "review_original", "review_unknown"}:
+            termination_reason = "qualification_review_required"
+            retry_exhausted = False
             break
         if action in {"repair_testbench", "repair_testbench_stub", "repair_abi_testbench_stub"} and artifact_counts["artifact_event_counts"].get("testbench", {}).get("repair_requests", 0) >= max_repairs:
             break
@@ -2939,7 +3075,17 @@ def run_trajectory(
         )
     except Exception as exc:
         exc.artifact_counts = counts_snapshot()
+        attach_contract_history(exc)
         raise
+    if not result.get("qualified") and result.get("trajectory_status") == "coverage_failed":
+        final_action = (
+            _hidden_generation_action(rounds[-1], orig_code=orig_code)
+            if hidden_generation else _coverage_action(rounds[-1])
+        )
+        if final_action in {"review_toolchain", "review_original", "review_unknown"}:
+            termination_reason = "qualification_review_required"
+            retry_exhausted = False
+        result.update(termination_reason=termination_reason, retry_exhausted=retry_exhausted)
     result.update(
         artifact_counter_scope="testbench_stub_probe",
         **counts_snapshot(),
@@ -3006,6 +3152,8 @@ def _finalize_trajectory(
     synth_ok = False
     synth_error = ""
     empty_stub = ""
+    synth_termination_reason = "bounded_generation_exhausted"
+    synth_retry_exhausted = True
 
     if expected_hls_name and orig_code is not None:
         original_name = (
@@ -3081,10 +3229,13 @@ def _finalize_trajectory(
                         budget=budget,
                         source_context=source_context,
                     )
-            if (
-                synth_ok
-                or retries_left <= 0
-            ):
+            if synth_ok:
+                synth_termination_reason = "qualified"
+                synth_retry_exhausted = False
+                break
+            if retries_left <= 0:
+                synth_termination_reason = "bounded_generation_exhausted"
+                synth_retry_exhausted = True
                 break
 
             retries_left -= 1
@@ -3192,6 +3343,8 @@ def _finalize_trajectory(
                 new_record.get("status") != "ok"
                 or new_record.get("cov_pct") is None
             ):
+                synth_termination_reason = "qualification_review_required"
+                synth_retry_exhausted = False
                 synth_error = (
                     new_record.get("compile_stderr")
                     or new_record.get("run_stderr")
@@ -3218,6 +3371,8 @@ def _finalize_trajectory(
             "synth_error": synth_error,
             "qualified": False,
             "trajectory_status": "synth_failed",
+            "termination_reason": synth_termination_reason,
+            "retry_exhausted": synth_retry_exhausted,
             "frozen_public_hls_decl": best.get(
                 "frozen_public_hls_decl",
                 "",
@@ -3291,6 +3446,15 @@ def _finalize_trajectory(
 
 
 # -------------------------- public-facing entrypoints --------------------------
+
+def _exception_termination_fields(exc) -> Dict[str, Any]:
+    return {
+        "termination_reason": getattr(exc, "termination_reason", "qualification_precondition_failed"
+                                      if not getattr(exc, "repair_eligible", True) else "generation_exception"),
+        "retry_exhausted": bool(getattr(exc, "retry_exhausted", False)),
+        "repair_eligible": bool(getattr(exc, "repair_eligible", True)),
+    }
+
 
 def _exception_artifact_counts(exc, artifact_root, trajectory_idx) -> Dict[str, Any]:
     counts = getattr(exc, "artifact_counts", None)
@@ -3379,7 +3543,9 @@ def optimize_tb_public(
                             "error": f"{type(exc).__name__}: {exc}",
                             **({"failure_owner": "unknown", "next_action": "review_unknown"}
                                if not getattr(exc, "repair_eligible", True) else {}),
+                            **_exception_termination_fields(exc),
                             **_exception_artifact_counts(exc, artifact_root, futures[future]),
+                            **({"evidence_ref": exc.evidence_ref} if getattr(exc, "evidence_ref", None) else {}),
                         }
                     )
 
@@ -3714,7 +3880,7 @@ def make_golden_hidden_tb(
     )
     orig_sha = hashlib.sha256(orig_code.encode("utf-8")).hexdigest()
     mapping_sha = pinned_result_mapping.get("sha256", "") if pinned_result_mapping else ""
-    type_sha = pinned_type_contract.get("fingerprint", "") if pinned_type_contract else ""
+    type_sha = public_type_contract_sha256(pinned_type_contract)
     cache_key = cache_key or kernel_name
     if cache_dir is not None:
         cached = _load_golden_cache(
@@ -3772,6 +3938,8 @@ def make_golden_hidden_tb(
                             "error_type": type(exc).__name__,
                             "error_message": str(exc),
                             "traceback": traceback.format_exc(),
+                            "contract_failures": getattr(exc, "contract_failures", []),
+                            "evidence_ref": getattr(exc, "evidence_ref", None),
                         }, indent=2, ensure_ascii=True),
                         encoding="utf-8",
                     )
@@ -3790,7 +3958,9 @@ def make_golden_hidden_tb(
                         "error": f"{type(exc).__name__}: {exc}",
                         **({"failure_owner": "unknown", "next_action": "review_unknown"}
                            if not getattr(exc, "repair_eligible", True) else {}),
+                        **_exception_termination_fields(exc),
                         **_exception_artifact_counts(exc, artifact_root, futures[future]),
+                        **({"evidence_ref": exc.evidence_ref} if getattr(exc, "evidence_ref", None) else {}),
                     }
                 )
 

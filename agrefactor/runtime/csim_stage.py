@@ -324,6 +324,7 @@ class CsimStageInputs:
     target_profile: TargetProfile | None = None
     extra_sources: tuple[str, ...] = ()
     reference_top_function: str | None = None
+    public_observation_qualification: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -657,6 +658,9 @@ class CsimValidationStageHandler:
                         else dict(suite.runtime_contract)
                     ),
                     "csim_extra_sources": self._inputs.extra_sources,
+                    "csim_public_observation_qualification": (
+                        self._inputs.public_observation_qualification if self._split is EvaluationSplit.PUBLIC else None
+                    ),
                     "csim_preflight_authority": (
                         _native_csim_preflight_authority(
                             self._inputs,
@@ -895,6 +899,15 @@ class CsimValidationStageHandler:
             temporary.unlink(missing_ok=True)
             raise
 
+    def _observation_contradiction(self, result):
+        from flow.tools.result_mapping import validated_observation_contradiction
+
+        return validated_observation_contradiction(
+            self._inputs.public_observation_qualification,
+            testbench_code=self._inputs.suite_testbench_codes[result.evidence.suite.suite_id],
+            original_code=self._inputs.original_code,
+        )
+
     def _result_report(
         self,
         result: CsimSuiteEvaluationResult,
@@ -992,6 +1005,18 @@ class CsimValidationStageHandler:
                 "compiler_diagnostics": compile_failure["diagnostics"],
                 "compiler_returncode": None,
                 "outer_returncode": compile_failure["outer_returncode"],
+            })
+        elif (self._split is EvaluationSplit.PUBLIC and result.legacy_status == "csim_failed"
+              and (observation_contradiction := self._observation_contradiction(result)) is not None):
+            category = FeedbackCategory.INVALID_CONFIGURATION
+            owner = FeedbackOwner.TESTBENCH
+            stage = FeedbackStage.CSIM
+            metadata_update.update({
+                "owner_authority": "public_observation_mapping_contradiction", "evidence_complete": True,
+                "repair_eligible": False, "functional_mismatch_authorized": False,
+                "failure_kind": "public_observation_mapping_contradiction",
+                "failure_reason": "frozen_public_observation_contract_requires_regeneration",
+                "next_action": "review_testbench", "observation_qualification": observation_contradiction,
             })
         elif result.legacy_status == "csim_failed":
             if self._inputs.execution_backend == "native_vitis":

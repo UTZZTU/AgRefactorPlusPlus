@@ -595,7 +595,7 @@ def _suite_identity(value: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError(
             f"suite {suite_id} passed Public RTL COSIM without evidence hash"
         )
-    return {
+    result = {
         "suite_id": suite_id,
         "suite_version": suite.get("suite_version"),
         "split": split,
@@ -628,6 +628,11 @@ def _suite_identity(value: Mapping[str, Any]) -> dict[str, Any]:
             else "operator_only"
         ),
     }
+    if suite.get("runtime_contract") is not None:
+        result["runtime_contract_sha256"] = canonical_json_sha256(
+            _copy_mapping(suite["runtime_contract"], "runtime_contract")
+        )
+    return result
 
 
 def _candidate_identity(
