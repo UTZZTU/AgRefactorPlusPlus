@@ -13,6 +13,18 @@ from .testbench_semantics import (
     testbench_revision_authorization,
 )
 from .diagnostic_event import DiagnosticEvent, DiagnosticEventProjector
+from .case_record import (
+    CaseAttempt,
+    CaseOutcome,
+    CaseStatus,
+    DiagnosticCase,
+    EvidenceCheckResult,
+    EvidenceCheckState,
+    ExperiencePolarity,
+    ExperienceRecord,
+    OwnerAssessment,
+    RepairEligibilitySnapshot,
+)
 from .corpus import (
     CorpusEvidenceLevel,
     CorpusOutcome,
@@ -77,6 +89,16 @@ __all__ = [
     "testbench_revision_authorization",
     "DiagnosticEvent",
     "DiagnosticEventProjector",
+    "CaseAttempt",
+    "CaseOutcome",
+    "CaseStatus",
+    "DiagnosticCase",
+    "EvidenceCheckResult",
+    "EvidenceCheckState",
+    "ExperiencePolarity",
+    "ExperienceRecord",
+    "OwnerAssessment",
+    "RepairEligibilitySnapshot",
     "CorpusEvidenceLevel",
     "CorpusOutcome",
     "DiagnosticCorpusRecord",

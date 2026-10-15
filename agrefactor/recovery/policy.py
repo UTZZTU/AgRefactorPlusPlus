@@ -7,11 +7,13 @@ normalized string values and retain authority for typed source evidence.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 import json
 from math import isfinite
+import re
+from threading import RLock
 from typing import Any
 
 
@@ -398,15 +400,156 @@ class RecoveryLedgerEvent:
         return payload
 
 
+class RepairComponentBucket(str, Enum):
+    CANDIDATE = "candidate"
+    TESTBENCH_PUBLIC = "testbench_public"
+    TESTBENCH_HIDDEN_GENERATION = "testbench_hidden_generation"
+    STUB_PUBLIC = "stub_public"
+    STUB_HIDDEN_GENERATION = "stub_hidden_generation"
+
+
+@dataclass(frozen=True, slots=True)
+class RepairComponentLimits:
+    candidate: int = 3
+    testbench_public: int = 3
+    testbench_hidden_generation: int = 3
+    stub_public: int = 3
+    stub_hidden_generation: int = 3
+    total_actions: int = 15
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an integer")
+            if value < 0:
+                raise ValueError(f"{name} must be non-negative")
+
+    def limit_for(self, bucket: RepairComponentBucket | str) -> int:
+        normalized = _enum(bucket, RepairComponentBucket)
+        return getattr(self, normalized.value)
+
+    def to_dict(self) -> dict[str, int]:
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
+
+
+@dataclass(frozen=True, slots=True)
+class RepairActionCharge:
+    scope_id: str
+    logical_action_id: str
+    components: tuple[RepairComponentBucket | str, ...]
+    authorization_ref: str
+
+    def __post_init__(self) -> None:
+        scope_id = _ledger_identifier(self.scope_id, "scope_id")
+        action_id = _ledger_identifier(
+            self.logical_action_id,
+            "logical_action_id",
+        )
+        authorization_ref = _ledger_identifier(
+            self.authorization_ref,
+            "authorization_ref",
+        )
+        if isinstance(self.components, (str, bytes)):
+            raise TypeError("components must be a non-empty sequence")
+        raw_components = tuple(self.components)
+        components = tuple(
+            sorted(
+                {_enum(item, RepairComponentBucket) for item in raw_components},
+                key=lambda item: item.value,
+            )
+        )
+        if not components:
+            raise ValueError("components must not be empty")
+        if len(components) != len(raw_components):
+            raise ValueError("components must be unique")
+        object.__setattr__(self, "scope_id", scope_id)
+        object.__setattr__(self, "logical_action_id", action_id)
+        object.__setattr__(self, "components", components)
+        object.__setattr__(self, "authorization_ref", authorization_ref)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "scope_id": self.scope_id,
+            "logical_action_id": self.logical_action_id,
+            "components": [item.value for item in self.components],
+            "authorization_ref": self.authorization_ref,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "RepairActionCharge":
+        if not isinstance(value, Mapping):
+            raise TypeError("charge must be a mapping")
+        return cls(
+            scope_id=value.get("scope_id"),
+            logical_action_id=value.get("logical_action_id"),
+            components=tuple(value.get("components", ())),
+            authorization_ref=value.get("authorization_ref"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class RepairActionReservation:
+    charge: RepairActionCharge
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.charge, RepairActionCharge):
+            raise TypeError("charge must be RepairActionCharge")
+
+
+class RepairActionStatus(str, Enum):
+    RESERVED = "reserved"
+    COMMITTED = "committed"
+    RELEASED = "released"
+
+
+@dataclass(frozen=True, slots=True)
+class RepairActionLedgerEvent:
+    sequence: int
+    event: str
+    charge: RepairActionCharge
+    accepted: bool
+    reason_code: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": 1,
+            "sequence": self.sequence,
+            "event": self.event,
+            "charge": self.charge.to_dict(),
+            "accepted": self.accepted,
+            "reason_code": self.reason_code,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class _RepairActionState:
+    charge: RepairActionCharge
+    status: RepairActionStatus
+
+
 class RecoveryLedger:
     """Exact run-local action ledger with stage/lineage/run-wide limits."""
 
-    def __init__(self, policy: RecoveryPolicy | None = None) -> None:
+    def __init__(
+        self,
+        policy: RecoveryPolicy | None = None,
+        *,
+        component_limits: RepairComponentLimits | None = None,
+    ) -> None:
         self._policy = policy or RecoveryPolicy()
         if not isinstance(self._policy, RecoveryPolicy):
             raise TypeError("policy must be RecoveryPolicy")
+        self._component_limits = component_limits or RepairComponentLimits()
+        if not isinstance(self._component_limits, RepairComponentLimits):
+            raise TypeError("component_limits must be RepairComponentLimits")
         self._counts: dict[str, int] = {}
         self._events: list[RecoveryLedgerEvent] = []
+        self._component_actions: dict[
+            tuple[str, str], _RepairActionState
+        ] = {}
+        self._component_action_events: list[RepairActionLedgerEvent] = []
+        self._component_action_lock = RLock()
 
     @property
     def policy(self) -> RecoveryPolicy:
@@ -415,6 +558,306 @@ class RecoveryLedger:
     @property
     def events(self) -> tuple[RecoveryLedgerEvent, ...]:
         return tuple(self._events)
+
+    @property
+    def component_limits(self) -> RepairComponentLimits:
+        return self._component_limits
+
+    @property
+    def component_action_events(self) -> tuple[RepairActionLedgerEvent, ...]:
+        with self._component_action_lock:
+            return tuple(self._component_action_events)
+
+    def reserve_component_action(
+        self,
+        charge: RepairActionCharge,
+    ) -> RepairActionReservation:
+        """Reserve one action and all its component buckets atomically.
+
+        The authorization reference is audit metadata. This method does not
+        evaluate or grant repair authority; callers must pass their local gate
+        before reserving.
+        """
+
+        if not isinstance(charge, RepairActionCharge):
+            raise TypeError("charge must be RepairActionCharge")
+        key = (charge.scope_id, charge.logical_action_id)
+        with self._component_action_lock:
+            existing = self._component_actions.get(key)
+            if existing is not None:
+                if existing.charge != charge:
+                    raise ValueError(
+                        "logical_action_id was reused with a different charge"
+                    )
+                reason = (
+                    "logical_action_already_committed"
+                    if existing.status is RepairActionStatus.COMMITTED
+                    else "logical_action_already_reserved"
+                )
+                self._append_component_action_event(
+                    "rejected",
+                    charge,
+                    accepted=False,
+                    reason_code=reason,
+                )
+                raise RecoveryDeniedError(reason)
+
+            if self._count_component_actions(charge.scope_id) >= (
+                self._component_limits.total_actions
+            ):
+                return self._reject_component_action(
+                    charge,
+                    "component_global_action_limit_exhausted",
+                )
+            for bucket in charge.components:
+                observed = self._count_component_actions(
+                    charge.scope_id,
+                    bucket,
+                )
+                if observed >= self._component_limits.limit_for(bucket):
+                    return self._reject_component_action(
+                        charge,
+                        "component_action_limit_exhausted",
+                    )
+
+            self._component_actions[key] = _RepairActionState(
+                charge,
+                RepairActionStatus.RESERVED,
+            )
+            self._append_component_action_event(
+                "reserved",
+                charge,
+                accepted=True,
+            )
+            return RepairActionReservation(charge)
+
+    def commit_dispatched_action(
+        self,
+        reservation: RepairActionReservation,
+    ) -> None:
+        if not isinstance(reservation, RepairActionReservation):
+            raise TypeError("reservation must be RepairActionReservation")
+        charge = reservation.charge
+        key = (charge.scope_id, charge.logical_action_id)
+        with self._component_action_lock:
+            state = self._component_actions.get(key)
+            if state is None or state.charge != charge:
+                raise ValueError("reservation is not present in this ledger")
+            if state.status is RepairActionStatus.COMMITTED:
+                return
+            if state.status is RepairActionStatus.RELEASED:
+                raise ValueError("released action cannot be committed")
+            self._component_actions[key] = _RepairActionState(
+                charge,
+                RepairActionStatus.COMMITTED,
+            )
+            self._append_component_action_event(
+                "committed",
+                charge,
+                accepted=True,
+            )
+
+    def release_component_action(
+        self,
+        reservation: RepairActionReservation,
+    ) -> None:
+        if not isinstance(reservation, RepairActionReservation):
+            raise TypeError("reservation must be RepairActionReservation")
+        charge = reservation.charge
+        key = (charge.scope_id, charge.logical_action_id)
+        with self._component_action_lock:
+            state = self._component_actions.get(key)
+            if state is None or state.charge != charge:
+                raise ValueError("reservation is not present in this ledger")
+            if state.status is RepairActionStatus.RELEASED:
+                return
+            if state.status is RepairActionStatus.COMMITTED:
+                raise ValueError("dispatched action cannot be released")
+            self._component_actions[key] = _RepairActionState(
+                charge,
+                RepairActionStatus.RELEASED,
+            )
+            self._append_component_action_event(
+                "released",
+                charge,
+                accepted=True,
+            )
+
+    def committed_component_action_charges(
+        self,
+        scope_id: str | None = None,
+    ) -> tuple[RepairActionCharge, ...]:
+        normalized_scope = (
+            None
+            if scope_id is None
+            else _ledger_identifier(scope_id, "scope_id")
+        )
+        with self._component_action_lock:
+            charges = [
+                state.charge
+                for state in self._component_actions.values()
+                if state.status is RepairActionStatus.COMMITTED
+                and (
+                    normalized_scope is None
+                    or state.charge.scope_id == normalized_scope
+                )
+            ]
+            return tuple(
+                sorted(
+                    charges,
+                    key=lambda item: (item.scope_id, item.logical_action_id),
+                )
+            )
+
+    def restore_committed_component_actions(
+        self,
+        charges: Iterable[RepairActionCharge],
+    ) -> None:
+        """Restore committed charges from trusted local case/action records."""
+
+        normalized = tuple(charges)
+        if not all(isinstance(item, RepairActionCharge) for item in normalized):
+            raise TypeError("charges must contain RepairActionCharge")
+        keys = [(item.scope_id, item.logical_action_id) for item in normalized]
+        if len(keys) != len(set(keys)):
+            raise ValueError("restored logical action IDs must be unique")
+        with self._component_action_lock:
+            additions: list[RepairActionCharge] = []
+            for charge in normalized:
+                key = (charge.scope_id, charge.logical_action_id)
+                existing = self._component_actions.get(key)
+                if existing is not None:
+                    if (
+                        existing.charge == charge
+                        and existing.status is RepairActionStatus.COMMITTED
+                    ):
+                        continue
+                    raise ValueError("restored action conflicts with ledger state")
+                additions.append(charge)
+
+            usage: dict[tuple[str, RepairComponentBucket | None], int] = {}
+            for state in self._component_actions.values():
+                if state.status is RepairActionStatus.RELEASED:
+                    continue
+                scope = state.charge.scope_id
+                total_key = (scope, None)
+                usage[total_key] = usage.get(total_key, 0) + 1
+                for bucket in state.charge.components:
+                    bucket_key = (scope, bucket)
+                    usage[bucket_key] = usage.get(bucket_key, 0) + 1
+            for charge in additions:
+                total_key = (charge.scope_id, None)
+                if usage.get(total_key, 0) >= self._component_limits.total_actions:
+                    raise RecoveryBudgetBlockedError(
+                        "component_global_action_limit_exhausted"
+                    )
+                usage[total_key] = usage.get(total_key, 0) + 1
+                for bucket in charge.components:
+                    bucket_key = (charge.scope_id, bucket)
+                    if usage.get(bucket_key, 0) >= self._component_limits.limit_for(
+                        bucket
+                    ):
+                        raise RecoveryBudgetBlockedError(
+                            "component_action_limit_exhausted"
+                        )
+                    usage[bucket_key] = usage.get(bucket_key, 0) + 1
+            for charge in additions:
+                key = (charge.scope_id, charge.logical_action_id)
+                self._component_actions[key] = _RepairActionState(
+                    charge,
+                    RepairActionStatus.COMMITTED,
+                )
+                self._append_component_action_event(
+                    "restored",
+                    charge,
+                    accepted=True,
+                )
+
+    def component_action_snapshot(
+        self,
+        scope_id: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_scope = (
+            None
+            if scope_id is None
+            else _ledger_identifier(scope_id, "scope_id")
+        )
+        with self._component_action_lock:
+            states = [
+                state
+                for state in self._component_actions.values()
+                if normalized_scope is None
+                or state.charge.scope_id == normalized_scope
+            ]
+            states.sort(
+                key=lambda item: (
+                    item.charge.scope_id,
+                    item.charge.logical_action_id,
+                )
+            )
+            events = [
+                event.to_dict()
+                for event in self._component_action_events
+                if normalized_scope is None
+                or event.charge.scope_id == normalized_scope
+            ]
+            return {
+                "schema_version": 1,
+                "limits": self._component_limits.to_dict(),
+                "actions": [
+                    {
+                        "charge": state.charge.to_dict(),
+                        "status": state.status.value,
+                    }
+                    for state in states
+                ],
+                "events": events,
+            }
+
+    def _count_component_actions(
+        self,
+        scope_id: str,
+        bucket: RepairComponentBucket | None = None,
+    ) -> int:
+        return sum(
+            1
+            for state in self._component_actions.values()
+            if state.charge.scope_id == scope_id
+            and state.status is not RepairActionStatus.RELEASED
+            and (bucket is None or bucket in state.charge.components)
+        )
+
+    def _reject_component_action(
+        self,
+        charge: RepairActionCharge,
+        reason_code: str,
+    ):
+        self._append_component_action_event(
+            "rejected",
+            charge,
+            accepted=False,
+            reason_code=reason_code,
+        )
+        raise RecoveryBudgetBlockedError(reason_code)
+
+    def _append_component_action_event(
+        self,
+        event: str,
+        charge: RepairActionCharge,
+        *,
+        accepted: bool,
+        reason_code: str | None = None,
+    ) -> None:
+        self._component_action_events.append(
+            RepairActionLedgerEvent(
+                sequence=len(self._component_action_events) + 1,
+                event=event,
+                charge=charge,
+                accepted=accepted,
+                reason_code=reason_code,
+            )
+        )
+
 
     def reserve(
         self,
@@ -667,4 +1110,17 @@ def _code(value: str) -> str:
     allowed = "abcdefghijklmnopqrstuvwxyz0123456789_-."
     if not cleaned or any(character not in allowed for character in cleaned):
         raise ValueError(f"unsafe reason code: {value!r}")
+    return cleaned
+
+
+def _ledger_identifier(value: str, name: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be a string")
+    cleaned = value.strip()
+    if (
+        not cleaned
+        or len(cleaned) > 256
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]*", cleaned) is None
+    ):
+        raise ValueError(f"{name} must be a bounded stable identifier")
     return cleaned

@@ -350,7 +350,7 @@ class HiddenGeneratedDifferentialRecoveryTests(unittest.TestCase):
                 self.assertTrue(original['original_entry_executed'])
                 compile_receipt = next(item for item in original['executions'] if item['component'] == 'compile')
                 root = Path(compile_receipt['work_dir'])
-                self.assertEqual((root / 'testbench.cpp').read_text(), testbench)
+                self.assertIn(testbench, (root / 'testbench.cpp').read_text())
                 self.assertIn('__attribute__', (root / 'original_only_candidate.cpp').read_text())
                 if attributes == 'weak':
                     symbols = tb_coverage.subprocess.check_output(['nm', str(root / 'original_only')], text=True)

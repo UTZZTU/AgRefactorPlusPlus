@@ -37,6 +37,7 @@ class LightweightHiddenTestbenchContractRecoveryTests(unittest.TestCase):
                 "_request_cpp_artifact",
                 side_effect=[
                     "int main(){return 0;}\n",
+                    "void process_top_hls(int *input);\n"
                     "int main(){return 0;}\n",
                     "void process_top_hls(int *input){}\n",
                 ],
@@ -57,6 +58,7 @@ class LightweightHiddenTestbenchContractRecoveryTests(unittest.TestCase):
                 tb_optimizer,
                 "_validate_frozen_candidate_abi",
                 side_effect=[
+                    None,
                     tb_optimizer.ModelArtifactError(
                         "Testbench changed the externally frozen "
                         "Public-derived ABI"
@@ -93,15 +95,15 @@ class LightweightHiddenTestbenchContractRecoveryTests(unittest.TestCase):
             )
 
         self.assertEqual(request_artifact.call_count, 3)
-        self.assertEqual(validate_abi.call_count, 3)
+        self.assertEqual(validate_abi.call_count, 4)
         self.assertEqual(measure.call_count, 1)
         self.assertEqual(len(result["rounds"]), 1)
         record = result["rounds"][0]
         self.assertEqual(record["status"], "ok")
-        self.assertTrue(record["initial_testbench_contract_repaired"])
+        self.assertEqual(len(record["testbench_contract_errors"]), 1)
         self.assertIn(
             "externally frozen Public-derived ABI",
-            record["initial_testbench_contract_error"],
+            record["testbench_contract_errors"][0],
         )
         repair_prompt = request_artifact.call_args_list[1].args[1]
         self.assertIn(frozen_decl, repair_prompt)
@@ -140,15 +142,11 @@ class CandidateDeclarationRecoveryTests(unittest.TestCase):
                 "_request_cpp_artifact",
                 side_effect=[
                     "int main(){return 0;}\n",
+                    "void process_top_hls(int *input);\n"
                     "int main(){return 0;}\n",
                     "void process_top_hls(int *input){}\n",
                 ],
             ) as request_artifact,
-            patch.object(
-                tb_optimizer,
-                "extract_hls_decl_from_testbench",
-                side_effect=["", frozen_decl, frozen_decl],
-            ),
             patch.object(tb_optimizer, "validate_testbench_top_contract"),
             patch.object(tb_optimizer, "validate_stub_contract"),
             patch.object(tb_optimizer, "_validate_frozen_candidate_abi"),
@@ -198,7 +196,7 @@ class FrozenCandidateAbiValidationTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(
                 tb_optimizer.ModelArtifactError,
-                "externally frozen Candidate ABI could not be parsed",
+                "frozen Public Candidate type contract is incomplete",
             ):
                 tb_optimizer._validate_frozen_candidate_abi(
                     "int main(){}",
@@ -215,7 +213,7 @@ class FrozenCandidateAbiValidationTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(
                 tb_optimizer.ModelArtifactError,
-                "does not expose the externally frozen Candidate declaration",
+                "frozen Public Candidate type contract is incomplete",
             ):
                 tb_optimizer._validate_frozen_candidate_abi(
                     "int main(){}",
@@ -236,10 +234,14 @@ class FrozenCandidateAbiValidationTests(unittest.TestCase):
 
     def test_frozen_abi_can_use_testbench_source_package_types(self) -> None:
         testbench = "using value_t = int;\nvoid process_top_hls(value_t *input);\n"
+        frozen_type_contract = tb_optimizer.freeze_public_type_contract(
+            testbench, "process_top_hls",
+        )
         tb_optimizer._validate_frozen_candidate_abi(
             testbench,
             "process_top_hls",
             "void process_top_hls(value_t *input);",
+            frozen_type_contract=frozen_type_contract,
         )
 if __name__ == "__main__":
     unittest.main()
