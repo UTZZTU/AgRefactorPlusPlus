@@ -28,7 +28,7 @@ from agrefactor.evaluation import (
     TestbenchPreflight,
     ValidationState,
 )
-from agrefactor.evidence import FeedbackOwner
+from agrefactor.evidence import CaseRecorder, FeedbackOwner
 from agrefactor.evidence import (
     DiagnosticEventProjector,
     audit_testbench_semantic_revision,
@@ -305,6 +305,9 @@ class CandidateRepairOrchestrationResult:
     last_validation_state: ValidationState
     budget_usage: BudgetUsage
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    case_change_observations: tuple[Mapping[str, Any], ...] = field(
+        default=(), repr=False, compare=False
+    )
 
     schema_version = 1
 
@@ -363,6 +366,9 @@ class CandidateRepairOrchestrationResult:
             self.metadata,
             "metadata",
         )
+        case_change_observations = tuple(self.case_change_observations)
+        if not all(isinstance(item, Mapping) for item in case_change_observations):
+            raise TypeError("case_change_observations must contain mappings")
 
         if status is CandidateRepairOrchestrationStatus.ACCEPTED:
             if state is not ValidationState.ACCEPTED:
@@ -399,6 +405,7 @@ class CandidateRepairOrchestrationResult:
             state,
         )
         object.__setattr__(self, "metadata", metadata)
+        object.__setattr__(self, "case_change_observations", case_change_observations)
 
     @property
     def accepted(self) -> bool:
@@ -667,11 +674,13 @@ class _OrchestratedCandidateValidator:
             CandidateRepairOrchestrationRequest
         ),
         validation_id: str,
+        case_recorder: CaseRecorder | None = None,
     ) -> None:
         self._parent_context = parent_context
         self._handler_factory = handler_factory
         self._request = orchestration_request
         self._validation_id = validation_id
+        self._case_recorder = case_recorder
         self._outcomes: list[
             ValidationExecutionOutcome
         ] = []
@@ -785,6 +794,8 @@ class _OrchestratedCandidateValidator:
         )
         if diagnostic is not None:
             self._diagnostic_events.append(diagnostic)
+            if self._case_recorder is not None:
+                self._case_recorder.record_event(diagnostic)
         view = report.metadata.get("evidence_view")
         summary = (
             terminal_step.transition.reason
@@ -822,6 +833,7 @@ class CandidateRepairValidationOrchestrator:
         handler_factory: CandidateValidationHandlerFactory,
         shadow_advisor: DiagnosticAdvisor | None = None,
         r4_integration: Any | None = None,
+        case_recorder: CaseRecorder | None = None,
     ) -> None:
         if not isinstance(
             model_adapter,
@@ -848,6 +860,7 @@ class CandidateRepairValidationOrchestrator:
         self._handler_factory = handler_factory
         self._shadow_advisor = shadow_advisor
         self._r4_integration = r4_integration
+        self._case_recorder = case_recorder
         self._recovery_policy = conservative_v1_policy()
 
     def run(
@@ -987,6 +1000,8 @@ class CandidateRepairValidationOrchestrator:
         )
         if initial_diagnostic is not None:
             recovery_metadata["diagnostic_events"].append(initial_diagnostic)
+            if self._case_recorder is not None:
+                self._case_recorder.start_case(initial_diagnostic)
 
         active_request = request
         active_outcome = initial_outcome
@@ -1116,11 +1131,22 @@ class CandidateRepairValidationOrchestrator:
             handler_factory=self._handler_factory,
             orchestration_request=active_request,
             validation_id=validation_id,
+            case_recorder=self._case_recorder,
         )
         loop = BoundedCandidateRepairLoop(
             model_adapter=self._model_adapter,
             validator=validator,
             budget=context.budget,
+            dispatch_decision_observer=(
+                None
+                if self._case_recorder is None
+                else self._case_recorder.record_candidate_dispatch
+            ),
+            recovery_observer=(
+                None
+                if self._case_recorder is None
+                else self._case_recorder.record_candidate_ledger_event
+            ),
         )
         repair_result = loop.run(
             CandidateRepairLoopRequest(
@@ -1200,6 +1226,7 @@ class CandidateRepairValidationOrchestrator:
         history: list[str] = []
         rounds: list[dict[str, Any]] = []
         diagnostics: list[dict[str, Any]] = []
+        case_change_observations: list[Mapping[str, Any]] = []
         used = 0
         metadata: dict[str, Any] = {}
         updated_contracts: dict[str, Any] = {}
@@ -1223,6 +1250,9 @@ class CandidateRepairValidationOrchestrator:
                 metadata = {"runtime_testbench_recovery_status": exc.reason_code}
                 break
             repair = metadata.get("runtime_testbench_recovery", {})
+            case_change_observations.extend(
+                metadata.pop("_case_change_observations", ())
+            )
             updated_contracts.update(metadata.get("updated_public_runtime_contracts", {}))
             spent = repair.get("repair_attempts_used", 0)
             used += spent
@@ -1246,6 +1276,7 @@ class CandidateRepairValidationOrchestrator:
             "runtime_testbench_recovery_rounds": rounds,
             "diagnostic_events": diagnostics,
             "updated_public_runtime_contracts": updated_contracts,
+            "_case_change_observations": case_change_observations,
         }
 
     def _repair_public_testbench_once(
@@ -1332,7 +1363,20 @@ class CandidateRepairValidationOrchestrator:
             }
 
         stage = RecoveryStage(failure_state.value)
+        dispatch_count = 0
         def reserve_repair() -> None:
+            nonlocal dispatch_count
+            attempt_number = dispatch_count + 1
+            attempt_key = (
+                f"{validation_id}:{suite_id}:{round_index}:{attempt_number}"
+            )
+            if (
+                self._case_recorder is not None
+                and self._case_recorder.testbench_dispatch_recorded(attempt_key)
+            ):
+                raise RuntimeError(
+                    "testbench recovery attempt was already recorded"
+                )
             ledger.reserve(RecoveryRequest(
                 action=RecoveryAction.REPAIR,
                 role=RecoveryRole.TESTBENCH,
@@ -1347,6 +1391,26 @@ class CandidateRepairValidationOrchestrator:
                 ), budget=context.budget,
                 restart_reserve=default_restart_reserve(stage),
             )
+            dispatch_count += 1
+            if self._case_recorder is not None:
+                recorded = self._case_recorder.record_testbench_dispatch(
+                    attempt_key=attempt_key,
+                    repair_record_ref=(
+                        f"{validation_id}:testbench:{suite_id}:{round_index}:{attempt_number}"
+                    ),
+                    ledger_event=ledger.events[-1],
+                    route_decision=decision,
+                    qualification={
+                        "revision_authorization": authorization,
+                        "source_kind": source_kind,
+                        "stage": failure_state.value,
+                        "split": suite.split.value,
+                    },
+                )
+                if recorded is False:
+                    raise RuntimeError(
+                        "testbench recovery attempt was already recorded"
+                    )
         selected_contract_proofs = [
             selected[item_id].metadata.get("interface_contract_evidence")
             for item_id in decision.selected_feedback_ids
@@ -1410,6 +1474,45 @@ class CandidateRepairValidationOrchestrator:
             "runtime_testbench_authorization": authorization,
             "diagnostic_events": [],
         }
+        case_change_observations = []
+        for attempt in repair.attempts:
+            if attempt.index == 0:
+                continue
+            result_code = {
+                "repair_and_preflight": (
+                    "validated" if attempt.preflight.succeeded else "validation_failed"
+                ),
+                "repair_provider_error": "provider_error",
+                "repair_rejected_empty": "response_rejected",
+                "repair_rejected_unchanged": "response_rejected",
+            }.get(attempt.action, "dispatch_incomplete")
+            validation = None
+            if attempt.action == "repair_and_preflight":
+                validation = {
+                    "validation_id": (
+                        f"{validation_id}.testbench.{round_index}.attempt.{attempt.index}.preflight"
+                    ),
+                    "stage": attempt.preflight.stage.value,
+                    "accepted": attempt.preflight.succeeded,
+                }
+            case_change_observations.append(
+                {
+                    "attempt_key": (
+                        f"{validation_id}:{suite_id}:{round_index}:{attempt.index}"
+                    ),
+                    "component": "testbench",
+                    "visibility": "public",
+                    "result": result_code,
+                    "before_sha256": attempt.case_before_sha256,
+                    "after_sha256": attempt.case_after_sha256,
+                    "patch": attempt.case_change_patch,
+                    "validation": validation,
+                    "repair_record_ref": (
+                        f"{validation_id}:testbench:{suite_id}:{round_index}:{attempt.index}"
+                    ),
+                }
+            )
+        metadata["_case_change_observations"] = case_change_observations
         if not repair.succeeded:
             return context, request, outcome, metadata
 
@@ -1431,6 +1534,22 @@ class CandidateRepairValidationOrchestrator:
             metadata["runtime_testbench_recovery_status"] = (
                 "blocked_semantic_weakening"
             )
+            changed_attempt = next(
+                (
+                    item for item in reversed(case_change_observations)
+                    if item.get("before_sha256") != item.get("after_sha256")
+                ),
+                None,
+            )
+            if changed_attempt is not None:
+                changed_attempt["result"] = "validation_failed"
+                changed_attempt["validation"] = {
+                    "validation_id": (
+                        f"{validation_id}.testbench.{round_index}.semantic_audit"
+                    ),
+                    "stage": "semantic_audit",
+                    "accepted": False,
+                }
             return context, request, outcome, metadata
 
         codes = dict(request.suite_testbench_codes)
@@ -1493,6 +1612,45 @@ class CandidateRepairValidationOrchestrator:
         )
         if revalidation_diagnostic is not None:
             metadata["diagnostic_events"].append(revalidation_diagnostic)
+            if self._case_recorder is not None:
+                self._case_recorder.record_event(revalidation_diagnostic)
+        visible_steps = [
+            step for step in revalidated.result.steps
+            if "hidden" not in step.state.value.casefold()
+        ]
+        if visible_steps:
+            final_public_step = visible_steps[-1]
+            hidden_followed = any(
+                "hidden" in step.state.value.casefold()
+                for step in revalidated.result.steps
+            )
+            next_state = final_public_step.transition.next_state.value
+            public_accepted = (
+                next_state in {"hidden_evaluation", "accepted"}
+                if hidden_followed
+                else revalidated.result.accepted
+            )
+            changed_attempt = next(
+                (
+                    item for item in reversed(case_change_observations)
+                    if item.get("before_sha256") != item.get("after_sha256")
+                ),
+                None,
+            )
+            if changed_attempt is not None:
+                changed_attempt["result"] = (
+                    "validated" if public_accepted else "validation_failed"
+                )
+                changed_attempt["validation"] = {
+                    "validation_id": f"{validation_id}.testbench.{round_index}",
+                    "stage": final_public_step.state.value,
+                    "accepted": public_accepted,
+                    "diagnostic_event_ref": (
+                        None
+                        if revalidation_diagnostic is None
+                        else revalidation_diagnostic.get("event_id")
+                    ),
+                }
         return context, updated, revalidated, metadata
 
     def _refresh_public_runtime_contract(
@@ -1653,6 +1811,9 @@ class CandidateRepairValidationOrchestrator:
             ).to_dict()
         )
         merged_metadata = dict(extra_metadata or {})
+        case_change_observations = tuple(
+            merged_metadata.pop("_case_change_observations", ())
+        )
         repair_count = (
             0 if repair_result is None else repair_result.repair_attempt_count
         )
@@ -1740,6 +1901,7 @@ class CandidateRepairValidationOrchestrator:
                 "effective_repair_quota": effective_quota,
                 **merged_metadata,
             },
+            case_change_observations=case_change_observations,
         )
         if self._r4_integration is not None and request.llm_advisory_mode == "candidate-only":
             try:
@@ -1878,6 +2040,11 @@ def _status_for_repair_result(
         return (
             CandidateRepairOrchestrationStatus.
             BUDGET_EXHAUSTED
+        )
+    if reason is CandidateRepairStopReason.DISPATCH_BLOCKED:
+        return (
+            CandidateRepairOrchestrationStatus.
+            REPAIR_NOT_APPLICABLE
         )
     if reason is CandidateRepairStopReason.VALIDATOR_ERROR:
         return (

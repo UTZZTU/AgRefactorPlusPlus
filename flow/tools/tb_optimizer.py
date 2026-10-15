@@ -2064,6 +2064,8 @@ def run_trajectory(
     pinned_result_mapping: Optional[Dict[str, Any]] = None,
     pinned_type_contract: Optional[Dict[str, Any]] = None,
     mapping_original_code: Optional[str] = None,
+    public_case_recorder: Any = None,
+    generation_id: str | None = None,
 ) -> Dict[str, Any]:
     if isinstance(K, bool) or not isinstance(K, int) or K < 1:
         raise ValueError("K must be a positive integer")
@@ -2090,6 +2092,8 @@ def run_trajectory(
     )
     if hidden_generation and not external_abi_frozen:
         raise ValueError("Hidden generation requires a frozen Public ABI")
+    if hidden_generation and public_case_recorder is not None:
+        raise ValueError("Hidden generation cannot use the Public case recorder")
     frozen_hls_decl = (
         _normalize_declaration(pinned_hls_decl)
         if external_abi_frozen
@@ -2103,6 +2107,122 @@ def run_trajectory(
         "counter_source": "testbench_stub_probe_events",
     }
     stub_requests = 0
+    case_event_sequence = 0
+    repair_action_sequence = 0
+    active_repair_action_key: str | None = None
+    last_artifact_code = {"testbench": "", "stub": "", "empty_stub": ""}
+
+    def case_event(
+        *,
+        component: str,
+        event_kind: str,
+        role: str,
+        dispatched: bool,
+        status: str,
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        nonlocal case_event_sequence
+        case_event_sequence += 1
+        identity = "\0".join(
+            (
+                generation_id or str(artifact_root or "public-generation"),
+                str(trajectory_idx),
+                str(case_event_sequence),
+                component,
+                event_kind,
+            )
+        )
+        event_id = "event-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
+        return {
+            "schema_version": 1,
+            "event_id": event_id,
+            "run_id": generation_id or "public-generation",
+            "validation_id": generation_id or "public-generation",
+            "trajectory_idx": trajectory_idx,
+            "stage": "public_testbench_generation",
+            "split": "public",
+            "component": component,
+            "event_kind": event_kind,
+            "request_role": role,
+            "dispatched": dispatched,
+            "outcome": status,
+            "evidence_view": "agent_safe",
+            "hidden_content_persisted": False,
+            **metadata,
+        }
+
+    def observe_proposal(
+        component: str,
+        role: str,
+        after_code: str,
+        *,
+        contract_valid: bool,
+        artifact_kind: Optional[str] = None,
+    ) -> None:
+        nonlocal active_repair_action_key, repair_action_sequence
+        artifact_kind = artifact_kind or component
+        before_code = last_artifact_code[artifact_kind]
+        last_artifact_code[artifact_kind] = after_code
+        if public_case_recorder is None:
+            return
+        if role == "repair" and active_repair_action_key is None:
+            repair_action_sequence += 1
+            active_repair_action_key = (
+                f"trajectory:{trajectory_idx}:action:{repair_action_sequence}"
+            )
+        event = case_event(
+            component=component,
+            event_kind="artifact_proposal",
+            role=role,
+            dispatched=role in {"repair", "initial", "refinement"},
+            status="contract_passed" if contract_valid else "contract_failed",
+            related_request_id=latest_request_ids.get(artifact_kind),
+            artifact_kind=artifact_kind,
+        )
+        if role == "repair" and active_repair_action_key is not None:
+            public_case_recorder.record_public_generation_request(
+                event,
+                attempt_key=active_repair_action_key,
+                component=component,
+                before_code=before_code,
+                after_code=after_code,
+                authorization={"repair_eligible": True, "split": "public"},
+            )
+            if not contract_valid:
+                diagnostic = case_event(
+                    component=component,
+                    event_kind="qualification_diagnostic",
+                    role=role,
+                    dispatched=True,
+                    status="contract_failed",
+                    owner=component,
+                    route_action=(
+                        "repair_testbench" if component == "testbench"
+                        else "regenerate_stub"
+                    ),
+                    evidence_refs=(event["event_id"],),
+                    summary="Public generated artifact failed its local contract check",
+                )
+                public_case_recorder.record_public_generation_diagnostic(diagnostic)
+                validation = case_event(
+                    component=component,
+                    event_kind="contract_validation",
+                    role=role,
+                    dispatched=False,
+                    status="contract_failed",
+                    accepted=False,
+                    related_event_id=event["event_id"],
+                )
+                public_case_recorder.record_public_generation_validation(
+                    active_repair_action_key,
+                    validation,
+                    result="validation_failed",
+                )
+                active_repair_action_key = None
+        else:
+            public_case_recorder.record_public_generation_request(event)
+
+    latest_request_ids: dict[str, str] = {}
 
     def counts_snapshot() -> Dict[str, Any]:
         events = artifact_counts["artifact_event_counts"]
@@ -2156,6 +2276,7 @@ def run_trajectory(
             exc.evidence_ref = evidence_ref
 
     def record_artifact_event(kind: str, event: str, role: str = "initial") -> None:
+        nonlocal active_repair_action_key, repair_action_sequence
         if kind == "coverage":
             artifact_counts["coverage_checks_used"] += 1
             persist_artifact_counts()
@@ -2167,6 +2288,49 @@ def run_trajectory(
         if event.startswith("format_retry_"):
             event = event.removeprefix("format_retry_")
             role = "format_retry"
+        case_component = "stub" if kind == "empty_stub" else kind
+        if public_case_recorder is not None:
+            if event in {"request", "request_blocked"}:
+                request_event = case_event(
+                    component=case_component,
+                    event_kind="provider_request",
+                    role=role,
+                    dispatched=event == "request",
+                    status="dispatched" if event == "request" else "blocked",
+                    artifact_kind=kind,
+                )
+                latest_request_ids[kind] = request_event["event_id"]
+                if (
+                    event == "request"
+                    and role == "repair"
+                    and active_repair_action_key is None
+                ):
+                    repair_action_sequence += 1
+                    active_repair_action_key = (
+                        f"trajectory:{trajectory_idx}:action:{repair_action_sequence}"
+                    )
+                public_case_recorder.record_public_generation_request(
+                    request_event,
+                    attempt_key=(
+                        active_repair_action_key if role == "repair" else None
+                    ),
+                    component=case_component,
+                    authorization={"repair_eligible": True, "split": "public"}
+                    if role == "repair"
+                    else None,
+                )
+            elif event in {"response", "contract_check"}:
+                public_case_recorder.record_public_generation_request(
+                    case_event(
+                        component=case_component,
+                        event_kind=event,
+                        role=role,
+                        dispatched=False,
+                        status="received" if event == "response" else "checked",
+                        related_request_id=latest_request_ids.get(kind),
+                        artifact_kind=kind,
+                    )
+                )
         if event in {"request", "request_blocked"}:
             delta = -1 if event == "request_blocked" else 1
             counts["requests"] += delta
@@ -2176,14 +2340,79 @@ def run_trajectory(
             counts["responses" if event == "response" else "contract_checks"] += 1
         persist_artifact_counts()
 
+    def record_public_qualification_result(event_kind: str, result: Dict[str, Any]) -> None:
+        nonlocal active_repair_action_key
+        if public_case_recorder is None:
+            return
+        status = str(result.get("status", "unknown"))
+        accepted = bool(result.get("accepted", status == "ok"))
+        owner = str(
+            result.get("failure_owner", result.get("owner", "none" if accepted else "unknown"))
+        )
+        failure_evidence = str(result.get("failure_evidence", status))
+        event = case_event(
+            component="qualification",
+            event_kind=event_kind,
+            role="repair" if active_repair_action_key else "initial",
+            dispatched=False,
+            status=status,
+            accepted=accepted,
+            owner=owner,
+            route_action=str(result.get("next_action", "continue_validation")),
+            evidence_refs=(
+                "fingerprint-" + hashlib.sha256(
+                    failure_evidence.encode("utf-8")
+                ).hexdigest()[:24],
+            ),
+            summary=str(result.get("summary", "Public qualification result recorded")),
+        )
+        if accepted:
+            public_case_recorder.record_public_generation_request(event)
+        else:
+            public_case_recorder.record_public_generation_diagnostic(event)
+        if active_repair_action_key is not None:
+            public_case_recorder.record_public_generation_validation(
+                active_repair_action_key,
+                event,
+                result="validated" if accepted else "validation_failed",
+            )
+            active_repair_action_key = None
+
     def measure_qualified_coverage(*args, **kwargs):
         record_artifact_event("coverage", "check")
         try:
-            return _measure_qualified_coverage(*args, **kwargs)
+            result = _measure_qualified_coverage(*args, **kwargs)
         except Exception as exc:
             exc.artifact_counts = counts_snapshot()
             attach_contract_history(exc)
+            record_public_qualification_result(
+                "qualification_validation",
+                {
+                    "status": "qualification_error",
+                    "accepted": False,
+                    "failure_owner": "unknown",
+                    "next_action": "review_unknown",
+                    "failure_evidence": f"{type(exc).__name__}:{exc}",
+                    "summary": f"Public qualification raised {type(exc).__name__}",
+                },
+            )
             raise
+        status = str(result.get("status", "unknown"))
+        record_public_qualification_result(
+            "coverage_validation",
+            {
+                **result,
+                "status": status,
+                "accepted": status == "ok",
+                "failure_evidence": _coverage_failure_fingerprint(result),
+                "summary": (
+                    "Public qualification passed"
+                    if status == "ok"
+                    else "Public qualification requires another generation attempt"
+                ),
+            },
+        )
+        return result
 
     def request_testbench(
         message: str,
@@ -2207,6 +2436,8 @@ def run_trajectory(
         attempt = 0
         while True:
             response_returned = False
+            role_for_call = request_role
+            value: str | None = None
             try:
                 if request_role == "repair" and artifact_counts["artifact_event_counts"].get("testbench", {}).get("repair_requests", 0) >= max_repairs:
                     failures.append("Testbench semantic repair request limit reached: " + str(max_repairs))
@@ -2296,9 +2527,22 @@ def run_trajectory(
                     error = ModelArtifactError(str(exc))
                     error.contract_evidence = getattr(exc, "contract_evidence", None)
                     raise error from exc
+                observe_proposal(
+                    "testbench",
+                    role_for_call,
+                    value,
+                    contract_valid=True,
+                )
                 return value
             except ModelArtifactError as exc:
                 preserve_contract_failure(exc, attempt, value if response_returned else None)
+                if response_returned and value is not None:
+                    observe_proposal(
+                        "testbench",
+                        role_for_call,
+                        value,
+                        contract_valid=False,
+                    )
                 if response_returned:
                     pending_testbench_contract_errors.append(
                         "Testbench request {}: {}".format(
@@ -2379,6 +2623,8 @@ def run_trajectory(
         stub_requests += 1
         for attempt in range(_ARTIFACT_RESPONSE_RETRIES + 1):
             response_returned = False
+            role_for_call = request_role
+            value: str | None = None
             try:
                 value = _request_cpp_artifact(
                     agent,
@@ -2405,8 +2651,21 @@ def run_trajectory(
                     frozen_type_contract=type_contract,
                     **parse_context,
                 )
+                observe_proposal(
+                    "stub",
+                    role_for_call,
+                    value,
+                    contract_valid=True,
+                )
                 return value, _normalize_declaration(declaration)
             except ModelArtifactError as exc:
+                if response_returned and value is not None:
+                    observe_proposal(
+                        "stub",
+                        role_for_call,
+                        value,
+                        contract_valid=False,
+                    )
                 if not getattr(exc, "repair_eligible", True):
                     exc.artifact_counts = counts_snapshot()
                     attach_contract_history(exc)
@@ -3072,6 +3331,8 @@ def run_trajectory(
             source_context=source_context,
             synth_retry_budget=max_repairs,
             on_artifact_event=record_artifact_event,
+            on_artifact_proposal=observe_proposal,
+            on_qualification_result=record_public_qualification_result,
         )
     except Exception as exc:
         exc.artifact_counts = counts_snapshot()
@@ -3108,6 +3369,8 @@ def _finalize_trajectory(
     allow_abi_correction: bool = True,
     source_context: Optional[Dict[str, Any]] = None,
     on_artifact_event=None,
+    on_artifact_proposal=None,
+    on_qualification_result=None,
 ) -> Dict[str, Any]:
     context = dict(source_context or {})
     parse_context = {
@@ -3183,6 +3446,7 @@ def _finalize_trajectory(
                 )
             )
             synth_attempt = synth_retry_budget - retries_left
+            probe_role = "repair" if synth_attempt else "initial"
             failure_history = _failure_history(rounds) + "\n\n" + "\n\n".join(synth_failures)
             empty_stub = _request_cpp_artifact(
                 agent,
@@ -3196,7 +3460,7 @@ def _finalize_trajectory(
                 artifact_kind="empty_stub",
                 required_symbol=expected_hls_name,
                 on_event=(lambda event: on_artifact_event(
-                    "empty_stub", event, "repair" if synth_attempt else "initial",
+                    "empty_stub", event, probe_role,
                 )) if on_artifact_event else None,
             )
             probe_contract_failed = False
@@ -3211,23 +3475,81 @@ def _finalize_trajectory(
                     frozen_type_contract=type_contract,
                     **parse_context,
                 )
+                if on_artifact_proposal:
+                    on_artifact_proposal(
+                        "stub", probe_role, empty_stub,
+                        contract_valid=True, artifact_kind="empty_stub",
+                    )
             except ModelArtifactError as exc:
                 if not getattr(exc, "repair_eligible", True):
                     raise
                 synth_ok, synth_error = False, str(exc)
                 probe_contract_failed = True
+                if on_artifact_proposal:
+                    on_artifact_proposal(
+                        "stub", probe_role, empty_stub,
+                        contract_valid=False, artifact_kind="empty_stub",
+                    )
+                if on_qualification_result:
+                    on_qualification_result(
+                        "synth_validation",
+                        {
+                            "status": "contract_failed",
+                            "accepted": False,
+                            "failure_owner": "stub",
+                            "next_action": "regenerate_stub",
+                            "failure_evidence": str(exc),
+                            "summary": "Public synthesis probe failed its Stub contract",
+                        },
+                    )
             if not probe_contract_failed:
                 synth_context = (
                     nullcontext(str(Path(artifact_root) / f"trajectory_{trajectory_idx:03d}" / f"synth_attempt_{synth_attempt:03d}"))
                     if artifact_root else tempfile.TemporaryDirectory(prefix=f"synth_check_traj{trajectory_idx}_")
                 )
-                with synth_context as work_dir:
-                    synth_ok, synth_error = _synth_check(
-                        empty_stub,
-                        expected_hls_name,
-                        work_dir,
-                        budget=budget,
-                        source_context=source_context,
+                try:
+                    with synth_context as work_dir:
+                        synth_ok, synth_error = _synth_check(
+                            empty_stub,
+                            expected_hls_name,
+                            work_dir,
+                            budget=budget,
+                            source_context=source_context,
+                        )
+                except Exception as exc:
+                    if on_qualification_result:
+                        on_qualification_result(
+                            "synth_validation",
+                            {
+                                "status": "qualification_error",
+                                "accepted": False,
+                                "failure_owner": "unknown",
+                                "next_action": "review_unknown",
+                                "failure_evidence": f"{type(exc).__name__}:{exc}",
+                                "summary": "Public synthesis probe raised an error",
+                            },
+                        )
+                    raise
+                if on_qualification_result:
+                    on_qualification_result(
+                        "synth_validation",
+                        {
+                            "status": "ok" if synth_ok else "synth_failed",
+                            "accepted": synth_ok,
+                            "failure_owner": "stub" if not synth_ok else "none",
+                            "next_action": (
+                                "continue_validation" if synth_ok
+                                else "repair_abi_testbench_stub"
+                                if allow_abi_correction
+                                else "regenerate_stub"
+                            ),
+                            "failure_evidence": synth_error,
+                            "summary": (
+                                "Public synthesis probe passed"
+                                if synth_ok
+                                else "Public synthesis probe did not qualify"
+                            ),
+                        },
                     )
             if synth_ok:
                 synth_termination_reason = "qualified"
@@ -3257,23 +3579,32 @@ def _finalize_trajectory(
             )
             if on_artifact_event:
                 on_artifact_event("testbench", "contract_check")
-            validate_testbench_top_contract(
-                new_tb,
-                original_name,
-                expected_hls_name,
-            )
-            new_decl = extract_hls_decl_from_testbench(
-                new_tb,
-                expected_hls_name,
-                **parse_context,
-            )
-            if not new_decl:
-                raise ModelArtifactError(
-                    "coordinated ABI correction returned no Candidate ABI"
+            testbench_contract_valid = False
+            try:
+                validate_testbench_top_contract(
+                    new_tb,
+                    original_name,
+                    expected_hls_name,
                 )
-            new_type_contract = freeze_public_type_contract(
-                new_tb, expected_hls_name, **parse_context,
-            )
+                new_decl = extract_hls_decl_from_testbench(
+                    new_tb,
+                    expected_hls_name,
+                    **parse_context,
+                )
+                if not new_decl:
+                    raise ModelArtifactError(
+                        "coordinated ABI correction returned no Candidate ABI"
+                    )
+                new_type_contract = freeze_public_type_contract(
+                    new_tb, expected_hls_name, **parse_context,
+                )
+                testbench_contract_valid = True
+            finally:
+                if on_artifact_proposal:
+                    on_artifact_proposal(
+                        "testbench", "repair", new_tb,
+                        contract_valid=testbench_contract_valid,
+                    )
             new_stub = _request_cpp_artifact(
                 agent,
                 _stub_request_message(
@@ -3288,31 +3619,71 @@ def _finalize_trajectory(
             )
             if on_artifact_event:
                 on_artifact_event("stub", "contract_check")
-            new_stub = _ensure_original_forward_declaration(
-                new_stub,
-                orig_code,
-                original_name,
-                **parse_context,
-            )
-            validate_stub_contract(
-                new_stub,
-                original_name=original_name,
-                candidate_name=expected_hls_name,
-                frozen_hls_decl=new_decl,
-                frozen_type_contract=new_type_contract,
-                **parse_context,
-            )
+            stub_contract_valid = False
+            try:
+                new_stub = _ensure_original_forward_declaration(
+                    new_stub,
+                    orig_code,
+                    original_name,
+                    **parse_context,
+                )
+                validate_stub_contract(
+                    new_stub,
+                    original_name=original_name,
+                    candidate_name=expected_hls_name,
+                    frozen_hls_decl=new_decl,
+                    frozen_type_contract=new_type_contract,
+                    **parse_context,
+                )
+                stub_contract_valid = True
+            finally:
+                if on_artifact_proposal:
+                    on_artifact_proposal(
+                        "stub", "repair", new_stub,
+                        contract_valid=stub_contract_valid,
+                    )
             if on_artifact_event:
                 on_artifact_event("coverage", "check")
-            new_coverage = _measure_qualified_coverage(
-                orig_code,
-                new_tb,
-                new_stub,
-                original_name,
-                budget=budget,
-                source_context=source_context,
-                qualification_dir=_qualification_dir(artifact_root, trajectory_idx, rounds[-1]["round"] + 1),
-            )
+            try:
+                new_coverage = _measure_qualified_coverage(
+                    orig_code,
+                    new_tb,
+                    new_stub,
+                    original_name,
+                    budget=budget,
+                    source_context=source_context,
+                    qualification_dir=_qualification_dir(artifact_root, trajectory_idx, rounds[-1]["round"] + 1),
+                )
+            except Exception as exc:
+                if on_qualification_result:
+                    on_qualification_result(
+                        "qualification_validation",
+                        {
+                            "status": "qualification_error",
+                            "accepted": False,
+                            "failure_owner": "unknown",
+                            "next_action": "review_unknown",
+                            "failure_evidence": f"{type(exc).__name__}:{exc}",
+                            "summary": "Coordinated Public qualification raised an error",
+                        },
+                    )
+                raise
+            if on_qualification_result:
+                coverage_status = str(new_coverage.get("status", "unknown"))
+                on_qualification_result(
+                    "coverage_validation",
+                    {
+                        **new_coverage,
+                        "status": coverage_status,
+                        "accepted": coverage_status == "ok",
+                        "failure_evidence": _coverage_failure_fingerprint(new_coverage),
+                        "summary": (
+                            "Coordinated Public qualification passed"
+                            if coverage_status == "ok"
+                            else "Coordinated Public qualification failed"
+                        ),
+                    },
+                )
             frozen_decl = ""
             frozen_macros: Tuple[str, ...] = ()
             if new_coverage.get("status") == "ok":
@@ -3478,6 +3849,8 @@ def optimize_tb_public(
     artifact_root: Optional[str] = None,
     input_domain_contract: Optional[Dict[str, Any]] = None,
     mapping_original_code: Optional[str] = None,
+    public_case_recorder: Any = None,
+    generation_id: str | None = None,
 ) -> Dict[str, Any]:
     """Generate Public evidence across one or more independent trajectories."""
 
@@ -3485,22 +3858,60 @@ def optimize_tb_public(
         raise ValueError("M must be a positive integer")
 
     if M == 1:
-        trajectories = [
-            run_trajectory(
-                orig_code=orig_code,
-                kernel_name=kernel_name,
-                K=K,
-                target_pct=target_pct,
-                llm_config=llm_config,
-                want_sig_spec=False,
-                trajectory_idx=0,
-                emit_final_text=True,
-                budget=budget,
-                artifact_root=artifact_root,
-                input_domain_contract=input_domain_contract,
-                mapping_original_code=mapping_original_code,
-            )
-        ]
+        try:
+            trajectories = [
+                run_trajectory(
+                    orig_code=orig_code,
+                    kernel_name=kernel_name,
+                    K=K,
+                    target_pct=target_pct,
+                    llm_config=llm_config,
+                    want_sig_spec=False,
+                    trajectory_idx=0,
+                    emit_final_text=True,
+                    budget=budget,
+                    artifact_root=artifact_root,
+                    input_domain_contract=input_domain_contract,
+                    mapping_original_code=mapping_original_code,
+                    public_case_recorder=public_case_recorder,
+                    generation_id=generation_id,
+                )
+            ]
+        except Exception as exc:
+            if public_case_recorder is not None:
+                fingerprint = hashlib.sha256(
+                    f"{type(exc).__name__}:{str(exc)}".encode("utf-8")
+                ).hexdigest()[:24]
+                public_case_recorder.record_public_generation_diagnostic(
+                    {
+                        "schema_version": 1,
+                        "event_id": "event-" + hashlib.sha256(
+                            f"{generation_id or 'public'}:trajectory:0:error".encode(
+                                "utf-8"
+                            )
+                        ).hexdigest()[:24],
+                        "run_id": generation_id or "public-generation",
+                        "validation_id": generation_id or "public-generation",
+                        "trajectory_idx": 0,
+                        "stage": "public_testbench_generation",
+                        "split": "public",
+                        "owner": "unknown",
+                        "route_action": "review_unknown",
+                        "outcome": "generation_exception",
+                        "evidence_refs": (f"fingerprint-{fingerprint}",),
+                        "summary": f"Public generation raised {type(exc).__name__}",
+                        "evidence_view": "agent_safe",
+                        "hidden_content_persisted": False,
+                    }
+                )
+                public_case_recorder.finalize_public_generation_attempts(
+                    generation_id=generation_id or "public-generation",
+                    result="provider_error",
+                )
+                public_case_recorder.close_case(
+                    "unresolved", "generation_exception"
+                )
+            raise
     else:
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=M
@@ -3520,6 +3931,8 @@ def optimize_tb_public(
                     artifact_root=artifact_root,
                     input_domain_contract=input_domain_contract,
                     mapping_original_code=mapping_original_code,
+                    public_case_recorder=public_case_recorder,
+                    generation_id=generation_id,
                 ): index
                 for index in range(M)
             }
@@ -3560,7 +3973,56 @@ def optimize_tb_public(
         and trajectory.get("best_tb")
         and trajectory.get("final_text")
     ]
+    if public_case_recorder is not None:
+        for trajectory in trajectories:
+            if trajectory.get("qualified") and trajectory.get("synth_ok"):
+                continue
+            trajectory_idx = int(trajectory.get("trajectory_idx", 0))
+            diagnostic_key = "\0".join(
+                (
+                    generation_id or "public-generation",
+                    str(trajectory_idx),
+                    str(trajectory.get("trajectory_status", "unknown")),
+                )
+            )
+            public_case_recorder.record_public_generation_diagnostic(
+                {
+                    "schema_version": 1,
+                    "event_id": "event-" + hashlib.sha256(
+                        diagnostic_key.encode("utf-8")
+                    ).hexdigest()[:24],
+                    "run_id": generation_id or "public-generation",
+                    "validation_id": generation_id or "public-generation",
+                    "trajectory_idx": trajectory_idx,
+                    "stage": "public_testbench_generation",
+                    "split": "public",
+                    "owner": str(trajectory.get("failure_owner", "unknown")),
+                    "route_action": str(trajectory.get("next_action", "review_unknown")),
+                    "outcome": str(trajectory.get("trajectory_status", "unresolved")),
+                    "evidence_refs": (
+                        "fingerprint-" + hashlib.sha256(
+                            json.dumps(
+                                {
+                                    "status": trajectory.get("trajectory_status"),
+                                    "termination": trajectory.get("termination_reason"),
+                                    "owner": trajectory.get("failure_owner"),
+                                },
+                                sort_keys=True,
+                            ).encode("utf-8")
+                        ).hexdigest()[:24],
+                    ),
+                    "summary": "Public Testbench generation trajectory did not qualify",
+                    "evidence_view": "agent_safe",
+                    "hidden_content_persisted": False,
+                }
+            )
     if not qualified:
+        if public_case_recorder is not None:
+            public_case_recorder.finalize_public_generation_attempts(
+                generation_id=generation_id or "public-generation",
+                result="provider_error",
+            )
+            public_case_recorder.close_case("unresolved", "generation_exhausted")
         raise TestbenchGenerationExhausted(
             split="public",
             stage="public_generation_qualification",
@@ -3574,6 +4036,12 @@ def optimize_tb_public(
             -int(trajectory.get("trajectory_idx", 0)),
         ),
     )
+    if public_case_recorder is not None:
+        public_case_recorder.finalize_public_generation_attempts(
+            generation_id=generation_id or "public-generation",
+            result="provider_error",
+        )
+        public_case_recorder.close_case("resolved", "public_generation_qualified")
     return {
         "best_tb": best["best_tb"],
         "best_stub": best["best_stub"],
@@ -3792,6 +4260,8 @@ def gen_tb_with_coverage(
     budget: Any = None,
     M: int = 1,
     input_domain_contract: Optional[Dict[str, Any]] = None,
+    public_case_recorder: Any = None,
+    generation_id: str | None = None,
 ) -> Tuple[str, str, str]:
     """Coverage-enhanced Public generation with no held-out input channel."""
 
@@ -3809,6 +4279,8 @@ def gen_tb_with_coverage(
         M=M,
         artifact_root=artifact_root,
         input_domain_contract=input_domain_contract,
+        public_case_recorder=public_case_recorder,
+        generation_id=generation_id,
         mapping_original_code=(
             getter("curr_code") if callable(getter) else None
         ),

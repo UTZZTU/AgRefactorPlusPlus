@@ -25,6 +25,9 @@ from .case_record import (
     OwnerAssessment,
     RepairEligibilitySnapshot,
 )
+from .case_store import CaseStore, ExperienceStore, StoredChange
+from .experience_derivation import DerivedExperience, derive_experiences
+from .case_capture import CaseRecorder, capture_candidate_recovery
 from .corpus import (
     CorpusEvidenceLevel,
     CorpusOutcome,
@@ -99,6 +102,12 @@ __all__ = [
     "ExperienceRecord",
     "OwnerAssessment",
     "RepairEligibilitySnapshot",
+    "CaseStore",
+    "ExperienceStore",
+    "StoredChange",
+    "DerivedExperience",
+    "derive_experiences",
+    "capture_candidate_recovery",
     "CorpusEvidenceLevel",
     "CorpusOutcome",
     "DiagnosticCorpusRecord",

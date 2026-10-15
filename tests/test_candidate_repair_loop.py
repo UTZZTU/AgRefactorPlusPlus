@@ -33,7 +33,7 @@ from agrefactor.repair import (
     CandidateValidationResult,
 )
 from agrefactor.runtime import BudgetLimits, BudgetManager
-from agrefactor.recovery import RecoveryLedger
+from agrefactor.recovery import RecoveryLedger, RecoveryLimits, RecoveryPolicy
 import agrefactor.repair.candidate_loop as candidate_loop_module
 
 
@@ -502,13 +502,80 @@ class CandidateValidationContractTests(unittest.TestCase):
 
 
 class BoundedCandidateRepairLoopTests(unittest.TestCase):
-    def make_loop(self, provider, validator, budget=None):
+    def make_loop(self, provider, validator, budget=None, dispatch_observer=None):
         budget = budget or BudgetManager(BudgetLimits(max_llm_calls=5, max_tokens=1000, max_cost_usd=1.0))
         return BoundedCandidateRepairLoop(
             model_adapter=make_adapter(provider),
             validator=validator,
             budget=budget,
+            dispatch_observer=dispatch_observer,
         ), budget
+
+    def test_dispatch_observer_blocks_replay_before_provider_and_budget(self):
+        provider = SequenceProvider([fenced(PROPOSAL_1)])
+        observed = []
+        loop, budget = self.make_loop(
+            provider,
+            RecordingValidator([]),
+            dispatch_observer=lambda attempt, candidate: (
+                observed.append((attempt, candidate)) or False
+            ),
+        )
+
+        result = loop.run(make_request(max_attempts=2))
+
+        self.assertIs(result.stop_reason, CandidateRepairStopReason.DISPATCH_BLOCKED)
+        self.assertEqual(observed, [(1, INITIAL)])
+        self.assertEqual(provider.calls, [])
+        self.assertEqual(budget.snapshot().llm_calls, 0)
+
+    def test_dispatch_decision_observer_receives_current_route(self):
+        provider = SequenceProvider([fenced(PROPOSAL_1)])
+        observed = []
+        request = make_request(max_attempts=1)
+        loop = BoundedCandidateRepairLoop(
+            model_adapter=make_adapter(provider),
+            validator=RecordingValidator([]),
+            budget=BudgetManager(BudgetLimits(max_llm_calls=5, max_tokens=1000)),
+            dispatch_decision_observer=lambda attempt, candidate, route: (
+                observed.append((attempt, candidate, route)) or False
+            ),
+        )
+
+        result = loop.run(request)
+
+        self.assertIs(result.stop_reason, CandidateRepairStopReason.DISPATCH_BLOCKED)
+        self.assertEqual(len(observed), 1)
+        self.assertIs(observed[0][2], request.route_decision)
+        self.assertEqual(provider.calls, [])
+
+    def test_recovery_observer_receives_denied_ledger_event(self):
+        provider = SequenceProvider([fenced(PROPOSAL_1)])
+        observed = []
+        budget = BudgetManager(BudgetLimits(max_llm_calls=5, max_tokens=1000))
+        loop = BoundedCandidateRepairLoop(
+            model_adapter=make_adapter(provider),
+            validator=RecordingValidator([]),
+            budget=budget,
+            recovery_observer=lambda attempt, event: observed.append((attempt, event)),
+        )
+        ledger = RecoveryLedger(
+            RecoveryPolicy(
+                limits=RecoveryLimits(refactor_candidate_repairs_total=0)
+            )
+        )
+
+        result = loop.run(
+            replace(
+                make_request(max_attempts=1),
+                recovery_ledger=ledger,
+            )
+        )
+
+        self.assertIs(result.stop_reason, CandidateRepairStopReason.TERMINAL_FEEDBACK)
+        self.assertEqual(len(observed), 1)
+        self.assertFalse(observed[0][1].accepted)
+        self.assertEqual(observed[0][1].decision.reason_code, "recovery_limit_exhausted")
 
     def test_zero_llm_budget_blocks_before_provider(self):
         provider = SequenceProvider([fenced(PROPOSAL_1)])

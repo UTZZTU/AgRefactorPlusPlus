@@ -23,6 +23,7 @@ from agrefactor.reference_source import isolate_reference_program_entry
 from agrefactor.testing import (
     build_openai_compatible_testbench_repairer,
 )
+from agrefactor.evidence import CaseRecorder
 
 RUN_DIR = os.getenv('RUN_DIR')   # base dir for run outputs/logs, e.g. "$AGREFACTOR_ROOT/runs"
 WORK_DIR = os.getenv('WORK_DIR') # optional scratch dir for intermediate work
@@ -737,6 +738,19 @@ def hls_refactor_with_rag(
         with concurrent.futures.ThreadPoolExecutor() as executor:
             debug_print(debug, "Testbench Generation")
             if enable_tb_coverage_loop:
+                public_generation_id = hashlib.sha256(
+                    os.path.abspath(output_dir).encode("utf-8")
+                ).hexdigest()[:24]
+                public_generation_recorder = CaseRecorder(
+                    Path(output_dir) / "cases",
+                    f"public-generation-{public_generation_id}",
+                    case_scope_id=public_generation_id,
+                    experience_root=(
+                        Path(RUN_DIR) / "diagnostic_experiences"
+                        if RUN_DIR
+                        else None
+                    ),
+                )
                 tb_future = executor.submit(
                     tools.tb_optimizer.gen_tb_with_coverage,
                     cv,
@@ -746,6 +760,8 @@ def hls_refactor_with_rag(
                     budget,
                     public_tb_trajectories,
                     input_domain_contract,
+                    public_generation_recorder,
+                    public_generation_id,
                 )
             else:
                 tb_future = executor.submit(

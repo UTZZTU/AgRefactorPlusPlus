@@ -1,5 +1,6 @@
 import hashlib
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -124,6 +125,17 @@ class TestbenchRepairLoopTests(unittest.TestCase):
             artifact["attempts"][1]["preflight"]["status"],
             "passed",
         )
+        attempt = result.attempts[1]
+        self.assertEqual(
+            attempt.case_before_sha256,
+            hashlib.sha256(BROKEN_TB.encode("utf-8")).hexdigest(),
+        )
+        self.assertEqual(
+            attempt.case_after_sha256,
+            hashlib.sha256(VALID_TB.strip().encode("utf-8")).hexdigest(),
+        )
+        self.assertIn("node *root", attempt.case_change_patch)
+        self.assertNotIn("case_change_patch", artifact["attempts"][1])
 
     def test_custom_repairer_keeps_complete_mapping_failure_artifact(self) -> None:
         from flow.tools.result_mapping import shared_helper_identity

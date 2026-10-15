@@ -163,9 +163,21 @@ def feedback_report():
                 summary="candidate compile failure",
                 detail="safe detail",
                 source="deterministic-test",
+                metadata={
+                    "owner_authority": "deterministic_proven",
+                    "evidence_complete": True,
+                    "tool_launched": True,
+                    "physical_tool_launched": True,
+                    "repair_eligible": True,
+                },
             ),
         ),
-        metadata={"evidence_view": "agent_safe"},
+        metadata={
+            "evidence_view": "agent_safe",
+            "physical_execution": True,
+            "evidence_complete": True,
+            "repair_eligible": True,
+        },
     )
 
 
@@ -413,6 +425,41 @@ class CandidateRepairPhaseTests(unittest.TestCase):
             self.assertTrue(
                 repair_manifest.is_file()
             )
+            case_root = (
+                root
+                / "artifacts"
+                / "refactor"
+                / "cases"
+            )
+            case_manifest = json.loads(
+                (case_root / "case_manifest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(case_manifest["case_count"], 1)
+            case_payload = json.loads(
+                (
+                    case_root
+                    / case_manifest["case_ids"][0]
+                    / "case.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(case_payload["status"], "closed")
+            self.assertEqual(case_payload["outcome"], "resolved")
+            self.assertEqual(len(case_payload["attempts"]), 1)
+            self.assertEqual(
+                case_payload["attempts"][0]["quota_buckets"],
+                ["candidate"],
+            )
+            self.assertTrue(case_payload["attempts"][0]["changed"])
+            experience_root = (
+                root
+                / "artifacts"
+                / "refactor"
+                / "diagnostic_experiences"
+                / "records"
+            )
+            self.assertEqual(len(list(experience_root.glob("*.json"))), 1)
             self.assertEqual(
                 len(provider.calls),
                 1,

@@ -13,6 +13,7 @@ from typing import Any
 
 from agrefactor.config import DEFAULT_COSIM_TIMEOUT_S, DEFAULT_CSIM_TIMEOUT_S, DEFAULT_CSYNTH_TIMEOUT_S, validate_cosim_timeout_s
 from agrefactor.models import CandidateModelAdapter
+from agrefactor.evidence import CaseRecorder, capture_candidate_recovery
 
 from .candidate_repair_integration import (
     CandidateRepairOrchestrationRequest,
@@ -31,6 +32,21 @@ from .runner import (
 
 
 REPAIR_PHASE_ARTIFACT_SCHEMA_VERSION = 1
+
+
+def _experience_root_for_artifact(
+    artifact_root: Path,
+    configured_run_root: str | None,
+) -> Path | None:
+    if not configured_run_root:
+        return None
+    run_root = Path(configured_run_root).expanduser().resolve()
+    artifact_root = artifact_root.expanduser().resolve()
+    try:
+        artifact_root.relative_to(run_root)
+    except ValueError:
+        return None
+    return run_root / "diagnostic_experiences"
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +124,7 @@ class CandidateRepairPhaseArtifactWriteResult:
     effective_repair_quota_path: str | None = None
     diagnostic_events_path: str | None = None
     testbench_semantic_revision_path: str | None = None
+    case_artifact_path: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -131,6 +148,7 @@ class CandidateRepairPhaseArtifactWriteResult:
             "testbench_semantic_revision_path": (
                 self.testbench_semantic_revision_path
             ),
+            "case_artifact_path": self.case_artifact_path,
         }
 
 
@@ -165,7 +183,16 @@ class CandidateRepairPhaseArtifactWriter:
                     "repair phase artifact root "
                     f"is not a directory: {self._root}"
                 )
-            if any(self._root.iterdir()):
+            case_root = self._root / "cases"
+            if case_root.exists() and not case_root.is_dir():
+                raise FileExistsError(
+                    "repair phase case root is not a directory: "
+                    f"{case_root}"
+                )
+            if any(
+                child.name != "cases"
+                for child in self._root.iterdir()
+            ):
                 raise FileExistsError(
                     "repair phase artifact root "
                     f"is not empty: {self._root}"
@@ -254,6 +281,29 @@ class CandidateRepairPhaseArtifactWriter:
             )
             semantic_path = str(target)
 
+        case_capture = capture_candidate_recovery(
+            root=self._root / "cases",
+            result=result,
+            experience_root=_experience_root_for_artifact(
+                self._root,
+                os.getenv("AGREFACTOR_RUN_DIR"),
+            ),
+        )
+        case_artifact_path = None
+        if case_capture["case_count"]:
+            case_manifest = self._root / "cases" / "case_manifest.json"
+            _atomic_json_write(
+                case_manifest,
+                {
+                    "schema_version": 1,
+                    "case_ids": case_capture["case_ids"],
+                    "case_count": case_capture["case_count"],
+                    "experience_count": case_capture["experience_count"],
+                    "evidence_view": "agent_safe",
+                },
+            )
+            case_artifact_path = str(case_manifest)
+
         manifest_path = (
             self._root / "artifact_manifest.json"
         )
@@ -299,6 +349,7 @@ class CandidateRepairPhaseArtifactWriter:
             effective_repair_quota_path=quota_path,
             diagnostic_events_path=diagnostic_path,
             testbench_semantic_revision_path=semantic_path,
+            case_artifact_path=case_artifact_path,
         )
 
 
@@ -411,6 +462,10 @@ class CandidateRepairPhase:
         validation_id = (
             f"{context.run_id}.candidate-repair"
         )
+        phase_root = (
+            Path(self._config.artifact_root)
+            / RunPhase.REFACTOR.value
+        )
         shadow_advisor = self._config.shadow_advisor
         if self._config.shadow_advisor_factory is not None:
             shadow_advisor = self._config.shadow_advisor_factory(context)
@@ -422,6 +477,10 @@ class CandidateRepairPhase:
             handler_factory=self._handler_factory,
             shadow_advisor=shadow_advisor,
             r4_integration=r4_integration,
+            case_recorder=CaseRecorder(
+                phase_root / "cases",
+                validation_id,
+            ),
         )
         result = orchestrator.run(
             context,
@@ -430,10 +489,6 @@ class CandidateRepairPhase:
         )
         self._last_result = result
 
-        phase_root = (
-            Path(self._config.artifact_root)
-            / RunPhase.REFACTOR.value
-        )
         artifacts = (
             CandidateRepairPhaseArtifactWriter(
                 phase_root

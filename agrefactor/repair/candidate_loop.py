@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 import json
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from agrefactor.config import (
     DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
@@ -142,6 +142,7 @@ class CandidateRepairStopReason(str, Enum):
     VALIDATED = "validated"
     ATTEMPTS_EXHAUSTED = "attempts_exhausted"
     BUDGET_EXHAUSTED = "budget_exhausted"
+    DISPATCH_BLOCKED = "dispatch_blocked"
     TERMINAL_FEEDBACK = "terminal_feedback"
     VALIDATOR_ERROR = "validator_error"
     PROVIDER_EXHAUSTED = "provider_exhausted"
@@ -538,6 +539,9 @@ class CandidateRepairLoopResult:
             CandidateRepairStopReason.BUDGET_EXHAUSTED: (
                 RepairTerminalStatus.BLOCKED
             ),
+            CandidateRepairStopReason.DISPATCH_BLOCKED: (
+                RepairTerminalStatus.BLOCKED
+            ),
             CandidateRepairStopReason.TERMINAL_FEEDBACK: (
                 RepairTerminalStatus.TERMINAL
             ),
@@ -585,6 +589,11 @@ class BoundedCandidateRepairLoop:
         model_adapter: CandidateModelAdapter,
         validator: CandidateValidator,
         budget: BudgetManager,
+        dispatch_observer: Callable[[int, str], bool | None] | None = None,
+        dispatch_decision_observer: Callable[
+            [int, str, FeedbackRouteDecision], bool | None
+        ] | None = None,
+        recovery_observer: Callable[[int, Any], None] | None = None,
     ) -> None:
         if not isinstance(model_adapter, CandidateModelAdapter):
             raise TypeError("model_adapter must be a CandidateModelAdapter")
@@ -592,9 +601,20 @@ class BoundedCandidateRepairLoop:
             raise TypeError("validator must provide a callable validate method")
         if not isinstance(budget, BudgetManager):
             raise TypeError("budget must be a BudgetManager")
+        if dispatch_observer is not None and not callable(dispatch_observer):
+            raise TypeError("dispatch_observer must be callable or None")
+        if dispatch_decision_observer is not None and not callable(
+            dispatch_decision_observer
+        ):
+            raise TypeError("dispatch_decision_observer must be callable or None")
+        if recovery_observer is not None and not callable(recovery_observer):
+            raise TypeError("recovery_observer must be callable or None")
         self._model_adapter = model_adapter
         self._validator = validator
         self._budget = budget
+        self._dispatch_observer = dispatch_observer
+        self._dispatch_decision_observer = dispatch_decision_observer
+        self._recovery_observer = recovery_observer
 
     @property
     def budget(self) -> BudgetManager:
@@ -682,6 +702,34 @@ class BoundedCandidateRepairLoop:
                 task=request.task,
                 current_candidate=current_candidate,
             )
+            if (
+                self._dispatch_observer is not None
+                and self._dispatch_observer(
+                    attempt_number, current_candidate
+                ) is False
+            ):
+                return self._result(
+                    CandidateRepairStopReason.DISPATCH_BLOCKED,
+                    initial_candidate,
+                    current_candidate,
+                    last_validated_candidate,
+                    last_proposal,
+                    attempts,
+                )
+            if (
+                self._dispatch_decision_observer is not None
+                and self._dispatch_decision_observer(
+                    attempt_number, current_candidate, route
+                ) is False
+            ):
+                return self._result(
+                    CandidateRepairStopReason.DISPATCH_BLOCKED,
+                    initial_candidate,
+                    current_candidate,
+                    last_validated_candidate,
+                    last_proposal,
+                    attempts,
+                )
             response_count_before = len(self._model_adapter.responses)
             model_result: CandidateModelResult | None = None
             model_response: ModelResponse | None = None
@@ -810,6 +858,7 @@ class BoundedCandidateRepairLoop:
                 continue
 
             if request.recovery_ledger is not None:
+                ledger_event_count = len(request.recovery_ledger.events)
                 try:
                     recovery_stage = RecoveryStage(failure_state.value)
                     request.recovery_ledger.reserve(
@@ -842,6 +891,11 @@ class BoundedCandidateRepairLoop:
                         },
                     )
                 except (RecoveryBudgetBlockedError, RecoveryDeniedError) as exc:
+                    new_events = request.recovery_ledger.events[
+                        ledger_event_count:
+                    ]
+                    if self._recovery_observer is not None and new_events:
+                        self._recovery_observer(attempt_number, new_events[-1])
                     attempts.append(
                         CandidateRepairAttempt(
                             attempt=attempt_number,
@@ -868,6 +922,12 @@ class BoundedCandidateRepairLoop:
                         last_proposal,
                         attempts,
                     )
+                else:
+                    new_events = request.recovery_ledger.events[
+                        ledger_event_count:
+                    ]
+                    if self._recovery_observer is not None and new_events:
+                        self._recovery_observer(attempt_number, new_events[-1])
             repair_count += 1
             last_proposal = model_result.candidate_code
             previous_candidate = current_candidate

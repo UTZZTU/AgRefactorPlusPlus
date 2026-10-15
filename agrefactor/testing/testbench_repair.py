@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from difflib import unified_diff
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
@@ -41,6 +42,24 @@ from agrefactor.runtime.budget import (
     BudgetManager,
     BudgetUsage,
 )
+
+
+_MAX_CASE_PATCH_BYTES = 16 * 1024
+
+
+def _case_patch(before: str, after: str) -> str | None:
+    lines = list(
+        unified_diff(
+            before.splitlines(),
+            after.splitlines(),
+            fromfile="a/testbench.cpp",
+            tofile="b/testbench.cpp",
+            lineterm="",
+            n=3,
+        )
+    )
+    patch = "\n".join(lines) + "\n"
+    return patch if len(patch.encode("utf-8")) <= _MAX_CASE_PATCH_BYTES else None
 
 
 
@@ -156,6 +175,9 @@ class TestbenchRepairAttempt:
     observed_usage: RepairObservedUsage = field(
         default_factory=RepairObservedUsage
     )
+    case_before_sha256: str | None = field(default=None, repr=False, compare=False)
+    case_after_sha256: str | None = field(default=None, repr=False, compare=False)
+    case_change_patch: str | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if (
@@ -637,6 +659,13 @@ class TestbenchRepairLoop:
                             observation,
                         )
                     ),
+                    case_before_sha256=hashlib.sha256(
+                        current.encode("utf-8")
+                    ).hexdigest(),
+                    case_after_sha256=hashlib.sha256(
+                        proposed.encode("utf-8")
+                    ).hexdigest(),
+                    case_change_patch=_case_patch(current, proposed),
                 )
             )
             current = proposed
