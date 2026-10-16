@@ -32,6 +32,36 @@ from flow.tools import tb_optimizer
 
 
 class P0DualGenerationProfilesTests(unittest.TestCase):
+    def test_public_case_recorder_is_opt_in_and_uses_shared_run_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run_root = Path(directory) / "runs"
+            artifact_root = run_root / "task" / "public_generation"
+            with patch.object(flow_new, "RUN_DIR", str(run_root)):
+                with patch.object(flow_new, "CaseRecorder") as recorder_factory:
+                    recorder, reason = (
+                        flow_new._build_public_generation_case_recorder(
+                            artifact_root,
+                            "generation-1",
+                            enabled=False,
+                        )
+                    )
+                    self.assertIsNone(recorder)
+                    self.assertIsNone(reason)
+                    recorder_factory.assert_not_called()
+
+                    flow_new._build_public_generation_case_recorder(
+                        artifact_root,
+                        "generation-1",
+                        enabled=True,
+                    )
+
+            recorder_factory.assert_called_once_with(
+                artifact_root / "cases",
+                "public-generation-generation-1",
+                case_scope_id="generation-1",
+                experience_root=run_root / "diagnostic_experiences",
+            )
+
     def _request(
         self,
         root: Path,

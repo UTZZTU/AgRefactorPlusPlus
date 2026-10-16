@@ -607,9 +607,12 @@ class SourceBootstrapRequest:
     r5_arm: str | None = None
     r5_binding: R5RuntimeBinding | None = None
     capture_r5_common_baseline: bool = False
+    record_diagnostic_cases: bool = False
 
     def __post_init__(self) -> None:
         source = Path(self.source_path).expanduser().resolve()
+        if not isinstance(self.record_diagnostic_cases, bool):
+            raise TypeError("record_diagnostic_cases must be boolean")
         if not source.is_file():
             raise FileNotFoundError(f"source file not found: {source}")
         if source.suffix.casefold() not in _CPP_SUFFIXES:
@@ -826,6 +829,7 @@ class SourceBootstrapRequest:
             "budget_contract": self.budget_contract.to_dict(),
             "max_testbench_repairs": self.max_testbench_repairs,
             "max_candidate_repairs": self.max_candidate_repairs,
+            "record_diagnostic_cases": self.record_diagnostic_cases,
             "test_generation_profile": (
                 self.test_generation_profile.value
             ),
@@ -3558,6 +3562,7 @@ def _build_generation_settings(
         max_retry_attempts=0,
         debug=debug,
         generation_only=True,
+        record_diagnostic_cases=request.record_diagnostic_cases,
         max_testbench_repair_attempts=request.max_testbench_repairs,
         external_kernel_name=f"{request.top_function}_hls",
         test_generation_profile=profile.value,
@@ -3838,6 +3843,9 @@ def run_source_command(
             DEFAULT_CANDIDATE_REPAIR_ATTEMPTS,
         ),
         run_id=run_id,
+        record_diagnostic_cases=bool(
+            getattr(args, "record_diagnostic_cases", False)
+        ),
         public_test_contracts=public_test_contracts,
         max_testbench_repairs=getattr(
             args,
@@ -3927,6 +3935,7 @@ def run_source_command(
                 csim_timelimit=request.csim_timeout_s,
                 cosim_timelimit=request.cosim_timeout_s,
                 cosim_policy=request.cosim_policy,
+                record_diagnostic_cases=request.record_diagnostic_cases,
                 shadow_advisor_factory=(
                     _build_r5_shadow_advisor_factory(
                         profile=profile,

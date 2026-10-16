@@ -845,8 +845,12 @@ def capture_candidate_recovery(
     root: str | Path,
     result: Any,
     experience_root: str | Path | None = None,
+    derive_experience_records: bool = True,
 ) -> dict[str, Any]:
     """Persist a repair-aware candidate chain; ordinary successful runs are no-ops."""
+
+    if not isinstance(derive_experience_records, bool):
+        raise TypeError("derive_experience_records must be boolean")
 
     metadata = getattr(result, "metadata", {})
     raw_events = metadata.get("diagnostic_events", ()) if isinstance(metadata, Mapping) else ()
@@ -1200,6 +1204,13 @@ def capture_candidate_recovery(
         store.update_case(case)
     else:
         store.write_case(case)
+
+    if not derive_experience_records:
+        return {
+            "case_count": 1,
+            "experience_count": 0,
+            "case_ids": [case_id],
+        }
 
     experience_store_root = (
         Path(experience_root)

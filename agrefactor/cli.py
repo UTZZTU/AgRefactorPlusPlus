@@ -212,6 +212,12 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     run_parser.add_argument(
+        "--record-diagnostic-cases",
+        action="store_true",
+        default=False,
+        help="Record agent-safe diagnostic cases and derived experiences.",
+    )
+    run_parser.add_argument(
         "--run-id",
         help="Optional stable run identifier.",
     )
@@ -760,6 +766,12 @@ def build_parser() -> argparse.ArgumentParser:
             "--run-id",
             help="Optional stable run identifier.",
         )
+        source_parser.add_argument(
+            "--record-diagnostic-cases",
+            action="store_true",
+            default=False,
+            help="Record agent-safe diagnostic cases and derived experiences.",
+        )
         output_group = source_parser.add_mutually_exclusive_group()
         output_group.add_argument(
             "--json",
@@ -923,6 +935,7 @@ def _build_cli_legacy_settings(
             else args.reasoning_effort
         ),
         max_retry_attempts=args.max_retry_attempts,
+        record_diagnostic_cases=args.record_diagnostic_cases,
         enable_testbench_repair=(
             args.enable_testbench_repair
         ),
@@ -1176,6 +1189,7 @@ def _run_repair_aware_refactor(
         csim_timelimit=args.csim_timelimit,
         cosim_timelimit=args.cosim_timelimit,
         cosim_policy=args.cosim_policy,
+        record_diagnostic_cases=args.record_diagnostic_cases,
     )
     runner = UnifiedRunner(
         {RunPhase.REFACTOR: phase},

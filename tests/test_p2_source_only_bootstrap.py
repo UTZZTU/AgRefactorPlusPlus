@@ -30,6 +30,7 @@ from agrefactor.product import (
     SourceRunLayout,
     build_test_source_plan,
 )
+from agrefactor.product.source_bootstrap import _build_generation_settings
 from agrefactor.runtime import (
     BudgetLimits,
     BudgetManager,
@@ -169,7 +170,7 @@ class CapturingFormalBuilder:
         return handler
 
 
-def make_request(root, *, plan):
+def make_request(root, *, plan, record_diagnostic_cases=False):
     source = root / "kernel.cpp"
     source.write_text(ORIGINAL, encoding="utf-8")
     runtime = resolve_model_runtime("deepseek-v4-flash")
@@ -188,6 +189,7 @@ def make_request(root, *, plan):
         budget_contract=budget,
         max_candidate_repairs=2,
         run_id="p2-test",
+        record_diagnostic_cases=record_diagnostic_cases,
     )
 
 
@@ -306,6 +308,28 @@ class P2SourceOnlyBootstrapTests(unittest.TestCase):
                 "capture_r5_common_baseline",
                 request.to_dict(),
             )
+
+    def test_diagnostic_case_recording_setting_reaches_generation_backend(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = make_request(
+                root,
+                plan=build_test_source_plan(),
+                record_diagnostic_cases=True,
+            )
+            layout = SourceRunLayout.create(
+                request.run_id,
+                artifact_base=root / "artifacts",
+                work_base=root / "work",
+            )
+            settings = _build_generation_settings(
+                request,
+                layout,
+                debug=False,
+            )
+
+            self.assertTrue(settings.record_diagnostic_cases)
+            self.assertTrue(request.to_dict()["record_diagnostic_cases"])
 
     def test_p4_independent_modes_and_derivation_remain_real(self):
         auto = build_test_source_plan()

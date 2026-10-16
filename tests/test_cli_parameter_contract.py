@@ -52,6 +52,16 @@ def source_args(*extra: str):
 
 
 class CliParameterContractTests(unittest.TestCase):
+    def test_diagnostic_case_recording_is_opt_in(self):
+        self.assertFalse(source_args().record_diagnostic_cases)
+        self.assertTrue(
+            source_args("--record-diagnostic-cases").record_diagnostic_cases
+        )
+        run_args = build_parser().parse_args(
+            ["run", "task.json", "--record-diagnostic-cases"]
+        )
+        self.assertTrue(run_args.record_diagnostic_cases)
+
     def test_normal_reasoning_default_is_auto(self):
         args = source_args()
         self.assertEqual(args.reasoning_effort, "auto")

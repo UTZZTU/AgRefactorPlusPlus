@@ -50,6 +50,7 @@ class LegacyRefactorAdapterTests(unittest.TestCase):
             testbench_repair_model="deepseek-chat",
             testbench_repair_api_key_env="DEEPSEEK_API_KEY",
             debug=True,
+            record_diagnostic_cases=True,
         )
 
         kwargs = build_legacy_refactor_kwargs(self.task, settings)
@@ -62,6 +63,7 @@ class LegacyRefactorAdapterTests(unittest.TestCase):
         self.assertEqual(kwargs["model"], "deepseek-v4-flash")
         self.assertEqual(kwargs["reasoning_effort"], "low")
         self.assertEqual(kwargs["debug"], 1)
+        self.assertTrue(kwargs["record_diagnostic_cases"])
         self.assertTrue(kwargs["enable_testbench_repair"])
         self.assertEqual(
             kwargs["max_testbench_repair_attempts"],

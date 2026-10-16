@@ -163,6 +163,28 @@ class CaseCaptureTests(unittest.TestCase):
             self.assertEqual(case.owner_assessments[0].owner, "unknown")
             self.assertEqual(captured["experience_count"], 0)
 
+    def test_candidate_case_can_be_saved_without_deriving_experiences(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory) / "refactor"
+            result = self.result(
+                "validation",
+                [self.event("diagnostic-initial", "validation.initial")],
+                [],
+                accepted=False,
+            )
+            captured = capture_candidate_recovery(
+                root=root / "cases",
+                result=result,
+                derive_experience_records=False,
+            )
+
+            self.assertEqual(captured["case_count"], 1)
+            self.assertEqual(captured["experience_count"], 0)
+            self.assertTrue(
+                CaseStore(root / "cases").read_case(captured["case_ids"][0])
+            )
+            self.assertFalse((root / "diagnostic_experiences").exists())
+
     def test_hidden_validation_result_is_not_projected_to_case_artifacts(self):
         with TemporaryDirectory() as directory:
             root = Path(directory) / "refactor"

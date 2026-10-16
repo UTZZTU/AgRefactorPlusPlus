@@ -64,6 +64,7 @@ class CandidateRepairPhaseConfig:
     r4_integration: Any | None = None
     shadow_advisor_factory: Any | None = None
     r4_integration_factory: Any | None = None
+    record_diagnostic_cases: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(
@@ -74,6 +75,8 @@ class CandidateRepairPhaseConfig:
                 "request must be "
                 "CandidateRepairOrchestrationRequest"
             )
+        if not isinstance(self.record_diagnostic_cases, bool):
+            raise TypeError("record_diagnostic_cases must be boolean")
         object.__setattr__(
             self,
             "work_root",
@@ -158,8 +161,13 @@ class CandidateRepairPhaseArtifactWriter:
     def __init__(
         self,
         root: str | os.PathLike[str],
+        *,
+        record_diagnostic_cases: bool = False,
     ) -> None:
         self._root = _clean_path(root, "root")
+        if not isinstance(record_diagnostic_cases, bool):
+            raise TypeError("record_diagnostic_cases must be boolean")
+        self._record_diagnostic_cases = record_diagnostic_cases
 
     @property
     def root(self) -> Path:
@@ -281,14 +289,35 @@ class CandidateRepairPhaseArtifactWriter:
             )
             semantic_path = str(target)
 
-        case_capture = capture_candidate_recovery(
-            root=self._root / "cases",
-            result=result,
-            experience_root=_experience_root_for_artifact(
+        case_capture = {
+            "case_count": 0,
+            "experience_count": 0,
+            "case_ids": [],
+        }
+        if self._record_diagnostic_cases:
+            experience_root = _experience_root_for_artifact(
                 self._root,
-                os.getenv("AGREFACTOR_RUN_DIR"),
-            ),
-        )
+                os.getenv("RUN_DIR"),
+            )
+            case_capture = capture_candidate_recovery(
+                root=self._root / "cases",
+                result=result,
+                experience_root=experience_root,
+                derive_experience_records=experience_root is not None,
+            )
+            if experience_root is None:
+                _atomic_json_write(
+                    self._root / "case_recording_status.json",
+                    {
+                        "schema_version": 1,
+                        "case_recording": "enabled",
+                        "experience_derivation": "skipped",
+                        "reason": (
+                            "RUN_DIR is not configured or the artifact "
+                            "root is outside RUN_DIR."
+                        ),
+                    },
+                )
         case_artifact_path = None
         if case_capture["case_count"]:
             case_manifest = self._root / "cases" / "case_manifest.json"
@@ -477,9 +506,13 @@ class CandidateRepairPhase:
             handler_factory=self._handler_factory,
             shadow_advisor=shadow_advisor,
             r4_integration=r4_integration,
-            case_recorder=CaseRecorder(
-                phase_root / "cases",
-                validation_id,
+            case_recorder=(
+                CaseRecorder(
+                    phase_root / "cases",
+                    validation_id,
+                )
+                if self._config.record_diagnostic_cases
+                else None
             ),
         )
         result = orchestrator.run(
@@ -491,7 +524,10 @@ class CandidateRepairPhase:
 
         artifacts = (
             CandidateRepairPhaseArtifactWriter(
-                phase_root
+                phase_root,
+                record_diagnostic_cases=(
+                    self._config.record_diagnostic_cases
+                ),
             ).write(result)
         )
         self._last_artifacts = artifacts
@@ -552,6 +588,7 @@ def build_candidate_repair_phase(
     handler_factory: (
         CandidateValidationHandlerFactory | None
     ) = None,
+    record_diagnostic_cases: bool = False,
     shadow_advisor: Any | None = None,
     r4_integration: Any | None = None,
     shadow_advisor_factory: Any | None = None,
@@ -569,6 +606,7 @@ def build_candidate_repair_phase(
             csim_timelimit=csim_timelimit,
             cosim_timelimit=cosim_timelimit,
             cosim_policy=cosim_policy,
+            record_diagnostic_cases=record_diagnostic_cases,
             shadow_advisor=shadow_advisor,
             r4_integration=r4_integration,
             shadow_advisor_factory=shadow_advisor_factory,

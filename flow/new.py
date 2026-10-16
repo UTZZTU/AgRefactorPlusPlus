@@ -30,6 +30,40 @@ WORK_DIR = os.getenv('WORK_DIR') # optional scratch dir for intermediate work
 MAX_RETRY_ATTEMPTS = 3
 
 
+def _build_public_generation_case_recorder(
+    output_dir: str | os.PathLike[str],
+    generation_id: str,
+    *,
+    enabled: bool,
+) -> tuple[CaseRecorder | None, str | None]:
+    if not isinstance(enabled, bool):
+        raise TypeError("enabled must be boolean")
+    if not enabled:
+        return None, None
+
+    experience_root = None
+    reason = None
+    if RUN_DIR:
+        run_root = Path(RUN_DIR).expanduser().resolve()
+        artifact_root = Path(output_dir).expanduser().resolve()
+        try:
+            artifact_root.relative_to(run_root)
+        except ValueError:
+            reason = "Public generation artifacts are outside RUN_DIR."
+        else:
+            experience_root = run_root / "diagnostic_experiences"
+    else:
+        reason = "RUN_DIR is not configured."
+
+    recorder = CaseRecorder(
+        Path(output_dir) / "cases",
+        f"public-generation-{generation_id}",
+        case_scope_id=generation_id,
+        experience_root=experience_root,
+    )
+    return recorder, reason
+
+
 _AUTOGEN_REASONING_EFFORTS = frozenset(
     {"none", "low", "minimal", "medium", "high", "xhigh"}
 )
@@ -327,6 +361,7 @@ def hls_refactor_with_rag(
     input_domain_contract: Optional[Dict[str, Any]] = None,
     source_package_context: Optional[list[Dict[str, str]]] = None,
     source_package: Optional[Dict[str, Any]] = None,
+    record_diagnostic_cases: bool = False,
 ):
     reset_agrefactorpp_usage_registry()
     reset_model_prompt_evidence()
@@ -741,16 +776,28 @@ def hls_refactor_with_rag(
                 public_generation_id = hashlib.sha256(
                     os.path.abspath(output_dir).encode("utf-8")
                 ).hexdigest()[:24]
-                public_generation_recorder = CaseRecorder(
-                    Path(output_dir) / "cases",
-                    f"public-generation-{public_generation_id}",
-                    case_scope_id=public_generation_id,
-                    experience_root=(
-                        Path(RUN_DIR) / "diagnostic_experiences"
-                        if RUN_DIR
-                        else None
-                    ),
+                public_generation_recorder, recording_reason = (
+                    _build_public_generation_case_recorder(
+                        output_dir,
+                        public_generation_id,
+                        enabled=record_diagnostic_cases,
+                    )
                 )
+                if recording_reason is not None:
+                    (Path(output_dir) / "case_recording_status.json").write_text(
+                        json.dumps(
+                            {
+                                "schema_version": 1,
+                                "case_recording": "enabled",
+                                "experience_derivation": "skipped",
+                                "reason": recording_reason,
+                            },
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+                        + "\n",
+                        encoding="utf-8",
+                    )
                 tb_future = executor.submit(
                     tools.tb_optimizer.gen_tb_with_coverage,
                     cv,
@@ -1108,6 +1155,7 @@ def main():
     parser.add_argument("--external_kernel_name", type=str, default=None, help="HLS top function name for external testbench")
     # Coverage-optimized public TB loop (default off → behavior unchanged)
     parser.add_argument("--enable_tb_coverage_loop", action="store_true", default=False, help="Enable iterative coverage-optimized public TB generation")
+    parser.add_argument("--record-diagnostic-cases", action="store_true", default=False, help="Record agent-safe diagnostic cases and derived experiences")
     parser.add_argument("--public_tb_rounds", type=int, default=3, help="K: max iterative rounds for public TB (used iff --enable_tb_coverage_loop)")
     parser.add_argument("--public_tb_target", type=float, default=80.0, help="Public TB early-stop coverage target in percent")
     # Hidden TB eval gate (default off → behavior unchanged)
@@ -1148,6 +1196,7 @@ def main():
         external_tb_instruction=args.external_tb_instruction,
         external_kernel_name=args.external_kernel_name,
         enable_tb_coverage_loop=args.enable_tb_coverage_loop,
+        record_diagnostic_cases=args.record_diagnostic_cases,
         public_tb_rounds=args.public_tb_rounds,
         public_tb_target=args.public_tb_target,
         enable_hidden_tb_eval=args.enable_hidden_tb_eval,

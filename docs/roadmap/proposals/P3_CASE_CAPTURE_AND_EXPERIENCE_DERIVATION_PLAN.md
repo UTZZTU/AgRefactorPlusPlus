@@ -14,7 +14,7 @@ P3 不接入经验检索、提示词注入或 AI 辅助诊断；不改变目录�
 
 ## P2 基线与代码依据
 
-P2 已新增 `DiagnosticCase`、`CaseAttempt`、`EvidenceCheckResult`、`OwnerAssessment`、`RepairEligibilitySnapshot` 与 `ExperienceRecord` 合同，以及 `RecoveryLedger` 的组件额度预留/提交接口。此前 P2 实施验证记录为 99 项通过；2026-10-15 按 7 个指定模块复跑 87 项通过。额度接口目前没有真实修复入口调用者，P3 不更改这点。
+P2 已新增 `DiagnosticCase`、`CaseAttempt`、`EvidenceCheckResult`、`OwnerAssessment`、`RepairEligibilitySnapshot` 与 `ExperienceRecord` 合同，以及 `RecoveryLedger` 的组件额度预留/提交接口。此前记录分别出现 99 项和 87 项通过；其中 87 项对应的原 7 模块清单未能找回。2026-10-16 按 P2 计划当前列出的 5 个模块复跑为 71 项通过，不将其视为对 87 项历史记录的复现。额度接口目前没有真实修复入口调用者，P3 不更改这点。
 
 | 现有代码 | P3 复用方式 | 当前缺口 |
 |---|---|---|
@@ -124,7 +124,7 @@ Case 更新采用同目录临时文件、flush/fsync、原子替换；同一 Cas
 
 服务器验证：按本计划模块并加入 RepairPhase 生命周期测试，共 **191 项通过**；`git diff --check` 通过。端到端用例确认一次成功 Candidate 修复生成一个 resolved Case、一条已记录的 Candidate Attempt、实际差异以及一条正向经验；另有恢复去重、正负经验、unknown、不生成经验和 Hidden 隔离断言。
 
-**范围状态（2026-10-16）：** P3 的 Candidate、正式 Public Testbench，以及 Public `tb_optimizer` 生成型 Testbench/Stub Case/Experience 记录均已按各自计划接入。补充计划已把 Candidate/正式 Testbench 的实际 route/qualification 决定和 RecoveryLedger 决定分别关联到 Attempt；复用现有 `ledger_event_ref`，没有增加重复字段。Public generation 的并发 trajectory 共用 Case，逐请求 proposal、组件差异和合成/coverage 验证结果均可追溯，并记录实际派发组件的额度类别；该路径仍使用原有局部 `max_repairs`，尚未接入统一 RecoveryLedger。Hidden-generation 不进入跨案例存储。相关 227 项定向回归通过。
+**范围状态（2026-10-16）：** P3 的 Candidate、正式 Public Testbench，以及 Public `tb_optimizer` 生成型 Testbench/Stub Case/Experience 记录均已按各自计划接入。补充计划已把 Candidate/正式 Testbench 的实际 route/qualification 决定和 RecoveryLedger 决定分别关联到 Attempt；复用现有 `ledger_event_ref`，没有增加重复字段。Public generation 的并发 trajectory 共用 Case，逐请求 proposal、组件差异和合成/coverage 验证结果均可追溯，并记录实际派发组件的额度类别；该路径仍使用原有局部 `max_repairs`，尚未接入统一 RecoveryLedger。Hidden-generation 不进入跨案例存储。补充计划原记录为 227 项；四项审计问题修正后，按相同 12 个定向模块复跑为 230 项通过。此修正包还为 Candidate/Public generation 增加默认关闭的 `--record-diagnostic-cases` 控制，并统一使用 `RUN_DIR/diagnostic_experiences` 作为经验根目录；它不接入检索或 AI 辅助诊断。
 
 ## 验证计划
 

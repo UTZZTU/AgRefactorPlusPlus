@@ -160,5 +160,5 @@ git diff --check
 - `CaseAttempt` 复用已有 `ledger_event_ref`，没有增加重复字段。Candidate 的派发路由/资格决定与后续 RecoveryLedger 决定分别快照并关联；Public Testbench 修复保存其实际 Public 资格结果及 reserve 结果。
 - Public `tb_optimizer` 生成路径将并发 trajectory 关联到同一 Case。provider 请求、格式重试、Testbench/Stub proposal 差异、合成探针和 coverage 验证结果分别记录；联合 Testbench/Stub 修正保留一个逻辑 Attempt，并记录所有实际派发组件的额度类别，即使没有文件差异也计入对应组件。
 - Hidden-generation 不传入 Public recorder，Hidden 轨迹及内容仍不进入跨案例 Case/Experience Store。修复资格、调用顺序、局部 `max_repairs` 额度行为和验证合同未改变；`tb_optimizer` 尚未接入统一 RecoveryLedger。
-- 服务器定向回归 227 项通过，`git diff --check` 通过。覆盖 Case/Experience、Candidate/Testbench、Public generation 与 Hidden 边界；未调用外部模型或 Vitis。
+- 本计划原记录的服务器定向回归为 227 项。四项审计问题修正后，按本计划相同的 12 个定向模块复跑为 230 项通过，`git diff --check` 通过。覆盖 Case/Experience、Candidate/Testbench、Public generation 与 Hidden 边界；未调用外部模型或 Vitis。P2 历史 87 项对应的 7 模块清单未能找回；P2 当前 5 模块计划命令复跑为 71 项，详见 P2 计划。
 - 实施前服务器文件备份位于 `/data/AgRefactor/backups/P3_SUPPLEMENT_TRACE_REVIEW_20261016_01/`。当前分支为 `backup/server-current-20261013`；本次未 commit 或 push。

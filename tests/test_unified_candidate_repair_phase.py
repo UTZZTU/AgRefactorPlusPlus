@@ -392,28 +392,33 @@ class CandidateRepairPhaseTests(unittest.TestCase):
                 work_root=root / "work",
                 artifact_root=root / "artifacts",
                 handler_factory=factory,
+                record_diagnostic_cases=True,
             )
-            result = UnifiedRunner(
-                {RunPhase.REFACTOR: phase},
-                budget_limits=BudgetLimits(
-                    max_llm_calls=1
-                ),
-            ).run(
-                make_task(),
-                run_id="repair-pass",
-                trace_path=(
-                    root
-                    / "artifacts"
-                    / "trace.jsonl"
-                ),
-                artifact_root=(
-                    root / "artifacts"
-                ),
-                run_metadata={
-                    "execution_mode": "repair_aware",
-                    "legacy_mode": False,
-                },
-            )
+            with patch.dict(
+                "os.environ",
+                {"RUN_DIR": str(root / "artifacts")},
+            ):
+                result = UnifiedRunner(
+                    {RunPhase.REFACTOR: phase},
+                    budget_limits=BudgetLimits(
+                        max_llm_calls=1
+                    ),
+                ).run(
+                    make_task(),
+                    run_id="repair-pass",
+                    trace_path=(
+                        root
+                        / "artifacts"
+                        / "trace.jsonl"
+                    ),
+                    artifact_root=(
+                        root / "artifacts"
+                    ),
+                    run_metadata={
+                        "execution_mode": "repair_aware",
+                        "legacy_mode": False,
+                    },
+                )
             repair_manifest = (
                 root
                 / "artifacts"
@@ -455,7 +460,6 @@ class CandidateRepairPhaseTests(unittest.TestCase):
             experience_root = (
                 root
                 / "artifacts"
-                / "refactor"
                 / "diagnostic_experiences"
                 / "records"
             )
@@ -487,6 +491,40 @@ class CandidateRepairPhaseTests(unittest.TestCase):
                     }
                 ),
                 1,
+            )
+
+    def test_case_recording_is_disabled_by_default(self):
+        adapter, provider = make_adapter([REPAIRED])
+        factory = ScenarioFactory(require_repair=True)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            phase = build_candidate_repair_phase(
+                model_adapter=adapter,
+                request=make_request(),
+                work_root=root / "work",
+                artifact_root=root / "artifacts",
+                handler_factory=factory,
+            )
+            result = UnifiedRunner(
+                {RunPhase.REFACTOR: phase},
+                budget_limits=BudgetLimits(max_llm_calls=1),
+            ).run(
+                make_task(),
+                run_id="recording-off",
+                artifact_root=root / "artifacts",
+                run_metadata={
+                    "execution_mode": "repair_aware",
+                    "legacy_mode": False,
+                },
+            )
+
+            self.assertTrue(result.succeeded)
+            self.assertEqual(len(provider.calls), 1)
+            self.assertFalse(
+                (root / "artifacts" / "refactor" / "cases").exists()
+            )
+            self.assertFalse(
+                (root / "artifacts" / "diagnostic_experiences").exists()
             )
 
 
