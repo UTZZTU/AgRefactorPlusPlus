@@ -2,9 +2,11 @@
 
 - 版本：评审稿 v1.1
 - 日期：2026-10-16
-- 状态：供审阅与讨论；本文件不是 P4 代码实施授权
+- 状态：v1.1 设计与逐文件清单已获用户认可；P4 已实施并通过 R1/R2/N1/D1/T1/S1，详见第 10 节和配套清单
 - 服务器仓库：`/data/AgRefactor`
 - 计划起草基线：`backup/server-current-20261013`，提交 `35bbead8ac4059d00c776d6564140800463bd02c`；实施前应基于已推送的四项修正后分支 HEAD 重新核对文件和验收清单
+- 逐文件核对基线（2026-10-16）：同一分支，提交 `e740f83cd7f39cbec952ef88bdb0726962b29397`
+- 配套清单：[P4 逐文件实施清单与冻结验收命令](P4_IMPLEMENTATION_CHECKLIST_AND_FROZEN_VALIDATION.md)
 - 上位设计：`docs/roadmap/后续项目推进计划_证据驱动诊断与经验库_讨论稿_v0.3.md`
 
 ## 1. P4 要解决的问题
@@ -63,7 +65,7 @@ P4 在已完成的记录控制和共享根目录上增加读取、检索、提�
 
 ### 4.1 两个默认关闭的开关
 
-CLI 名称暂按下表建议，最终名称由评审确认；功能边界与默认关闭已由 v0.3 确认。
+下表名称随 v1.1 设计获认可；功能边界与默认关闭已由 v0.3 确认。记录开关已经实现，辅助开关在 P4 实施。
 
 | 建议开关 | 默认值 | 开启效果 |
 |---|---:|---|
@@ -123,6 +125,10 @@ B_exp = min(floor(0.15 * C), max(0, C - R_out - P_base - R_safe))
 
 对无法识别或没有经验证计数配置的自定义模型/endpoint，经验注入量为 0，记录 `tokenizer_unavailable`，但既有修复与只基于当前证据的 AI 分析继续。该回退只适用于未登记配置；若 `deepseek-v4-flash` 无法找到可信的调用前计数方法，P4 应先提出替代方案并经审阅，不能把默认模型静默归入此回退并宣称完成。测试验证默认 DeepSeek 配置有可用计数路径，经验总量不超过 15%，且完整 prompt 不超过 `C - R_out - R_safe`。该预算是最大值，不是填满目标。
 
+**已核实的 tokenizer 来源（2026-10-16）：** 官方仓库为 [deepseek-ai/DeepSeek-V4-Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash)，核实 revision 为 `60d8d70770c6776ff598c94bb586a859a38244f1`；`tokenizer.json` 使用 BPE，`tokenizer_config.json` 声明 `PreTrainedTokenizerFast`，未提供 `chat_template`。这些仓库信息作为 P4 实施时确认 tokenizer 来源的依据；固定 revision 和实际文件 SHA-256 后从本地缓存加载。仓库的 `model_max_length=1048576` 不直接视作 API 上下文承诺；API 模型对应关系、完整消息封装与计数仍须按配套清单核验。
+
+**外网访问：** 服务器已确认有 Clash 混合代理 `http://127.0.0.1:7897`。命令仍须先 `source /data/agrefactorpp_env.sh`；直连 Hugging Face 失败时可在该下载进程显式使用现有代理。先核实实际监听端口，不修改全局代理或环境脚本，不在每轮修复时联网。具体命令及默认模型计数完成条件见配套清单第四节。
+
 ### 4.7 AI 辅助诊断边界
 
 触发条件是本地解析、适用的确定性路线及已登记的本地证据检查后，系统仍不能安全判断责任/下一步；`owner=unknown` 是常见情况，但不是唯一条件。AI 可在没有历史经验时仅分析当前证据。AI 输出为独立建议，不覆盖 Case 中的原始 `unknown`。
@@ -141,7 +147,7 @@ B_exp = min(floor(0.15 * C), max(0, C - R_out - P_base - R_safe))
 
 ## 5. 实施文件清单与顺序
 
-本节是 P4 实施边界草案。审阅认可后，实际编码前仍会核对当前文件状态、列出精确 diff 计划及验收命令。
+本节保留已认可的 P4 设计边界；具体接线位置与冻结命令见配套清单。实施结果与验收实绩见第 10 节。
 
 ### P4-A：AI 开关、经验可读取性与准入
 
@@ -164,7 +170,7 @@ P4-A 待实施修改：
 
 主要职责：定义 `CurrentCaseQuery`、检索候选/过滤原因和可解释结果；从当前诊断事件与有限源码特征组装 query；读取 P3 `ExperienceRecord` 和 `StoredChange`；执行硬过滤、可解释排序与阈值；将全部候选原因交给审计记录。必要时以向后兼容方式扩展 `ExperienceRecord`，添加阶段、可见性、组件、诊断特征、来源身份、工具/源码特征和可检索状态。若旧 schema 不具备安全筛选需要的字段，缺字段记录默认拒绝检索，不猜补。
 
-复用 `DiagnosticEvent`、P3 `ExperienceRecord`、`ExperienceStore` 和真实 stored diff。当前运行源码特征可参考 `agrefactor/cpp_interface.py`，但 P4 仅解析已定位的有限代码窗口；libclang 失败时保留词项检索，不能把失败解释为不相似或责任结论。
+复用 `DiagnosticEvent`、P3 `ExperienceRecord`、`ExperienceStore` 和真实 stored diff。当前运行源码特征复用 `agrefactor/cpp_interface.py`：在已验证的本次编译单元和必要 include 上调用 libclang，仅投影相关符号/类型及有限源码窗口，不把截断窗口冒充完整翻译单元，也不扫描全仓。libclang 失败时保留词项检索，不能把失败解释为不相似或责任结论。
 
 完成条件：相同输入产生稳定排序和理由；unknown owner 可以得到诊断候选但不能收到组件专用 diff；不适用/矛盾/Hidden/低相关经验会被解释性排除；检索可返回空；不引入 embedding/外部索引服务。
 
@@ -178,7 +184,7 @@ P4-A 待实施修改：
 - `flow/tools/tb_optimizer.py`、`flow/new.py`：对每个已准入的 Public Testbench/Stub 生成资格修复请求，在对应 trajectory 的最新诊断、修改和验证状态上重新检索；不让并发 trajectory 共用过期查询快照。
 - 建议新增 `agrefactor/prompts/experience_context.py`：集中做正负模板、条数限制、实际 tokenizer 计数和全项跳过；Candidate 与 Testbench 共用，避免两套预算逻辑。
 
-正式 Hidden 评测反馈后的修复仍不可进入。对 Hidden Testbench 的生成期资格修正，建议只执行一次专用 visibility query；当前记录默认不包含 Hidden 生成经验，只有明确标为可跨该视图使用的 agent-safe 经验才可能命中。query/prompt 审计不落盘 Hidden 诊断或源码；没有通过投影合同的请求返回空经验。P4 不把正式 Hidden 评测数据交给此路径。
+正式 Hidden 评测反馈后的修复仍不可进入。对 Hidden Testbench/Stub 的每次合法生成期资格修正，使用专用 visibility projection 构造本轮查询；当前记录默认不包含 Hidden 生成经验，只有明确标为可跨该视图使用的 agent-safe 公共经验才可能命中。query/prompt 审计不落盘 Hidden 诊断、源码或可关联的敏感摘要；没有通过投影合同的请求返回空经验。P4 不把正式 Hidden 评测数据交给此路径。
 
 完成条件：所有合法 Candidate、正式 Public Testbench 及 Public `tb_optimizer` 修复模型调用前均发生动态检索；有新证据后候选排序变化可测试；隐藏正式评测仍无修复入口；Hidden-generation 的不安全 query 不进入共享 Case/ExperienceStore 或 Candidate prompt。
 
@@ -198,7 +204,7 @@ advisor 仅接收本次 allowlist 证据和本次实际注入的经验 ID/内容
 
 ### P4-E：回放评估、测试与文档
 
-新增建议测试：
+P4 验收测试覆盖：
 
 - `tests/test_experience_retrieval.py`：硬过滤、同阶段优先/跨阶段强相关、unknown owner、正负分区、阈值拒绝、空结果和稳定理由码。
 - `tests/test_experience_prompt_budget.py`：token 预算公式、DeepSeek 默认模型的计数映射、完整消息计数、上限 3+/2-、item 整体跳过、未登记自定义模型 fail closed、不同长度 base prompt；可用时将本地计数与服务端 usage 对照。
@@ -231,7 +237,7 @@ advisor 仅接收本次 allowlist 证据和本次实际注入的经验 ID/内容
 
 ## 7. 验收命令草案
 
-实际模块清单以实施前 frozen test list 为准。服务器执行命令必须在同一个 shell 先 source 环境文件：
+本节保留初稿的命令示例；实际验收以配套清单第六节的 R1/R2/N1/D1/T1/S1 为准，不以此示例替代完整清单。实施前的历史基线为 40 个既有模块、633 项中 632 项通过及 1 项旧 shadow 测试夹具失败；P4 最终验收结果见第 10 节。服务器执行命令必须在同一个 shell 先 source 环境文件：
 
 ```bash
 source /data/agrefactorpp_env.sh
@@ -265,14 +271,32 @@ git diff --check
 - **回滚：** 两开关默认关闭，P4 新行为只在显式开关启用时生效。回滚代码时保留追加式 Case/Experience 数据，不删除目录、不重写历史记录；旧 prompt 和旧 shadow 测试保持通过。
 - **不在 P4 范围：** HLS 214-298 目录专项检查/本地补查 dispatcher（P5）；RecoveryLedger 统一接入所有修复入口及 Testbench/Stub 总额度（P6）；自动生命周期、embedding/向量库、旧记忆系统清理、目录晋升和真实 Hidden 评测反馈修复。
 
-## 9. 评审时请重点确认
+## 9. 已获认可的设计与下一步
 
-以下是实施前需要明确的合同，不是请你现在填写检索权重或相似度参数：
+以下合同已随 v1.1 获用户认可，保留作实施依据；本轮不重新逐项提问：
 
 1. `--record-diagnostic-cases` 已按确认名称实现并默认关闭；P4 仍需实现独立、默认关闭的 `--diagnostic-assist`。
-2. 是否同意 P4 修正 `derive_experiences()` 的负向准入；弱关联失败仍只留在 Case/Attempt，不进入检索。
-3. Hidden-generation 的建议边界：每个允许的资格修复前仍执行 visibility-aware 查询；只有明确标记可跨该视图使用的 agent-safe 公共经验可以进入生成器，查询失败/无经验时为空；不持久化 Hidden query 或源码。正式 Hidden 评测反馈一律不进入该模块。
+2. P4 修正 `derive_experiences()` 的负向准入；弱关联失败仍只留在 Case/Attempt，不进入检索。
+3. Hidden-generation 的边界：每个允许的资格修复前仍执行 visibility-aware 查询；只有明确标记可跨该视图使用的 agent-safe 公共经验可以进入生成器，查询失败/无经验时为空；不持久化 Hidden query 或源码。正式 Hidden 评测反馈一律不进入该模块。
 4. 默认模型 `deepseek-v4-flash` 必须有可验证的调用前 tokenizer/context-window 计数支持；只有未登记的自定义模型才允许跳过经验注入，同时继续原修复流程。若默认模型找不到可信计数来源，先提出替代方案，不以“fail closed”直接结案。
-5. 10 月 7–12 日运行目录仅用于审计和脱敏回放 fixture；是否同意不自动把旧运行结果回填成正式经验。
+5. 10 月 7–12 日运行目录仅用于审计和脱敏回放 fixture，不自动把旧运行结果回填成正式经验。
 
-P4 计划获认可后，执行前再提供基于当前 HEAD 的精确逐文件 diff 清单和冻结验收清单；此计划不隐含 P5/P6 授权，也不授权提交或推送代码。
+P4 已按获批清单实施并完成冻结验收；后续转入 P5 的专项证据与本地采集器计划。P5/P6 仍须分别提供具体计划并经用户评审，不由本计划授予实施权限。
+
+## 10. P4 实施与验收记录（2026-10-16）
+
+P4 按用户审阅认可的逐文件清单在 `/data/AgRefactor` 实施。运行时检索、完整提示预算注入、Public Testbench/Stub 生成路径和受引用约束的 AI 诊断均接入现有组件；两个功能开关仍默认关闭。修复前检索只影响当前规则已允许动作的实现参考，不改变 owner、修复资格、组件额度或验证合同。
+
+验收中修复了一个首次落盘缺少 `visibility` 的 Case 事件问题：`CaseRecorder` 现在在持久化前为 agent-safe 公共事件补齐可见性，保留 `public_generation` 语义，并拒绝 Hidden 或非公共事件。单项回归及 Hidden/非公共边界测试均通过。
+
+冻结验收结果：
+
+- R1：35 个既有模块，594 项通过；原 shadow 夹具失败已通过合格/拒绝输入两类测试覆盖修正。
+- R2：5 个模块，42 项通过。
+- N1：6 个新增模块，30 项通过。
+- D1：4 个固定离线回放场景通过。manifest SHA-256 为 `bbc003352fb41153d83ad009a4af098c4a744cbef098dcf0a1a613ba508825b0`；输出 SHA-256 为 `8bc95441f2e11bd6e28a7dee7421e690b8d1b0eb0d2dec665f4facca4f346b58`。输入为合成回放 fixture；历史运行目录仅提供已审计的来源元数据，不被伪装成正式经验。
+- T1 离线：DeepSeek V4 Flash tokenizer 从固定缓存加载，12 个样例计数通过；官方来源 manifest SHA-256 为 `ff997703414afb9a28498887c70a3d88a8194a3f4da028f2ffe1628c68572e1d`，tokenizer 与配置文件哈希记录在该 manifest。
+- T1 在线 usage 对照：此前已完成 12 个合成 Chat Completions 请求，本次未重复。服务端与本地 prompt token 差值为 +2 至 +3，安全余量为 3；结果不是“所有请求精确同数”的声明。输出 SHA-256 为 `bfc1439bf561d8a40f393e60b8a2bba34cf90f424f6049992d9f05e190ba02cc`。未下载模型权重。
+- S1：AST 检查解析 34 个变更/新增 Python 文件，`git diff --check` 通过。R1/R2/N1 均未调用外部模型或真实 Vitis；没有执行真实 HLS 案例。
+
+服务器仍位于分支 `backup/server-current-20261013`、冻结 HEAD `e740f83cd7f39cbec952ef88bdb0726962b29397`；本次没有 commit 或 push。P4 阶段备份和 Case 可见性补丁前文件保留在服务器 `backups/` 下。

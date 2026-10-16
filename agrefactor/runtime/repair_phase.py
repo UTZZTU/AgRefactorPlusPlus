@@ -65,6 +65,8 @@ class CandidateRepairPhaseConfig:
     shadow_advisor_factory: Any | None = None
     r4_integration_factory: Any | None = None
     record_diagnostic_cases: bool = False
+    diagnostic_assist: bool = False
+    experience_root: str | os.PathLike[str] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(
@@ -77,6 +79,14 @@ class CandidateRepairPhaseConfig:
             )
         if not isinstance(self.record_diagnostic_cases, bool):
             raise TypeError("record_diagnostic_cases must be boolean")
+        if not isinstance(self.diagnostic_assist, bool):
+            raise TypeError("diagnostic_assist must be boolean")
+        if self.experience_root is not None:
+            object.__setattr__(
+                self,
+                "experience_root",
+                _clean_path(self.experience_root, "experience_root"),
+            )
         object.__setattr__(
             self,
             "work_root",
@@ -514,6 +524,8 @@ class CandidateRepairPhase:
                 if self._config.record_diagnostic_cases
                 else None
             ),
+            diagnostic_assist=self._config.diagnostic_assist,
+            experience_root=self._config.experience_root,
         )
         result = orchestrator.run(
             context,
@@ -589,6 +601,8 @@ def build_candidate_repair_phase(
         CandidateValidationHandlerFactory | None
     ) = None,
     record_diagnostic_cases: bool = False,
+    diagnostic_assist: bool = False,
+    experience_root: str | os.PathLike[str] | None = None,
     shadow_advisor: Any | None = None,
     r4_integration: Any | None = None,
     shadow_advisor_factory: Any | None = None,
@@ -607,6 +621,8 @@ def build_candidate_repair_phase(
             cosim_timelimit=cosim_timelimit,
             cosim_policy=cosim_policy,
             record_diagnostic_cases=record_diagnostic_cases,
+            diagnostic_assist=diagnostic_assist,
+            experience_root=experience_root,
             shadow_advisor=shadow_advisor,
             r4_integration=r4_integration,
             shadow_advisor_factory=shadow_advisor_factory,

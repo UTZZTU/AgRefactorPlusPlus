@@ -1,0 +1,112 @@
+{
+  "dataset_id": "p4-retrieval-contract-synthetic-v1",
+  "scenarios": [
+    {
+      "scenario_id": "development-known-candidate-with-prior-failed-action",
+      "partition": "development",
+      "source_family": "development-query-family",
+      "source_refs": ["run-2026-10-11", "run-2026-10-12"],
+      "synthetic": true,
+      "query": {
+        "stage": "csynth",
+        "visibility": "public",
+        "owner": "candidate",
+        "diagnostic_codes": ["hls_214-298"],
+        "diagnostic_terms": ["pointer", "interface", "top_kernel"],
+        "components": ["candidate"],
+        "evidence_terms": ["interface_report"],
+        "source_terms": ["input_t", "top_kernel"],
+        "validation_contract": "csynth_contract_v1",
+        "toolchain": "vitis_2023_2"
+      },
+      "attempted_experience_ids": ["experience-dev-negative"],
+      "expected": {
+        "positive": ["experience-dev-cross-stage", "experience-dev-positive"],
+        "negative": ["experience-dev-negative"],
+        "previously_attempted": ["experience-dev-negative"],
+        "change_available": true
+      }
+    },
+    {
+      "scenario_id": "development-unknown-owner-diagnostic-only",
+      "partition": "development",
+      "source_family": "development-query-family",
+      "source_refs": ["run-2026-10-09"],
+      "synthetic": true,
+      "query": {
+        "stage": "csynth",
+        "visibility": "public",
+        "owner": "unknown",
+        "diagnostic_codes": ["hls_214-298"],
+        "diagnostic_terms": ["pointer", "interface", "top_kernel"],
+        "components": [],
+        "evidence_terms": ["interface_report"],
+        "source_terms": ["input_t", "top_kernel"],
+        "validation_contract": "csynth_contract_v1",
+        "toolchain": "vitis_2023_2"
+      },
+      "attempted_experience_ids": [],
+      "expected": {
+        "positive": ["experience-dev-cross-stage", "experience-dev-positive"],
+        "negative": ["experience-dev-negative"],
+        "previously_attempted": [],
+        "change_available": false
+      }
+    },
+    {
+      "scenario_id": "development-no-applicable-experience",
+      "partition": "development",
+      "source_family": "development-query-family",
+      "source_refs": ["run-2026-10-12"],
+      "synthetic": true,
+      "query": {
+        "stage": "csynth",
+        "visibility": "public",
+        "owner": "candidate",
+        "diagnostic_codes": ["hls_999-999"],
+        "diagnostic_terms": ["timing", "unsupported"],
+        "components": ["candidate"],
+        "evidence_terms": ["csynth_log"],
+        "source_terms": ["top_kernel"],
+        "validation_contract": "csynth_contract_v1",
+        "toolchain": "vitis_2023_2"
+      },
+      "attempted_experience_ids": [],
+      "expected": {
+        "positive": [],
+        "negative": [],
+        "excluded": {
+          "experience-dev-positive": "below_relevance_threshold",
+          "experience-dev-cross-stage": "below_relevance_threshold",
+          "experience-dev-negative": "below_relevance_threshold"
+        }
+      }
+    },
+    {
+      "scenario_id": "heldout-public-simulation-query",
+      "partition": "heldout",
+      "source_family": "heldout-query-family",
+      "source_refs": ["run-2026-10-11"],
+      "synthetic": true,
+      "query": {
+        "stage": "csim",
+        "visibility": "public",
+        "owner": "candidate",
+        "diagnostic_codes": ["simulation_mismatch"],
+        "diagnostic_terms": ["simulation_mismatch", "output", "reference"],
+        "components": ["candidate"],
+        "evidence_terms": ["public_output_diff"],
+        "source_terms": ["top_kernel"],
+        "validation_contract": "csim_contract_v1",
+        "toolchain": "vitis_2023_2"
+      },
+      "attempted_experience_ids": [],
+      "expected": {
+        "positive": ["experience-heldout-positive"],
+        "negative": [],
+        "previously_attempted": [],
+        "change_available": true
+      }
+    }
+  ]
+}

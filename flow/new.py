@@ -14,7 +14,13 @@ from flow.tools.result_mapping import (
 from flow.rag.rag_integration import KnowledgeManager
 from flow.base_agent import reset_agrefactorpp_usage_registry, print_agrefactorpp_usage_summary
 from agrefactor.runtime.prompt_evidence import reset_model_prompt_evidence
-from agrefactor.models import EffectiveModelConfig, ModelCallRole
+from agrefactor.models import (
+    EffectiveModelConfig,
+    ModelCallRole,
+    ModelRegistry,
+    ModelSpec,
+    OpenAICompatibleProvider,
+)
 from agrefactor.compat.legacy_refactor import (
     build_effective_legacy_llm_config,
 )
@@ -362,6 +368,8 @@ def hls_refactor_with_rag(
     source_package_context: Optional[list[Dict[str, str]]] = None,
     source_package: Optional[Dict[str, Any]] = None,
     record_diagnostic_cases: bool = False,
+    diagnostic_assist: bool = False,
+    diagnostic_experience_root: str | None = None,
 ):
     reset_agrefactorpp_usage_registry()
     reset_model_prompt_evidence()
@@ -809,6 +817,9 @@ def hls_refactor_with_rag(
                     input_domain_contract,
                     public_generation_recorder,
                     public_generation_id,
+                    diagnostic_assist=diagnostic_assist,
+                    diagnostic_experience_root=diagnostic_experience_root,
+                    effective_model_config=effective_model_config,
                 )
             else:
                 tb_future = executor.submit(
@@ -978,6 +989,9 @@ def hls_refactor_with_rag(
                 max_repairs=max_testbench_repair_attempts,
                 pinned_result_mapping=cv["public_result_mapping"],
                 pinned_type_contract=cv["public_type_contract"],
+                diagnostic_assist=diagnostic_assist,
+                diagnostic_experience_root=diagnostic_experience_root,
+                effective_model_config=effective_model_config,
             )
         except tools.tb_optimizer.TestbenchGenerationExhausted as exc:
             return _finish_test_generation_exhaustion(
@@ -1143,6 +1157,8 @@ def main():
     parser.add_argument("--max_retry_attempts", type=int, default=MAX_RETRY_ATTEMPTS, help="Maximum retry attempts")
     parser.add_argument("--hetero_enabled", action="store_true", default=False, help="Enable heterogeneous programming")
     parser.add_argument("--model", type=str, default=None, help="Override LLM model for all agents")
+    parser.add_argument("--model-family", type=str, default=None, help="Model-family profile required for tokenizer-safe experience retrieval")
+    parser.add_argument("--api-key-env", type=str, default="OPENAI_API_KEY", help="Environment variable containing the model API key")
     parser.add_argument("--remote", action="store_true", default=False, help="Use remote HLS server for csynth/csim")
     parser.add_argument("--reasoning_effort", type=str, default=None, help="Reasoning effort (low/medium/high)")
     parser.add_argument("--base_url", type=str, default=None, help="Base URL for local serving endpoint")
@@ -1156,6 +1172,7 @@ def main():
     # Coverage-optimized public TB loop (default off → behavior unchanged)
     parser.add_argument("--enable_tb_coverage_loop", action="store_true", default=False, help="Enable iterative coverage-optimized public TB generation")
     parser.add_argument("--record-diagnostic-cases", action="store_true", default=False, help="Record agent-safe diagnostic cases and derived experiences")
+    parser.add_argument("--diagnostic-assist", action="store_true", default=False, help="Retrieve validated experiences before eligible repairs")
     parser.add_argument("--public_tb_rounds", type=int, default=3, help="K: max iterative rounds for public TB (used iff --enable_tb_coverage_loop)")
     parser.add_argument("--public_tb_target", type=float, default=80.0, help="Public TB early-stop coverage target in percent")
     # Hidden TB eval gate (default off → behavior unchanged)
@@ -1168,6 +1185,38 @@ def main():
     parser.add_argument("--use_cached_tb_as_public", action="store_true", default=False,
                         help="Use the cached hidden TB (from --golden_tb_cache_dir/--golden_tb_cache_key) directly as the agent's testbench, skipping TB generation entirely. Requires both --golden_tb_cache_dir and --golden_tb_cache_key.")
     args = parser.parse_args()
+    effective_model_config = None
+    if args.diagnostic_assist:
+        if not args.model or not args.model_family:
+            parser.error(
+                "--diagnostic-assist requires both --model and --model-family "
+                "so experience prompts can use a verified model profile"
+            )
+        provider = OpenAICompatibleProvider(
+            default_base_url=args.base_url,
+            default_api_key_env=args.api_key_env,
+        )
+        registry = ModelRegistry()
+        registry.register_provider(provider)
+        registry.register_model(
+            ModelSpec(
+                name=args.model,
+                provider=provider.name,
+                model=args.model,
+                family=args.model_family,
+                base_url=args.base_url,
+                api_key_env=args.api_key_env,
+            )
+        )
+        call_parameters = (
+            {}
+            if args.reasoning_effort is None
+            else {"reasoning_effort": args.reasoning_effort}
+        )
+        effective_model_config = registry.resolve_effective_config(
+            args.model,
+            parameters=call_parameters,
+        )
     success, _ = hls_refactor_with_rag(
         kernel_path=args.kernel_path,
         kernel_name=args.kernel_name,
@@ -1197,6 +1246,13 @@ def main():
         external_kernel_name=args.external_kernel_name,
         enable_tb_coverage_loop=args.enable_tb_coverage_loop,
         record_diagnostic_cases=args.record_diagnostic_cases,
+        diagnostic_assist=args.diagnostic_assist,
+        effective_model_config=effective_model_config,
+        diagnostic_experience_root=(
+            str(Path(os.environ.get("RUN_DIR", "/data/agrefactor_runs")) / "diagnostic_experiences")
+            if args.diagnostic_assist
+            else None
+        ),
         public_tb_rounds=args.public_tb_rounds,
         public_tb_target=args.public_tb_target,
         enable_hidden_tb_eval=args.enable_hidden_tb_eval,

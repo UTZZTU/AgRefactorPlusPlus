@@ -425,6 +425,16 @@ class ExperienceRecord:
     source_version_hash: str
     change_fingerprint: str | None = None
     schema_version: int = 1
+    stage: str | None = None
+    owner: str | None = None
+    components: tuple[str, ...] = ()
+    visibility: str | None = None
+    diagnostic_terms: tuple[str, ...] = ()
+    source_terms: tuple[str, ...] = ()
+    evidence_terms: tuple[str, ...] = ()
+    validation_contract: str | None = None
+    toolchain: str | None = None
+    failure_code: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "experience_id", _identifier(self.experience_id, "experience_id"))
@@ -471,12 +481,28 @@ class ExperienceRecord:
         if (
             isinstance(self.schema_version, bool)
             or not isinstance(self.schema_version, int)
-            or self.schema_version != 1
+            or self.schema_version not in {1, 2}
         ):
             raise ValueError("unsupported experience schema_version")
+        if self.schema_version == 2:
+            for name in ("stage", "owner", "visibility", "validation_contract"):
+                object.__setattr__(self, name, _code(getattr(self, name), name))
+            object.__setattr__(self, "components", _codes(self.components, "components", required=True))
+            terms = _codes(self.diagnostic_terms, "diagnostic_terms", required=True)
+            if len(terms) > 32:
+                raise ValueError("diagnostic_terms exceeds the item limit")
+            object.__setattr__(self, "diagnostic_terms", terms)
+            object.__setattr__(self, "source_terms", _codes(self.source_terms, "source_terms"))
+            object.__setattr__(self, "evidence_terms", _codes(self.evidence_terms, "evidence_terms"))
+            if self.visibility not in {"public", "public_generation"}:
+                raise ValueError("schema v2 experiences must have a public visibility")
+            if self.toolchain is not None:
+                object.__setattr__(self, "toolchain", _code(self.toolchain, "toolchain"))
+            if self.polarity is ExperiencePolarity.NEGATIVE:
+                object.__setattr__(self, "failure_code", _code(self.failure_code, "failure_code"))
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        value = {
             "schema_version": self.schema_version,
             "experience_id": self.experience_id,
             "source_case_id": self.source_case_id,
@@ -491,6 +517,20 @@ class ExperienceRecord:
             "source_version_hash": self.source_version_hash,
             "change_fingerprint": self.change_fingerprint,
         }
+        if self.schema_version == 2:
+            value.update(
+                stage=self.stage,
+                owner=self.owner,
+                components=list(self.components),
+                visibility=self.visibility,
+                diagnostic_terms=list(self.diagnostic_terms),
+                source_terms=list(self.source_terms),
+                evidence_terms=list(self.evidence_terms),
+                validation_contract=self.validation_contract,
+                toolchain=self.toolchain,
+                failure_code=self.failure_code,
+            )
+        return value
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "ExperienceRecord":
@@ -511,6 +551,17 @@ class ExperienceRecord:
         evidence_refs: tuple[str, ...],
         source_version_hash: str,
         change_fingerprint: str | None = None,
+        schema_version: int = 1,
+        stage: str | None = None,
+        owner: str | None = None,
+        components: tuple[str, ...] = (),
+        visibility: str | None = None,
+        diagnostic_terms: tuple[str, ...] = (),
+        source_terms: tuple[str, ...] = (),
+        evidence_terms: tuple[str, ...] = (),
+        validation_contract: str | None = None,
+        toolchain: str | None = None,
+        failure_code: str | None = None,
     ) -> "ExperienceRecord":
         if not isinstance(case, DiagnosticCase):
             raise TypeError("case must be DiagnosticCase")
@@ -563,4 +614,15 @@ class ExperienceRecord:
             evidence_refs=evidence_refs,
             source_version_hash=source_version_hash,
             change_fingerprint=change_fingerprint,
+            schema_version=schema_version,
+            stage=stage,
+            owner=owner,
+            components=components,
+            visibility=visibility,
+            diagnostic_terms=diagnostic_terms,
+            source_terms=source_terms,
+            evidence_terms=evidence_terms,
+            validation_contract=validation_contract,
+            toolchain=toolchain,
+            failure_code=failure_code,
         )

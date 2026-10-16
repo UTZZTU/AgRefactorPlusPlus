@@ -463,7 +463,10 @@ class CandidateRepairPhaseTests(unittest.TestCase):
                 / "diagnostic_experiences"
                 / "records"
             )
-            self.assertEqual(len(list(experience_root.glob("*.json"))), 1)
+            self.assertEqual(
+                len(list(experience_root.glob("*.json"))),
+                1,
+            )
             self.assertEqual(
                 len(provider.calls),
                 1,

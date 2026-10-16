@@ -8,6 +8,7 @@ source plus the frozen Public-derived Candidate ABI.
 
 import concurrent.futures
 from contextlib import nullcontext
+from collections.abc import Mapping
 import json
 import os
 import tempfile
@@ -16,7 +17,7 @@ import re
 import subprocess
 import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from autogen.agentchat.group import ContextVariables  # type: ignore
 from agrefactor.config import EvaluationSplit, TestSuiteSpec
@@ -1560,6 +1561,117 @@ def _agent_run_once(agent, message: str, first_turn: bool, *, on_event=None) -> 
     return content
 
 
+def _register_experience_message_hook(
+    agent,
+    *,
+    enabled: bool,
+    store_root: str | None,
+    effective_model_config: Any,
+    call_role: Any,
+    query_factory: Callable[[], Any],
+    audit_events: list[dict[str, Any]] | None = None,
+    component_factory: Callable[[], str] | None = None,
+) -> None:
+    """Inject a budgeted experience block into this agent's outgoing request."""
+    if not enabled or not store_root or effective_model_config is None:
+        return
+    register_hook = getattr(agent, "register_hook", None)
+    if not callable(register_hook):
+        return
+
+    from agrefactor.prompts.experience_context import (
+        default_model_token_counter,
+        select_experience_prompt_context,
+    )
+
+    try:
+        counter = default_model_token_counter()
+        call_parameters = effective_model_config.parameters_for_call(call_role)
+    except Exception:
+        counter = None
+        call_parameters = {}
+
+    def record(audit: Mapping[str, Any]) -> None:
+        if audit_events is None:
+            return
+        try:
+            query = query_factory()
+        except Exception:
+            query = None
+        if getattr(query, "visibility", None) == "hidden_generation":
+            return
+        component = component_factory() if component_factory is not None else "testbench"
+        audit_events.append({"component": component, **dict(audit)})
+
+    def experience_hook(messages):
+        query = query_factory()
+        if query is None:
+            return messages
+        if not isinstance(messages, list) or not all(
+            isinstance(item, Mapping) for item in messages
+        ):
+            record({"reason": "message_shape_unregistered"})
+            return messages
+
+        body = [dict(item) for item in messages]
+        raw_system = getattr(agent, "_oai_system_message", None)
+        if isinstance(raw_system, list) and all(
+            isinstance(item, Mapping) for item in raw_system
+        ):
+            system_messages = [dict(item) for item in raw_system]
+        else:
+            system_text = getattr(agent, "system_message", None)
+            if not isinstance(system_text, str) or not system_text.strip():
+                record({"reason": "system_message_unavailable"})
+                return messages
+            system_messages = [{"role": "system", "content": system_text}]
+
+        def render(snippets):
+            rendered = [*system_messages, *body]
+            if snippets:
+                rendered.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Historical references (reference only; current evidence "
+                            "and the active generation contract control):\n"
+                            + "\n\n".join(snippets)
+                        ),
+                    }
+                )
+            return rendered
+
+        try:
+            selection = select_experience_prompt_context(
+                query,
+                store_root=store_root,
+                counter=counter,
+                provider=effective_model_config.provider_name,
+                model_id=effective_model_config.model_id,
+                base_url=effective_model_config.base_url or "",
+                request_mode="chat_completions",
+                call_parameters=call_parameters,
+                render_messages=render,
+            )
+        except Exception as exc:
+            record(
+                {
+                    "reason": "experience_lookup_failed",
+                    "error_type": type(exc).__name__,
+                    "query_text_persisted": False,
+                }
+            )
+            return messages
+
+        record(selection.audit)
+        if not selection.snippets:
+            return messages
+        block = render(selection.snippets)[-1]
+        return [*body, block]
+
+    register_hook("process_all_messages_before_reply", experience_hook)
+
+
 def _request_cpp_artifact(
     agent,
     message: str,
@@ -1713,6 +1825,11 @@ def generate_public_runtime_contract(
     max_response_attempts: Optional[int] = None,
     before_request: Any = None,
     failure_feedback: Optional[Dict[str, Any]] = None,
+    diagnostic_assist: bool = False,
+    diagnostic_experience_root: str | None = None,
+    effective_model_config: Any = None,
+    experience_query: Any = None,
+    experience_audit_events: list[dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     """Generate and validate the Public COSIM depth contract."""
 
@@ -1737,6 +1854,18 @@ def generate_public_runtime_contract(
         budget=budget,
     )
     agent = loader.load_agent(AGENT_NAME)
+    from agrefactor.models import ModelCallRole
+
+    _register_experience_message_hook(
+        agent,
+        enabled=diagnostic_assist and experience_query is not None,
+        store_root=diagnostic_experience_root,
+        effective_model_config=effective_model_config,
+        call_role=ModelCallRole.TESTBENCH_REPAIR,
+        query_factory=lambda: experience_query,
+        audit_events=experience_audit_events,
+        component_factory=lambda: "testbench",
+    )
     message = _public_runtime_contract_prompt(
         orig_code=orig_code,
         testbench_code=testbench_code,
@@ -2066,6 +2195,9 @@ def run_trajectory(
     mapping_original_code: Optional[str] = None,
     public_case_recorder: Any = None,
     generation_id: str | None = None,
+    diagnostic_assist: bool = False,
+    diagnostic_experience_root: str | None = None,
+    effective_model_config: Any = None,
 ) -> Dict[str, Any]:
     if isinstance(K, bool) or not isinstance(K, int) or K < 1:
         raise ValueError("K must be a positive integer")
@@ -2076,6 +2208,82 @@ def run_trajectory(
         budget=budget,
     )
     agent = loader.load_agent(AGENT_NAME)
+    experience_state: Dict[str, Any] = {"active": False}
+    experience_audit_events: List[Dict[str, Any]] = []
+    from agrefactor.evidence.experience_retrieval import CurrentCaseQuery
+    from agrefactor.models import ModelCallRole
+
+    def experience_query():
+        if not experience_state.get("active"):
+            return None
+        component = experience_state.get("component", "testbench")
+        owner = experience_state.get("owner", "unknown")
+        failure_text = " ".join(
+            str(item) for item in experience_state.get("failure_context", ())
+        )
+        terms = tuple(
+            dict.fromkeys(
+                token.casefold().replace("-", "_")[:120]
+                for token in re.findall(r"[A-Za-z][A-Za-z0-9_.-]{1,63}", failure_text)
+            )
+        )[:48]
+        source_terms = tuple(
+            dict.fromkeys(
+                value.casefold()
+                for value in (kernel_name, hls_name)
+                if isinstance(value, str)
+                and re.fullmatch(r"[A-Za-z0-9_.-]{1,120}", value)
+            )
+        )
+        return CurrentCaseQuery(
+            stage="public_testbench_generation",
+            visibility=("hidden_generation" if hidden_generation else "public"),
+            owner=(
+                owner
+                if owner in {"candidate", "testbench", "stub", "unknown"}
+                else "unknown"
+            ),
+            diagnostic_terms=terms,
+            components=(component,) if component in {"testbench", "stub"} else (),
+            source_terms=source_terms,
+        )
+
+    _register_experience_message_hook(
+        agent,
+        enabled=diagnostic_assist,
+        store_root=diagnostic_experience_root,
+        effective_model_config=effective_model_config,
+        call_role=(
+            ModelCallRole.HIDDEN_TEST_GENERATION
+            if hidden_generation
+            else ModelCallRole.PUBLIC_TEST_GENERATION
+        ),
+        query_factory=experience_query,
+        audit_events=experience_audit_events,
+        component_factory=lambda: experience_state.get(
+            "component", "testbench"
+        ),
+    )
+
+    def set_experience_request(
+        component: str,
+        request_role: str,
+        failure_context: Sequence[str],
+    ) -> None:
+        experience_state.update(
+            active=bool(diagnostic_assist and request_role == "repair"),
+            component=component,
+            owner=("unknown" if component == "stub" else component),
+            failure_context=tuple(failure_context),
+        )
+
+    def experience_request_event(event: str, component: str, role: str) -> None:
+        if event == "request":
+            set_experience_request(component, role, experience_state.get("failure_context", ()))
+        elif event.startswith("format_retry"):
+            experience_state["active"] = False
+        record_artifact_event(component, event, role)
+
     context = dict(source_context or {})
     parse_context = {
         "source_path": str(Path(context["source_root"]) / "testbench.cpp") if context.get("source_root") else None,
@@ -2454,6 +2662,7 @@ def run_trajectory(
                         exc.termination_reason = "frozen_contract_precondition_failed"
                         exc.retry_exhausted = False
                         raise
+                set_experience_request("testbench", request_role, failures)
                 value = _request_cpp_artifact(
                     agent,
                     current_message,
@@ -2461,7 +2670,9 @@ def run_trajectory(
                     artifact_kind="testbench",
                     required_symbol=hls_name,
                     max_repairs=0,
-                    on_event=lambda event: record_artifact_event("testbench", event, request_role),
+                    on_event=lambda event: experience_request_event(
+                        event, "testbench", request_role
+                    ),
                 )
                 response_returned = True
                 record_artifact_event("testbench", "contract_check")
@@ -2626,6 +2837,7 @@ def run_trajectory(
             role_for_call = request_role
             value: str | None = None
             try:
+                set_experience_request("stub", request_role, failures)
                 value = _request_cpp_artifact(
                     agent,
                     current_message,
@@ -2633,7 +2845,9 @@ def run_trajectory(
                     artifact_kind="stub",
                     required_symbol=hls_name,
                     max_repairs=0,
-                    on_event=lambda event: record_artifact_event("stub", event, request_role),
+                    on_event=lambda event: experience_request_event(
+                        event, "stub", request_role
+                    ),
                 )
                 response_returned = True
                 record_artifact_event("stub", "contract_check")
@@ -3333,6 +3547,11 @@ def run_trajectory(
             on_artifact_event=record_artifact_event,
             on_artifact_proposal=observe_proposal,
             on_qualification_result=record_public_qualification_result,
+            set_experience_request=set_experience_request,
+            experience_request_event=experience_request_event,
+            diagnostic_assist=diagnostic_assist,
+            hidden_generation=hidden_generation,
+            experience_audit_events=experience_audit_events,
         )
     except Exception as exc:
         exc.artifact_counts = counts_snapshot()
@@ -3371,6 +3590,11 @@ def _finalize_trajectory(
     on_artifact_event=None,
     on_artifact_proposal=None,
     on_qualification_result=None,
+    set_experience_request=None,
+    experience_request_event=None,
+    diagnostic_assist: bool = False,
+    hidden_generation: bool = False,
+    experience_audit_events: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     context = dict(source_context or {})
     parse_context = {
@@ -3565,6 +3789,10 @@ def _finalize_trajectory(
             failure_history = _failure_history(rounds) + "\n\n" + "\n\n".join(synth_failures)
             if not allow_abi_correction or probe_contract_failed:
                 continue
+            if set_experience_request is not None:
+                set_experience_request(
+                    "testbench", "repair", (failure_history, synth_error)
+                )
             new_tb = _request_cpp_artifact(
                 agent,
                 _hls_friendly_rewrite_message(
@@ -3575,7 +3803,11 @@ def _finalize_trajectory(
                 first_turn=False,
                 artifact_kind="testbench",
                 required_symbol=expected_hls_name,
-                on_event=(lambda event: on_artifact_event("testbench", event, "repair")) if on_artifact_event else None,
+                on_event=(
+                    lambda event: experience_request_event(
+                        event, "testbench", "repair"
+                    )
+                ) if experience_request_event is not None else None,
             )
             if on_artifact_event:
                 on_artifact_event("testbench", "contract_check")
@@ -3605,6 +3837,10 @@ def _finalize_trajectory(
                         "testbench", "repair", new_tb,
                         contract_valid=testbench_contract_valid,
                     )
+            if set_experience_request is not None:
+                set_experience_request(
+                    "stub", "repair", (failure_history, synth_error)
+                )
             new_stub = _request_cpp_artifact(
                 agent,
                 _stub_request_message(
@@ -3615,7 +3851,11 @@ def _finalize_trajectory(
                 first_turn=False,
                 artifact_kind="stub",
                 required_symbol=expected_hls_name,
-                on_event=(lambda event: on_artifact_event("stub", event, "repair")) if on_artifact_event else None,
+                on_event=(
+                    lambda event: experience_request_event(
+                        event, "stub", "repair"
+                    )
+                ) if experience_request_event is not None else None,
             )
             if on_artifact_event:
                 on_artifact_event("stub", "contract_check")
@@ -3753,6 +3993,11 @@ def _finalize_trajectory(
                 [],
             ),
             "frozen_public_type_contract": best.get("frozen_public_type_contract"),
+            **(
+                {"experience_retrieval": experience_audit_events or []}
+                if diagnostic_assist and not hidden_generation
+                else {}
+            ),
         }
 
     common = {
@@ -3784,6 +4029,11 @@ def _finalize_trajectory(
             or (freeze_public_type_contract(
                 str(best["tb_code"]), expected_hls_name, **parse_context,
             ) if expected_hls_name else None)
+        ),
+        **(
+            {"experience_retrieval": experience_audit_events or []}
+            if diagnostic_assist and not hidden_generation
+            else {}
         ),
     }
 
@@ -3851,6 +4101,9 @@ def optimize_tb_public(
     mapping_original_code: Optional[str] = None,
     public_case_recorder: Any = None,
     generation_id: str | None = None,
+    diagnostic_assist: bool = False,
+    diagnostic_experience_root: str | None = None,
+    effective_model_config: Any = None,
 ) -> Dict[str, Any]:
     """Generate Public evidence across one or more independent trajectories."""
 
@@ -3875,6 +4128,9 @@ def optimize_tb_public(
                     mapping_original_code=mapping_original_code,
                     public_case_recorder=public_case_recorder,
                     generation_id=generation_id,
+                    diagnostic_assist=diagnostic_assist,
+                    diagnostic_experience_root=diagnostic_experience_root,
+                    effective_model_config=effective_model_config,
                 )
             ]
         except Exception as exc:
@@ -3933,6 +4189,9 @@ def optimize_tb_public(
                     mapping_original_code=mapping_original_code,
                     public_case_recorder=public_case_recorder,
                     generation_id=generation_id,
+                    diagnostic_assist=diagnostic_assist,
+                    diagnostic_experience_root=diagnostic_experience_root,
+                    effective_model_config=effective_model_config,
                 ): index
                 for index in range(M)
             }
@@ -4262,6 +4521,9 @@ def gen_tb_with_coverage(
     input_domain_contract: Optional[Dict[str, Any]] = None,
     public_case_recorder: Any = None,
     generation_id: str | None = None,
+    diagnostic_assist: bool = False,
+    diagnostic_experience_root: str | None = None,
+    effective_model_config: Any = None,
 ) -> Tuple[str, str, str]:
     """Coverage-enhanced Public generation with no held-out input channel."""
 
@@ -4281,6 +4543,9 @@ def gen_tb_with_coverage(
         input_domain_contract=input_domain_contract,
         public_case_recorder=public_case_recorder,
         generation_id=generation_id,
+        diagnostic_assist=diagnostic_assist,
+        diagnostic_experience_root=diagnostic_experience_root,
+        effective_model_config=effective_model_config,
         mapping_original_code=(
             getter("curr_code") if callable(getter) else None
         ),
@@ -4325,6 +4590,9 @@ def make_golden_hidden_tb(
     max_repairs: int = 3,
     pinned_result_mapping: Optional[Dict[str, Any]] = None,
     pinned_type_contract: Optional[Dict[str, Any]] = None,
+    diagnostic_assist: bool = False,
+    diagnostic_experience_root: str | None = None,
+    effective_model_config: Any = None,
 ) -> Dict[str, Any]:
     if not isinstance(pinned_public_hls_decl, str) or not (
         pinned_public_hls_decl.strip()
@@ -4393,6 +4661,9 @@ def make_golden_hidden_tb(
                 max_repairs=max_repairs,
                 pinned_result_mapping=pinned_result_mapping,
                 pinned_type_contract=pinned_type_contract,
+                diagnostic_assist=diagnostic_assist,
+                diagnostic_experience_root=diagnostic_experience_root,
+                effective_model_config=effective_model_config,
             ): index
             for index in range(M)
         }

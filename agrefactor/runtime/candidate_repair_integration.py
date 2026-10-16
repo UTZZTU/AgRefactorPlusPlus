@@ -28,7 +28,7 @@ from agrefactor.evaluation import (
     TestbenchPreflight,
     ValidationState,
 )
-from agrefactor.evidence import CaseRecorder, FeedbackOwner
+from agrefactor.evidence import CaseRecorder, FeedbackOwner, FeedbackReport
 from agrefactor.evidence import (
     DiagnosticEventProjector,
     audit_testbench_semantic_revision,
@@ -36,6 +36,11 @@ from agrefactor.evidence import (
     testbench_revision_authorization,
 )
 from agrefactor.models import CandidateModelAdapter
+from agrefactor.prompts.experience_context import (
+    candidate_experience_context_provider,
+    default_model_token_counter,
+    testbench_experience_context_provider,
+)
 from agrefactor.recovery import (
     DiagnosticAdvisor,
     RecoveryAction,
@@ -51,6 +56,10 @@ from agrefactor.recovery import (
     default_restart_reserve,
     build_effective_repair_quota_summary,
     run_shadow_diagnostics,
+)
+from agrefactor.recovery.diagnostic_assistant import (
+    DiagnosticAssistant,
+    DiagnosticAssistantRequest,
 )
 from agrefactor.testing import (
     TestbenchRepairLoop,
@@ -834,6 +843,8 @@ class CandidateRepairValidationOrchestrator:
         shadow_advisor: DiagnosticAdvisor | None = None,
         r4_integration: Any | None = None,
         case_recorder: CaseRecorder | None = None,
+        diagnostic_assist: bool = False,
+        experience_root: str | os.PathLike[str] | None = None,
     ) -> None:
         if not isinstance(
             model_adapter,
@@ -856,11 +867,23 @@ class CandidateRepairValidationOrchestrator:
             )
         if r4_integration is not None and not callable(getattr(r4_integration, "run_from_existing_orchestrator", None)):
             raise TypeError("r4_integration must provide run_from_existing_orchestrator or be None")
+        if not isinstance(diagnostic_assist, bool):
+            raise TypeError("diagnostic_assist must be boolean")
         self._model_adapter = model_adapter
         self._handler_factory = handler_factory
         self._shadow_advisor = shadow_advisor
         self._r4_integration = r4_integration
         self._case_recorder = case_recorder
+        self._diagnostic_assist = diagnostic_assist
+        self._experience_root = (
+            None
+            if experience_root is None
+            else Path(experience_root).expanduser().resolve()
+        )
+        self._experience_counter = (
+            default_model_token_counter() if diagnostic_assist else None
+        )
+        self._diagnostic_signatures: set[str] = set()
         self._recovery_policy = conservative_v1_policy()
 
     def run(
@@ -882,6 +905,7 @@ class CandidateRepairValidationOrchestrator:
             )
         _required_text(validation_id, "validation_id")
         _validate_suite_codes(context.task, request)
+        self._diagnostic_signatures.clear()
         (
             family_instruction,
             family_instruction_source,
@@ -1104,6 +1128,18 @@ class CandidateRepairValidationOrchestrator:
             or terminal_decision.action
             is not FeedbackRouteAction.REPAIR_CANDIDATE
         ):
+            if (
+                active_outcome.result.final_state
+                is ValidationState.REPAIR_PENDING
+            ):
+                suggestion = self._run_live_diagnostic(
+                    context=context,
+                    report=terminal_report,
+                    route_decision=terminal_decision,
+                    stage=initial_terminal_step.state.value,
+                )
+                if suggestion is not None:
+                    recovery_metadata["diagnostic_assistant"] = suggestion
             status = (
                 CandidateRepairOrchestrationStatus.REPAIR_NOT_APPLICABLE
                 if active_outcome.result.final_state
@@ -1148,6 +1184,14 @@ class CandidateRepairValidationOrchestrator:
                 else self._case_recorder.record_candidate_ledger_event
             ),
         )
+        experience_context_provider = None
+        if self._diagnostic_assist and self._experience_root is not None:
+            experience_context_provider = candidate_experience_context_provider(
+                store_root=self._experience_root,
+                counter=self._experience_counter,
+                effective_config=self._model_adapter.effective_config,
+                task=context.task,
+            )
         repair_result = loop.run(
             CandidateRepairLoopRequest(
                 task=context.task,
@@ -1165,6 +1209,7 @@ class CandidateRepairValidationOrchestrator:
                     active_request.approved_memory_snippets
                 ),
                 recovery_ledger=recovery_ledger,
+                experience_context_provider=experience_context_provider,
             )
         )
         validation_results = tuple(
@@ -1190,6 +1235,25 @@ class CandidateRepairValidationOrchestrator:
         )
         if status is CandidateRepairOrchestrationStatus.ACCEPTED:
             last_state = ValidationState.ACCEPTED
+        elif validator.outcomes:
+            latest = validator.outcomes[-1]
+            if (
+                latest.terminal_report is not None
+                and latest.terminal_decision is not None
+            ):
+                suggestion = self._run_live_diagnostic(
+                    context=context,
+                    report=latest.terminal_report,
+                    route_decision=latest.terminal_decision,
+                    stage=(
+                        latest.result.steps[-1].state.value
+                        if latest.result.steps
+                        else "unknown"
+                    ),
+                    after_repair_exhaustion=True,
+                )
+                if suggestion is not None:
+                    recovery_metadata["diagnostic_assistant"] = suggestion
 
         return self._finish(
             context,
@@ -1208,6 +1272,138 @@ class CandidateRepairValidationOrchestrator:
             recovery_ledger=recovery_ledger,
             extra_metadata=recovery_metadata,
         )
+
+    def _run_live_diagnostic(
+        self,
+        *,
+        context: RunContext,
+        report: Any,
+        route_decision: Any,
+        stage: str,
+        after_repair_exhaustion: bool = False,
+    ) -> dict[str, Any] | None:
+        if not self._diagnostic_assist:
+            return None
+        if not isinstance(report, FeedbackReport):
+            return None
+        if report.metadata.get("evidence_view") != "agent_safe":
+            return None
+        if report.metadata.get("visibility") in {
+            "hidden",
+            "hidden_evaluation",
+            "hidden-evaluation",
+        }:
+            return None
+        if (
+            not after_repair_exhaustion
+            and route_decision.action
+            in {
+                FeedbackRouteAction.REPAIR_CANDIDATE,
+                FeedbackRouteAction.REPAIR_TESTBENCH,
+            }
+        ):
+            return None
+        selected_ids = set(route_decision.selected_feedback_ids)
+        evidence = tuple(
+            {
+                "evidence_id": item.feedback_id,
+                "stage": item.stage.value,
+                "category": item.category.value,
+                "owner": item.owner.value,
+                "summary": item.summary,
+                "detail": item.detail or "",
+            }
+            for item in report.items
+            if item.feedback_id in selected_ids and item.blocking
+        )
+        if not evidence:
+            return None
+        signature = sha256(
+            json.dumps(
+                {"stage": stage, "evidence": evidence},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if signature in self._diagnostic_signatures:
+            return {"status": "deduplicated_same_evidence"}
+        self._diagnostic_signatures.add(signature)
+
+        assistant_request = DiagnosticAssistantRequest(
+            stage=stage,
+            evidence=evidence,
+            check_ids=(),
+        )
+        retrieval_audit: Mapping[str, Any] = {
+            "reason": "diagnostic_assist_disabled_or_store_unavailable"
+        }
+        if self._experience_root is not None:
+            try:
+                from agrefactor.models import ModelCallRole
+                from agrefactor.prompts.experience_context import (
+                    current_case_query_from_feedback,
+                    select_experience_prompt_context,
+                )
+
+                owners = {
+                    item.owner.value
+                    for item in report.items
+                    if item.feedback_id in selected_ids and item.blocking
+                }
+                owner = next(iter(owners)) if len(owners) == 1 else "unknown"
+                if owner not in {"candidate", "testbench", "stub"}:
+                    owner = "unknown"
+                query = current_case_query_from_feedback(
+                    report,
+                    stage=stage,
+                    visibility="public",
+                    owner=owner,
+                    components=(owner,) if owner != "unknown" else (),
+                    validation_contract=report.metadata.get(
+                        "validation_contract"
+                    ),
+                )
+                config = self._model_adapter.effective_config
+                selection = select_experience_prompt_context(
+                    query,
+                    store_root=self._experience_root,
+                    counter=self._experience_counter,
+                    provider=config.provider_name,
+                    model_id=config.model_id,
+                    base_url=config.base_url or "",
+                    request_mode="chat_completions",
+                    call_parameters=config.parameters_for_call(
+                        ModelCallRole.BOTTLENECK_DIAGNOSIS
+                    ),
+                    render_messages=lambda snippets: DiagnosticAssistant.messages(
+                        replace(
+                            assistant_request,
+                            experiences=tuple(snippets),
+                        )
+                    ),
+                )
+                assistant_request = replace(
+                    assistant_request,
+                    experiences=selection.snippets,
+                )
+                retrieval_audit = selection.audit
+            except Exception as exc:
+                retrieval_audit = {
+                    "reason": "diagnostic_experience_lookup_failed",
+                    "error_type": type(exc).__name__,
+                    "query_text_persisted": False,
+                }
+        result = DiagnosticAssistant(
+            self._model_adapter,
+            context.budget,
+        ).diagnose(assistant_request)
+        return {
+            "suggestion": result.to_dict(),
+            "experience_retrieval": dict(retrieval_audit),
+            "authorization_changed": False,
+            "owner_changed": False,
+        }
 
     def _recover_public_testbench(
         self,
@@ -1438,6 +1634,17 @@ class CandidateRepairValidationOrchestrator:
             ),
             repairer=repairer,
             max_repair_attempts=remaining,
+            experience_context_provider=(
+                testbench_experience_context_provider(
+                    store_root=self._experience_root,
+                    counter=self._experience_counter,
+                    effective_config=self._model_adapter.effective_config,
+                    task=context.task,
+                )
+                if self._diagnostic_assist
+                and self._experience_root is not None
+                else None
+            ),
         )
         work_root = getattr(
             self._handler_factory,
@@ -1688,6 +1895,34 @@ class CandidateRepairValidationOrchestrator:
         old_contract = dict(suite.runtime_contract or {})
         old_depths = old_contract.get("cosim_interface_depths", {})
         used = 0
+        experience_audit_events = []
+        experience_query = None
+        if self._diagnostic_assist and self._experience_root is not None:
+            from agrefactor.evidence.experience_retrieval import CurrentCaseQuery
+
+            stage_name = getattr(stage, "value", str(stage))
+            query_terms = tuple(
+                dict.fromkeys(
+                    (
+                        "public_runtime_contract",
+                        "cosim_interface_depths",
+                        *(str(port).casefold() for port in ports),
+                    )
+                )
+            )
+            experience_query = CurrentCaseQuery(
+                stage=stage_name,
+                visibility="public",
+                owner="testbench",
+                diagnostic_terms=query_terms,
+                evidence_terms=(
+                    "verified_actual_maxi_ports",
+                    "source_to_hardware",
+                ),
+                components=("testbench",),
+            )
+            metadata["experience_retrieval"] = experience_audit_events
+
         def before_request():
             nonlocal used
             reserve_repair()
@@ -1711,6 +1946,15 @@ class CandidateRepairValidationOrchestrator:
                     before_request=before_request, budget=context.budget,
                     failure_feedback={"interface_evidence": dict(proof), "old_contract": old_contract,
                                       "prior_failure_summaries": list(prior_failure_summaries)},
+                    diagnostic_assist=self._diagnostic_assist,
+                    diagnostic_experience_root=(
+                        None
+                        if self._experience_root is None
+                        else str(self._experience_root)
+                    ),
+                    effective_model_config=self._model_adapter.effective_config,
+                    experience_query=experience_query,
+                    experience_audit_events=experience_audit_events,
                     llm_config=build_effective_legacy_llm_config(
                         self._model_adapter.effective_config, ModelCallRole.TESTBENCH_REPAIR),
                     **parse_context,

@@ -388,7 +388,7 @@ class CaseRecordTests(unittest.TestCase):
         self.assertEqual(ExperienceRecord.from_dict(record.to_dict()), record)
         self.assertNotIn("model_response", record.to_dict())
         self.assertNotIn("source_code", record.to_dict())
-        for version in (True, 1.0, "1", 2):
+        for version in (True, 1.0, "1", 3):
             with self.subTest(experience_schema_version=version):
                 payload = record.to_dict()
                 payload["schema_version"] = version

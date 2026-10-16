@@ -9,6 +9,9 @@ from agrefactor.evidence import (
     CaseStatus,
     DiagnosticCase,
     CaseStore,
+    ExperiencePolarity,
+    ExperienceRecord,
+    ExperienceStore,
     StoredChange,
 )
 
@@ -105,6 +108,50 @@ class CaseStoreTests(unittest.TestCase):
                         "evidence_view": "agent_safe",
                     },
                 )
+
+    def test_experience_snapshot_preserves_cumulative_attempt_chain(self):
+        with tempfile.TemporaryDirectory() as directory:
+            patch = "@@ -1 +1 @@\n-old\n+new\n"
+            fingerprint = sha256(patch.encode("utf-8")).hexdigest()
+            attempts = ("attempt-1", "attempt-2")
+            record = ExperienceRecord(
+                experience_id="experience-1",
+                source_case_id="case-1",
+                source_case_outcome="resolved",
+                source_attempt_ids=attempts,
+                polarity=ExperiencePolarity.POSITIVE,
+                applicability_conditions=("stage.csynth", "owner.candidate"),
+                action_summary="candidate cumulative change across 2 repair attempts",
+                validation_scope="csynth",
+                validation_refs=("validation-2",),
+                evidence_refs=("change:attempt-2",),
+                source_version_hash="a" * 64,
+                change_fingerprint=fingerprint,
+                schema_version=2,
+                stage="csynth",
+                owner="candidate",
+                components=("candidate",),
+                visibility="public",
+                diagnostic_terms=("hls_214-298", "interface"),
+                validation_contract="csynth_contract_v1",
+            )
+            change = StoredChange(
+                attempt_id="attempt-2",
+                source_attempt_ids=attempts,
+                components=("candidate",),
+                before_sha256="a" * 64,
+                after_sha256="b" * 64,
+                change_fingerprint=fingerprint,
+                patch=patch,
+            )
+            store = ExperienceStore(directory)
+            self.assertTrue(store.write(record, change))
+            snapshot = store.read_snapshot()
+            self.assertEqual(len(snapshot.experiences), 1)
+            stored = snapshot.experiences[0]
+            self.assertEqual(stored.change.attempt_id, "attempt-2")
+            self.assertEqual(stored.change.source_attempt_ids, attempts)
+            self.assertEqual(stored.record.source_attempt_ids, attempts)
 
 
 if __name__ == "__main__":

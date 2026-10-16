@@ -76,6 +76,7 @@ class PublicGenerationCaseCaptureTests(unittest.TestCase):
                     trajectory_idx=index,
                     owner=component,
                     accepted=False,
+                    diagnostic_terms=("coverage_failed",),
                 )
                 recorder.record_public_generation_diagnostic(diagnostic)
                 attempt_key = f"trajectory:{index}:action:1"

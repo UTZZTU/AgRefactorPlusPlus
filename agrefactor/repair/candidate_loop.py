@@ -8,7 +8,7 @@ bounded model attempts, budget accounting, and conservative state preservation.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 import json
 from typing import Any, Callable, Protocol
@@ -161,6 +161,7 @@ class CandidateRepairLoopRequest:
     family_instruction: str | None = None
     approved_memory_snippets: tuple[str, ...] = ()
     recovery_ledger: RecoveryLedger | None = None
+    experience_context_provider: Callable[..., Any] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.task, TaskSpec):
@@ -184,6 +185,11 @@ class CandidateRepairLoopRequest:
             self.recovery_ledger, RecoveryLedger
         ):
             raise TypeError("recovery_ledger must be RecoveryLedger or None")
+        if (
+            self.experience_context_provider is not None
+            and not callable(self.experience_context_provider)
+        ):
+            raise TypeError("experience_context_provider must be callable or None")
         _validate_repair_context(
             self.feedback,
             self.route_decision,
@@ -696,12 +702,6 @@ class BoundedCandidateRepairLoop:
                     self._model_adapter.family_profile
                 ),
             )
-            prompt_manifest = prompt.manifest
-            model_request = CandidateModelRequest(
-                prompt=prompt,
-                task=request.task,
-                current_candidate=current_candidate,
-            )
             if (
                 self._dispatch_observer is not None
                 and self._dispatch_observer(
@@ -730,6 +730,83 @@ class BoundedCandidateRepairLoop:
                     last_proposal,
                     attempts,
                 )
+            if request.experience_context_provider is not None:
+                try:
+                    selected, experience_audit = request.experience_context_provider(
+                        feedback=feedback,
+                        route_decision=route,
+                        failure_state=failure_state,
+                        current_candidate=current_candidate,
+                        attempt=repair_count + 1,
+                        prior_summaries=tuple(prior_summaries),
+                        attempts=tuple(attempts),
+                        render_messages=lambda snippets: _build_prompt(
+                            replace(
+                                request,
+                                approved_memory_snippets=(
+                                    *request.approved_memory_snippets,
+                                    *snippets,
+                                ),
+                            ),
+                            feedback=feedback,
+                            failure_state=failure_state,
+                            current_candidate=current_candidate,
+                            attempt=repair_count + 1,
+                            prior_summaries=tuple(prior_summaries),
+                            family_profile=self._model_adapter.family_profile,
+                        ).messages,
+                    )
+                    if (
+                        not isinstance(selected, tuple)
+                        or not all(isinstance(item, str) and item.strip() for item in selected)
+                        or not isinstance(experience_audit, Mapping)
+                    ):
+                        raise TypeError("experience context provider returned an invalid result")
+                    if selected:
+                        prompt = _build_prompt(
+                            replace(
+                                request,
+                                approved_memory_snippets=(
+                                    *request.approved_memory_snippets,
+                                    *selected,
+                                ),
+                            ),
+                            feedback=feedback,
+                            failure_state=failure_state,
+                            current_candidate=current_candidate,
+                            attempt=repair_count + 1,
+                            prior_summaries=tuple(prior_summaries),
+                            family_profile=self._model_adapter.family_profile,
+                        )
+                    if experience_audit:
+                        from agrefactor.prompts.experience_context import (
+                            attach_experience_audit,
+                        )
+
+                        prompt = attach_experience_audit(
+                            prompt,
+                            experience_audit,
+                        )
+                except Exception as exc:
+                    from agrefactor.prompts.experience_context import (
+                        attach_experience_audit,
+                    )
+
+                    prompt = attach_experience_audit(
+                        prompt,
+                        {
+                            "status": "unavailable",
+                            "reason": "experience_context_error",
+                            "error_type": type(exc).__name__,
+                            "query_text_persisted": False,
+                        },
+                    )
+            prompt_manifest = prompt.manifest
+            model_request = CandidateModelRequest(
+                prompt=prompt,
+                task=request.task,
+                current_candidate=current_candidate,
+            )
             response_count_before = len(self._model_adapter.responses)
             model_result: CandidateModelResult | None = None
             model_response: ModelResponse | None = None

@@ -343,6 +343,7 @@ def build_testbench_repair_prompt(
         prior_attempt_summaries=(
             request.prior_attempt_summaries
         ),
+        approved_memory_snippets=request.approved_memory_snippets,
         family_profile=family_profile,
     )
 
@@ -598,6 +599,14 @@ class ModelTestbenchRepairer:
             metadata=metadata,
         )
 
+    def build_prompt(self, request: TestbenchRepairRequest) -> LayeredPrompt:
+        return build_testbench_repair_prompt(
+            request,
+            family_instruction=self._family_instruction,
+            family_profile=self._family_profile,
+            builder=self._prompt_builder,
+        )
+
     def repair(
         self,
         request: TestbenchRepairRequest,
@@ -607,12 +616,11 @@ class ModelTestbenchRepairer:
                 "request must be a TestbenchRepairRequest"
             )
 
-        prompt = build_testbench_repair_prompt(
-            request,
-            family_instruction=self._family_instruction,
-            family_profile=self._family_profile,
-            builder=self._prompt_builder,
-        )
+        prompt = self.build_prompt(request)
+        if request.experience_audit:
+            from agrefactor.prompts.experience_context import attach_experience_audit
+
+            prompt = attach_experience_audit(prompt, request.experience_audit)
         self._prompts.append(prompt)
         self._audit_events.append(
             RepairModelObservation(

@@ -73,6 +73,10 @@ from agrefactor.models import (
     credential_presence_evidence,
     load_invocation_dotenv,
 )
+from agrefactor.prompts.experience_context import (
+    default_model_token_counter,
+    testbench_experience_context_provider,
+)
 from agrefactor.runtime import (
     BudgetLimits,
     BudgetManager,
@@ -608,11 +612,14 @@ class SourceBootstrapRequest:
     r5_binding: R5RuntimeBinding | None = None
     capture_r5_common_baseline: bool = False
     record_diagnostic_cases: bool = False
+    diagnostic_assist: bool = False
 
     def __post_init__(self) -> None:
         source = Path(self.source_path).expanduser().resolve()
         if not isinstance(self.record_diagnostic_cases, bool):
             raise TypeError("record_diagnostic_cases must be boolean")
+        if not isinstance(self.diagnostic_assist, bool):
+            raise TypeError("diagnostic_assist must be boolean")
         if not source.is_file():
             raise FileNotFoundError(f"source file not found: {source}")
         if source.suffix.casefold() not in _CPP_SUFFIXES:
@@ -830,6 +837,7 @@ class SourceBootstrapRequest:
             "max_testbench_repairs": self.max_testbench_repairs,
             "max_candidate_repairs": self.max_candidate_repairs,
             "record_diagnostic_cases": self.record_diagnostic_cases,
+            "diagnostic_assist": self.diagnostic_assist,
             "test_generation_profile": (
                 self.test_generation_profile.value
             ),
@@ -1329,6 +1337,8 @@ def _prepare_public_testbench(
     source_kind: str = "generated",
     public_result_mapping: Mapping[str, Any] | None = None,
     public_type_contract: Mapping[str, Any] | None = None,
+    diagnostic_assist: bool = False,
+    experience_root: str | os.PathLike[str] | None = None,
 ) -> PublicTestbenchPreparationResult:
     'Preflight and, when necessary, repair one Public Testbench.'
 
@@ -1336,6 +1346,14 @@ def _prepare_public_testbench(
         effective_config=effective_model_config,
         budget=budget,
     )
+    experience_provider = None
+    if diagnostic_assist and experience_root is not None:
+        experience_provider = testbench_experience_context_provider(
+            store_root=experience_root,
+            counter=default_model_token_counter(),
+            effective_config=effective_model_config,
+            task=task,
+        )
     loop = TestbenchRepairLoop(
         preflight=TestbenchPreflight(
             extra_flags=task.target.compile_flags,
@@ -1343,6 +1361,7 @@ def _prepare_public_testbench(
         ),
         repairer=repairer,
         max_repair_attempts=max_repair_attempts,
+        experience_context_provider=experience_provider,
     )
     result = loop.run(
         work_dir=work_dir,
@@ -2056,6 +2075,13 @@ class SourceBootstrapPhase:
                     bootstrap_root / "public_testbench_repair"
                 ),
                 max_repair_attempts=self._request.max_testbench_repairs,
+                diagnostic_assist=self._request.diagnostic_assist,
+                experience_root=(
+                    Path(os.environ.get("RUN_DIR", "/data/agrefactor_runs"))
+                    / "diagnostic_experiences"
+                    if self._request.diagnostic_assist
+                    else None
+                ),
                 suite_id=preflight_suite.suite_id,
                 source_kind=(
                     preflight_suite.source.source_kind.value
@@ -3563,6 +3589,11 @@ def _build_generation_settings(
         debug=debug,
         generation_only=True,
         record_diagnostic_cases=request.record_diagnostic_cases,
+        diagnostic_assist=request.diagnostic_assist,
+        diagnostic_experience_root=str(
+            Path(os.environ.get("RUN_DIR", "/data/agrefactor_runs"))
+            / "diagnostic_experiences"
+        ),
         max_testbench_repair_attempts=request.max_testbench_repairs,
         external_kernel_name=f"{request.top_function}_hls",
         test_generation_profile=profile.value,
@@ -3846,6 +3877,9 @@ def run_source_command(
         record_diagnostic_cases=bool(
             getattr(args, "record_diagnostic_cases", False)
         ),
+        diagnostic_assist=bool(
+            getattr(args, "diagnostic_assist", False)
+        ),
         public_test_contracts=public_test_contracts,
         max_testbench_repairs=getattr(
             args,
@@ -3936,6 +3970,13 @@ def run_source_command(
                 cosim_timelimit=request.cosim_timeout_s,
                 cosim_policy=request.cosim_policy,
                 record_diagnostic_cases=request.record_diagnostic_cases,
+                diagnostic_assist=request.diagnostic_assist,
+                experience_root=(
+                    Path(os.environ.get("RUN_DIR", "/data/agrefactor_runs"))
+                    / "diagnostic_experiences"
+                    if request.diagnostic_assist
+                    else None
+                ),
                 shadow_advisor_factory=(
                     _build_r5_shadow_advisor_factory(
                         profile=profile,

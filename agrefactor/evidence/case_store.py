@@ -68,6 +68,7 @@ class StoredChange:
     after_sha256: str
     change_fingerprint: str
     patch: str
+    source_attempt_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.attempt_id or any(char in self.attempt_id for char in "/\\\x00"):
@@ -82,6 +83,19 @@ class StoredChange:
             raise ValueError("patch must be non-empty and bounded")
         if sha256(self.patch.encode("utf-8")).hexdigest() != self.change_fingerprint:
             raise ValueError("change_fingerprint must match patch content")
+        source_attempt_ids = self.source_attempt_ids or (self.attempt_id,)
+        if (
+            any(
+                not item or any(char in item for char in "/\\\x00")
+                for item in source_attempt_ids
+            )
+            or self.attempt_id not in source_attempt_ids
+            or len(set(source_attempt_ids)) != len(source_attempt_ids)
+        ):
+            raise ValueError(
+                "source_attempt_ids must identify this change and be unique"
+            )
+        object.__setattr__(self, "source_attempt_ids", tuple(source_attempt_ids))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -92,9 +106,23 @@ class StoredChange:
             "after_sha256": self.after_sha256,
             "change_fingerprint": self.change_fingerprint,
             "patch": self.patch,
+            "source_attempt_ids": list(self.source_attempt_ids),
             "evidence_view": "agent_safe",
             "hidden_content_persisted": False,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class StoredExperience:
+    record: ExperienceRecord
+    change: StoredChange
+
+
+@dataclass(frozen=True, slots=True)
+class ExperienceSnapshot:
+    revision: str
+    experiences: tuple[StoredExperience, ...]
+    excluded: tuple[tuple[str, str], ...]
 
 
 class CaseStore:
@@ -167,6 +195,9 @@ class CaseStore:
                 after_sha256=value["after_sha256"],
                 change_fingerprint=value["change_fingerprint"],
                 patch=value["patch"],
+                source_attempt_ids=tuple(
+                    value.get("source_attempt_ids", ())
+                ),
             )
             result[change.attempt_id] = change
         return result
@@ -215,19 +246,157 @@ class ExperienceStore:
     def write(self, record: ExperienceRecord, change: StoredChange | None) -> bool:
         if not isinstance(record, ExperienceRecord):
             raise TypeError("record must be ExperienceRecord")
+        if (
+            change is not None
+            and tuple(record.source_attempt_ids)
+            != tuple(change.source_attempt_ids)
+        ):
+            raise ValueError(
+                "experience attempts must match the stored change chain"
+            )
         record_path = self._root / "records" / f"{record.experience_id}.json"
         with self._lock:
             if change is not None:
                 change_path = self._root / "changes" / f"{change.change_fingerprint}.json"
                 shared_change = {
                     "schema_version": 1,
+                    "attempt_id": change.attempt_id,
                     "components": list(change.components),
                     "before_sha256": change.before_sha256,
                     "after_sha256": change.after_sha256,
                     "change_fingerprint": change.change_fingerprint,
                     "patch": change.patch,
+                    "source_attempt_ids": list(change.source_attempt_ids),
                     "evidence_view": "agent_safe",
                     "hidden_content_persisted": False,
                 }
                 _atomic_write(change_path, _canonical(shared_change), create_only=True)
             return _atomic_write(record_path, _canonical(record.to_dict()), create_only=True)
+
+    def read_snapshot(self) -> ExperienceSnapshot:
+        """Read a stable, bounded snapshot; malformed entries are isolated."""
+        root = self._root.resolve()
+        records_dir = self._root / "records"
+        changes_dir = self._root / "changes"
+        candidates: list[tuple[str, Path]] = []
+        for directory in (records_dir, changes_dir):
+            if directory.exists():
+                try:
+                    directory.resolve(strict=True).relative_to(root)
+                except (OSError, ValueError):
+                    return ExperienceSnapshot(
+                        revision=sha256(b"unsafe_store_root").hexdigest(),
+                        experiences=(),
+                        excluded=(("store", "unsafe_store_root"),),
+                    )
+                candidates.extend(
+                    (directory.name, path)
+                    for path in sorted(directory.glob("*.json"), key=lambda item: item.name)
+                )
+
+        file_hashes: list[str] = []
+        loaded_records: list[tuple[str, Path, bytes]] = []
+        excluded: list[tuple[str, str]] = []
+        changes: dict[str, tuple[Mapping[str, Any], str]] = {}
+        max_entries = 4096
+        max_total_bytes = 64 * 1024 * 1024
+        if len(candidates) > max_entries:
+            candidates = candidates[:max_entries]
+            excluded.append(("store", "entry_limit_exceeded"))
+        total_bytes = 0
+        for kind, path in candidates:
+            identifier = path.stem
+            try:
+                resolved = path.resolve(strict=True)
+                resolved.relative_to(root)
+                if not resolved.is_file():
+                    raise ValueError("not_regular_file")
+                data = resolved.read_bytes()
+                max_bytes = 20 * 1024 if kind == "changes" else 128 * 1024
+                if len(data) > max_bytes:
+                    raise ValueError("artifact_too_large")
+                total_bytes += len(data)
+                if total_bytes > max_total_bytes:
+                    excluded.append(("store", "byte_limit_exceeded"))
+                    break
+            except (OSError, ValueError):
+                excluded.append((identifier, "unsafe_or_unreadable_artifact"))
+                file_hashes.append(f"{kind}/{path.name}:unreadable")
+                continue
+            digest = sha256(data).hexdigest()
+            file_hashes.append(f"{kind}/{path.name}:{digest}")
+            if kind == "changes":
+                try:
+                    value = json.loads(data)
+                    if not isinstance(value, Mapping):
+                        raise ValueError("change_not_object")
+                    changes[identifier] = (value, digest)
+                except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+                    excluded.append((identifier, "change_invalid"))
+            else:
+                loaded_records.append((identifier, path, data))
+
+        revision = sha256("\n".join(file_hashes).encode("utf-8")).hexdigest()
+        experiences: list[StoredExperience] = []
+        for identifier, _path, data in loaded_records:
+            try:
+                value = json.loads(data)
+                if not isinstance(value, Mapping):
+                    raise ValueError("record_not_object")
+                record = ExperienceRecord.from_dict(value)
+                if record.experience_id != identifier:
+                    raise ValueError("record_identity_mismatch")
+                if record.schema_version != 2:
+                    excluded.append((identifier, "retrieval_fields_missing"))
+                    continue
+                if not record.source_attempt_ids or record.change_fingerprint is None:
+                    excluded.append((identifier, "change_reference_incomplete"))
+                    continue
+                stored = changes.get(record.change_fingerprint)
+                if stored is None:
+                    excluded.append((identifier, "change_missing"))
+                    continue
+                change_data, _change_digest = stored
+                change_attempt_id = change_data.get("attempt_id")
+                source_attempt_ids = tuple(
+                    change_data.get("source_attempt_ids", ())
+                )
+                if not source_attempt_ids:
+                    source_attempt_ids = (
+                        str(change_attempt_id or record.source_attempt_ids[0]),
+                    )
+                change_attempt_id = change_attempt_id or source_attempt_ids[-1]
+                linked_ref = f"change:{change_attempt_id}"
+                if (
+                    change_data.get("change_fingerprint") != record.change_fingerprint
+                    or change_data.get("evidence_view") != "agent_safe"
+                    or change_data.get("hidden_content_persisted") is not False
+                    or not isinstance(change_attempt_id, str)
+                    or change_attempt_id not in record.source_attempt_ids
+                    or source_attempt_ids != record.source_attempt_ids
+                    or linked_ref not in record.evidence_refs
+                ):
+                    excluded.append((identifier, "change_identity_or_visibility_invalid"))
+                    continue
+                change = StoredChange(
+                    attempt_id=str(change_attempt_id or source_attempt_ids[-1]),
+                    components=tuple(change_data["components"]),
+                    before_sha256=change_data["before_sha256"],
+                    after_sha256=change_data["after_sha256"],
+                    change_fingerprint=change_data["change_fingerprint"],
+                    patch=change_data["patch"],
+                    source_attempt_ids=source_attempt_ids,
+                )
+                if change.components != record.components:
+                    excluded.append((identifier, "component_reference_mismatch"))
+                    continue
+                experiences.append(StoredExperience(record=record, change=change))
+            except (KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+                excluded.append((identifier, "record_invalid"))
+        experiences.sort(key=lambda item: item.record.experience_id)
+        excluded.sort()
+        return ExperienceSnapshot(
+            revision=revision,
+            experiences=tuple(experiences),
+            excluded=tuple(excluded),
+        )

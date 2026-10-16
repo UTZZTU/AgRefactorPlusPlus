@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "dataset_id": "p4-retrieval-contract-synthetic-v1",
+  "dataset_status": "synthetic_retrieval_contract_fixture",
+  "experiences": {
+    "path": "experiences.json",
+    "sha256": "be33d5d298b04adde5d04886b77ea148272dcb681addb887068943ade46ef668"
+  },
+  "queries": {
+    "path": "queries.json",
+    "sha256": "cce116112770662341ac667a00b87358c1a958e96e813f2f9c4a27e1b8c20d7c"
+  },
+  "sources": [
+    {
+      "source_id": "run-2026-10-09",
+      "batch": "bounded_validation_repair_20261009",
+      "relative_path": "bounded_validation_repair_20261009/av1_apply_temporal_filter/attempt_001/run_artifact_manifest.json",
+      "sha256": "e363b96876c4624b2e5d05122a7ef9741ae63fd54795ecc7ed12d229fb15a2ac",
+      "fields_used": ["run_id", "execution_identity.completeness", "accepted_ready"],
+      "interpretation": "Real run metadata is cited for provenance only; it is not treated as an experience record."
+    },
+    {
+      "source_id": "run-2026-10-11",
+      "batch": "feedback_precision_repair_20261011",
+      "relative_path": "feedback_precision_repair_20261011/blake2b_compress/run_artifact_manifest.json",
+      "sha256": "67e741b0c8052443979e7ad10a59f722e996529d3923acabfc918d8f89faa0f5",
+      "fields_used": ["run_id", "execution_identity.completeness", "accepted_ready"],
+      "interpretation": "Real run metadata is cited for provenance only; it is not treated as an experience record."
+    },
+    {
+      "source_id": "run-2026-10-12",
+      "batch": "contract_observation_repair_20261012",
+      "relative_path": "contract_observation_repair_20261012/blake2b_compress/run_artifact_manifest.json",
+      "sha256": "f8f846073d4999d578cf2d8beefbb9d968cdc3e4bba3ebd3876d5638201cfbd1",
+      "fields_used": ["run_id", "execution_identity.completeness", "accepted_ready"],
+      "interpretation": "Real run metadata is cited for provenance only; it is not treated as an experience record."
+    }
+  ]
+}

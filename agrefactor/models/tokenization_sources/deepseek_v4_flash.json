@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "provider": "deepseek",
+  "model_id": "deepseek-v4-flash",
+  "base_url": "https://api.deepseek.com",
+  "request_mode": "chat_completions",
+  "reasoning_mode": "thinking_default",
+  "context_window": 1000000,
+  "max_output_tokens": 384000,
+  "context_source": "https://api-docs.deepseek.com/quick_start/pricing",
+  "usage_source": "https://api-docs.deepseek.com/quick_start/token_usage",
+  "message_template_source": "https://cdn.deepseek.com/api-docs/deepseek_v4_tokenizer.zip",
+  "official_package_sha256": "e7310d1dafe0a86d8a5629fe78a7c763760f651db9b8682718a1781dcd6fe495",
+  "huggingface_repository": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash",
+  "huggingface_revision": "60d8d70770c6776ff598c94bb586a859a38244f1",
+  "huggingface_tokenizer_sha256": "8f9f37ca37fdc4f5fd36d5cf4d3b0e8392edb4e894fd10cc0d70b4957c8633cf",
+  "huggingface_tokenizer_config_sha256": "6ac8c8dc065ed118161d02dd532749ae3f52c243deac27872134fae2f50d8547",
+  "tokenizer_dir": "/data/agrefactor_runs/model_tokenizers/deepseek-v4-flash/official/deepseek_v4_tokenizer",
+  "tokenizer_sha256": {
+    "tokenizer.json": "89085f12ef79460ac5f66d1119325ddfc694b4ab209d80bbd81d35f081dc9614",
+    "tokenizer_config.json": "841f8cf146e3f0ad1082594a31f68ecf7608c20467ef355081333d85bbaeb1cb"
+  },
+  "tokenizer_library": "transformers",
+  "tokenizer_library_version": "4.57.6",
+  "trust_remote_code": false,
+  "verification_status": "verified",
+  "verification_basis": "Official DeepSeek chat template plus 12 synthetic API usage comparisons; observed server-minus-local prompt-token delta was +2 for single-turn and +3 for multi-turn messages.",
+  "verification_probe_reasoning_mode": "thinking_disabled_for_eight_token_output_cap",
+  "safe_margin_tokens": 3,
+  "exact_count_claim": false
+}

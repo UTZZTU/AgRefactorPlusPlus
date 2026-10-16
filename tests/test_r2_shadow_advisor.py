@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path
@@ -928,11 +929,18 @@ class R2ShadowAdvisorTests(unittest.TestCase):
             if request.attempt == 0 and state is helpers.ValidationState.CSYNTH:
                 return helpers.report_for(
                     state,
-                    item=helpers.feedback_item(
-                        "unknown.failure",
-                        state=state,
-                        owner=helpers.FeedbackOwner.UNKNOWN,
-                        category=helpers.FeedbackCategory.UNKNOWN,
+                    item=replace(
+                        helpers.feedback_item(
+                            "unknown.failure",
+                            state=state,
+                            owner=helpers.FeedbackOwner.UNKNOWN,
+                            category=helpers.FeedbackCategory.UNKNOWN,
+                        ),
+                        metadata={
+                            "physical_tool_launched": True,
+                            "tool_launched": True,
+                            "evidence_complete": True,
+                        },
                     ),
                     report_id="unknown-report",
                 )

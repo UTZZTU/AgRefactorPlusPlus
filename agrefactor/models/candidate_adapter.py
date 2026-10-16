@@ -18,7 +18,7 @@ from agrefactor.prompts import (
     assert_hidden_test_sources_absent,
 )
 
-from .base import ModelRequest, ModelResponse, ModelSpec
+from .base import ChatMessage, ModelRequest, ModelResponse, ModelSpec
 from .cost_estimator import estimate_model_cost
 from .effective_config import EffectiveModelConfig
 from .call_policy import (
@@ -694,6 +694,71 @@ class CandidateModelAdapter:
         )
         self._results.append(result)
         return result
+
+    def generate_auxiliary_text(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        budget,
+        role: ModelCallRole = ModelCallRole.BOTTLENECK_DIAGNOSIS,
+        evidence: Mapping[str, Any] | None = None,
+    ) -> ModelResponse:
+        """Use this run's model and shared budget for a non-repair analysis call."""
+        message_tuple = tuple(messages)
+        if not message_tuple or not all(
+            isinstance(item, ChatMessage) for item in message_tuple
+        ):
+            raise TypeError("messages must contain ChatMessage values")
+        if not isinstance(role, ModelCallRole):
+            role = ModelCallRole(str(role))
+        if budget is None or not callable(getattr(budget, "consume", None)):
+            raise TypeError("budget must provide consume()")
+        parameters, call_evidence = parameterize_effective_config_call(
+            self._effective_config,
+            role,
+        )
+        budget.ensure_available(llm_calls=1)
+        budget.consume(llm_calls=1)
+        from agrefactor.runtime.prompt_evidence import record_model_prompt_call
+
+        prompt_manifest = {
+            "message_count": len(message_tuple),
+            "message_sequence_sha256": hashlib.sha256(
+                json.dumps(
+                    [
+                        {"role": item.role, "content": item.content}
+                        for item in message_tuple
+                    ],
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest(),
+        }
+        record_model_prompt_call(
+            template_id="diagnostic-assistant",
+            template_version=1,
+            system_message=None,
+            invocation=prompt_manifest,
+            provider_call_observed=True,
+            metadata=(call_evidence or {}),
+        )
+        response = self._provider.generate(
+            self._model,
+            ModelRequest(
+                messages=message_tuple,
+                parameters=parameters,
+                metadata={
+                    "model_call_policy": call_evidence or {},
+                    "diagnostic_evidence": dict(evidence or {}),
+                },
+            ),
+        )
+        if not isinstance(response, ModelResponse):
+            raise TypeError("model provider must return ModelResponse")
+        response = self._with_estimated_cost(response)
+        budget.record_model_usage(response.usage)
+        return response
 
 
 def _extract_complete_cpp_replacement(response_text: str) -> str:

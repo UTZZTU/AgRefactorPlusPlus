@@ -275,12 +275,21 @@ class LegacyRefactorSettings:
     golden_tb_cache_key: str | None = None
     use_cached_tb_as_public: bool = False
     record_diagnostic_cases: bool = False
+    diagnostic_assist: bool = False
+    diagnostic_experience_root: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.generation_only, bool):
             raise TypeError("generation_only must be boolean")
         if not isinstance(self.record_diagnostic_cases, bool):
             raise TypeError("record_diagnostic_cases must be boolean")
+        if not isinstance(self.diagnostic_assist, bool):
+            raise TypeError("diagnostic_assist must be boolean")
+        if self.diagnostic_experience_root is not None and (
+            not isinstance(self.diagnostic_experience_root, str)
+            or not self.diagnostic_experience_root.strip()
+        ):
+            raise ValueError("diagnostic_experience_root must be a non-empty path or None")
         config = self.effective_model_config
         if config is not None:
             if not isinstance(
@@ -482,6 +491,8 @@ def build_legacy_refactor_kwargs(
         "debug": 1 if settings.debug else 0,
         "generation_only": settings.generation_only,
         "record_diagnostic_cases": settings.record_diagnostic_cases,
+        "diagnostic_assist": settings.diagnostic_assist,
+        "diagnostic_experience_root": settings.diagnostic_experience_root,
         "model": resolved_model,
         "remote": settings.remote,
         "reasoning_effort": resolved_reasoning,

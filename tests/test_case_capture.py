@@ -4,7 +4,12 @@ from types import SimpleNamespace
 import unittest
 
 from agrefactor.evidence import CaseRecorder, CaseStore, capture_candidate_recovery
-from agrefactor.evidence.case_capture import _digest, _patch, _stable_id
+from agrefactor.evidence.case_capture import (
+    _digest,
+    _patch,
+    _stable_id,
+    _validation_contract,
+)
 from agrefactor.runtime.repair_phase import _experience_root_for_artifact
 
 
@@ -46,6 +51,14 @@ class CaseCaptureTests(unittest.TestCase):
                 stage="hidden_evaluation",
             )
             self.assertFalse(recorder.record_event(hidden))
+            hidden_split = self.event("diagnostic-hidden-split", "validation.hidden-split")
+            hidden_split["split"] = "hidden"
+            self.assertFalse(recorder.record_event(hidden_split))
+            hidden_visibility = self.event(
+                "diagnostic-hidden-visibility", "validation.hidden-visibility"
+            )
+            hidden_visibility["visibility"] = "hidden_generation"
+            self.assertFalse(recorder.record_event(hidden_visibility))
 
             resumed = CaseRecorder(root, "validation")
             self.assertTrue(resumed.start_case(initial))
@@ -62,6 +75,9 @@ class CaseCaptureTests(unittest.TestCase):
                 set(CaseStore(root).read_events(case_id)),
                 {"diagnostic-initial", "diagnostic-next"},
             )
+            stored_events = CaseStore(root).read_events(case_id)
+            self.assertEqual(stored_events["diagnostic-initial"]["visibility"], "public")
+            self.assertEqual(stored_events["diagnostic-next"]["visibility"], "public")
 
     def event(self, event_id, validation_id, *, owner="candidate", stage="csynth"):
         return {
@@ -116,8 +132,19 @@ class CaseCaptureTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory) / "refactor"
             events = [
-                self.event("diagnostic-initial", "validation.initial"),
-                self.event("diagnostic-failure", "validation.candidate.1"),
+                {
+                    **self.event("diagnostic-initial", "validation.initial"),
+                    "diagnostic_terms": ["interface_contract_failure"],
+                },
+                {
+                    **self.event("diagnostic-failure", "validation.candidate.1"),
+                    "diagnostic_terms": ["interface_contract_failure"],
+                    "validation_contract": _validation_contract(
+                        "csynth", "candidate"
+                    ),
+                    "failure_attributable_to_change": True,
+                    "failure_code": "interface_contract_violation",
+                },
             ]
             result = self.result(
                 "validation",
@@ -246,16 +273,19 @@ class CaseCaptureTests(unittest.TestCase):
                 stage="public_evaluation",
             )
             post_event["accepted"] = True
+            post_event["diagnostic_terms"] = ["public_functional_mismatch"]
+            post_event["validation_contract"] = _validation_contract(
+                "public_evaluation", "testbench"
+            )
+            initial_event = self.event(
+                "diagnostic-initial",
+                "validation.initial",
+                owner="testbench",
+            )
+            initial_event["diagnostic_terms"] = ["public_functional_mismatch"]
             result = self.result(
                 "validation",
-                [
-                    self.event(
-                        "diagnostic-initial",
-                        "validation.initial",
-                        owner="testbench",
-                    ),
-                    post_event,
-                ],
+                [initial_event, post_event],
                 [],
                 accepted=True,
                 case_change_observations=(observation,),

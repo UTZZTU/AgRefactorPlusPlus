@@ -94,6 +94,9 @@ class TestbenchRepairRequest:
     )
     runtime_feedback: FeedbackReport | None = None
     failure_state: ValidationState | None = None
+    attempted_changes: tuple[Any, ...] = ()
+    approved_memory_snippets: tuple[str, ...] = ()
+    experience_audit: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         validate_repair_attempts(
@@ -147,6 +150,14 @@ class TestbenchRepairRequest:
             "prior_attempt_summaries",
             tuple(item.strip() for item in summaries),
         )
+        object.__setattr__(self, "attempted_changes", tuple(self.attempted_changes))
+        snippets = tuple(self.approved_memory_snippets)
+        if any(not isinstance(item, str) or not item.strip() for item in snippets):
+            raise ValueError("approved_memory_snippets must contain non-empty strings")
+        object.__setattr__(self, "approved_memory_snippets", snippets)
+        if not isinstance(self.experience_audit, Mapping):
+            raise TypeError("experience_audit must be a mapping")
+        object.__setattr__(self, "experience_audit", dict(self.experience_audit))
         for name in (
             "current_testbench",
             "original_code",
@@ -322,6 +333,7 @@ class TestbenchRepairLoop:
         max_repair_attempts: int = (
             DEFAULT_TESTBENCH_REPAIR_ATTEMPTS
         ),
+        experience_context_provider: Callable[..., Any] | None = None,
     ) -> None:
         validate_repair_attempts(
             max_repair_attempts,
@@ -331,6 +343,9 @@ class TestbenchRepairLoop:
         self._preflight = preflight
         self._repairer = repairer
         self._max_repair_attempts = max_repair_attempts
+        if experience_context_provider is not None and not callable(experience_context_provider):
+            raise TypeError("experience_context_provider must be callable or None")
+        self._experience_context_provider = experience_context_provider
 
     def run(
         self,
@@ -467,10 +482,59 @@ class TestbenchRepairLoop:
                 task=task,
                 runtime_feedback=runtime_feedback,
                 failure_state=failure_state,
+                attempted_changes=tuple(attempts[1:]),
             )
 
             if before_repair is not None:
                 before_repair()
+            if self._experience_context_provider is not None:
+                try:
+                    from dataclasses import replace
+
+                    prompt_builder = getattr(self._repairer, "build_prompt", None)
+                    if not callable(prompt_builder):
+                        raise TypeError("repairer does not expose build_prompt")
+
+                    def render_messages(snippets):
+                        contextual = replace(
+                            request,
+                            approved_memory_snippets=(
+                                *request.approved_memory_snippets,
+                                *snippets,
+                            ),
+                        )
+                        return prompt_builder(contextual).messages
+
+                    selected, audit = self._experience_context_provider(
+                        request,
+                        render_messages=render_messages,
+                    )
+                    if (
+                        not isinstance(selected, tuple)
+                        or not all(isinstance(item, str) and item.strip() for item in selected)
+                        or not isinstance(audit, Mapping)
+                    ):
+                        raise TypeError("experience context provider returned an invalid result")
+                    request = replace(
+                        request,
+                        approved_memory_snippets=(
+                            *request.approved_memory_snippets,
+                            *selected,
+                        ),
+                        experience_audit=dict(audit),
+                    )
+                except Exception as exc:
+                    from dataclasses import replace
+
+                    request = replace(
+                        request,
+                        experience_audit={
+                            "status": "unavailable",
+                            "reason": "experience_context_error",
+                            "error_type": type(exc).__name__,
+                            "query_text_persisted": False,
+                        },
+                    )
             repair_attempts_used += 1
             attempt_before = self._budget_snapshot(budget)
             audit_count_before = self._audit_event_count()

@@ -54,9 +54,43 @@ def _patch(before: str, after: str, *, name: str) -> str | None:
     return value if len(value.encode("utf-8")) <= _MAX_PATCH_BYTES else None
 
 
+def _validation_contract(stage: str, component: str) -> str:
+    stage_code = re.sub(
+        r"[^a-z0-9_.-]+", "_", str(stage).casefold()
+    ).strip("_.-")
+    component_code = re.sub(
+        r"[^a-z0-9_.-]+", "_", str(component).casefold()
+    ).strip("_.-")
+    return (
+        f"agrefactor.{component_code[:48] or 'unknown'}."
+        f"{stage_code[:64] or 'unknown'}.validation_v1"
+    )
+
+
 def _event_key(event: Mapping[str, Any]) -> str | None:
     value = event.get("event_id")
     return value if isinstance(value, str) and value else None
+
+
+def _public_case_event(event: Mapping[str, Any]) -> dict[str, Any] | None:
+    if (
+        event.get("evidence_view") != "agent_safe"
+        or event.get("split", "public") != "public"
+        or "hidden" in str(event.get("stage", "")).casefold()
+    ):
+        return None
+    visibility = event.get("visibility")
+    if visibility is None:
+        visibility = (
+            "public_generation"
+            if event.get("stage") == "public_testbench_generation"
+            else "public"
+        )
+    if visibility not in {"public", "public_generation"}:
+        return None
+    projected = dict(event)
+    projected["visibility"] = visibility
+    return projected
 
 
 def _validation_event(
@@ -65,12 +99,14 @@ def _validation_event(
     stage: str,
     accepted: bool,
     validation_id: str,
+    validation_contract: str,
 ) -> dict[str, Any]:
     return {
         "schema_version": 1,
         "event_id": event_id,
         "validation_id": validation_id,
         "stage": stage,
+        "validation_contract": validation_contract,
         "outcome": "validated" if accepted else "validation_failed",
         "accepted": accepted,
         "evidence_view": "agent_safe",
@@ -110,11 +146,10 @@ class CaseRecorder:
             return self._start_case(event)
 
     def _start_case(self, event: Mapping[str, Any]) -> bool:
-        if (
-            not isinstance(event, Mapping)
-            or event.get("evidence_view") != "agent_safe"
-            or "hidden" in str(event.get("stage", "")).casefold()
-        ):
+        if not isinstance(event, Mapping):
+            return False
+        event = _public_case_event(event)
+        if event is None:
             return False
         event_id = _event_key(event)
         if event_id is None:
@@ -292,11 +327,10 @@ class CaseRecorder:
             return self._record_event(event)
 
     def _record_event(self, event: Mapping[str, Any]) -> bool:
-        if (
-            not isinstance(event, Mapping)
-            or event.get("evidence_view") != "agent_safe"
-            or "hidden" in str(event.get("stage", "")).casefold()
-        ):
+        if not isinstance(event, Mapping):
+            return False
+        event = _public_case_event(event)
+        if event is None:
             return False
         if not self._active or self._case is None:
             return False
@@ -641,6 +675,15 @@ class CaseRecorder:
             event_id = _event_key(event)
             if event_id is None:
                 return False
+            event = dict(event)
+            components = tuple(sorted(attempt_data.get("components", {})))
+            event.setdefault(
+                "validation_contract",
+                _validation_contract(
+                    str(event.get("stage", "public_testbench_generation")),
+                    "_".join(components) or "public_generation",
+                ),
+            )
             self._append_generation_event(event, advance=True)
             attempt_id = _stable_id(
                 "attempt", self._case.case_id, attempt_key
@@ -854,14 +897,23 @@ def capture_candidate_recovery(
 
     metadata = getattr(result, "metadata", {})
     raw_events = metadata.get("diagnostic_events", ()) if isinstance(metadata, Mapping) else ()
-    events = {
-        key: dict(event)
-        for event in raw_events
-        if isinstance(event, Mapping)
-        and event.get("evidence_view") == "agent_safe"
-        and "hidden" not in str(event.get("stage", "")).casefold()
-        and (key := _event_key(event)) is not None
-    }
+    events: dict[str, dict[str, Any]] = {}
+    for event in raw_events:
+        if (
+            not isinstance(event, Mapping)
+            or event.get("evidence_view") != "agent_safe"
+            or "hidden" in str(event.get("stage", "")).casefold()
+            or event.get("split", "public") != "public"
+            or event.get("visibility", "public")
+            not in {"public", "public_generation"}
+        ):
+            continue
+        key = _event_key(event)
+        if key is None:
+            continue
+        projected_event = dict(event)
+        projected_event.setdefault("visibility", "public")
+        events[key] = projected_event
     if not events:
         return {"case_count": 0, "experience_count": 0, "case_ids": []}
 
@@ -924,6 +976,10 @@ def capture_candidate_recovery(
                         accepted=validation.get("accepted") is True,
                         validation_id=str(
                             validation.get("validation_id", attempt_id)
+                        ),
+                        validation_contract=str(
+                            validation.get("validation_contract")
+                            or _validation_contract(stage, "testbench")
                         ),
                     )
                 event_refs.append(post_id)
@@ -1030,10 +1086,28 @@ def capture_candidate_recovery(
             diagnostic = diagnostic_by_validation.get(orchestration_validation_id)
             if diagnostic is not None:
                 post_id = str(diagnostic["event_id"])
+                post_event = dict(diagnostic)
+                post_stage = post_event.get("stage")
+                if isinstance(post_stage, str) and post_stage:
+                    post_event.setdefault(
+                        "validation_contract",
+                        _validation_contract(post_stage, "candidate"),
+                    )
+                event_records[post_id] = post_event
                 event_refs.append(post_id)
             else:
                 stages = tuple(getattr(validation, "completed_stages", ()))
-                stage = getattr(stages[-1], "value", str(stages[-1])) if stages else "unknown"
+                safe_stages = tuple(
+                    item
+                    for item in stages
+                    if "hidden" not in getattr(item, "value", str(item)).casefold()
+                )
+                stage_source = (
+                    safe_stages[-1]
+                    if passed and safe_stages
+                    else (stages[-1] if stages else "unknown")
+                )
+                stage = getattr(stage_source, "value", str(stage_source))
                 if "hidden" not in stage.casefold():
                     post_id = _stable_id("validation", case_id, str(getattr(attempt, "attempt", index + 1)), stage)
                     event_records[post_id] = _validation_event(
@@ -1041,6 +1115,7 @@ def capture_candidate_recovery(
                         stage=stage,
                         accepted=passed,
                         validation_id=orchestration_validation_id or validation_id,
+                        validation_contract=_validation_contract(stage, "candidate"),
                     )
                     event_refs.append(post_id)
             if post_id is not None:
@@ -1217,7 +1292,68 @@ def capture_candidate_recovery(
         if experience_root is not None
         else Path(root).parent / "diagnostic_experiences"
     )
-    derived = derive_experiences(case, changes=changes, events=event_records)
+    derivation_changes = dict(changes)
+    if (
+        accepted
+        and repair_result is not None
+        and getattr(repair_result, "succeeded", False) is True
+    ):
+        initial_candidate = getattr(repair_result, "initial_candidate", None)
+        final_candidate = getattr(repair_result, "last_validated_candidate", None)
+        cursor = initial_candidate
+        changed_attempt_ids: list[str] = []
+        final_change_attempt_id: str | None = None
+        chain_valid = isinstance(initial_candidate, str) and isinstance(final_candidate, str)
+        for index, raw_attempt in enumerate(raw_attempts):
+            before = getattr(raw_attempt, "input_candidate", None)
+            proposal = getattr(raw_attempt, "proposal", None)
+            validation = getattr(raw_attempt, "validation_result", None)
+            if not chain_valid or before != cursor:
+                chain_valid = False
+                break
+            if isinstance(proposal, str) and proposal != cursor:
+                cursor = proposal
+                if validation is not None:
+                    attempt_id = _stable_id(
+                        "attempt",
+                        case_id,
+                        str(getattr(raw_attempt, "attempt", index + 1)),
+                    )
+                    changed_attempt_ids.append(attempt_id)
+                    final_change_attempt_id = attempt_id
+                    if (
+                        getattr(validation, "passed", False) is not True
+                        and index == len(raw_attempts) - 1
+                    ):
+                        chain_valid = False
+                        break
+        if (
+            chain_valid
+            and cursor == final_candidate
+            and changed_attempt_ids
+            and final_change_attempt_id is not None
+            and getattr(raw_attempts[-1].validation_result, "passed", False) is True
+        ):
+            cumulative_patch = _patch(
+                initial_candidate,
+                final_candidate,
+                name="candidate.cpp",
+            )
+            if cumulative_patch is not None:
+                derivation_changes[final_change_attempt_id] = StoredChange(
+                    attempt_id=final_change_attempt_id,
+                    components=("candidate",),
+                    before_sha256=_digest(initial_candidate),
+                    after_sha256=_digest(final_candidate),
+                    change_fingerprint=_digest(cumulative_patch),
+                    patch=cumulative_patch,
+                    source_attempt_ids=tuple(changed_attempt_ids),
+                )
+    derived = derive_experiences(
+        case,
+        changes=derivation_changes,
+        events=event_records,
+    )
     experience_store = ExperienceStore(experience_store_root)
     for item in derived:
         experience_store.write(item.record, item.change)
