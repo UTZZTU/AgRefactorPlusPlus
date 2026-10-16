@@ -96,8 +96,38 @@ class DiagnosticCatalogTests(unittest.TestCase):
         self.assertEqual(result.parser_rule, "unsupported_unknown_pointer_phi")
         self.assertEqual(result.owner_policy, "resolve_from_evidence")
 
+    def test_hls_214_298_selects_only_its_allowlisted_diagnostic_check(self):
+        catalog = load_catalog()
+        rule = next(
+            item for item in catalog.rules
+            if item.diagnostic_id == "hls_214_298_struct_pointer_argument"
+        )
+        self.assertEqual(
+            rule.diagnostic_checks,
+            ("csynth_top_argument_pointer_member_contract",),
+        )
+        payload = self.payload()
+        payload["rules"][0]["diagnostic_checks"] = ["read_arbitrary_path"]
+        with self.assertRaises(DiagnosticCatalogError):
+            DiagnosticCatalog(payload)
+
     def test_compile_and_link_categories_are_stage_scoped(self):
         catalog = load_catalog()
+        expected = catalog.match(
+            "error: expected primary-expression before ')' token",
+            stage=FeedbackStage.COMPILE,
+        )
+        self.assertIsNotNone(expected)
+        self.assertEqual(expected.category, FeedbackCategory.SYNTAX_ERROR)
+        self.assertEqual(expected.parser_rule, "expected_token")
+
+        unknown = catalog.match(
+            "error: compiler emitted an unclassified failure",
+            stage=FeedbackStage.COMPILE,
+        )
+        self.assertIsNotNone(unknown)
+        self.assertEqual(unknown.category, FeedbackCategory.UNKNOWN)
+
         link = catalog.match(
             "undefined reference to `helper'",
             stage=FeedbackStage.LINK,

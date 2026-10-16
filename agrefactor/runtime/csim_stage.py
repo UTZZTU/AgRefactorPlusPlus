@@ -310,6 +310,107 @@ def _native_source_compile_classification(result: CsimSuiteEvaluationResult) -> 
     return None
 
 
+def _host_source_compile_classification(
+    result: CsimSuiteEvaluationResult,
+) -> dict[str, Any] | None:
+    """Resolve host CSIM compile ownership from the same invocation only."""
+
+    for artifact in result.evidence.artifacts:
+        path = Path(artifact)
+        if (
+            path.name != "csim_invocation.json"
+            or path.is_symlink()
+            or not path.is_file()
+        ):
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, Mapping):
+            return None
+        root = path.parent.resolve()
+        if payload.get("work_dir") != str(root):
+            return None
+        source_files = payload.get("source_files")
+        source_roles = payload.get("source_roles")
+        compile_units = payload.get("compile_units")
+        source_hashes = payload.get("source_sha256")
+        if (
+            not isinstance(source_files, list)
+            or not source_files
+            or not all(isinstance(name, str) and name for name in source_files)
+            or not isinstance(source_roles, Mapping)
+            or not isinstance(compile_units, Mapping)
+            or not isinstance(source_hashes, Mapping)
+            or set(source_roles) != set(source_files)
+            or set(compile_units) != set(source_files)
+            or set(source_hashes) != set(source_files)
+        ):
+            return None
+        for name in source_files:
+            relative = Path(name)
+            if relative.is_absolute() or ".." in relative.parts:
+                return None
+            source = (root / relative).resolve(strict=False)
+            try:
+                source.relative_to(root)
+            except ValueError:
+                return None
+            if (
+                source.is_symlink()
+                or not source.is_file()
+                or not isinstance(source_hashes.get(name), str)
+                or sha256(source.read_bytes()).hexdigest()
+                != source_hashes[name]
+            ):
+                return None
+        execution = payload.get("compile_execution")
+        if (
+            not isinstance(execution, Mapping)
+            or execution.get("status") != "completed"
+            or execution.get("timeout") is not False
+            or not isinstance(execution.get("returncode"), int)
+            or isinstance(execution.get("returncode"), bool)
+            or execution.get("returncode") <= 0
+        ):
+            return None
+        diagnostic = result.diagnostic or str(execution.get("stderr") or "")
+        default_kind = classify_compile_failure(diagnostic)
+        diagnostics = parse_compiler_diagnostics(
+            diagnostic,
+            default_kind=default_kind,
+        )
+        if not diagnostics:
+            return None
+        evidence = resolve_source_owner(
+            diagnostics,
+            source_roles=source_roles,
+            work_dir=root,
+            compile_units=compile_units,
+            execution=execution,
+        )
+        return {
+            "category": default_kind.value,
+            "owner": evidence.owner,
+            "owner_authority": evidence.owner_authority,
+            "evidence_complete": evidence.evidence_complete,
+            "matched_files": list(evidence.matched_files),
+            "diagnostics": [
+                {
+                    "kind": item.kind.value,
+                    "message": item.message,
+                    "file": Path(item.file).name if item.file else None,
+                    "line": item.line,
+                    "column": item.column,
+                }
+                for item in diagnostics
+            ],
+            "compiler_returncode": execution.get("returncode"),
+        }
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class CsimStageInputs:
     """Explicit source inputs for public and hidden CSIM handlers."""
@@ -1058,6 +1159,43 @@ class CsimValidationStageHandler:
                             ),
                         }
                     )
+        elif (
+            self._split is EvaluationSplit.PUBLIC
+            and self._inputs.execution_backend != "native_vitis"
+            and result.legacy_status == "tb_compile_failed"
+            and (compile_failure := _host_source_compile_classification(result))
+            is not None
+        ):
+            category = _KIND_TO_CATEGORY.get(
+                TestbenchFailureKind(compile_failure["category"]),
+                FeedbackCategory.UNKNOWN,
+            )
+            try:
+                owner = FeedbackOwner(compile_failure["owner"])
+            except ValueError:
+                owner = FeedbackOwner.UNKNOWN
+            stage = FeedbackStage.COMPILE
+            metadata_update.update(
+                {
+                    "owner_authority": compile_failure["owner_authority"],
+                    "evidence_complete": compile_failure["evidence_complete"],
+                    "repair_eligible": (
+                        compile_failure["evidence_complete"]
+                        and owner
+                        in {
+                            FeedbackOwner.CANDIDATE,
+                            FeedbackOwner.TESTBENCH,
+                        }
+                    ),
+                    "tool_launched": True,
+                    "physical_tool_launched": False,
+                    "failure_kind": "source_compile_failed",
+                    "failure_reason": "host_csim_source_compile_failed",
+                    "compiler_diagnostics": compile_failure["diagnostics"],
+                    "compiler_returncode": compile_failure["compiler_returncode"],
+                    "source_compile_units": compile_failure["matched_files"],
+                }
+            )
         elif result.legacy_status == "tb_compile_failed":
             default_kind = classify_compile_failure(
                 result.diagnostic

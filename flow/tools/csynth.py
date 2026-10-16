@@ -64,6 +64,33 @@ def _file_sha256(path: str) -> str:
     return digest.hexdigest()
 
 
+def _catalog_include_roots(
+    work_dir: str,
+    source_files: list[str],
+    compile_flags: list[str],
+) -> list[str]:
+    roots = {
+        os.path.realpath(os.path.dirname(os.path.abspath(os.path.join(work_dir, source))))
+        for source in source_files
+    }
+    index = 0
+    while index < len(compile_flags):
+        flag = compile_flags[index]
+        value = None
+        if flag in {"-I", "-isystem"} and index + 1 < len(compile_flags):
+            index += 1
+            value = compile_flags[index]
+        elif flag.startswith("-I") and len(flag) > 2:
+            value = flag[2:]
+        elif flag.startswith("-isystem") and len(flag) > len("-isystem"):
+            value = flag[len("-isystem"):]
+        if value:
+            path = Path(value)
+            roots.add(os.path.realpath(path if path.is_absolute() else Path(work_dir) / path))
+        index += 1
+    return sorted(roots)
+
+
 def _clean_launcher_value(
     value: str,
     field_name: str,
@@ -670,6 +697,17 @@ def run_csynth(
             "role": role,
             "sha256": _file_sha256(source_path),
         }
+    invocation["catalog_parse_context"] = {
+        "schema_version": 1,
+        "mode": "libclang_default",
+        "compile_flags": shlex.split(" ".join(profile.compile_flags)),
+        "include_roots": _catalog_include_roots(
+            work_dir,
+            list(file_list),
+            shlex.split(" ".join(profile.compile_flags)),
+        ),
+        "source_files": list(file_list),
+    }
     effective_profile_path = os.path.join(
         work_dir,
         "effective_target_profile.json",

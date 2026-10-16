@@ -1,4 +1,5 @@
 import os, json, requests, shlex
+from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
 from flow.base_agent import HLSAgentLoader
@@ -129,6 +130,24 @@ def _blocked_budget_evidence(
     }
 
 
+def _source_hashes(
+    work_dir: str,
+    source_files: tuple[str, ...],
+) -> dict[str, str]:
+    root = Path(work_dir).resolve()
+    hashes: dict[str, str] = {}
+    for name in source_files:
+        path = (root / name).resolve(strict=False)
+        try:
+            path.relative_to(root)
+        except ValueError:
+            continue
+        if path.is_symlink() or not path.is_file():
+            continue
+        hashes[name] = sha256(path.read_bytes()).hexdigest()
+    return hashes
+
+
 def _build_csim_invocation(
     *,
     work_dir: str,
@@ -148,6 +167,19 @@ def _build_csim_invocation(
         "phase": "csim",
         "work_dir": os.path.abspath(work_dir),
         "source_files": source_files,
+        "source_roles": {
+            "testbench.cpp": "testbench",
+            "orig_code.cpp": "original",
+            "refactor_code.cpp": "candidate",
+            **{name: "unknown" for name in extra_sources},
+        },
+        "compile_units": {
+            "testbench.cpp": "testbench",
+            "orig_code.cpp": "original",
+            "refactor_code.cpp": "candidate",
+            **{name: "unknown" for name in extra_sources},
+        },
+        "source_sha256": _source_hashes(work_dir, tuple(source_files)),
         "case_evidence": {
             "schema_version": 1,
             "path": EVIDENCE_FILENAME,

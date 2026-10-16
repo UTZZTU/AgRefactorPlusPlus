@@ -819,6 +819,47 @@ class CandidateRepairValidationOrchestratorTests(unittest.TestCase):
             ],
         )
 
+    def test_public_compile_feedback_reaches_candidate_repair(self):
+        def scenario(request, state):
+            if (
+                request.attempt == 0
+                and state is ValidationState.PUBLIC_EVALUATION
+            ):
+                compile_item = FeedbackItem(
+                    feedback_id="public.compile.failure",
+                    stage=FeedbackStage.COMPILE,
+                    category=FeedbackCategory.SYNTAX_ERROR,
+                    severity=FeedbackSeverity.ERROR,
+                    owner=FeedbackOwner.CANDIDATE,
+                    summary="candidate compile failure",
+                    detail="safe compiler diagnostic",
+                    source="csim",
+                    metadata={
+                        "owner_authority": "source_compile_unit",
+                        "physical_tool_launched": False,
+                        "tool_launched": True,
+                        "evidence_complete": True,
+                    },
+                )
+                return report_for(
+                    state,
+                    item=compile_item,
+                    report_id="public-compile-report",
+                )
+            return pass_scenario(request, state)
+
+        adapter, provider = make_adapter([P1])
+        result = CandidateRepairValidationOrchestrator(
+            model_adapter=adapter,
+            handler_factory=ScenarioFactory(scenario),
+        ).run(
+            make_context(),
+            make_request(max_attempts=1),
+            validation_id="public-compile-validation",
+        )
+        self.assertTrue(result.accepted)
+        self.assertEqual(len(provider.calls), 1)
+
     def test_repaired_candidate_can_reach_hidden_acceptance(self):
         def scenario(request, state):
             if (

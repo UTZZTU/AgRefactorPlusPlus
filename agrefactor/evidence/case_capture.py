@@ -18,6 +18,8 @@ from .case_record import (
     CaseOutcome,
     CaseStatus,
     DiagnosticCase,
+    EvidenceCheckResult,
+    EvidenceCheckState,
     OwnerAssessment,
     RepairEligibilitySnapshot,
 )
@@ -290,6 +292,10 @@ class CaseRecorder:
             self._store.update_case(self._case)
 
         self._latest_event_ref = self._case.diagnostic_event_refs[-1]
+        self._case = self._merge_event_evidence_checks(
+            self._case, event, self._latest_event_ref
+        )
+        self._store.update_case(self._case)
         self._active = True
         self._pending_generation_events = []
         return True
@@ -360,9 +366,43 @@ class CaseRecorder:
             diagnostic_event_refs=refs,
             owner_assessments=tuple(owners),
         )
+        self._case = self._merge_event_evidence_checks(
+            self._case, event, event_id
+        )
         self._store.update_case(self._case)
         self._latest_event_ref = event_id
         return True
+
+    @staticmethod
+    def _merge_event_evidence_checks(
+        case: DiagnosticCase,
+        event: Mapping[str, Any],
+        event_id: str,
+    ) -> DiagnosticCase:
+        checks = list(case.evidence_checks)
+        known = {(item.check_id, item.evidence_refs) for item in checks}
+        for item in event.get("diagnostic_items", ()):
+            if not isinstance(item, Mapping):
+                continue
+            raw = item.get("diagnostic_check")
+            if not isinstance(raw, Mapping):
+                continue
+            evidence_refs = (event_id,)
+            identity = (raw.get("check_id"), evidence_refs)
+            if identity in known:
+                continue
+            try:
+                check = EvidenceCheckResult(
+                    check_id=raw.get("check_id"),
+                    result=EvidenceCheckState(raw.get("result")),
+                    evidence_refs=evidence_refs,
+                    summary=raw.get("summary"),
+                )
+            except (TypeError, ValueError):
+                continue
+            checks.append(check)
+            known.add(identity)
+        return replace(case, evidence_checks=tuple(checks)) if len(checks) != len(case.evidence_checks) else case
 
     def record_testbench_dispatch(
         self,

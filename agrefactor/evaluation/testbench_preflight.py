@@ -355,6 +355,7 @@ def infer_failure_owner(
     *,
     source_roles: Mapping[str, str] | None = None,
     work_dir: str | Path | None = None,
+    compile_units: Mapping[str, str] | Iterable[str] | None = None,
     execution: Mapping[str, Any] | None = None,
 ) -> TestbenchFailureOwner:
     if not source_roles or work_dir is None:
@@ -363,6 +364,7 @@ def infer_failure_owner(
         diagnostics,
         source_roles=source_roles,
         work_dir=work_dir,
+        compile_units=compile_units,
         execution=execution,
     )
     try:

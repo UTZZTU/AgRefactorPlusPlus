@@ -97,6 +97,7 @@
       "parser_rule": "unsupported_struct_pointer_argument",
       "confidence": "high",
       "owner_policy": "resolve_from_evidence",
+        "diagnostic_checks": ["csynth_top_argument_pointer_member_contract"],
       "priority": 180
     },
     {
@@ -252,6 +253,17 @@
       "confidence": "high",
       "owner_policy": "resolve_from_evidence",
       "priority": 290
+    },
+    {
+      "id": "compile_expected_token",
+      "match": {"patterns": ["\\bexpected\\b\\s+.+\\b(?:before|after|at end of input)\\b"]},
+      "stage": "compile",
+      "category": "syntax_error",
+      "summary": "Compiler reports an expected-token syntax error",
+      "parser_rule": "expected_token",
+      "confidence": "high",
+      "owner_policy": "resolve_from_evidence",
+      "priority": 280
     },
     {
       "id": "compile_syntax_error",

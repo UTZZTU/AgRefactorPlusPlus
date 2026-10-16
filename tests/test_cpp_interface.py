@@ -250,6 +250,30 @@ auto top(sample (&input)[8], unsigned count) -> void {
     def test_parse_failure_is_unknown_instead_of_an_exception(self) -> None:
         self.assertIsNone(extract_top_interface("not valid C++", "top"))
 
+    def test_type_contract_maps_nested_pointer_fields_to_top_argument(self):
+        contract = extract_top_type_contract(
+            "struct Payload { int *data; };\n"
+            "struct Packet { Payload body; };\n"
+            "void top(Packet packet) {}\n",
+            "top",
+        )
+        self.assertEqual(contract["status"], "confirmed")
+        self.assertEqual(
+            contract["top_parameters"][0]["pointer_member_paths"],
+            ["packet.body.data"],
+        )
+
+    def test_type_contract_does_not_count_top_level_pointer_as_member(self):
+        contract = extract_top_type_contract(
+            "struct Packet { int value; };\n"
+            "void top(Packet *packet) {}\n",
+            "top",
+        )
+        self.assertEqual(contract["status"], "confirmed")
+        self.assertEqual(
+            contract["top_parameters"][0]["pointer_member_paths"], []
+        )
+
     def test_canonical_result_type_resolves_void_alias(self) -> None:
         interface = extract_top_interface(
             "typedef void Ret; Ret top(int *values);",

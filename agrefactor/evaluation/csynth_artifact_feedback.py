@@ -17,6 +17,7 @@ from agrefactor.evidence import (
 from .csynth_diagnostics import CsynthDiagnosticParser
 from .csynth_feedback import CsynthFeedbackAdapter
 from .csynth_feedback_composer import CsynthFeedbackComposer
+from .catalog_diagnostic_checks import evaluate_catalog_check
 from .owner_evidence import resolve_source_owner
 
 
@@ -113,6 +114,11 @@ class CsynthArtifactFeedbackEvaluator:
             legacy_status=legacy_status,
             work_dir=root,
         )
+        combined = self._attach_catalog_checks(
+            combined,
+            invocation=invocation,
+            work_dir=root,
+        )
 
         source_evidence = dict(combined.source_evidence)
         source_evidence["artifact_loading"] = {
@@ -154,6 +160,26 @@ class CsynthArtifactFeedbackEvaluator:
             source_evidence=source_evidence,
             metadata=metadata,
         )
+
+    @staticmethod
+    def _attach_catalog_checks(
+        report: FeedbackReport,
+        *,
+        invocation: dict[str, Any],
+        work_dir: Path,
+    ) -> FeedbackReport:
+        items = []
+        for item in report.items:
+            check = evaluate_catalog_check(work_dir, invocation, item)
+            if check is None:
+                items.append(item)
+                continue
+            metadata = dict(item.metadata)
+            metadata["diagnostic_check"] = check
+            note = f"Catalog diagnostic check: {check['result']}; {check['summary']}"
+            detail = f"{item.detail}\n{note}" if item.detail else note
+            items.append(replace(item, detail=detail[:1200], metadata=metadata))
+        return replace(report, items=tuple(items))
 
     @staticmethod
     def _apply_completion_facts(

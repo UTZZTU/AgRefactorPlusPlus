@@ -135,6 +135,7 @@ class PromptPurpose(str, Enum):
         if self is PromptPurpose.CANDIDATE_PUBLIC_CSIM_REPAIR:
             return frozenset(
                 {
+                    FeedbackStage.COMPILE,
                     FeedbackStage.TEST,
                     FeedbackStage.CSIM,
                 }

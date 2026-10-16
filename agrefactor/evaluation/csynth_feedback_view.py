@@ -64,6 +64,8 @@ _SAFE_ITEM_METADATA_KEYS = frozenset(
         "owner_policy",
         "evidence_requirements",
         "allowed_actions",
+        "diagnostic_checks",
+        "diagnostic_check",
         "repair_eligible",
         "recovery_authority",
         "evaluation_split",
@@ -189,6 +191,8 @@ class CsynthFeedbackViewAdapter:
             value = item.metadata[key]
             if key == "file":
                 value = self._basename_or_none(value)
+            elif key == "diagnostic_check":
+                value = self._safe_diagnostic_check(value)
             elif isinstance(value, str):
                 value = self._sanitize_text(value)
 
@@ -212,6 +216,26 @@ class CsynthFeedbackViewAdapter:
             evidence_ref=None,
             metadata=safe_metadata,
         )
+
+    @classmethod
+    def _safe_diagnostic_check(cls, value: Any) -> dict[str, str] | None:
+        if not isinstance(value, dict):
+            return None
+        check_id = value.get("check_id")
+        result = value.get("result")
+        reason_code = value.get("reason_code")
+        summary = value.get("summary")
+        if (check_id != "csynth_top_argument_pointer_member_contract"
+                or result not in {"satisfied", "missing", "contradicted"}
+                or not isinstance(reason_code, str)
+                or not isinstance(summary, str)):
+            return None
+        return {
+            "check_id": check_id,
+            "result": result,
+            "reason_code": cls._sanitize_text(reason_code)[:160],
+            "summary": cls._sanitize_text(summary)[:512],
+        }
 
     @classmethod
     def _sanitize_text(cls, value: str) -> str:

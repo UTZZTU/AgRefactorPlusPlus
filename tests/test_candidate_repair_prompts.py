@@ -568,7 +568,7 @@ class CandidateRepairPromptPolicyTests(unittest.TestCase):
     def test_public_csim_wrong_stage_is_rejected(self):
         inputs = make_inputs(
             make_feedback(
-                stage=FeedbackStage.COMPILE,
+                stage=FeedbackStage.COSIM,
                 split=EvaluationSplit.PUBLIC,
                 visible=True,
             )

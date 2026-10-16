@@ -6,6 +6,7 @@
 - 服务器仓库：`/data/AgRefactor`
 - 计划起草基线：`backup/server-current-20261013`，提交 `35bbead8ac4059d00c776d6564140800463bd02c`；实施前应基于已推送的四项修正后分支 HEAD 重新核对文件和验收清单
 - 逐文件核对基线（2026-10-16）：同一分支，提交 `e740f83cd7f39cbec952ef88bdb0726962b29397`
+- P4 实施提交（2026-10-16）：`1790901`，已推送至 `origin/backup/server-current-20261013`
 - 配套清单：[P4 逐文件实施清单与冻结验收命令](P4_IMPLEMENTATION_CHECKLIST_AND_FROZEN_VALIDATION.md)
 - 上位设计：`docs/roadmap/后续项目推进计划_证据驱动诊断与经验库_讨论稿_v0.3.md`
 
@@ -299,4 +300,4 @@ P4 按用户审阅认可的逐文件清单在 `/data/AgRefactor` 实施。运行
 - T1 在线 usage 对照：此前已完成 12 个合成 Chat Completions 请求，本次未重复。服务端与本地 prompt token 差值为 +2 至 +3，安全余量为 3；结果不是“所有请求精确同数”的声明。输出 SHA-256 为 `bfc1439bf561d8a40f393e60b8a2bba34cf90f424f6049992d9f05e190ba02cc`。未下载模型权重。
 - S1：AST 检查解析 34 个变更/新增 Python 文件，`git diff --check` 通过。R1/R2/N1 均未调用外部模型或真实 Vitis；没有执行真实 HLS 案例。
 
-服务器仍位于分支 `backup/server-current-20261013`、冻结 HEAD `e740f83cd7f39cbec952ef88bdb0726962b29397`；本次没有 commit 或 push。P4 阶段备份和 Case 可见性补丁前文件保留在服务器 `backups/` 下。
+P4 实施前冻结基线为分支 `backup/server-current-20261013`、提交 `e740f83cd7f39cbec952ef88bdb0726962b29397`；P4 实施已提交为 `1790901` 并推送到该分支。P4 阶段备份和 Case 可见性补丁前文件仍保留在服务器 `backups/` 下。

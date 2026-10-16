@@ -1,4 +1,5 @@
 import json
+from hashlib import sha256
 from pathlib import Path
 import tempfile
 import unittest
@@ -30,6 +31,7 @@ from agrefactor.runtime import (
     TraceRecorder,
     read_csim_invocation_summary,
 )
+from flow.tools.csim import _build_csim_invocation
 
 
 ORIGINAL = (
@@ -194,6 +196,38 @@ class ScriptedExecutor:
 class CsimValidationStageHandlerTests(
     unittest.TestCase
 ):
+    def test_host_invocation_records_source_provenance_and_hashes(self):
+        from hashlib import sha256
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            contents = {
+                "testbench.cpp": "int main() { return 0; }\n",
+                "orig_code.cpp": "int original_top() { return 0; }\n",
+                "refactor_code.cpp": "int candidate_top() { return 0; }\n",
+            }
+            for name, content in contents.items():
+                (root / name).write_text(content, encoding="utf-8")
+
+            invocation = _build_csim_invocation(
+                work_dir=directory,
+                timelimit=23,
+                budget=None,
+            )
+
+        self.assertEqual(
+            invocation["source_roles"]["refactor_code.cpp"],
+            "candidate",
+        )
+        self.assertEqual(
+            invocation["compile_units"]["testbench.cpp"],
+            "testbench",
+        )
+        self.assertEqual(
+            invocation["source_sha256"]["orig_code.cpp"],
+            sha256(contents["orig_code.cpp"].encode("utf-8")).hexdigest(),
+        )
+
     def inputs(self, directory, codes):
         return CsimStageInputs(
             work_dir=directory,
@@ -317,6 +351,147 @@ class CsimValidationStageHandlerTests(
             coordinated.route_action.value,
             "repair_candidate",
         )
+
+    def test_public_host_compile_uses_verified_source_provenance(self):
+        suite = TestSuiteSpec(
+            suite_id="public-host-compile",
+            split=EvaluationSplit.PUBLIC,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            sources = {
+                "testbench.cpp": "int main() { return 0; }\n",
+                "orig_code.cpp": "int original_top() { return 0; }\n",
+                "refactor_code.cpp": "int candidate_top() { return ; }\n",
+            }
+            for name, content in sources.items():
+                (root / name).write_text(content, encoding="utf-8")
+            invocation = {
+                "work_dir": str(root),
+                "source_files": list(sources),
+                "source_roles": {
+                    "testbench.cpp": "testbench",
+                    "orig_code.cpp": "original",
+                    "refactor_code.cpp": "candidate",
+                },
+                "compile_units": {
+                    "testbench.cpp": "testbench",
+                    "orig_code.cpp": "original",
+                    "refactor_code.cpp": "candidate",
+                },
+                "source_sha256": {
+                    name: sha256(content.encode("utf-8")).hexdigest()
+                    for name, content in sources.items()
+                },
+                "compile_execution": {
+                    "status": "completed",
+                    "returncode": 1,
+                    "timeout": False,
+                    "stderr": "",
+                },
+            }
+            invocation_path = root / "csim_invocation.json"
+            invocation_path.write_text(
+                json.dumps(invocation), encoding="utf-8"
+            )
+            evidence = TestEvaluationEvidence(
+                suite=suite,
+                status=TestEvaluationStatus.ERROR,
+                return_code=1,
+                details={
+                    "compile_execution": invocation["compile_execution"],
+                    "simulation_execution": {
+                        "status": "skipped_after_compile_failure",
+                        "returncode": None,
+                        "timeout": False,
+                    },
+                },
+                artifacts=(str(invocation_path),),
+            )
+            result = CsimSuiteEvaluationResult(
+                legacy_status="tb_compile_failed",
+                diagnostic=(
+                    f"{root}/refactor_code.cpp:1:31: error: "
+                    "expected primary-expression before ')' token"
+                ),
+                evidence=evidence,
+            )
+            report = CsimValidationStageHandler(
+                self.inputs(str(root), {suite.suite_id: "unused"}),
+                split=EvaluationSplit.PUBLIC,
+            )._result_report(result, report_id="host-compile")
+
+        item = report.items[0]
+        self.assertEqual(item.stage.value, "compile")
+        self.assertEqual(item.owner, FeedbackOwner.CANDIDATE)
+        self.assertEqual(item.metadata["owner_authority"], "source_compile_unit")
+        self.assertTrue(item.metadata["evidence_complete"])
+        self.assertTrue(item.metadata["repair_eligible"])
+
+    def test_host_compile_hash_mismatch_remains_unknown(self):
+        suite = TestSuiteSpec(
+            suite_id="public-host-compile-mismatch",
+            split=EvaluationSplit.PUBLIC,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            sources = {
+                "testbench.cpp": "int main() { return 0; }\n",
+                "orig_code.cpp": "int original_top() { return 0; }\n",
+                "refactor_code.cpp": "int candidate_top() { return ; }\n",
+            }
+            for name, content in sources.items():
+                (root / name).write_text(content, encoding="utf-8")
+            invocation = {
+                "work_dir": str(root),
+                "source_files": list(sources),
+                "source_roles": {name: role for name, role in (
+                    ("testbench.cpp", "testbench"),
+                    ("orig_code.cpp", "original"),
+                    ("refactor_code.cpp", "candidate"),
+                )},
+                "compile_units": {name: role for name, role in (
+                    ("testbench.cpp", "testbench"),
+                    ("orig_code.cpp", "original"),
+                    ("refactor_code.cpp", "candidate"),
+                )},
+                "source_sha256": {name: "0" * 64 for name in sources},
+                "compile_execution": {
+                    "status": "completed", "returncode": 1, "timeout": False,
+                },
+            }
+            invocation_path = root / "csim_invocation.json"
+            invocation_path.write_text(json.dumps(invocation), encoding="utf-8")
+            evidence = TestEvaluationEvidence(
+                suite=suite,
+                status=TestEvaluationStatus.ERROR,
+                return_code=1,
+                details={
+                    "compile_execution": invocation["compile_execution"],
+                    "simulation_execution": {
+                        "status": "skipped_after_compile_failure",
+                        "returncode": None,
+                        "timeout": False,
+                    },
+                },
+                artifacts=(str(invocation_path),),
+            )
+            result = CsimSuiteEvaluationResult(
+                legacy_status="tb_compile_failed",
+                diagnostic=(
+                    f"{root}/refactor_code.cpp:1:31: error: "
+                    "expected primary-expression before ')' token"
+                ),
+                evidence=evidence,
+            )
+            report = CsimValidationStageHandler(
+                self.inputs(str(root), {suite.suite_id: "unused"}),
+                split=EvaluationSplit.PUBLIC,
+            )._result_report(result, report_id="host-compile-mismatch")
+
+        item = report.items[0]
+        self.assertEqual(item.owner, FeedbackOwner.UNKNOWN)
+        self.assertFalse(item.metadata["repair_eligible"])
 
     def test_nonzero_return_without_evaluated_cases_is_not_mismatch(
         self,

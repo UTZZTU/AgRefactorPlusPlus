@@ -25,6 +25,11 @@ _ACTIONS = frozenset({
     "fix_configuration",
 })
 _REPAIR_ACTIONS = frozenset({"repair_candidate_if_proven", "repair_testbench_if_proven"})
+_RULE_DIAGNOSTIC_CHECKS = {
+    "hls_214_298_struct_pointer_argument": frozenset({
+        "csynth_top_argument_pointer_member_contract",
+    }),
+}
 
 
 def _fields(value: Mapping[str, Any], allowed: set[str], context: str) -> None:
@@ -57,6 +62,7 @@ class DiagnosticRule:
     owner_policy: str
     evidence_requirements: tuple[str, ...]
     allowed_actions: tuple[str, ...]
+    diagnostic_checks: tuple[str, ...]
     evaluation_split: str
     _hls_codes: frozenset[str]
     _patterns: tuple[re.Pattern[str], ...]
@@ -87,6 +93,7 @@ class DiagnosticMatch:
     owner_policy: str
     evidence_requirements: tuple[str, ...]
     allowed_actions: tuple[str, ...]
+    diagnostic_checks: tuple[str, ...]
 
     def to_metadata(self) -> dict[str, Any]:
         return {
@@ -96,6 +103,7 @@ class DiagnosticMatch:
             "owner_policy": self.owner_policy,
             "evidence_requirements": list(self.evidence_requirements),
             "allowed_actions": list(self.allowed_actions),
+            "diagnostic_checks": list(self.diagnostic_checks),
             "classification_confidence": self.confidence,
             "parser_rule": self.parser_rule,
         }
@@ -199,6 +207,7 @@ class DiagnosticCatalog:
             evidence_requirements=rule.evidence_requirements,
             allowed_actions=(tuple(action for action in rule.allowed_actions if action not in _REPAIR_ACTIONS)
                              if evaluation_split == "hidden" else rule.allowed_actions),
+            diagnostic_checks=rule.diagnostic_checks,
         )
 
     @staticmethod
@@ -227,7 +236,7 @@ class DiagnosticCatalog:
     def _build_rule(self, value: Any) -> DiagnosticRule:
         if not isinstance(value, Mapping):
             raise DiagnosticCatalogError("each diagnostic rule must be an object")
-        _fields(value, {"id", "match", "stage", "category", "summary", "parser_rule", "confidence", "owner_policy", "priority", "notes", "evaluation_split"}, "rule")
+        _fields(value, {"id", "match", "stage", "category", "summary", "parser_rule", "confidence", "owner_policy", "priority", "notes", "evaluation_split", "diagnostic_checks"}, "rule")
         required = ("id", "match", "stage", "category", "owner_policy", "priority")
         missing = [key for key in required if key not in value]
         if missing:
@@ -278,6 +287,11 @@ class DiagnosticCatalog:
         split = value.get("evaluation_split", "all")
         if split not in {"all", "public", "hidden"}:
             raise DiagnosticCatalogError("unknown evaluation_split")
+        diagnostic_checks = _strings(
+            value.get("diagnostic_checks", []),
+            frozenset(_RULE_DIAGNOSTIC_CHECKS.get(rule_id, ())),
+            f"rule {rule_id!r} diagnostic_checks",
+        )
         if split == "hidden" and set(definition.get("allowed_actions", [])) & _REPAIR_ACTIONS:
             raise DiagnosticCatalogError("Hidden rules cannot permit agent repair")
         return DiagnosticRule(
@@ -292,6 +306,7 @@ class DiagnosticCatalog:
             owner_policy=owner_policy,
             evidence_requirements=tuple(definition.get("evidence_requirements", ())),
             allowed_actions=tuple(definition.get("allowed_actions", ())),
+            diagnostic_checks=diagnostic_checks,
             evaluation_split=split,
             _hls_codes=frozenset(code.upper() for code in codes),
             _patterns=compiled,

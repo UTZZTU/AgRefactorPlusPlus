@@ -6,6 +6,7 @@
 - 服务器：`agrefactor-server`，仓库 `/data/AgRefactor`
 - 分支：`backup/server-current-20261013`
 - 冻结代码基线：`e740f83cd7f39cbec952ef88bdb0726962b29397`
+- P4 实施提交：`1790901`，已推送至 `origin/backup/server-current-20261013`
 - 上位计划：[P4 实施计划 v1.1](P4_EXPERIENCE_RETRIEVAL_AND_AI_DIAGNOSTIC_ASSISTANT_PLAN.md)
 - 上位大纲：`docs/roadmap/后续项目推进计划_证据驱动诊断与经验库_讨论稿_v0.3.md`
 
@@ -389,7 +390,7 @@ P4 实施结果、验收命令、tokenizer 来源/校验与离线回放 manifest
 
 回滚以本基线和阶段快照为锚点，仅回滚本阶段代码；追加式 Case/Experience 数据保留。两个开关默认关闭，为默认流程提供原路径。不得用 `git clean`、整体 reset 或删除历史经验作为省事的恢复手段。
 
-用户已于 2026-10-16 审阅认可本清单并授权 P4 实施。P4 已完成；本阶段没有 commit/push，也没有执行真实 HLS 实验或清理旧 R3/R5。P5/P6 仍需分别提交实施计划并经用户评审。
+用户已于 2026-10-16 审阅认可本清单并授权 P4 实施。P4 已完成并于 2026-10-16 以 `1790901` 提交、推送；没有执行真实 HLS 实验或清理旧 R3/R5。P5/P6 仍需分别提交实施计划并经用户评审。
 
 ## 9. 审阅重点（已确认）
 
@@ -404,7 +405,7 @@ P4 实施结果、验收命令、tokenizer 来源/校验与离线回放 manifest
 
 ## 10. P4 实施结果
 
-服务器分支和冻结 HEAD 保持为 `backup/server-current-20261013` / `e740f83cd7f39cbec952ef88bdb0726962b29397`。没有 commit/push，也没有运行真实 HLS 案例。
+服务器分支为 `backup/server-current-20261013`；P4 冻结基线为 `e740f83cd7f39cbec952ef88bdb0726962b29397`，实施提交 `1790901` 已推送。没有运行真实 HLS 案例。
 
 | 验收项 | 实际结果 |
 |---|---|

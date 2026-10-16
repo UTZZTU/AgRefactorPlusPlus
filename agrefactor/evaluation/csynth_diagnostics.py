@@ -164,6 +164,11 @@ class CsynthDiagnosticParser:
                         if catalog_rule is not None
                         else ["review_unknown"]
                     ),
+                    "diagnostic_checks": (
+                        list(catalog_rule.diagnostic_checks)
+                        if catalog_rule is not None
+                        else []
+                    ),
                     "owner_policy": (
                         catalog_rule.owner_policy
                         if catalog_rule is not None
@@ -442,6 +447,7 @@ class CsynthDiagnosticParser:
                 "allowed_actions": record.get(
                     "allowed_actions", ["review_unknown"]
                 ),
+                "diagnostic_checks": record.get("diagnostic_checks", []),
                 "owner_policy": record.get(
                     "owner_policy", "resolve_from_evidence"
                 ),

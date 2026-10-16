@@ -409,18 +409,28 @@ def _vendor_include_directory():
     return Path(xilinx_hls) / "include" if xilinx_hls else None
 
 
-def _parse_flags(path, include_dirs, compile_flags, compiler):
+def _parse_flags(path, include_dirs, compile_flags, compiler, compiler_context=None):
     flags = ["-x", "c++"]
-    context = _compiler_include_context(compiler, tuple(compile_flags))
+    context = (
+        _compiler_include_context(compiler, tuple(compile_flags))
+        if compiler_context is None else compiler_context
+    )
     if context.get("language_standard"):
         flags.append("-std=" + context["language_standard"])
-    compiler_includes = _compiler_include_flags(path, compiler, tuple(compile_flags))
+    compiler_includes = (
+        _compiler_include_flags(path, compiler, tuple(compile_flags))
+        if compiler_context is None else tuple(context.get("flags", ()))
+    )
     if compiler_includes:
         flags.extend(("-nostdinc++", *compiler_includes))
     # The qualification compiler adds this directory even when source-package
     # includes only name the user source root. Parse the same header context.
     directories = list(include_dirs)
-    vendor_include = _vendor_include_directory()
+    vendor_include = (
+        _vendor_include_directory()
+        if compiler_context is None or compiler_context.get("include_vendor") is True
+        else None
+    )
     if vendor_include is not None:
         directories.append(str(vendor_include))
     flags.extend(f"-I{directory}" for directory in dict.fromkeys(directories))
@@ -437,6 +447,7 @@ def extract_top_interface(
     include_dirs: tuple[str, ...] = (),
     compile_flags: tuple[str, ...] = (),
     compiler: str = "g++",
+    compiler_context: dict | None = None,
     _entry_facts: dict | None = None,
 ) -> Optional[CppFunctionInterface]:
     """Return one compiler-resolved top definition, or ``None`` if unknown."""
@@ -460,8 +471,13 @@ def extract_top_interface(
             filename = str(source_path or "agrefactor_interface.cpp").encode("utf-8")
             contents = source.encode("utf-8")
             unsaved = _CXUnsavedFile(filename, contents, len(contents))
-            flags = _parse_flags(path, include_dirs, compile_flags, compiler)
-            include_context = _compiler_include_context(compiler, tuple(compile_flags))
+            flags = _parse_flags(
+                path, include_dirs, compile_flags, compiler, compiler_context
+            )
+            include_context = (
+                _compiler_include_context(compiler, tuple(compile_flags))
+                if compiler_context is None else compiler_context
+            )
             if _entry_facts is not None:
                 _entry_facts["parse_context"] = {
                     "libclang": str(path), "compiler": compiler,
@@ -1231,6 +1247,9 @@ def extract_top_type_contract(
         translation_unit_complete=facts.get("translation_unit_complete", False),
         entry_status=facts.get("status", "unknown"),
         entries=facts.get("entries", []),
+        top_parameters=facts.get(
+            "top_parameters", contract.get("top_parameters", [])
+        ),
         equivalent_redeclarations_collapsed=facts.get("equivalent_redeclarations_collapsed", 0),
     )
     return contract
@@ -1550,6 +1569,69 @@ def _type_contract_from_cursor(clang, top, source, translation_unit):
     walk(library.clang_getResultType(function_type))
     for argument_index in range(library.clang_Cursor_getNumArguments(top)):
         walk(library.clang_getCursorType(library.clang_Cursor_getArgument(top, argument_index)))
+
+    def pointer_member_paths(value, prefix, active, source_paths):
+        canonical = library.clang_getCanonicalType(value)
+        if canonical.kind == _POINTER_TYPE:
+            return [prefix] if prefix else []
+        if canonical.kind in _ARRAY_TYPES:
+            return pointer_member_paths(
+                library.clang_getArrayElementType(canonical), prefix, active, source_paths
+            )
+        declaration_cursor = library.clang_getTypeDeclaration(canonical)
+        if declaration_cursor.kind not in {2, 3, 4}:
+            return []
+        identity = int(library.clang_hashCursor(declaration_cursor))
+        definition = library.clang_getCursorDefinition(declaration_cursor)
+        source_cursor = definition if definition.kind in {2, 3, 4} else declaration_cursor
+        source_path = cursor_provenance(source_cursor).get("source_path")
+        if isinstance(source_path, str) and source_path:
+            source_paths.add(source_path)
+        if identity in active or definition.kind not in {2, 3, 4}:
+            return []
+        paths = []
+        for child in children(definition):
+            if child.kind != 6:
+                continue
+            field_name = clang.text(library.clang_getCursorSpelling(child)) or "<anonymous>"
+            field_path = f"{prefix}.{field_name}" if prefix else field_name
+            paths.extend(pointer_member_paths(
+                library.clang_getCursorType(child), field_path,
+                active | {identity}, source_paths,
+            ))
+        return paths
+
+    top_parameters = []
+    for argument_index in range(library.clang_Cursor_getNumArguments(top)):
+        argument = library.clang_Cursor_getArgument(top, argument_index)
+        argument_type = library.clang_getCursorType(argument)
+        root_type = library.clang_getCanonicalType(argument_type)
+        while root_type.kind in {*_REFERENCE_TYPES, *_ARRAY_TYPES}:
+            root_type = library.clang_getCanonicalType(
+                library.clang_getArrayElementType(root_type)
+                if root_type.kind in _ARRAY_TYPES
+                else library.clang_getPointeeType(root_type)
+            )
+        while root_type.kind == _POINTER_TYPE:
+            root_type = library.clang_getCanonicalType(
+                library.clang_getPointeeType(root_type)
+            )
+        root_declaration = library.clang_getTypeDeclaration(root_type)
+        aggregate = root_declaration.kind in {2, 3, 4}
+        source_paths = set()
+        parameter_name = clang.text(library.clang_getCursorSpelling(argument)) or f"arg{argument_index}"
+        paths = (
+            pointer_member_paths(root_type, parameter_name, set(), source_paths)
+            if aggregate else []
+        )
+        top_parameters.append({
+            "index": argument_index,
+            "name": parameter_name,
+            "type": spelling(argument_type),
+            "aggregate": aggregate,
+            "pointer_member_paths": sorted(set(paths)),
+            "type_source_paths": sorted(source_paths),
+        })
     collect_value_dependencies(top, declaration_only=True)
     required_include_lines = set()
     @clang.inclusion_visitor_type
@@ -1697,6 +1779,7 @@ def _type_contract_from_cursor(clang, top, source, translation_unit):
         "unresolved": unresolved,
         "type_provenance": [type_provenance[name] for name in sorted(type_provenance)],
         "value_dependencies": [value_dependencies[identity] for identity in sorted(value_dependencies)],
+        "top_parameters": top_parameters,
     }
 
 

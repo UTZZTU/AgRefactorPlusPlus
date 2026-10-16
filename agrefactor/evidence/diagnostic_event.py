@@ -43,6 +43,7 @@ _DIAGNOSTIC_ALLOWED_FIELDS = _DIAGNOSTIC_REQUIRED_FIELDS | frozenset(
         "evidence_fingerprint",
         "owner_authority",
         "evidence_complete",
+        "diagnostic_check",
     }
 )
 
@@ -213,6 +214,34 @@ def _normalize_diagnostic_items(
             if not isinstance(raw["evidence_complete"], bool):
                 raise TypeError("diagnostic evidence_complete must be a boolean")
             item["evidence_complete"] = raw["evidence_complete"]
+        check = raw.get("diagnostic_check")
+        if check is not None:
+            if not isinstance(check, Mapping) or set(check) != {"check_id", "result", "reason_code", "summary"}:
+                raise ValueError("invalid catalog diagnostic check")
+            check_id = _safe_diagnostic_text(
+                check.get("check_id"),
+                f"diagnostic_items[{index}].diagnostic_check.check_id",
+                max_length=160,
+            )
+            result = check.get("result")
+            if result not in {"satisfied", "missing", "contradicted"}:
+                raise ValueError("invalid catalog diagnostic check result")
+            reason_code = _safe_diagnostic_text(
+                check.get("reason_code"),
+                f"diagnostic_items[{index}].diagnostic_check.reason_code",
+                max_length=160,
+            )
+            summary = _safe_diagnostic_text(
+                check.get("summary"),
+                f"diagnostic_items[{index}].diagnostic_check.summary",
+                max_length=512,
+            )
+            item["diagnostic_check"] = {
+                "check_id": check_id,
+                "result": result,
+                "reason_code": reason_code,
+                "summary": summary,
+            }
         source_file = raw.get("source_file")
         if source_file is not None:
             source_file = _safe_diagnostic_text(
@@ -259,6 +288,7 @@ def _project_feedback_item(item: Any) -> dict[str, Any]:
         "evidence_fingerprint": metadata.get("evidence_fingerprint"),
         "owner_authority": metadata.get("owner_authority"),
         "evidence_complete": metadata.get("evidence_complete"),
+        "diagnostic_check": metadata.get("diagnostic_check"),
     }
     return {
         key: item_value

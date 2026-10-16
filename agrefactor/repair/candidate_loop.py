@@ -87,7 +87,7 @@ _STAGE_BY_REPAIR_STATE = {
     ),
     ValidationState.CSYNTH: frozenset({FeedbackStage.CSYNTH}),
     ValidationState.PUBLIC_EVALUATION: frozenset(
-        {FeedbackStage.TEST, FeedbackStage.CSIM}
+        {FeedbackStage.TEST, FeedbackStage.CSIM, FeedbackStage.COMPILE}
     ),
     ValidationState.PUBLIC_COSIM: frozenset({FeedbackStage.COSIM}),
 }
