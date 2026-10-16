@@ -1,6 +1,6 @@
 # P4 实施计划：经验检索与 AI 辅助诊断
 
-- 版本：评审稿 v1.0
+- 版本：评审稿 v1.1
 - 日期：2026-10-16
 - 状态：供审阅与讨论；本文件不是 P4 代码实施授权
 - 服务器仓库：`/data/AgRefactor`
@@ -17,7 +17,7 @@ P4 将把新设计接入运行时：本地从当前阶段证据构造查询；�
 
 ## 2. 当前基线与 P4 前置发现
 
-P1 的代码覆盖审计已完成；v0.3 仍将代表性端到端基线标为待补齐。P2 历史记录称 7 个模块、87 项通过，但原模块清单未找到；按 P2 计划中明确列出的 5 个模块复跑为 71 项。P3 补充计划原记录 227 项；四项审计问题修正后，按同一 12 个模块复跑为 230 项。以上均为定向测试，不是代表性端到端基线。四项修正已实现默认关闭的 `--record-diagnostic-cases`，并统一 Candidate/Public generation 的 `RUN_DIR/diagnostic_experiences` 根目录；P2 采集器清单归属已移至 P5。
+P1 的代码覆盖审计已完成；v0.3 仍将代表性端到端基线标为待补齐。P2 历史记录称 7 个模块、87 项通过，但原模块清单未找到；按 P2 计划中明确列出的 5 个模块复跑为 71 项。P3 补充计划原记录 227 项；四项审计问题修正后，按同一 12 个模块复跑为 230 项。以上均为定向测试，不是代表性端到端基线。四项修正已实现默认关闭的 `--record-diagnostic-cases`，并统一 Candidate/Public generation 的 `RUN_DIR/diagnostic_experiences` 根目录；P2 采集器清单归属已移至 P5。项目正常 CLI 默认模型为 `deepseek-v4-flash`，使用 DeepSeek Chat Completions API；当前实现能读取调用后返回的 `prompt_tokens`，但没有调用前的 tokenizer/context-window 登记或计数器。
 
 代码盘点确认以下可复用组件：
 
@@ -119,9 +119,9 @@ CLI 名称暂按下表建议，最终名称由评审确认；功能边界与默�
 B_exp = min(floor(0.15 * C), max(0, C - R_out - P_base - R_safe))
 ```
 
-其中 `C` 为当前有效模型上下文窗口，`R_out` 为修复输出预留，`P_base` 为不含经验的完整渲染提示词 token 数，`R_safe` 为安全余量。P4 需从实际生效的模型配置取得 `C`/`R_out` 和 tokenizer，而不是凭模型名称猜测；需用同一 tokenizer 对最终 system/user messages 计数。若模型没有可信 context-window/tokenizer 信息，则经验注入量为 0，记录 `tokenizer_unavailable`，现有修复流程继续；不使用字符数冒充 token 数。
+其中 `C` 为当前有效模型上下文窗口，`R_out` 为本次请求的修复输出预留，`P_base` 为不含经验的完整请求消息 token 数，`R_safe` 为覆盖消息封装和计数偏差的安全余量。P4 必须为项目当前默认模型 `deepseek-v4-flash` 建立调用前计数支持，不能因缺少 tokenizer 映射而让默认配置长期跳过全部经验注入。实施前须核实该 API 模型对应的 tokenizer、上下文窗口和请求消息格式，并以明确的 `provider + endpoint + effective model id` 映射固定下来；对完整渲染的 message 列表计数，而不是只数正文文本。DeepSeek 响应中的 `prompt_tokens` 是调用后的观测值，可用于校验本地计数和安全余量，不能替代调用前计数。
 
-实现前核对当前生产 provider 的 tokenizer 可用性、模型别名及上下文元数据，并在本计划实施版本中固化其映射和 `R_safe` 来源。测试验证经验总量不超过 15% 且完整 prompt 不超过 `C - R_out - R_safe`。该预算是最大值，不是填满目标。
+对无法识别或没有经验证计数配置的自定义模型/endpoint，经验注入量为 0，记录 `tokenizer_unavailable`，但既有修复与只基于当前证据的 AI 分析继续。该回退只适用于未登记配置；若 `deepseek-v4-flash` 无法找到可信的调用前计数方法，P4 应先提出替代方案并经审阅，不能把默认模型静默归入此回退并宣称完成。测试验证默认 DeepSeek 配置有可用计数路径，经验总量不超过 15%，且完整 prompt 不超过 `C - R_out - R_safe`。该预算是最大值，不是填满目标。
 
 ### 4.7 AI 辅助诊断边界
 
@@ -201,7 +201,7 @@ advisor 仅接收本次 allowlist 证据和本次实际注入的经验 ID/内容
 新增建议测试：
 
 - `tests/test_experience_retrieval.py`：硬过滤、同阶段优先/跨阶段强相关、unknown owner、正负分区、阈值拒绝、空结果和稳定理由码。
-- `tests/test_experience_prompt_budget.py`：token 预算公式、真实 tokenizer 接口、上限 3+/2-、item 整体跳过、未知 tokenizer fail closed、不同长度 base prompt。
+- `tests/test_experience_prompt_budget.py`：token 预算公式、DeepSeek 默认模型的计数映射、完整消息计数、上限 3+/2-、item 整体跳过、未登记自定义模型 fail closed、不同长度 base prompt；可用时将本地计数与服务端 usage 对照。
 - `tests/test_diagnostic_assistant.py`：仅触发条件、证据/经验/check ID 引用校验、abstain、owner 不变、未注册 ID 拒绝、provider 失败无权限副作用。
 - 扩展 `tests/test_candidate_repair_loop.py`、`tests/test_testbench_repair.py`、`tests/test_public_tb_generation_case_capture.py`：每次 attempt 重新查询、prompt 收到该次结果、非 repair 或拒绝派发不误检索/误计，以及 Public/Hidden 投影隔离。
 - 扩展 CLI/source bootstrap 测试：两个参数默认 false、单独开启和组合开启的合同。
@@ -222,7 +222,8 @@ advisor 仅接收本次 allowlist 证据和本次实际注入的经验 ID/内容
 | 负向经验 | 只有已解决 Case 中 action/diff/条件/明确失败验证对应的负向经验可提示；不能禁止修复方向。 |
 | 不相似或冲突经验 | 通过 hard filter 或阈值返回空/弃用，不为满足 Top-K 注入。 |
 | token 空间不足 | 不超过 3 条正向、2 条负向、15% 经验区块上限；不截断条目，完整 prompt 不超上下文约束。 |
-| Unknown tokenizer/context | 经验条目不注入并记 reason code；不使用字符数估算，不阻断原修复。 |
+| 项目默认 DeepSeek 模型 | `deepseek-v4-flash` 在 P4 完成前必须有验证过的调用前计数和上下文窗口配置；服务端 `prompt_tokens` 用于事后校验。 |
+| 未登记的 tokenizer/context | 该自定义模型的经验条目不注入并记 reason code；不使用字符数估算，不阻断原修复。 |
 | AI 返回非法证据/经验/检查 ID | advisor abstain；原始 owner、权限、预算和验证合同不变。 |
 | Hidden generation | Hidden-generated 资料不入跨案例库或 Candidate prompt；只有合规 visibility projection 可查询；无合适经验允许空。 |
 | 正式 Hidden feedback | 不建立新修复或 AI 归责路线；现有 Hidden 禁止边界持续通过。 |
@@ -271,7 +272,7 @@ git diff --check
 1. `--record-diagnostic-cases` 已按确认名称实现并默认关闭；P4 仍需实现独立、默认关闭的 `--diagnostic-assist`。
 2. 是否同意 P4 修正 `derive_experiences()` 的负向准入；弱关联失败仍只留在 Case/Attempt，不进入检索。
 3. Hidden-generation 的建议边界：每个允许的资格修复前仍执行 visibility-aware 查询；只有明确标记可跨该视图使用的 agent-safe 公共经验可以进入生成器，查询失败/无经验时为空；不持久化 Hidden query 或源码。正式 Hidden 评测反馈一律不进入该模块。
-4. 若有效模型缺少可信 tokenizer/context-window 元数据，经验片段暂不注入但修复继续，是否接受此 fail-closed 行为。
+4. 默认模型 `deepseek-v4-flash` 必须有可验证的调用前 tokenizer/context-window 计数支持；只有未登记的自定义模型才允许跳过经验注入，同时继续原修复流程。若默认模型找不到可信计数来源，先提出替代方案，不以“fail closed”直接结案。
 5. 10 月 7–12 日运行目录仅用于审计和脱敏回放 fixture；是否同意不自动把旧运行结果回填成正式经验。
 
 P4 计划获认可后，执行前再提供基于当前 HEAD 的精确逐文件 diff 清单和冻结验收清单；此计划不隐含 P5/P6 授权，也不授权提交或推送代码。
