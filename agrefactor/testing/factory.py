@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Callable
 
 from agrefactor.models import (
     EffectiveModelConfig,
@@ -49,6 +49,7 @@ def build_openai_compatible_testbench_repairer(
     parameters: Mapping[str, Any] | None = None,
     effective_config: EffectiveModelConfig | None = None,
     budget: BudgetManager | None = None,
+    before_provider_call: Callable[[], None] | None = None,
 ) -> ModelTestbenchRepairer:
     # Build one typed OpenAI-compatible testbench repairer.
 
@@ -132,4 +133,5 @@ def build_openai_compatible_testbench_repairer(
         registry=registry,
         effective_config=config,
         budget=budget,
+        before_provider_call=before_provider_call,
     )

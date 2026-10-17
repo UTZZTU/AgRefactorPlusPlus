@@ -33,7 +33,7 @@ from agrefactor.repair import (
     CandidateValidationResult,
 )
 from agrefactor.runtime import BudgetLimits, BudgetManager
-from agrefactor.recovery import RecoveryLedger, RecoveryLimits, RecoveryPolicy
+from agrefactor.recovery import RecoveryLedger, RepairComponentLimits
 import agrefactor.repair.candidate_loop as candidate_loop_module
 
 
@@ -560,9 +560,7 @@ class BoundedCandidateRepairLoopTests(unittest.TestCase):
             recovery_observer=lambda attempt, event: observed.append((attempt, event)),
         )
         ledger = RecoveryLedger(
-            RecoveryPolicy(
-                limits=RecoveryLimits(refactor_candidate_repairs_total=0)
-            )
+            component_limits=RepairComponentLimits(candidate=0)
         )
 
         result = loop.run(
@@ -572,10 +570,13 @@ class BoundedCandidateRepairLoopTests(unittest.TestCase):
             )
         )
 
-        self.assertIs(result.stop_reason, CandidateRepairStopReason.TERMINAL_FEEDBACK)
+        self.assertIs(result.stop_reason, CandidateRepairStopReason.BUDGET_EXHAUSTED)
         self.assertEqual(len(observed), 1)
         self.assertFalse(observed[0][1].accepted)
-        self.assertEqual(observed[0][1].decision.reason_code, "recovery_limit_exhausted")
+        self.assertEqual(
+            observed[0][1].decision.reason_code,
+            "component_action_limit_exhausted",
+        )
 
     def test_zero_llm_budget_blocks_before_provider(self):
         provider = SequenceProvider([fenced(PROPOSAL_1)])
@@ -760,7 +761,11 @@ class BoundedCandidateRepairLoopTests(unittest.TestCase):
         self.assertEqual(result.provider_failure_count, 2)
         self.assertEqual([item.attempt for item in validator.calls], [1])
         repairs = [event for event in ledger.events if event.accepted and event.to_dict()["action"] == "repair"]
-        self.assertEqual(len(repairs), 1)
+        self.assertEqual(len(repairs), 3)
+        self.assertEqual(
+            len(ledger.committed_component_action_charges("bounded-candidate-repair")),
+            3,
+        )
         self.assertEqual([item.attempt for item in result.attempts], [1, 2, 3])
         self.assertEqual(result.attempts[2].prompt_manifest["attempt"], 1)
         prompt = "\n".join(
@@ -807,8 +812,9 @@ class BoundedCandidateRepairLoopTests(unittest.TestCase):
         self.assertEqual(result.repair_attempt_count, 0)
         self.assertEqual(validator.calls, [])
         record = result.to_repair_run_record("blocked-response")
-        self.assertIsNotNone(record.attempts[0].model_observation.model_response)
-        self.assertTrue(record.attempts[0].model_observation.model_call_observed)
+        self.assertIsNone(record.attempts[0].model_observation.model_response)
+        self.assertFalse(record.attempts[0].model_observation.model_call_observed)
+        self.assertEqual(provider.calls, [])
 
     def test_repaired_cosim_candidate_can_fail_at_preflight_and_be_repaired_again(self):
         provider = SequenceProvider([fenced(PROPOSAL_1), fenced(PROPOSAL_2)])

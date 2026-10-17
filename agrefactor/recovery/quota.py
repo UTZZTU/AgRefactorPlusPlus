@@ -8,11 +8,32 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from typing import Any
 
-from .policy import RecoveryLedger
+from .policy import RecoveryLedger, RepairComponentLimits
+
+
+def build_generation_repair_component_limits(
+    *,
+    public_trajectories: int,
+    hidden_trajectories: int,
+) -> RepairComponentLimits:
+    for name, value in (
+        ("public_trajectories", public_trajectories),
+        ("hidden_trajectories", hidden_trajectories),
+    ):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"{name} must be a non-negative integer")
+    return RepairComponentLimits(
+        candidate=3,
+        testbench_public=3 * public_trajectories,
+        testbench_hidden_generation=3 * hidden_trajectories,
+        stub_public=3 * public_trajectories,
+        stub_hidden_generation=3 * hidden_trajectories,
+        total_actions=3 + 6 * public_trajectories + 6 * hidden_trajectories,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +46,7 @@ class EffectiveRepairQuotaSummary:
     accepted_attempts: Mapping[str, int]
     denied_reason_counts: Mapping[str, int]
     effective_configured_ceilings: Mapping[str, int]
+    component_actions: Mapping[str, Any] = field(default_factory=dict)
 
     schema_version = 1
 
@@ -38,6 +60,7 @@ class EffectiveRepairQuotaSummary:
             "accepted_attempts",
             "denied_reason_counts",
             "effective_configured_ceilings",
+            "component_actions",
         ):
             value = getattr(self, name)
             if not isinstance(value, Mapping):
@@ -59,6 +82,7 @@ class EffectiveRepairQuotaSummary:
             "accepted_attempts": dict(self.accepted_attempts),
             "denied_reason_counts": dict(self.denied_reason_counts),
             "effective_configured_ceilings": dict(self.effective_configured_ceilings),
+            "component_actions": dict(self.component_actions),
             "authority": "explanation_only",
             "creates_budget_authority": False,
             "creates_action_counter": False,
@@ -83,6 +107,7 @@ def build_effective_repair_quota_summary(
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ValueError(f"{name} must be a non-negative integer")
     policy = ledger.policy.limits.to_dict()
+    component_limits = ledger.component_limits.to_dict()
     ledger_payload = ledger.to_dict()
     counts = dict(ledger_payload["counts"])
     accepted = Counter()
@@ -108,24 +133,25 @@ def build_effective_repair_quota_summary(
     ceilings = {
         "candidate_formal": min(
             candidate_requested_max,
-            policy["refactor_candidate_repairs_total"],
-            policy["total_recovery_actions"],
+            component_limits["candidate"],
         ),
         "testbench_preflight": min(
             runtime_testbench_local_max,
-            policy["testbench_preflight_repairs"],
-            policy["total_recovery_actions"],
+            component_limits["testbench_public"],
         ),
         "testbench_public_csim": min(
             runtime_testbench_local_max,
-            policy["testbench_public_csim_repairs"],
-            policy["total_recovery_actions"],
+            component_limits["testbench_public"],
         ),
         "testbench_public_cosim": min(
             runtime_testbench_local_max,
-            policy["testbench_public_cosim_repairs"],
-            policy["total_recovery_actions"],
+            component_limits["testbench_public"],
         ),
+        "testbench_hidden_generation": component_limits[
+            "testbench_hidden_generation"
+        ],
+        "stub_public": component_limits["stub_public"],
+        "stub_hidden_generation": component_limits["stub_hidden_generation"],
     }
     return EffectiveRepairQuotaSummary(
         requested=requested,
@@ -136,6 +162,7 @@ def build_effective_repair_quota_summary(
         accepted_attempts=dict(sorted(accepted.items())),
         denied_reason_counts=dict(sorted(denied.items())),
         effective_configured_ceilings=ceilings,
+        component_actions=ledger.component_action_snapshot(),
     )
 
 

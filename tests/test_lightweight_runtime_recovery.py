@@ -134,7 +134,7 @@ class LightweightRuntimeRecoveryTests(unittest.TestCase):
             self.assertEqual(len(provider.calls), 0)
             self.assertEqual(factory.requests[-1].suite_testbench_codes['hidden-final'], driver + '\n// HIDDEN_SECRET')
 
-    def test_explicit_four_candidate_repairs_are_not_capped_by_policy_defaults(self):
+    def test_explicit_four_candidate_request_is_capped_by_component_quota(self):
         task = make_task(public=False, hidden=False)
         adapter, provider = make_adapter([f'int top(int x){{return x+{index};}}' for index in range(1, 5)])
 
@@ -151,8 +151,21 @@ class LightweightRuntimeRecoveryTests(unittest.TestCase):
                 max_attempts=4,
             ), validation_id='four-repairs',
         )
-        self.assertTrue(result.accepted, result.to_dict())
-        self.assertEqual(len(provider.calls), 4)
+        self.assertFalse(result.accepted, result.to_dict())
+        self.assertEqual(result.status.value, "budget_exhausted")
+        self.assertEqual(len(provider.calls), 3)
+        quota = result.metadata["effective_repair_quota"]["component_actions"]
+        committed = [
+            action
+            for action in quota["actions"]
+            if action["status"] == "committed"
+            and action["charge"]["components"] == ["candidate"]
+        ]
+        self.assertEqual(len(committed), 3)
+        self.assertIn(
+            "component_action_limit_exhausted",
+            {event["reason_code"] for event in quota["events"]},
+        )
         prompt = '\n'.join(message.content for message in provider.calls[-1][1].messages)
         self.assertIn('Initial validation failure', prompt)
         self.assertIn('compile-0', prompt)

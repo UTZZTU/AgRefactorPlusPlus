@@ -13,7 +13,10 @@ from enum import Enum
 import json
 from math import isfinite
 import re
+import os
+from pathlib import Path
 from threading import RLock
+import tempfile
 from typing import Any
 
 
@@ -536,6 +539,7 @@ class RecoveryLedger:
         policy: RecoveryPolicy | None = None,
         *,
         component_limits: RepairComponentLimits | None = None,
+        component_action_state_path: str | Path | None = None,
     ) -> None:
         self._policy = policy or RecoveryPolicy()
         if not isinstance(self._policy, RecoveryPolicy):
@@ -550,6 +554,13 @@ class RecoveryLedger:
         ] = {}
         self._component_action_events: list[RepairActionLedgerEvent] = []
         self._component_action_lock = RLock()
+        self._component_action_state_path = (
+            None
+            if component_action_state_path is None
+            else Path(component_action_state_path)
+        )
+        if self._component_action_state_path is not None:
+            self._load_component_action_state()
 
     @property
     def policy(self) -> RecoveryPolicy:
@@ -631,6 +642,90 @@ class RecoveryLedger:
             )
             return RepairActionReservation(charge)
 
+    def reserve_component_repair(
+        self,
+        request: RecoveryRequest,
+        charge: RepairActionCharge,
+        *,
+        budget: Any | None = None,
+        restart_reserve: Mapping[str, int] | None = None,
+    ) -> tuple[RecoveryDecision, RepairActionReservation, RecoveryLedgerEvent]:
+        """Apply repair authority and non-repair budget gates before reserving.
+
+        Repair-stage and run-wide repair counters are intentionally bypassed;
+        the component action ledger is the sole repair quota authority.
+        """
+        if request.action is not RecoveryAction.REPAIR:
+            raise ValueError("component repair reservation requires REPAIR")
+        if not isinstance(charge, RepairActionCharge):
+            raise TypeError("charge must be RepairActionCharge")
+        decision = self._policy.decide(request)
+        if not decision.allowed:
+            self._append(decision, None, False)
+            raise RecoveryDeniedError(decision.reason_code)
+
+        if budget is not None:
+            increments = dict(restart_reserve or {})
+            wall_time_s = increments.pop("wall_time_s", 0.0)
+            try:
+                if (
+                    isinstance(wall_time_s, bool)
+                    or not isinstance(wall_time_s, (int, float))
+                    or not isfinite(float(wall_time_s))
+                    or wall_time_s < 0
+                ):
+                    raise ValueError(
+                        "restart wall_time_s must be finite and non-negative"
+                    )
+                if wall_time_s:
+                    limits = getattr(budget, "limits", None)
+                    configured = getattr(limits, "max_wall_time_s", None)
+                    active = getattr(budget, "active_reserve", None)
+                    reserved = getattr(active, "max_wall_time_s", None)
+                    if configured is not None:
+                        effective = float(configured) - float(reserved or 0.0)
+                        elapsed = float(budget.snapshot().elapsed_s)
+                        if elapsed + float(wall_time_s) > effective:
+                            raise RuntimeError(
+                                "insufficient wall time for full validation restart"
+                            )
+                budget.ensure_available(**increments)
+            except Exception as exc:
+                blocked = RecoveryDecision(
+                    RecoveryDecisionStatus.BUDGET_BLOCKED,
+                    "recovery_restart_budget_unavailable",
+                    request,
+                    restart_required=decision.restart_required,
+                )
+                self._append(blocked, "component_action", False)
+                raise RecoveryBudgetBlockedError(
+                    blocked.reason_code
+                ) from exc
+
+        try:
+            reservation = self.reserve_component_action(charge)
+        except (RecoveryBudgetBlockedError, RecoveryDeniedError) as exc:
+            blocked_status = (
+                RecoveryDecisionStatus.BUDGET_BLOCKED
+                if isinstance(exc, RecoveryBudgetBlockedError)
+                else RecoveryDecisionStatus.DENIED
+            )
+            blocked = RecoveryDecision(
+                blocked_status,
+                exc.reason_code,
+                request,
+                restart_required=decision.restart_required,
+            )
+            self._append(blocked, "component_action", False)
+            raise
+
+        self._append(
+            decision,
+            f"component_action:{charge.logical_action_id}",
+            True,
+        )
+        return decision, reservation, self._events[-1]
+
     def commit_dispatched_action(
         self,
         reservation: RepairActionReservation,
@@ -651,6 +746,11 @@ class RecoveryLedger:
                 charge,
                 RepairActionStatus.COMMITTED,
             )
+            try:
+                self._persist_component_action_state()
+            except Exception:
+                self._component_actions[key] = state
+                raise
             self._append_component_action_event(
                 "committed",
                 charge,
@@ -857,6 +957,47 @@ class RecoveryLedger:
                 reason_code=reason_code,
             )
         )
+
+    def _load_component_action_state(self) -> None:
+        path = self._component_action_state_path
+        assert path is not None
+        if not path.exists():
+            return
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, Mapping) or payload.get("schema_version") != 1:
+            raise ValueError("invalid component action state schema")
+        raw_actions = payload.get("committed_actions", ())
+        if not isinstance(raw_actions, list):
+            raise ValueError("invalid committed action list")
+        self.restore_committed_component_actions(
+            RepairActionCharge.from_dict(item) for item in raw_actions
+        )
+
+    def _persist_component_action_state(self) -> None:
+        path = self._component_action_state_path
+        if path is None:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema_version": 1,
+            "committed_actions": [
+                item.to_dict()
+                for item in self.committed_component_action_charges()
+            ],
+        }
+        fd, temporary = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(payload, stream, ensure_ascii=True, sort_keys=True)
+                stream.write("\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
 
 
     def reserve(

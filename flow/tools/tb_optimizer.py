@@ -22,6 +22,12 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from autogen.agentchat.group import ContextVariables  # type: ignore
 from agrefactor.config import EvaluationSplit, TestSuiteSpec
 from agrefactor.runtime.budget import BudgetExceededError
+from agrefactor.recovery import (
+    RecoveryLedger,
+    RepairActionCharge,
+    RepairComponentBucket,
+    RepairComponentLimits,
+)
 from agrefactor.reference_source import isolate_reference_program_entry
 from agrefactor.config.tool_timeouts import DEFAULT_CSYNTH_TIMEOUT_S
 from agrefactor.cpp_interface import (
@@ -2198,9 +2204,28 @@ def run_trajectory(
     diagnostic_assist: bool = False,
     diagnostic_experience_root: str | None = None,
     effective_model_config: Any = None,
+    repair_quota_ledger: RecoveryLedger | None = None,
 ) -> Dict[str, Any]:
     if isinstance(K, bool) or not isinstance(K, int) or K < 1:
         raise ValueError("K must be a positive integer")
+    quota_scope_source = generation_id or str(
+        artifact_root or f"generation:{kernel_name}"
+    )
+    quota_scope_id = "generation:" + hashlib.sha256(
+        quota_scope_source.encode("utf-8")
+    ).hexdigest()
+    if repair_quota_ledger is None:
+        quota_state_path = (
+            None
+            if artifact_root is None
+            else Path(artifact_root) / "repair_action_quota.json"
+        )
+        repair_quota_ledger = RecoveryLedger(
+            component_limits=RepairComponentLimits(),
+            component_action_state_path=quota_state_path,
+        )
+    elif not isinstance(repair_quota_ledger, RecoveryLedger):
+        raise TypeError("repair_quota_ledger must be RecoveryLedger or None")
 
     loader = HLSAgentLoader(
         AGENT_YAML,
@@ -2318,6 +2343,8 @@ def run_trajectory(
     case_event_sequence = 0
     repair_action_sequence = 0
     active_repair_action_key: str | None = None
+    charged_repair_action_keys: set[str] = set()
+    planned_repair_components: tuple[str, ...] = ("testbench",)
     last_artifact_code = {"testbench": "", "stub": "", "empty_stub": ""}
 
     def case_event(
@@ -2497,6 +2524,44 @@ def run_trajectory(
             event = event.removeprefix("format_retry_")
             role = "format_retry"
         case_component = "stub" if kind == "empty_stub" else kind
+        if event == "request" and role == "repair":
+            if active_repair_action_key is None:
+                repair_action_sequence += 1
+                active_repair_action_key = (
+                    f"trajectory:{trajectory_idx}:action:{repair_action_sequence}"
+                )
+            if active_repair_action_key not in charged_repair_action_keys:
+                components = tuple(
+                    dict.fromkeys(
+                        planned_repair_components or (case_component,)
+                    )
+                )
+                buckets = tuple(
+                    (
+                        RepairComponentBucket.TESTBENCH_HIDDEN_GENERATION
+                        if hidden_generation
+                        else RepairComponentBucket.TESTBENCH_PUBLIC
+                    )
+                    if item == "testbench"
+                    else (
+                        RepairComponentBucket.STUB_HIDDEN_GENERATION
+                        if hidden_generation
+                        else RepairComponentBucket.STUB_PUBLIC
+                    )
+                    for item in components
+                )
+                charge = RepairActionCharge(
+                    scope_id=quota_scope_id,
+                    logical_action_id=active_repair_action_key,
+                    components=buckets,
+                    authorization_ref=(
+                        f"generation:{generation_id or kernel_name}:"
+                        f"trajectory:{trajectory_idx}:repair"
+                    ),
+                )
+                reservation = repair_quota_ledger.reserve_component_action(charge)
+                repair_quota_ledger.commit_dispatched_action(reservation)
+                charged_repair_action_keys.add(active_repair_action_key)
         if public_case_recorder is not None:
             if event in {"request", "request_blocked"}:
                 request_event = case_event(
@@ -2508,15 +2573,6 @@ def run_trajectory(
                     artifact_kind=kind,
                 )
                 latest_request_ids[kind] = request_event["event_id"]
-                if (
-                    event == "request"
-                    and role == "repair"
-                    and active_repair_action_key is None
-                ):
-                    repair_action_sequence += 1
-                    active_repair_action_key = (
-                        f"trajectory:{trajectory_idx}:action:{repair_action_sequence}"
-                    )
                 public_case_recorder.record_public_generation_request(
                     request_event,
                     attempt_key=(
@@ -2549,9 +2605,7 @@ def run_trajectory(
         persist_artifact_counts()
 
     def record_public_qualification_result(event_kind: str, result: Dict[str, Any]) -> None:
-        nonlocal active_repair_action_key
-        if public_case_recorder is None:
-            return
+        nonlocal active_repair_action_key, planned_repair_components
         status = str(result.get("status", "unknown"))
         accepted = bool(result.get("accepted", status == "ok"))
         owner = str(
@@ -2574,17 +2628,20 @@ def run_trajectory(
             ),
             summary=str(result.get("summary", "Public qualification result recorded")),
         )
-        if accepted:
-            public_case_recorder.record_public_generation_request(event)
-        else:
-            public_case_recorder.record_public_generation_diagnostic(event)
+        if public_case_recorder is not None:
+            if accepted:
+                public_case_recorder.record_public_generation_request(event)
+            else:
+                public_case_recorder.record_public_generation_diagnostic(event)
         if active_repair_action_key is not None:
-            public_case_recorder.record_public_generation_validation(
-                active_repair_action_key,
-                event,
-                result="validated" if accepted else "validation_failed",
-            )
+            if public_case_recorder is not None:
+                public_case_recorder.record_public_generation_validation(
+                    active_repair_action_key,
+                    event,
+                    result="validated" if accepted else "validation_failed",
+                )
             active_repair_action_key = None
+            planned_repair_components = ("testbench",)
 
     def measure_qualified_coverage(*args, **kwargs):
         record_artifact_event("coverage", "check")
@@ -3005,6 +3062,7 @@ def run_trajectory(
             stub_reused = False
 
             if action == "regenerate_stub":
+                planned_repair_components = ("stub",)
                 testbench_code = str(previous["tb_code"])
                 declaration = (
                     frozen_hls_decl
@@ -3026,6 +3084,11 @@ def run_trajectory(
                 )
                 testbench_reused = True
             else:
+                planned_repair_components = (
+                    ("testbench", "stub")
+                    if action in {"repair_testbench_stub", "repair_abi_testbench_stub"}
+                    else ("testbench",)
+                )
                 repair_message = _feedback_message(
                     2,
                     previous.get("cov_pct") or 0.0,
@@ -3180,6 +3243,7 @@ def run_trajectory(
         testbench_reused = False
         stub_reused = False
         if action == "regenerate_stub":
+            planned_repair_components = ("stub",)
             testbench_code = str(previous["tb_code"])
             declaration = (
                 frozen_hls_decl
@@ -3264,6 +3328,11 @@ def run_trajectory(
                 stub_reused = True
 
         if action == "repair_testbench":
+            planned_repair_components = (
+                ("testbench", "stub")
+                if not reusable_stub and stub_requests > 0
+                else ("testbench",)
+            )
             annotated = (
                 annotate_uncovered_source(
                     orig_code,
@@ -3353,6 +3422,7 @@ def run_trajectory(
                 )
 
         elif action == "repair_abi_testbench_stub":
+            planned_repair_components = ("testbench", "stub")
             testbench_code = request_testbench(
                 _hls_friendly_rewrite_message(
                     hls_name,
@@ -3364,6 +3434,7 @@ def run_trajectory(
             stub_code, current_decl = request_stub(testbench_code)
 
         elif action == "repair_testbench_stub":
+            planned_repair_components = ("testbench", "stub")
             repair_message = _feedback_message(
                     round_index,
                     previous.get("cov_pct") or 0.0,
@@ -4104,6 +4175,7 @@ def optimize_tb_public(
     diagnostic_assist: bool = False,
     diagnostic_experience_root: str | None = None,
     effective_model_config: Any = None,
+    repair_quota_ledger: RecoveryLedger | None = None,
 ) -> Dict[str, Any]:
     """Generate Public evidence across one or more independent trajectories."""
 
@@ -4131,6 +4203,7 @@ def optimize_tb_public(
                     diagnostic_assist=diagnostic_assist,
                     diagnostic_experience_root=diagnostic_experience_root,
                     effective_model_config=effective_model_config,
+                    repair_quota_ledger=repair_quota_ledger,
                 )
             ]
         except Exception as exc:
@@ -4192,6 +4265,7 @@ def optimize_tb_public(
                     diagnostic_assist=diagnostic_assist,
                     diagnostic_experience_root=diagnostic_experience_root,
                     effective_model_config=effective_model_config,
+                    repair_quota_ledger=repair_quota_ledger,
                 ): index
                 for index in range(M)
             }
@@ -4524,6 +4598,7 @@ def gen_tb_with_coverage(
     diagnostic_assist: bool = False,
     diagnostic_experience_root: str | None = None,
     effective_model_config: Any = None,
+    repair_quota_ledger: RecoveryLedger | None = None,
 ) -> Tuple[str, str, str]:
     """Coverage-enhanced Public generation with no held-out input channel."""
 
@@ -4546,6 +4621,7 @@ def gen_tb_with_coverage(
         diagnostic_assist=diagnostic_assist,
         diagnostic_experience_root=diagnostic_experience_root,
         effective_model_config=effective_model_config,
+        repair_quota_ledger=repair_quota_ledger,
         mapping_original_code=(
             getter("curr_code") if callable(getter) else None
         ),
@@ -4593,6 +4669,8 @@ def make_golden_hidden_tb(
     diagnostic_assist: bool = False,
     diagnostic_experience_root: str | None = None,
     effective_model_config: Any = None,
+    generation_id: str | None = None,
+    repair_quota_ledger: RecoveryLedger | None = None,
 ) -> Dict[str, Any]:
     if not isinstance(pinned_public_hls_decl, str) or not (
         pinned_public_hls_decl.strip()
@@ -4664,6 +4742,8 @@ def make_golden_hidden_tb(
                 diagnostic_assist=diagnostic_assist,
                 diagnostic_experience_root=diagnostic_experience_root,
                 effective_model_config=effective_model_config,
+                generation_id=generation_id,
+                repair_quota_ledger=repair_quota_ledger,
             ): index
             for index in range(M)
         }

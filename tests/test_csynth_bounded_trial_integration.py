@@ -82,6 +82,17 @@ class CsynthBoundedTrialIntegrationTests(unittest.TestCase):
             if event["action"] == "repair" and event["accepted"]
         ]
 
+    def committed_candidate_actions(self, result):
+        snapshot = result.metadata["effective_repair_quota"][
+            "component_actions"
+        ]
+        return [
+            action
+            for action in snapshot["actions"]
+            if action["status"] == "committed"
+            and action["charge"]["components"] == ["candidate"]
+        ]
+
     def test_unknown_owner_can_use_three_shared_attempts_and_history(self):
         def scenario(request, state):
             if state is ValidationState.CSYNTH:
@@ -99,10 +110,12 @@ class CsynthBoundedTrialIntegrationTests(unittest.TestCase):
             self.assertEqual(event["owner_authority"], TRIAL_AUTHORITY)
             self.assertTrue(event["execution_evidence_complete"])
             self.assertFalse(event["evidence_complete"])
-        counts = result.metadata["recovery_ledger"]["counts"]
-        prefix = f"lineage:{context.task.task_id}:candidate"
-        self.assertEqual(counts[f"{prefix}:repairs_total"], 3)
-        self.assertEqual(counts[f"{prefix}:total"], 3)
+        actions = self.committed_candidate_actions(result)
+        self.assertEqual(len(actions), 3)
+        self.assertEqual(
+            len({action["charge"]["scope_id"] for action in actions}),
+            1,
+        )
         for attempt in range(4):
             states = [state for number, state, _, _ in factory.context_ids if number == attempt]
             self.assertEqual(states, [
@@ -131,11 +144,12 @@ class CsynthBoundedTrialIntegrationTests(unittest.TestCase):
         self.assertEqual([event["owner_authority"] for event in events], [
             "public_reference_qualified", TRIAL_AUTHORITY, TRIAL_AUTHORITY,
         ])
-        counts = result.metadata["recovery_ledger"]["counts"]
-        prefix = f"lineage:{context.task.task_id}:candidate"
-        self.assertEqual(counts[f"{prefix}:repairs_total"], 3)
-        self.assertEqual(counts[f"{prefix}:public_cosim"], 1)
-        self.assertEqual(counts[f"{prefix}:total"], 2)
+        actions = self.committed_candidate_actions(result)
+        self.assertEqual(len(actions), 3)
+        self.assertEqual(
+            len({action["charge"]["logical_action_id"] for action in actions}),
+            3,
+        )
         self.assertEqual({budget_id for _, _, budget_id, _ in factory.context_ids}, {id(context.budget)})
         self.assertEqual({trace_id for _, _, _, trace_id in factory.context_ids}, {id(context.trace)})
         final_states = [state for attempt, state, _, _ in factory.context_ids if attempt == 3]

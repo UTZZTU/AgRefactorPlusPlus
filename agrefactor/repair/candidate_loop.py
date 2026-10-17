@@ -36,6 +36,8 @@ from agrefactor.prompts import (
     build_candidate_public_cosim_repair_prompt,
 )
 from agrefactor.recovery import (
+    RepairActionCharge,
+    RepairComponentBucket,
     RecoveryAction,
     RecoveryAuthority,
     RecoveryBudgetBlockedError,
@@ -148,6 +150,10 @@ class CandidateRepairStopReason(str, Enum):
     PROVIDER_EXHAUSTED = "provider_exhausted"
 
 
+class _CandidateDispatchBlockedError(RuntimeError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class CandidateRepairLoopRequest:
     task: TaskSpec
@@ -161,6 +167,7 @@ class CandidateRepairLoopRequest:
     family_instruction: str | None = None
     approved_memory_snippets: tuple[str, ...] = ()
     recovery_ledger: RecoveryLedger | None = None
+    quota_scope_id: str | None = None
     experience_context_provider: Callable[..., Any] | None = None
 
     def __post_init__(self) -> None:
@@ -171,6 +178,7 @@ class CandidateRepairLoopRequest:
         _optional_text(self.public_testbench_code, "public_testbench_code")
         _optional_text(self.family_instruction, "family_instruction")
         _text_tuple(self.approved_memory_snippets, "approved_memory_snippets")
+        _optional_text(self.quota_scope_id, "quota_scope_id")
         if not isinstance(self.feedback, FeedbackReport):
             raise TypeError("feedback must be a FeedbackReport")
         if not isinstance(self.route_decision, FeedbackRouteDecision):
@@ -716,20 +724,6 @@ class BoundedCandidateRepairLoop:
                     last_proposal,
                     attempts,
                 )
-            if (
-                self._dispatch_decision_observer is not None
-                and self._dispatch_decision_observer(
-                    attempt_number, current_candidate, route
-                ) is False
-            ):
-                return self._result(
-                    CandidateRepairStopReason.DISPATCH_BLOCKED,
-                    initial_candidate,
-                    current_candidate,
-                    last_validated_candidate,
-                    last_proposal,
-                    attempts,
-                )
             if request.experience_context_provider is not None:
                 try:
                     selected, experience_audit = request.experience_context_provider(
@@ -811,14 +805,145 @@ class BoundedCandidateRepairLoop:
             model_result: CandidateModelResult | None = None
             model_response: ModelResponse | None = None
 
+            reservation = None
+            recovery_event = None
+            dispatched = False
+            if request.recovery_ledger is not None:
+                ledger_event_count = len(request.recovery_ledger.events)
+                try:
+                    recovery_stage = RecoveryStage(failure_state.value)
+                    recovery_request = RecoveryRequest(
+                        action=RecoveryAction.REPAIR,
+                        role=RecoveryRole.CANDIDATE,
+                        stage=recovery_stage,
+                        evidence_view="agent_safe",
+                        owner_authority=normalize_recovery_authority(
+                            route.metadata.get(
+                                "recovery_authority",
+                                route.metadata.get("owner_authority", "unknown"),
+                            )
+                        ),
+                        lineage_id=request.task.task_id,
+                        physical_tool_launched=(
+                            route.metadata.get("physical_tool_launched") is True
+                        ),
+                        evidence_complete=(
+                            route.metadata.get("evidence_complete") is True
+                        ),
+                        execution_evidence_complete=(
+                            route.metadata.get("execution_evidence_complete") is True
+                        ),
+                        advisory_mode=str(route.metadata.get("advisory_mode", "off")),
+                        timeout_class=route.metadata.get("timeout_class"),
+                    )
+                    _, reservation, recovery_event = (
+                        request.recovery_ledger.reserve_component_repair(
+                            recovery_request,
+                            RepairActionCharge(
+                                scope_id=(request.quota_scope_id or request.task.task_id),
+                                logical_action_id=(
+                                    f"candidate:{route.decision_id}:{attempt_number}"
+                                ),
+                                components=(RepairComponentBucket.CANDIDATE,),
+                                authorization_ref=(
+                                    f"route:{route.decision_id}"
+                                ),
+                            ),
+                            budget=self._budget,
+                            restart_reserve={
+                                **default_restart_reserve(recovery_stage),
+                                "llm_calls": 0,
+                            },
+                        )
+                    )
+                except (RecoveryBudgetBlockedError, RecoveryDeniedError) as exc:
+                    new_events = request.recovery_ledger.events[
+                        ledger_event_count:
+                    ]
+                    if self._recovery_observer is not None and new_events:
+                        self._recovery_observer(attempt_number, new_events[-1])
+                    attempts.append(
+                        CandidateRepairAttempt(
+                            attempt=attempt_number,
+                            status=CandidateRepairAttemptStatus.BUDGET_BLOCKED,
+                            input_candidate=current_candidate,
+                            proposal=None,
+                            model_response=None,
+                            model_result=None,
+                            validation_result=None,
+                            error_type=type(exc).__name__,
+                            error_message=str(exc),
+                            budget_before=budget_before,
+                            budget_after=self._safe_snapshot(),
+                            prompt_manifest=prompt_manifest,
+                        )
+                    )
+                    return self._result(
+                        CandidateRepairStopReason.BUDGET_EXHAUSTED
+                        if isinstance(exc, RecoveryBudgetBlockedError)
+                        else CandidateRepairStopReason.TERMINAL_FEEDBACK,
+                        initial_candidate,
+                        current_candidate,
+                        last_validated_candidate,
+                        last_proposal,
+                        attempts,
+                    )
+
+            def before_provider_call() -> None:
+                nonlocal dispatched
+                self._consume_llm_launch()
+                if (
+                    self._dispatch_decision_observer is not None
+                    and self._dispatch_decision_observer(
+                        attempt_number, current_candidate, route
+                    ) is False
+                ):
+                    raise _CandidateDispatchBlockedError(
+                        "candidate repair dispatch was rejected"
+                    )
+                if reservation is not None:
+                    request.recovery_ledger.commit_dispatched_action(reservation)
+                    dispatched = True
+                    if self._recovery_observer is not None and recovery_event is not None:
+                        self._recovery_observer(attempt_number, recovery_event)
+
             try:
                 model_result = self._model_adapter.generate(
                     model_request,
-                    before_provider_call=self._consume_llm_launch,
+                    before_provider_call=before_provider_call,
                     after_provider_response=self._record_model_usage,
                 )
                 model_response = model_result.response
+            except _CandidateDispatchBlockedError as exc:
+                if reservation is not None and not dispatched:
+                    request.recovery_ledger.release_component_action(reservation)
+                attempts.append(
+                    CandidateRepairAttempt(
+                        attempt=attempt_number,
+                        status=CandidateRepairAttemptStatus.BUDGET_BLOCKED,
+                        input_candidate=current_candidate,
+                        proposal=None,
+                        model_response=None,
+                        model_result=None,
+                        validation_result=None,
+                        error_type=type(exc).__name__,
+                        error_message=str(exc),
+                        budget_before=budget_before,
+                        budget_after=self._safe_snapshot(),
+                        prompt_manifest=prompt_manifest,
+                    )
+                )
+                return self._result(
+                    CandidateRepairStopReason.DISPATCH_BLOCKED,
+                    initial_candidate,
+                    current_candidate,
+                    last_validated_candidate,
+                    last_proposal,
+                    attempts,
+                )
             except BudgetExceededError as exc:
+                if reservation is not None and not dispatched:
+                    request.recovery_ledger.release_component_action(reservation)
                 attempts.append(
                     CandidateRepairAttempt(
                         attempt=attempt_number,
@@ -844,6 +969,8 @@ class BoundedCandidateRepairLoop:
                     attempts,
                 )
             except CandidateResponseError as exc:
+                if reservation is not None and not dispatched:
+                    request.recovery_ledger.release_component_action(reservation)
                 provider_failures += 1
                 model_response = self._new_response(response_count_before)
                 attempts.append(
@@ -889,6 +1016,8 @@ class BoundedCandidateRepairLoop:
                     )
                 continue
             except Exception as exc:
+                if reservation is not None and not dispatched:
+                    request.recovery_ledger.release_component_action(reservation)
                 provider_failures += 1
                 model_response = self._new_response(response_count_before)
                 attempts.append(
@@ -934,77 +1063,6 @@ class BoundedCandidateRepairLoop:
                     )
                 continue
 
-            if request.recovery_ledger is not None:
-                ledger_event_count = len(request.recovery_ledger.events)
-                try:
-                    recovery_stage = RecoveryStage(failure_state.value)
-                    request.recovery_ledger.reserve(
-                        RecoveryRequest(
-                            action=RecoveryAction.REPAIR,
-                            role=RecoveryRole.CANDIDATE,
-                            stage=recovery_stage,
-                            evidence_view="agent_safe",
-                            owner_authority=normalize_recovery_authority(
-                                route.metadata.get(
-                                    "recovery_authority",
-                                    route.metadata.get("owner_authority", "unknown"),
-                                )
-                            ),
-                            lineage_id=request.task.task_id,
-                            physical_tool_launched=(route.metadata.get("physical_tool_launched") is True),
-                            evidence_complete=(route.metadata.get("evidence_complete") is True),
-                            execution_evidence_complete=(
-                                route.metadata.get("execution_evidence_complete") is True
-                            ),
-                            advisory_mode=str(
-                                route.metadata.get("advisory_mode", "off")
-                            ),
-                            timeout_class=route.metadata.get("timeout_class"),
-                        ),
-                        budget=self._budget,
-                        restart_reserve={
-                            **default_restart_reserve(recovery_stage),
-                            "llm_calls": 0,
-                        },
-                    )
-                except (RecoveryBudgetBlockedError, RecoveryDeniedError) as exc:
-                    new_events = request.recovery_ledger.events[
-                        ledger_event_count:
-                    ]
-                    if self._recovery_observer is not None and new_events:
-                        self._recovery_observer(attempt_number, new_events[-1])
-                    attempts.append(
-                        CandidateRepairAttempt(
-                            attempt=attempt_number,
-                            status=CandidateRepairAttemptStatus.BUDGET_BLOCKED,
-                            input_candidate=current_candidate,
-                            proposal=None,
-                            model_response=model_response,
-                            model_result=model_result,
-                            validation_result=None,
-                            error_type=type(exc).__name__,
-                            error_message=str(exc),
-                            budget_before=budget_before,
-                            budget_after=self._safe_snapshot(),
-                            prompt_manifest=prompt_manifest,
-                        )
-                    )
-                    return self._result(
-                        CandidateRepairStopReason.BUDGET_EXHAUSTED
-                        if isinstance(exc, RecoveryBudgetBlockedError)
-                        else CandidateRepairStopReason.TERMINAL_FEEDBACK,
-                        initial_candidate,
-                        current_candidate,
-                        last_validated_candidate,
-                        last_proposal,
-                        attempts,
-                    )
-                else:
-                    new_events = request.recovery_ledger.events[
-                        ledger_event_count:
-                    ]
-                    if self._recovery_observer is not None and new_events:
-                        self._recovery_observer(attempt_number, new_events[-1])
             repair_count += 1
             last_proposal = model_result.candidate_code
             previous_candidate = current_candidate

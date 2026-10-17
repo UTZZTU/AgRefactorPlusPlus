@@ -147,6 +147,10 @@ class CaseRecorder:
         with self._lock:
             return self._start_case(event)
 
+    @property
+    def active_case_id(self) -> str | None:
+        return None if self._case is None else self._case.case_id
+
     def _start_case(self, event: Mapping[str, Any]) -> bool:
         if not isinstance(event, Mapping):
             return False

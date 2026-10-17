@@ -25,6 +25,8 @@ from agrefactor.compat.legacy_refactor import (
     build_effective_legacy_llm_config,
 )
 from agrefactor.runtime.budget import BudgetManager
+from agrefactor.recovery import RecoveryLedger
+from agrefactor.recovery.quota import build_generation_repair_component_limits
 from agrefactor.reference_source import isolate_reference_program_entry
 from agrefactor.testing import (
     build_openai_compatible_testbench_repairer,
@@ -619,6 +621,26 @@ def hls_refactor_with_rag(
 
     output_dir = tools.general.create_output_dir(output_dir)
     tools.general.create_log_and_redirect(output_dir)
+    public_generation_id = hashlib.sha256(
+        os.path.abspath(output_dir).encode("utf-8")
+    ).hexdigest()[:24]
+    generation_quota_ledger = None
+    if enable_tb_coverage_loop or enable_hidden_tb_eval:
+        public_quota_trajectories = (
+            public_tb_trajectories if enable_tb_coverage_loop else 0
+        )
+        hidden_quota_trajectories = (
+            hidden_tb_trajectories if enable_hidden_tb_eval else 0
+        )
+        generation_quota_ledger = RecoveryLedger(
+            component_limits=build_generation_repair_component_limits(
+                public_trajectories=public_quota_trajectories,
+                hidden_trajectories=hidden_quota_trajectories,
+            ),
+            component_action_state_path=(
+                Path(output_dir) / "repair_action_quota.json"
+            ),
+        )
     
     with open(kernel_path, "r", encoding="utf-8") as f:
         source_code = f.read()
@@ -781,9 +803,6 @@ def hls_refactor_with_rag(
         with concurrent.futures.ThreadPoolExecutor() as executor:
             debug_print(debug, "Testbench Generation")
             if enable_tb_coverage_loop:
-                public_generation_id = hashlib.sha256(
-                    os.path.abspath(output_dir).encode("utf-8")
-                ).hexdigest()[:24]
                 public_generation_recorder, recording_reason = (
                     _build_public_generation_case_recorder(
                         output_dir,
@@ -817,6 +836,7 @@ def hls_refactor_with_rag(
                     input_domain_contract,
                     public_generation_recorder,
                     public_generation_id,
+                    repair_quota_ledger=generation_quota_ledger,
                     diagnostic_assist=diagnostic_assist,
                     diagnostic_experience_root=diagnostic_experience_root,
                     effective_model_config=effective_model_config,
@@ -989,6 +1009,8 @@ def hls_refactor_with_rag(
                 max_repairs=max_testbench_repair_attempts,
                 pinned_result_mapping=cv["public_result_mapping"],
                 pinned_type_contract=cv["public_type_contract"],
+                generation_id=public_generation_id,
+                repair_quota_ledger=generation_quota_ledger,
                 diagnostic_assist=diagnostic_assist,
                 diagnostic_experience_root=diagnostic_experience_root,
                 effective_model_config=effective_model_config,

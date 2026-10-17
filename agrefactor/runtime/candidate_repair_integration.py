@@ -52,6 +52,9 @@ from agrefactor.recovery import (
     RecoveryRequest,
     RecoveryRole,
     RecoveryStage,
+    RepairActionCharge,
+    RepairComponentBucket,
+    RepairComponentLimits,
     conservative_v1_policy,
     default_restart_reserve,
     build_effective_repair_quota_summary,
@@ -845,6 +848,7 @@ class CandidateRepairValidationOrchestrator:
         case_recorder: CaseRecorder | None = None,
         diagnostic_assist: bool = False,
         experience_root: str | os.PathLike[str] | None = None,
+        quota_state_root: str | os.PathLike[str] | None = None,
     ) -> None:
         if not isinstance(
             model_adapter,
@@ -879,6 +883,11 @@ class CandidateRepairValidationOrchestrator:
             None
             if experience_root is None
             else Path(experience_root).expanduser().resolve()
+        )
+        self._quota_state_root = (
+            None
+            if quota_state_root is None
+            else Path(quota_state_root).expanduser()
         )
         self._experience_counter = (
             default_model_token_counter() if diagnostic_assist else None
@@ -917,20 +926,33 @@ class CandidateRepairValidationOrchestrator:
         limits = self._recovery_policy.limits
         candidate_limit = max(limits.refactor_candidate_repairs_total, request.max_attempts)
         testbench_limit = max(limits.testbench_preflight_repairs, request.max_testbench_repairs)
-        recovery_ledger = RecoveryLedger(replace(
-            self._recovery_policy,
-            limits=replace(
-                limits,
-                refactor_candidate_repairs_total=candidate_limit,
-                candidate_public_csim_repairs=max(limits.candidate_public_csim_repairs, request.max_attempts),
-                candidate_public_cosim_repairs=max(limits.candidate_public_cosim_repairs, request.max_attempts),
-                testbench_preflight_repairs=testbench_limit,
-                testbench_public_csim_repairs=max(limits.testbench_public_csim_repairs, request.max_testbench_repairs),
-                testbench_public_cosim_repairs=max(limits.testbench_public_cosim_repairs, request.max_testbench_repairs),
-                total_recovery_actions=max(limits.total_recovery_actions, candidate_limit + testbench_limit),
-                validation_restarts=max(limits.validation_restarts, candidate_limit + testbench_limit),
+        quota_state_root = self._quota_state_root
+        if quota_state_root is None:
+            handler_work_root = getattr(self._handler_factory, "work_root", None)
+            if handler_work_root is not None:
+                quota_state_root = Path(handler_work_root).expanduser()
+        quota_state_path = None
+        if quota_state_root is not None:
+            quota_identity = f"{context.run_id}:{validation_id}"
+            quota_state_path = (
+                quota_state_root
+                / "repair_action_quotas"
+                / (sha256(quota_identity.encode("utf-8")).hexdigest() + ".json")
+            )
+        recovery_ledger = RecoveryLedger(
+            replace(
+                self._recovery_policy,
+                limits=replace(
+                    limits,
+                    validation_restarts=max(
+                        limits.validation_restarts,
+                        candidate_limit + testbench_limit,
+                    ),
+                ),
             ),
-        ))
+            component_limits=RepairComponentLimits(),
+            component_action_state_path=quota_state_path,
+        )
         recovery_metadata: dict[str, Any] = {"diagnostic_events": []}
 
         context.trace.record(
@@ -1209,6 +1231,14 @@ class CandidateRepairValidationOrchestrator:
                     active_request.approved_memory_snippets
                 ),
                 recovery_ledger=recovery_ledger,
+                quota_scope_id=(
+                    self._case_recorder.active_case_id
+                    if self._case_recorder is not None
+                    and self._case_recorder.active_case_id is not None
+                    else "run:" + sha256(
+                        f"{context.run_id}:{validation_id}".encode("utf-8")
+                    ).hexdigest()
+                ),
                 experience_context_provider=experience_context_provider,
             )
         )
@@ -1573,7 +1603,7 @@ class CandidateRepairValidationOrchestrator:
                 raise RuntimeError(
                     "testbench recovery attempt was already recorded"
                 )
-            ledger.reserve(RecoveryRequest(
+            recovery_request = RecoveryRequest(
                 action=RecoveryAction.REPAIR,
                 role=RecoveryRole.TESTBENCH,
                 stage=stage,
@@ -1584,17 +1614,39 @@ class CandidateRepairValidationOrchestrator:
                 evidence_complete=True,
                 advisory_mode=request.llm_advisory_mode,
                 timeout_class=decision.metadata.get("timeout_class"),
-                ), budget=context.budget,
+            )
+            quota_scope_id = (
+                self._case_recorder.active_case_id
+                if self._case_recorder is not None
+                and self._case_recorder.active_case_id is not None
+                else "run:" + sha256(
+                    f"{context.run_id}:{validation_id}".encode("utf-8")
+                ).hexdigest()
+            )
+            _, reservation, ledger_event = ledger.reserve_component_repair(
+                recovery_request,
+                RepairActionCharge(
+                    scope_id=quota_scope_id,
+                    logical_action_id=(
+                        "testbench:" + sha256(
+                            attempt_key.encode("utf-8")
+                        ).hexdigest()
+                    ),
+                    components=(RepairComponentBucket.TESTBENCH_PUBLIC,),
+                    authorization_ref=(
+                        f"testbench-route:{decision.decision_id}"
+                    ),
+                ),
+                budget=context.budget,
                 restart_reserve=default_restart_reserve(stage),
             )
-            dispatch_count += 1
             if self._case_recorder is not None:
                 recorded = self._case_recorder.record_testbench_dispatch(
                     attempt_key=attempt_key,
                     repair_record_ref=(
                         f"{validation_id}:testbench:{suite_id}:{round_index}:{attempt_number}"
                     ),
-                    ledger_event=ledger.events[-1],
+                    ledger_event=ledger_event,
                     route_decision=decision,
                     qualification={
                         "revision_authorization": authorization,
@@ -1604,9 +1656,17 @@ class CandidateRepairValidationOrchestrator:
                     },
                 )
                 if recorded is False:
+                    ledger.release_component_action(reservation)
                     raise RuntimeError(
                         "testbench recovery attempt was already recorded"
                     )
+            try:
+                ledger.commit_dispatched_action(reservation)
+            except Exception:
+                if self._case_recorder is None:
+                    ledger.release_component_action(reservation)
+                raise
+            dispatch_count += 1
         selected_contract_proofs = [
             selected[item_id].metadata.get("interface_contract_evidence")
             for item_id in decision.selected_feedback_ids
@@ -1626,6 +1686,7 @@ class CandidateRepairValidationOrchestrator:
         repairer = build_openai_compatible_testbench_repairer(
             effective_config=self._model_adapter.effective_config,
             budget=context.budget,
+            before_provider_call=reserve_repair,
         )
         loop = TestbenchRepairLoop(
             preflight=TestbenchPreflight(
@@ -1671,7 +1732,6 @@ class CandidateRepairValidationOrchestrator:
             runtime_feedback=report,
             failure_state=failure_state,
             prior_failure_summaries=prior_failure_summaries,
-            before_repair=reserve_repair,
         )
         metadata = {
             "runtime_testbench_recovery": repair.to_dict(),

@@ -46,12 +46,16 @@ class EvidenceBoundDepthRepairTests(unittest.TestCase):
         factory = ScenarioFactory(scenario)
         adapter, provider = make_adapter([])
         from types import SimpleNamespace
+        repair_dispatch_callbacks = []
+        def capture_repairer(**kwargs):
+            repair_dispatch_callbacks.append(kwargs["before_provider_call"])
+            return object()
         def repair_source(**kwargs):
-            kwargs["before_repair"]()
+            repair_dispatch_callbacks[-1]()
             return SimpleNamespace(succeeded=True, testbench_code=code+"\n// generated harness repaired\n",
                                    attempts=(),
                                    to_dict=lambda: {"repair_attempts_used": 1, "attempts": []})
-        with patch("agrefactor.runtime.candidate_repair_integration.build_openai_compatible_testbench_repairer"), patch("agrefactor.runtime.candidate_repair_integration.TestbenchRepairLoop") as loop:
+        with patch("agrefactor.runtime.candidate_repair_integration.build_openai_compatible_testbench_repairer", side_effect=capture_repairer), patch("agrefactor.runtime.candidate_repair_integration.TestbenchRepairLoop") as loop:
             loop.return_value.run.side_effect = repair_source
             result = CandidateRepairValidationOrchestrator(model_adapter=adapter, handler_factory=factory).run(
                 make_context(task), CandidateRepairOrchestrationRequest(
@@ -241,7 +245,11 @@ class EvidenceBoundDepthRepairTests(unittest.TestCase):
         from hashlib import sha256
         from dataclasses import replace
         from contextlib import nullcontext
-        from agrefactor.recovery import RecoveryLedger, RecoveryBudgetBlockedError
+        from agrefactor.recovery import (
+            RecoveryLedger,
+            RecoveryBudgetBlockedError,
+            RepairComponentLimits,
+        )
         from agrefactor.runtime import BudgetLimits
         from agrefactor.config import TaskSpec, TestSourceSpec, TestSourceKind
         from agrefactor.evaluation import ValidationState
@@ -281,8 +289,14 @@ class EvidenceBoundDepthRepairTests(unittest.TestCase):
         adapter, provider = make_adapter([])
         ledger_patch = nullcontext()
         if blocked_error is not None and blocked_error is not RecoveryBudgetBlockedError:
-            def one_request_ledger(policy):
-                return RecoveryLedger(replace(policy, limits=replace(policy.limits, testbench_public_cosim_repairs=1)))
+            def one_request_ledger(policy, **kwargs):
+                kwargs["component_limits"] = RepairComponentLimits(
+                    testbench_public=1
+                )
+                return RecoveryLedger(
+                    replace(policy, limits=replace(policy.limits, testbench_public_cosim_repairs=1)),
+                    **kwargs,
+                )
             ledger_patch = patch("agrefactor.runtime.candidate_repair_integration.RecoveryLedger", side_effect=one_request_ledger)
         limits = BudgetLimits(max_tool_calls=3) if blocked_error is RecoveryBudgetBlockedError else None
         with ledger_patch, patch("flow.tools.tb_optimizer.generate_public_runtime_contract", side_effect=depth_response), patch("agrefactor.compat.legacy_refactor.build_effective_legacy_llm_config", return_value={}):
@@ -298,7 +312,11 @@ class EvidenceBoundDepthRepairTests(unittest.TestCase):
             self.assertEqual(provider.calls, [])
             self.assertEqual(result.metadata["runtime_testbench_repair_attempts_used"], 1)
             self.assertIn(result.metadata["runtime_testbench_recovery_status"],
-                          {"recovery_restart_budget_unavailable", "recovery_limit_exhausted"})
+                          {
+                              "recovery_restart_budget_unavailable",
+                              "recovery_limit_exhausted",
+                              "component_action_limit_exhausted",
+                          })
             self.assertEqual([event["accepted"] for event in result.metadata["recovery_ledger"]["events"]], [True, False])
             self.assertEqual(result.metadata["runtime_contract_recovery_ledger"], result.metadata["recovery_ledger"])
             self.assertEqual(len(factory.requests), 1)

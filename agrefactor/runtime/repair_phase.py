@@ -526,6 +526,7 @@ class CandidateRepairPhase:
             ),
             diagnostic_assist=self._config.diagnostic_assist,
             experience_root=self._config.experience_root,
+            quota_state_root=self._config.work_root,
         )
         result = orchestrator.run(
             context,

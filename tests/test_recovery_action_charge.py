@@ -1,15 +1,25 @@
 from concurrent.futures import ThreadPoolExecutor
+import json
+from pathlib import Path
+import tempfile
 import unittest
 
 from agrefactor.recovery import (
+    RecoveryAction,
+    RecoveryAuthority,
     RecoveryBudgetBlockedError,
     RecoveryDeniedError,
     RecoveryLedger,
     RecoveryLimits,
+    RecoveryPolicy,
+    RecoveryRequest,
+    RecoveryRole,
+    RecoveryStage,
     RepairActionCharge,
     RepairComponentBucket,
     RepairComponentLimits,
 )
+from agrefactor.recovery.quota import build_generation_repair_component_limits
 
 
 def make_charge(
@@ -36,6 +46,23 @@ class RepairActionChargeTests(unittest.TestCase):
         self.assertEqual(limits.stub_hidden_generation, 3)
         self.assertEqual(limits.total_actions, 15)
         self.assertEqual(RecoveryLimits().total_recovery_actions, 5)
+
+    def test_generation_trajectory_count_scales_only_generation_buckets(self):
+        lightweight = build_generation_repair_component_limits(
+            public_trajectories=1,
+            hidden_trajectories=1,
+        )
+        self.assertEqual(lightweight.total_actions, 15)
+        scaled = build_generation_repair_component_limits(
+            public_trajectories=2,
+            hidden_trajectories=1,
+        )
+        self.assertEqual(scaled.candidate, 3)
+        self.assertEqual(scaled.testbench_public, 6)
+        self.assertEqual(scaled.stub_public, 6)
+        self.assertEqual(scaled.testbench_hidden_generation, 3)
+        self.assertEqual(scaled.stub_hidden_generation, 3)
+        self.assertEqual(scaled.total_actions, 21)
 
     def test_dispatch_commits_each_component_once_and_is_idempotent(self):
         ledger = RecoveryLedger()
@@ -188,6 +215,67 @@ class RepairActionChargeTests(unittest.TestCase):
         snapshot = ledger.component_action_snapshot("case-1")
         self.assertEqual(len(snapshot["actions"]), 3)
         self.assertEqual(sum(item["accepted"] for item in snapshot["events"]), 3)
+
+    def test_component_repair_ignores_legacy_repair_counters(self):
+        ledger = RecoveryLedger(
+            RecoveryPolicy(
+                limits=RecoveryLimits(
+                    refactor_candidate_repairs_total=0,
+                    total_recovery_actions=0,
+                )
+            ),
+            component_limits=RepairComponentLimits(candidate=1, total_actions=1),
+        )
+        request = RecoveryRequest(
+            action=RecoveryAction.REPAIR,
+            role=RecoveryRole.CANDIDATE,
+            stage=RecoveryStage.CSYNTH,
+            evidence_view="agent_safe",
+            owner_authority=RecoveryAuthority.DETERMINISTIC_PROVEN,
+            lineage_id="task-1",
+            physical_tool_launched=True,
+            evidence_complete=True,
+        )
+        _, reservation, event = ledger.reserve_component_repair(
+            request,
+            make_charge("candidate-action"),
+        )
+        ledger.commit_dispatched_action(reservation)
+
+        self.assertTrue(event.accepted)
+        self.assertEqual(ledger.to_dict()["counts"], {})
+        with self.assertRaises(RecoveryBudgetBlockedError):
+            ledger.reserve_component_repair(
+                request,
+                make_charge("candidate-action-2"),
+            )
+
+    def test_committed_actions_persist_and_restore_without_content_data(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "repair_action_quota.json"
+            ledger = RecoveryLedger(component_action_state_path=path)
+            reservation = ledger.reserve_component_action(
+                make_charge("candidate-action")
+            )
+            ledger.commit_dispatched_action(reservation)
+
+            stored = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(set(stored), {"schema_version", "committed_actions"})
+            self.assertEqual(stored["committed_actions"][0]["components"], ["candidate"])
+            self.assertNotIn("source", json.dumps(stored).casefold())
+            self.assertNotIn("prompt", json.dumps(stored).casefold())
+
+            restored = RecoveryLedger(component_action_state_path=path)
+            self.assertEqual(
+                restored.committed_component_action_charges("case-1"),
+                (make_charge("candidate-action"),),
+            )
+            with self.assertRaises(RecoveryBudgetBlockedError):
+                limited = RecoveryLedger(
+                    component_limits=RepairComponentLimits(candidate=1),
+                    component_action_state_path=path,
+                )
+                limited.reserve_component_action(make_charge("candidate-action-2"))
 
 
 if __name__ == "__main__":

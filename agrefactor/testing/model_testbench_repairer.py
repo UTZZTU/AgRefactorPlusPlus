@@ -7,7 +7,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from decimal import Decimal
-from typing import Any
+from typing import Any, Callable
 
 from agrefactor.evaluation.preflight_feedback import (
     TestbenchPreflightFeedbackAdapter,
@@ -380,6 +380,7 @@ class ModelTestbenchRepairer:
         family_instructions: Mapping[str, str] | None = None,
         prompt_builder: SharedLayeredPromptBuilder | None = None,
         budget: BudgetManager | None = None,
+        before_provider_call: Callable[[], None] | None = None,
     ) -> None:
         if not isinstance(registry, ModelRegistry):
             raise TypeError("registry must be a ModelRegistry")
@@ -470,6 +471,9 @@ class ModelTestbenchRepairer:
         )
         self._prompt_builder = prompt_builder
         self._budget = budget
+        if before_provider_call is not None and not callable(before_provider_call):
+            raise TypeError("before_provider_call must be callable or None")
+        self._before_provider_call = before_provider_call
         self._responses: list[ModelResponse] = []
         self._prompts: list[LayeredPrompt] = []
         self._audit_events: list[
@@ -653,6 +657,8 @@ class ModelTestbenchRepairer:
             provider_call_observed=True,
             metadata=(call_evidence or {}),
         )
+        if self._before_provider_call is not None:
+            self._before_provider_call()
         response = self._provider.generate(
             self._model,
             ModelRequest(
