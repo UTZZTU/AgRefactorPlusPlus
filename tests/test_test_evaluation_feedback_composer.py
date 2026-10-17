@@ -39,7 +39,13 @@ def item(
         detail=detail,
         source="test_evaluation",
         evidence_ref=None,
-        metadata={"original_key": "preserved"},
+        metadata={
+            "original_key": "preserved",
+            "owner_authority": "deterministic_proven",
+            "physical_tool_launched": True,
+            "tool_launched": True,
+            "evidence_complete": True,
+        },
     )
 
 

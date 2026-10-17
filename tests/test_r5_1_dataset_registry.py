@@ -58,12 +58,21 @@ class R51DatasetRegistryTests(unittest.TestCase):
             if levels == {"D2"} or ("D2" in levels and not levels & {"D0", "D1"}):
                 self.assertNotEqual(case["eligibility"], "duplicate_excluded")
 
-    def test_execution_sources_participate_in_global_dedup(self) -> None:
+    def test_execution_sources_participate_in_global_dedup_without_false_matches(
+        self,
+    ) -> None:
         duplicate_cases = (
             self.registry["summary"]["d0_case_count"]
             + self.registry["summary"]["d1_case_count"]
         )
-        self.assertGreaterEqual(duplicate_cases, 2)
+        self.assertEqual(duplicate_cases, 0)
+        self.assertEqual(
+            sum(
+                "execution_contract" in case
+                for case in self.registry["cases"]
+            ),
+            self.registry["summary"]["case_count"],
+        )
         inconsistent = [
             case
             for case in self.registry["cases"]

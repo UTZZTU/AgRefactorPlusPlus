@@ -75,6 +75,12 @@ def fail_report(
                 severity=FeedbackSeverity.ERROR,
                 owner=owner,
                 summary="blocking result",
+                metadata={
+                    "owner_authority": "deterministic_proven",
+                    "physical_tool_launched": True,
+                    "tool_launched": True,
+                    "evidence_complete": True,
+                },
                 detail="HIDDEN_DETAIL_MUST_NOT_LEAK" if hidden else None,
                 source=name,
                 evidence_ref="/private/hidden.cpp" if hidden else None,

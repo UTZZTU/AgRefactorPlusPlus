@@ -40,6 +40,7 @@ def provided_failure(*, stage: str = "external_public_original_qualification"):
                 "trajectory_idx": 0,
                 "rounds": [
                     {
+                "retry_exhausted": True,
                         "status": "original_run_failed",
                         "failure_owner": "unknown",
                         "next_action": "review_unknown",
@@ -76,8 +77,9 @@ class ProvidedQualificationResultContractTests(unittest.TestCase):
             stage="hidden_generation_qualification",
             trajectories=[
                 {
+                    'retry_exhausted': True,
                     "rounds": [
-                        {
+                                            {
                             "status": "compile_failed",
                             "failure_owner": "stub",
                             "next_action": "regenerate_stub",

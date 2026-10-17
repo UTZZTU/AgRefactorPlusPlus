@@ -99,6 +99,11 @@ def feedback() -> FeedbackReport:
                 severity=FeedbackSeverity.ERROR,
                 owner=FeedbackOwner.CANDIDATE,
                 summary="candidate compile failure",
+                metadata={
+                    "owner_authority": "deterministic_proven",
+                    "evidence_complete": True,
+                    "tool_launched": True,
+                },
             ),
         ),
         metadata={"evidence_view": "agent_safe"},

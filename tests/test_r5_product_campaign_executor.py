@@ -20,11 +20,18 @@ from agrefactor.recovery import (
 )
 from agrefactor.runtime import BudgetLimits, CandidateRepairPhaseConfig
 from agrefactor.runtime.r5_profile import resolve_r5_profile
-from tests.test_r4_existing_orchestrator_integration import (
-    R4ExistingOrchestratorIntegrationTests,
-    h,
-    helpers,
-)
+try:
+    from test_r4_existing_orchestrator_integration import (
+        R4ExistingOrchestratorIntegrationTests,
+        h,
+        helpers,
+    )
+except ModuleNotFoundError:
+    from tests.test_r4_existing_orchestrator_integration import (
+        R4ExistingOrchestratorIntegrationTests,
+        h,
+        helpers,
+    )
 
 
 class _BudgetedAdvisor:
@@ -77,6 +84,10 @@ class _Integration:
             "main_result_unchanged": True,
             "accepted_by_integration": False,
         }
+
+
+def load_tests(loader, tests, pattern):
+    return loader.loadTestsFromTestCase(R5ProductCampaignExecutorTests)
 
 
 class R5ProductCampaignExecutorTests(unittest.TestCase):

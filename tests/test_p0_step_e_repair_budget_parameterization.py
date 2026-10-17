@@ -248,7 +248,7 @@ class RepairBudgetContractTests(unittest.TestCase):
             testbench_source,
         )
         self.assertIn(
-            "request.max_attempts + 1",
+            "repair_count < request.max_attempts",
             candidate_source,
         )
 

@@ -226,11 +226,13 @@ class StepDPromptContractTests(unittest.TestCase):
         self.assertIn("only temporary implementation", message)
         self.assertIn("Define that Candidate top exactly once", message)
         self.assertIn("Do not include `main`", message)
-        self.assertIn("Repair only the Stub", tb_optimizer._stub_request_message(
+        message = tb_optimizer._stub_request_message(
             ORIGINAL_NAME,
             FROZEN_DECL,
             failure_excerpt="bad stub",
-        ))
+        )
+        self.assertIn("only the Stub", message)
+        self.assertIn("Keep the Testbench unchanged", message)
 
     def test_empty_stub_preserves_frozen_linkage(self):
         message = tb_optimizer._empty_stub_request_message(

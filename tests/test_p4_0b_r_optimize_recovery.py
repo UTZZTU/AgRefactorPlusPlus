@@ -188,6 +188,15 @@ def _feedback(stage, category, reason=None, owner=FeedbackOwner.CANDIDATE):
                 severity=FeedbackSeverity.ERROR,
                 owner=owner,
                 summary="fixture failure",
+                metadata=(
+                    {
+                        "owner_authority": "deterministic_proven",
+                        "evidence_complete": True,
+                        "tool_launched": True,
+                    }
+                    if owner is FeedbackOwner.CANDIDATE
+                    else {}
+                ),
             ),
         ),
         metadata={

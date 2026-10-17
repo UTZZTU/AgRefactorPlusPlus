@@ -102,6 +102,8 @@ def make_cli_args(
         testbench_repair_api_key_env="OPENAI_API_KEY",
         output_dir=None,
         debug=False,
+        record_diagnostic_cases=False,
+        diagnostic_assist=False,
     )
 
 

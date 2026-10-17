@@ -370,6 +370,12 @@ class ValidationOrchestratorTests(unittest.TestCase):
                 detail=SECRET,
                 source="test_evaluation",
                 evidence_ref=SECRET_PATH,
+                metadata={
+                    "owner_authority": "deterministic_proven",
+                    "physical_tool_launched": True,
+                    "tool_launched": True,
+                    "evidence_complete": True,
+                },
             )
             result = ValidationOrchestrator(
                 {

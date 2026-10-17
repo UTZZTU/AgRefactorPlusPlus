@@ -49,6 +49,7 @@ class EvidenceBoundDepthRepairTests(unittest.TestCase):
         def repair_source(**kwargs):
             kwargs["before_repair"]()
             return SimpleNamespace(succeeded=True, testbench_code=code+"\n// generated harness repaired\n",
+                                   attempts=(),
                                    to_dict=lambda: {"repair_attempts_used": 1, "attempts": []})
         with patch("agrefactor.runtime.candidate_repair_integration.build_openai_compatible_testbench_repairer"), patch("agrefactor.runtime.candidate_repair_integration.TestbenchRepairLoop") as loop:
             loop.return_value.run.side_effect = repair_source

@@ -64,6 +64,12 @@ def report(
                 owner=owner,
                 summary="normalized feedback",
                 detail=detail,
+                metadata={
+                    "owner_authority": "deterministic_proven",
+                    "physical_tool_launched": True,
+                    "tool_launched": True,
+                    "evidence_complete": True,
+                },
                 source=source,
                 evidence_ref=(
                     None

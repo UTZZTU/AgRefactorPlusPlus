@@ -23,14 +23,27 @@ from agrefactor.runtime.r5_integration import (
     R5IntegrationConfig,
 )
 from agrefactor.runtime.r5_profile import resolve_r5_profile
-from tests.test_r4_existing_orchestrator_integration import (
-    Mutation,
-    R4ExistingOrchestratorIntegrationTests,
-    calibration_certificate,
-    h,
-    helpers,
-)
+try:
+    from test_r4_existing_orchestrator_integration import (
+        Mutation,
+        R4ExistingOrchestratorIntegrationTests,
+        calibration_certificate,
+        h,
+        helpers,
+    )
+except ModuleNotFoundError:
+    from tests.test_r4_existing_orchestrator_integration import (
+        Mutation,
+        R4ExistingOrchestratorIntegrationTests,
+        calibration_certificate,
+        h,
+        helpers,
+    )
 from tests.test_r5_continual_memory import envelope
+
+
+def load_tests(loader, tests, pattern):
+    return loader.loadTestsFromTestCase(R5ExistingOrchestratorIntegrationTests)
 
 
 class R5ExistingOrchestratorIntegrationTests(unittest.TestCase):

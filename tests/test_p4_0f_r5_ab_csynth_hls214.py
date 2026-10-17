@@ -54,7 +54,7 @@ class R5ABHls214Tests(unittest.TestCase):
         )
         self.assertEqual(
             decision.action,
-            FeedbackRouteAction.REPAIR_CANDIDATE,
+            FeedbackRouteAction.REVIEW_UNKNOWN,
         )
 
     def test_same_words_without_exact_message_id_remain_unknown(self):
