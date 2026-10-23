@@ -6,6 +6,7 @@ from hashlib import sha256
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from agrefactor.cli import build_parser, main
@@ -454,7 +455,23 @@ class P2SourceOnlyBootstrapTests(unittest.TestCase):
                 work_base=root / "work",
             )
             layout.artifact_root.mkdir(parents=True)
-            generation = FakeGenerationAdapter()
+            class RetryThenSucceeds(FakeGenerationAdapter):
+                def __call__(self, context):
+                    context.trace.record(
+                        "candidate_executor_response_retry_scheduled",
+                        phase="refactor",
+                        status="retrying",
+                        metadata={"retry_attempt": 1, "candidate_created": False},
+                    )
+                    context.trace.record(
+                        "candidate_executor_response_retry_succeeded",
+                        phase="refactor",
+                        status="succeeded",
+                        metadata={"retry_attempt": 2, "candidate_created": True},
+                    )
+                    return super().__call__(context)
+
+            generation = RetryThenSucceeds()
             formal = CapturingFormalBuilder()
             phase = SourceBootstrapPhase(
                 request=request,
@@ -493,6 +510,15 @@ class P2SourceOnlyBootstrapTests(unittest.TestCase):
                 result = phase(context)
 
             self.assertTrue(result.succeeded)
+            self.assertTrue(result.metadata["formal_validation_started"])
+            self.assertNotIn("pre_formal_failure_event", result.metadata)
+            self.assertFalse(
+                (
+                    layout.artifact_root
+                    / "bootstrap"
+                    / "candidate_generation_failure.json"
+                ).exists()
+            )
             self.assertEqual(len(captured_contract_calls), 1)
             contract_call = captured_contract_calls[0]
             self.assertTrue(Path(contract_call["source_path"]).is_file())
@@ -605,10 +631,7 @@ class P2SourceOnlyBootstrapTests(unittest.TestCase):
                     / "normalized_task.json"
                 ).read_text(encoding="utf-8")
             )
-            self.assertEqual(
-                normalized["kernel_name"],
-                "top_hls",
-            )
+            self.assertEqual(normalized["kernel_name"], "top_hls")
             self.assertTrue(
                 (
                     layout.artifact_root
@@ -616,19 +639,149 @@ class P2SourceOnlyBootstrapTests(unittest.TestCase):
                     / "initial_candidate.cpp"
                 ).is_file()
             )
-            self.assertEqual(
-                budget.snapshot().llm_calls,
-                1,
+            self.assertEqual(budget.snapshot().llm_calls, 1)
+            # Auto Public preparation and formal adjudication share the same
+            # BudgetManager for all seven compiler launches.
+            self.assertEqual(budget.snapshot().compile_calls, 7)
+
+    def test_public_preparation_failure_is_not_candidate_generation_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = make_request(root, plan=build_test_source_plan())
+            layout = SourceRunLayout.create(
+                request.run_id,
+                artifact_base=root / "artifacts",
+                work_base=root / "work",
             )
-            # Auto Public preparation receives both the Original and
-            # Candidate top contracts. Staged preflight therefore performs
-            # four compatibility compiler launches plus two explicit top-
-            # interface compiler launches. The independent formal Stage-2
-            # adjudicator stub consumes one additional compile call.
-            # All seven launches share the same BudgetManager.
+            layout.artifact_root.mkdir(parents=True)
+            generation = FakeGenerationAdapter()
+            formal = CapturingFormalBuilder()
+            preparation = SimpleNamespace(
+                succeeded=False,
+                reason="public preparation failed",
+                status="failed",
+                repair_attempts_used=1,
+                cost_observations=(),
+                prompt_evidence={},
+                to_dict=lambda: {"status": "failed"},
+            )
+            phase = SourceBootstrapPhase(
+                request=request,
+                layout=layout,
+                generation_adapter=generation,
+                formal_phase_builder=formal,
+            )
+            context = RunContext(
+                run_id=request.run_id,
+                task=TaskSpec(
+                    task_id="source-task",
+                    kernel_path=str(request.source_path),
+                    kernel_name="top",
+                ),
+                budget=BudgetManager(
+                    request.budget_contract.to_budget_limits()
+                ),
+                trace=TraceRecorder(request.run_id, task_id="source-task"),
+            )
+
+            with (
+                patch(
+                    "flow.tools.tb_optimizer.validate_public_runtime_contract",
+                    return_value=PUBLIC_RUNTIME_CONTRACT,
+                ),
+                patch(
+                    "agrefactor.product.source_bootstrap._prepare_public_testbench",
+                    return_value=preparation,
+                ),
+            ):
+                result = phase(context)
+
+            self.assertIs(result.status, PhaseStatus.FAILED)
+            self.assertFalse(result.metadata["formal_validation_started"])
             self.assertEqual(
-                budget.snapshot().compile_calls,
-                7,
+                result.metadata["failed_stage"],
+                "public_testbench_preparation",
+            )
+            self.assertNotIn("pre_formal_failure_event", result.metadata)
+            self.assertFalse(
+                (
+                    layout.artifact_root
+                    / "bootstrap"
+                    / "candidate_generation_failure.json"
+                ).exists()
+            )
+            self.assertIsNone(formal.task)
+
+    def test_formal_failure_after_candidate_generation_has_no_pre_formal_event(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            public_path = root / "provided_public.cpp"
+            public_path.write_text(PUBLIC, encoding="utf-8")
+            plan = build_test_source_plan(
+                public_mode="provided",
+                public_paths=(str(public_path),),
+                hidden_mode="none",
+            )
+            request = make_request(root, plan=plan)
+            layout = SourceRunLayout.create(
+                request.run_id,
+                artifact_base=root / "artifacts",
+                work_base=root / "work",
+            )
+            layout.artifact_root.mkdir(parents=True)
+            generation = FakeGenerationAdapter(include_hidden=False)
+
+            class FailedFormalBuilder:
+                called = False
+
+                def __call__(self, _task, _request):
+                    def fail_formal(_context):
+                        self.called = True
+                        return PhaseResult(
+                            phase=RunPhase.REFACTOR,
+                            status=PhaseStatus.FAILED,
+                            summary="formal validation failed",
+                            metadata={"failed_stage": "public_csim"},
+                        )
+
+                    return fail_formal
+
+            formal = FailedFormalBuilder()
+            phase = SourceBootstrapPhase(
+                request=request,
+                layout=layout,
+                generation_adapter=generation,
+                formal_phase_builder=formal,
+            )
+            context = RunContext(
+                run_id=request.run_id,
+                task=TaskSpec(
+                    task_id="source-task",
+                    kernel_path=str(request.source_path),
+                    kernel_name="top",
+                ),
+                budget=BudgetManager(
+                    request.budget_contract.to_budget_limits()
+                ),
+                trace=TraceRecorder(request.run_id, task_id="source-task"),
+            )
+
+            with patch(
+                "flow.tools.tb_optimizer.validate_public_runtime_contract",
+                return_value=PUBLIC_RUNTIME_CONTRACT,
+            ):
+                result = phase(context)
+
+            self.assertIs(result.status, PhaseStatus.FAILED)
+            self.assertTrue(result.metadata["formal_validation_started"])
+            self.assertTrue(formal.called)
+            self.assertNotIn("pre_formal_failure_event", result.metadata)
+            self.assertFalse(
+                (
+                    layout.artifact_root
+                    / "bootstrap"
+                    / "candidate_generation_failure.json"
+                ).exists()
             )
 
     def test_bootstrap_supports_multiple_provided_public_and_auto_hidden(self):

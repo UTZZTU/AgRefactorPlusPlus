@@ -4374,7 +4374,6 @@ def optimize_tb_public(
             generation_id=generation_id or "public-generation",
             result="provider_error",
         )
-        public_case_recorder.close_case("resolved", "public_generation_qualified")
     return {
         "best_tb": best["best_tb"],
         "best_stub": best["best_stub"],

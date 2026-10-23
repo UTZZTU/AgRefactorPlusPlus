@@ -251,6 +251,7 @@ def _finish_test_generation_exhaustion(
     cv,
     exc,
     output_dir: str,
+    public_generation_recorder=None,
 ):
     # Persist one bounded generation failure without exposing Hidden data.
 
@@ -308,6 +309,11 @@ def _finish_test_generation_exhaustion(
         cv["generated_hidden_testbench"] = ""
         cv["generated_hidden_coverage"] = None
 
+    if public_generation_recorder is not None:
+        public_generation_recorder.close_case(
+            "unresolved", "public_handoff_or_generation_failed"
+        )
+
     tools.general.save_context(
         "public_testbench_qualification_failed"
         if provided
@@ -316,6 +322,17 @@ def _finish_test_generation_exhaustion(
         output_dir,
     )
     return False, cv
+
+
+def _final_run_succeeded(
+    formal_succeeded: bool,
+    *,
+    hidden_enabled: bool,
+    hidden_passed: bool | None = None,
+) -> bool:
+    if not formal_succeeded:
+        return False
+    return not hidden_enabled or hidden_passed is True
 
 
 def hls_refactor_with_rag(
@@ -673,6 +690,7 @@ def hls_refactor_with_rag(
     ) as contract_file:
         json.dump(input_domain_contract, contract_file, ensure_ascii=False, indent=2)
 
+    public_generation_recorder = None
     cv = ContextVariables(data={
         "orig_code": reference_code,  # in-process reference source
         "kernel_name": kernel_name,   # kernel function name
@@ -863,20 +881,39 @@ def hls_refactor_with_rag(
                     cv,
                     exc,
                     output_dir,
+                    public_generation_recorder,
                 )
             cv["identified_items"], cv["items_hetero"] = identification_future.result()
     cv["generation_event_order"].append("public_generation")
-    cv["orig_code"] = isolate_reference_program_entry(
-        source_code, testbench_code=cv["testbench"], **reference_context,
-    )
-    public_hls_decl = tools.tb_optimizer.extract_hls_decl_from_testbench(
-        cv["testbench"],
-        cv["new_kernel_name"],
-        source_path=str(Path(package_root) / "testbench.cpp"),
-        include_dirs=(package_root,),
-        compile_flags=reference_context["compile_flags"],
-    )
+    try:
+        cv["orig_code"] = isolate_reference_program_entry(
+            source_code, testbench_code=cv["testbench"], **reference_context,
+        )
+    except Exception:
+        if public_generation_recorder is not None:
+            public_generation_recorder.close_case(
+                "unresolved", "public_reference_handoff_failed"
+            )
+        raise
+    try:
+        public_hls_decl = tools.tb_optimizer.extract_hls_decl_from_testbench(
+            cv["testbench"],
+            cv["new_kernel_name"],
+            source_path=str(Path(package_root) / "testbench.cpp"),
+            include_dirs=(package_root,),
+            compile_flags=reference_context["compile_flags"],
+        )
+    except Exception:
+        if public_generation_recorder is not None:
+            public_generation_recorder.close_case(
+                "unresolved", "public_abi_check_failed"
+            )
+        raise
     if not public_hls_decl:
+        if public_generation_recorder is not None:
+            public_generation_recorder.close_case(
+                "unresolved", "public_abi_missing"
+            )
         raise RuntimeError(
             "Public Testbench did not expose a valid Candidate ABI"
         )
@@ -907,7 +944,15 @@ def hls_refactor_with_rag(
                 "qualification_checks_used": 1, "repairs_used": 0,
             }],
         )
-        return _finish_test_generation_exhaustion(cv, exhaustion, output_dir)
+        return _finish_test_generation_exhaustion(
+            cv, exhaustion, output_dir, public_generation_recorder
+        )
+    except Exception:
+        if public_generation_recorder is not None:
+            public_generation_recorder.close_case(
+                "unresolved", "public_result_mapping_check_failed"
+            )
+        raise
     cv["tb_aligned_instruction"] += frozen_mapping_instruction(cv["public_result_mapping"], for_candidate=True)
     if cv["public_result_mapping"] is not None:
         with open(os.path.join(output_dir, "public_result_mapping.json"), "w", encoding="utf-8") as mapping_file:
@@ -934,34 +979,60 @@ def hls_refactor_with_rag(
                 "qualification_checks_used": 1, "repairs_used": 0,
             }],
         )
-        return _finish_test_generation_exhaustion(cv, exhaustion, output_dir)
+        return _finish_test_generation_exhaustion(
+            cv, exhaustion, output_dir, public_generation_recorder
+        )
+    except Exception:
+        if public_generation_recorder is not None:
+            public_generation_recorder.close_case(
+                "unresolved", "public_type_contract_check_failed"
+            )
+        raise
     cv["tb_aligned_instruction"] += tools.tb_optimizer.frozen_type_instruction(
         cv["public_type_contract"],
     )
     with open(os.path.join(output_dir, "public_type_contract.json"), "w", encoding="utf-8") as type_file:
         json.dump(cv["public_type_contract"], type_file, ensure_ascii=False, indent=2)
     if not external_testbench:
-        cv["public_runtime_contract"] = (
-            tools.tb_optimizer.generate_public_runtime_contract(
-                orig_code=cv["orig_code"],
-                testbench_code=cv["testbench"],
-                candidate_top_function=cv["new_kernel_name"],
-                frozen_hls_decl=public_hls_decl,
-                llm_config=public_tb_llm_config,
-                budget=budget,
-                input_domain_contract=cv["input_domain_contract"],
-                source_path=str(Path(package_root) / "testbench.cpp"),
-                include_dirs=(package_root,),
-                compile_flags=reference_context["compile_flags"],
+        try:
+            cv["public_runtime_contract"] = (
+                tools.tb_optimizer.generate_public_runtime_contract(
+                    orig_code=cv["orig_code"],
+                    testbench_code=cv["testbench"],
+                    candidate_top_function=cv["new_kernel_name"],
+                    frozen_hls_decl=public_hls_decl,
+                    llm_config=public_tb_llm_config,
+                    budget=budget,
+                    input_domain_contract=cv["input_domain_contract"],
+                    source_path=str(Path(package_root) / "testbench.cpp"),
+                    include_dirs=(package_root,),
+                    compile_flags=reference_context["compile_flags"],
+                )
             )
-        )
-        cv["public_runtime_contract_sha256"] = _sha256_text(
-            json.dumps(
-                cv["public_runtime_contract"],
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
+        except Exception:
+            if public_generation_recorder is not None:
+                public_generation_recorder.close_case(
+                    "unresolved", "public_runtime_contract_failed"
+                )
+            raise
+        try:
+            cv["public_runtime_contract_sha256"] = _sha256_text(
+                json.dumps(
+                    cv["public_runtime_contract"],
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
             )
+        except Exception:
+            if public_generation_recorder is not None:
+                public_generation_recorder.close_case(
+                    "unresolved", "public_runtime_contract_invalid"
+                )
+            raise
+    if public_generation_recorder is not None:
+        public_generation_recorder.close_case(
+            "resolved", "public_handoff_contracts_passed"
         )
     tools.general.save_context("tbgen_and_identifying", cv, output_dir)
 
@@ -972,12 +1043,26 @@ def hls_refactor_with_rag(
     tools.general.save_context("planning", cv, output_dir)
 
     debug_print(debug, "Refactoring")
-    cv["curr_code"], cv["code_for_hetero"] = tools.refactoring.refactor_code(
-        cv,
-        hetero_enabled,
-        source_llm_config,
-        budget,
-    )
+    try:
+        cv["curr_code"], cv["code_for_hetero"] = tools.refactoring.refactor_code(
+            cv,
+            hetero_enabled,
+            source_llm_config,
+            budget,
+        )
+    except Exception as exc:
+        try:
+            exc.candidate_generation_failure = {
+                "failed_stage": "candidate_generation",
+                "reason_code": "candidate_generation_exception",
+                "error_class": type(exc).__name__,
+                "error_fingerprint": hashlib.sha256(
+                    f"{type(exc).__name__}:{exc}".encode("utf-8")
+                ).hexdigest()[:24],
+            }
+        except (AttributeError, TypeError):
+            pass
+        raise
     tools.general.save_context("refactoring", cv, output_dir)
     cv["generation_event_order"].append("candidate_generation")
 
@@ -1123,11 +1208,12 @@ def hls_refactor_with_rag(
         tools.general.save_context(f"csynth_csim_iteration_{retry_count}", cv, output_dir)
 
     # Hidden TB eval gate (eval-only; never triggers extra refactor work)
-    final_succeeded = (
+    formal_succeeded = (
         status == "succeeded"
         or (status == "succeeded by hetero" and hetero_enabled)
     )
-    if enable_hidden_tb_eval and final_succeeded:
+    hidden_passed = None
+    if enable_hidden_tb_eval and formal_succeeded:
         debug_print(debug, "Hidden TB eval")
         hidden_tb = cv.get("generated_hidden_testbench", "")
         if not hidden_tb:
@@ -1143,6 +1229,7 @@ def hls_refactor_with_rag(
             original_name=cv["kernel_name"],
         )
         cv["pass_hidden"] = eval_result["passed"]
+        hidden_passed = eval_result.get("passed")
         cv["hidden_failure_kind"] = eval_result["failure_kind"]
         cv["cov_hidden"] = eval_result["cov_hidden"]
         cv["hidden_lines_total"] = eval_result["lines_total"]
@@ -1157,6 +1244,12 @@ def hls_refactor_with_rag(
         )
         print(f"PASS_HIDDEN:{int(eval_result['passed'])}")
         print(f"HIDDEN_FAILURE_KIND:{eval_result['failure_kind']}")
+
+    final_succeeded = _final_run_succeeded(
+        formal_succeeded,
+        hidden_enabled=enable_hidden_tb_eval,
+        hidden_passed=hidden_passed,
+    )
 
     tools.general.save_context("final", cv, output_dir)
 

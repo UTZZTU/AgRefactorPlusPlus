@@ -644,8 +644,6 @@ class CandidateModelAdapter:
             messages=request.prompt.messages,
         )
         self._prompts.append(request.prompt)
-        if before_provider_call is not None:
-            before_provider_call()
         from agrefactor.runtime.prompt_evidence import (
             record_model_prompt_call,
         )
@@ -657,6 +655,8 @@ class CandidateModelAdapter:
             provider_call_observed=True,
             metadata=(call_evidence or {}),
         )
+        if before_provider_call is not None:
+            before_provider_call()
         response = self._provider.generate(
             self._model,
             ModelRequest(

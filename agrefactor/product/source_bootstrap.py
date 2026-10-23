@@ -1134,6 +1134,36 @@ def _extract_generation_failure_metadata(
     }
 
 
+def _candidate_generation_failure_event(
+    *,
+    run_id: str,
+    reason_code: str,
+    error_class: str,
+    error_fingerprint: str,
+    evidence_ref: str,
+) -> dict[str, Any]:
+    event_id = "event-" + sha256(
+        f"{run_id}:candidate_generation:{reason_code}:{error_fingerprint}".encode(
+            "utf-8"
+        )
+    ).hexdigest()[:24]
+    return {
+        "schema_version": 1,
+        "event_id": event_id,
+        "event_type": "pre_formal_generation_failure",
+        "run_id": run_id,
+        "failed_stage": "candidate_generation",
+        "reason_code": reason_code,
+        "error_class": error_class,
+        "final_status": "failed",
+        "formal_validation_started": False,
+        "candidate_artifact_available": False,
+        "evidence_refs": [evidence_ref],
+        "evidence_view": "agent_safe",
+        "hidden_content_persisted": False,
+    }
+
+
 def _apply_public_runtime_contract_updates(suites, updates):
     if not isinstance(updates, Mapping) or not updates:
         return tuple(suites)
@@ -1877,10 +1907,67 @@ class SourceBootstrapPhase:
             task=generation_task,
             budget=context.budget,
             trace=context.trace,
+            root_record=context.root_record,
         )
-        generation_result = self._generation_adapter(
-            generation_context
-        )
+        try:
+            generation_result = self._generation_adapter(
+                generation_context
+            )
+        except Exception as exc:
+            failure = getattr(
+                exc, "candidate_generation_failure", None
+            )
+            if not isinstance(failure, Mapping):
+                raise
+            error_class = failure.get("error_class")
+            fingerprint = failure.get("error_fingerprint")
+            if not (
+                isinstance(error_class, str)
+                and isinstance(fingerprint, str)
+                and re.fullmatch(r"[0-9a-f]{24}", fingerprint)
+            ):
+                raise
+            event = _candidate_generation_failure_event(
+                run_id=context.run_id,
+                reason_code="candidate_generation_exception",
+                error_class=error_class,
+                error_fingerprint=fingerprint,
+                evidence_ref=f"fingerprint-{fingerprint}",
+            )
+            event["artifact_path"] = (
+                "bootstrap/candidate_generation_failure.json"
+            )
+            if context.root_record is not None:
+                context.root_record.record_event(event)
+            _atomic_json(
+                bootstrap_root / "candidate_generation_failure.json",
+                event,
+            )
+            identity_summary = self._write_execution_identity(
+                context=context,
+                normalized_task=context.task,
+                suites=(),
+                execution_status="failed",
+                initial_candidate_path=None,
+                final_candidate_path=None,
+                require_accepted_ready=False,
+                hard_budget_exhaustion=None,
+            )
+            return PhaseResult(
+                phase=RunPhase.REFACTOR,
+                status=PhaseStatus.FAILED,
+                summary=(
+                    "Candidate generation failed before formal validation"
+                ),
+                metadata={
+                    "source_bootstrap": True,
+                    "generation_only": True,
+                    "formal_validation_started": False,
+                    "failed_stage": "candidate_generation",
+                    "pre_formal_failure_event": event,
+                    "execution_identity": identity_summary,
+                },
+            )
         self._last_generation_result = generation_result
         if not generation_result.succeeded:
             raw_result = getattr(
@@ -2292,6 +2379,7 @@ class SourceBootstrapPhase:
             task=formal_task,
             budget=context.budget,
             trace=context.trace,
+            root_record=context.root_record,
         )
         formal_result = formal_phase(formal_context)
         if not isinstance(formal_result, PhaseResult):
@@ -2876,6 +2964,30 @@ class SourceBootstrapPhase:
             bootstrap_root / "generation_extraction_outcome.json"
         )
         _atomic_json(outcome_path, outcome)
+        candidate_missing = str(error).startswith(
+            "generation-only backend returned no candidate_"
+        )
+        pre_formal_event = None
+        if candidate_missing:
+            fingerprint = sha256(
+                f"{outcome['reason_code']}:{error}".encode("utf-8")
+            ).hexdigest()[:24]
+            pre_formal_event = _candidate_generation_failure_event(
+                run_id=context.run_id,
+                reason_code=outcome["reason_code"],
+                error_class="candidate_extraction",
+                error_fingerprint=fingerprint,
+                evidence_ref="bootstrap/generation_extraction_outcome.json",
+            )
+            pre_formal_event["artifact_path"] = (
+                "bootstrap/candidate_generation_failure.json"
+            )
+            if context.root_record is not None:
+                context.root_record.record_event(pre_formal_event)
+            _atomic_json(
+                bootstrap_root / "candidate_generation_failure.json",
+                pre_formal_event,
+            )
         identity_summary = self._write_execution_identity(
             context=context,
             normalized_task=context.task,
@@ -2901,6 +3013,11 @@ class SourceBootstrapPhase:
                 "generation_extraction_outcome": outcome,
                 "generation_extraction_outcome_path": (
                     "bootstrap/generation_extraction_outcome.json"
+                ),
+                **(
+                    {"pre_formal_failure_event": pre_formal_event}
+                    if pre_formal_event is not None
+                    else {}
                 ),
                 "execution_identity": identity_summary,
             },
