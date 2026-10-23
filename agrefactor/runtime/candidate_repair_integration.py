@@ -768,12 +768,20 @@ class _OrchestratedCandidateValidator:
             task=request.task,
             budget=request.budget,
             trace=self._parent_context.trace,
+            root_record=self._parent_context.root_record,
         )
         outcome = ValidationOrchestrator(
             handlers
         ).run_detailed(
             child_context,
             validation_id=validation_id,
+            attempt_id=(
+                None
+                if self._case_recorder is None
+                else self._case_recorder.candidate_attempt_id(
+                    request.attempt
+                )
+            ),
         )
         self._outcomes.append(outcome)
         completed = tuple(
@@ -998,6 +1006,7 @@ class CandidateRepairValidationOrchestrator:
             task=context.task,
             budget=context.budget,
             trace=context.trace,
+            root_record=context.root_record,
         )
         initial_outcome = ValidationOrchestrator(
             initial_handlers
@@ -1198,7 +1207,29 @@ class CandidateRepairValidationOrchestrator:
             dispatch_decision_observer=(
                 None
                 if self._case_recorder is None
-                else self._case_recorder.record_candidate_dispatch
+                else lambda attempt_number, candidate, route: (
+                    self._case_recorder.record_candidate_dispatch(
+                        attempt_number, candidate, route
+                    )
+                    is True
+                )
+            ),
+            dispatch_started_observer=(
+                None
+                if self._case_recorder is None
+                else self._case_recorder.dispatch_started
+            ),
+            dispatch_cancelled_observer=(
+                None
+                if self._case_recorder is None
+                else self._case_recorder.dispatch_cancelled
+            ),
+            attempt_result_observer=(
+                None
+                if self._case_recorder is None
+                else lambda attempt: self._case_recorder.record_candidate_attempt_result(
+                    attempt.attempt, attempt
+                )
             ),
             recovery_observer=(
                 None
@@ -1654,6 +1685,9 @@ class CandidateRepairValidationOrchestrator:
                         "stage": failure_state.value,
                         "split": suite.split.value,
                     },
+                    action_input_sha256=sha256(
+                        request.suite_testbench_codes[suite_id].encode("utf-8")
+                    ).hexdigest(),
                 )
                 if recorded is False:
                     ledger.release_component_action(reservation)
@@ -1662,9 +1696,17 @@ class CandidateRepairValidationOrchestrator:
                     )
             try:
                 ledger.commit_dispatched_action(reservation)
+                if self._case_recorder is not None and not self._case_recorder.dispatch_started(
+                    attempt_key
+                ):
+                    raise RuntimeError(
+                        "testbench repair dispatch was not newly recorded"
+                    )
             except Exception:
                 if self._case_recorder is None:
                     ledger.release_component_action(reservation)
+                else:
+                    self._case_recorder.dispatch_cancelled(attempt_key)
                 raise
             dispatch_count += 1
         selected_contract_proofs = [
@@ -1705,6 +1747,18 @@ class CandidateRepairValidationOrchestrator:
                 if self._diagnostic_assist
                 and self._experience_root is not None
                 else None
+            ),
+            attempt_observer=(
+                None
+                if self._case_recorder is None
+                else lambda attempt: self._case_recorder.record_testbench_attempt_result(
+                    f"{validation_id}:{suite_id}:{round_index}:{attempt.index}",
+                    attempt,
+                    validation_id=(
+                        f"{validation_id}.testbench.{round_index}."
+                        f"attempt.{attempt.index}.preflight"
+                    ),
+                )
             ),
         )
         work_root = getattr(
@@ -1861,12 +1915,21 @@ class CandidateRepairValidationOrchestrator:
             task=context.task,
             budget=context.budget,
             trace=context.trace,
+            root_record=context.root_record,
         )
         revalidated = ValidationOrchestrator(
             _build_handlers(self._handler_factory, plan)
         ).run_detailed(
             child,
             validation_id=f"{validation_id}.testbench.{round_index}",
+            attempt_id=(
+                None
+                if self._case_recorder is None or not repair.attempts
+                else self._case_recorder.attempt_id_for_key(
+                    f"{validation_id}:{suite_id}:{round_index}:"
+                    f"{repair.attempts[-1].index}"
+                )
+            ),
         )
         metadata["runtime_testbench_revalidation"] = (
             revalidated.result.to_dict()

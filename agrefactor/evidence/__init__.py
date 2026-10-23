@@ -28,6 +28,8 @@ from .case_record import (
 from .case_store import CaseStore, ExperienceStore, StoredChange
 from .experience_derivation import DerivedExperience, derive_experiences
 from .case_capture import CaseRecorder, capture_candidate_recovery
+from .root_run_record import RootRunRecordStore
+from .stage4_case_attribution import adjudicate_formal_root_run, normalize_stage
 from .corpus import (
     CorpusEvidenceLevel,
     CorpusOutcome,
@@ -108,6 +110,9 @@ __all__ = [
     "DerivedExperience",
     "derive_experiences",
     "capture_candidate_recovery",
+    "RootRunRecordStore",
+    "adjudicate_formal_root_run",
+    "normalize_stage",
     "CorpusEvidenceLevel",
     "CorpusOutcome",
     "DiagnosticCorpusRecord",

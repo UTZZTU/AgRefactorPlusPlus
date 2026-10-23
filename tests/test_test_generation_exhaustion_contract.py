@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from agrefactor.config import RunMode, TaskSpec, resolve_target_profile
+from agrefactor.evidence import RootRunRecordStore
 from agrefactor.models import resolve_model_runtime
 from agrefactor.product import (
     SourceBootstrapPhase,
@@ -93,7 +94,107 @@ class FailedGenerationAdapter:
         )
 
 
+class FailedCandidateGenerationAdapter:
+    def __call__(self, context):
+        for index in range(3):
+            context.trace.record(
+                "candidate_generation.abstained",
+                phase="refactor",
+                status="not_generated",
+                metadata={"candidate_created": False, "index": index},
+            )
+        error = RuntimeError("candidate output was unavailable")
+        error.candidate_generation_failure = {
+            "error_class": "RuntimeError",
+            "error_fingerprint": "a" * 24,
+        }
+        raise error
+
+
 class TestGenerationExhaustionContractTests(unittest.TestCase):
+    def test_candidate_generation_exception_is_a_pre_formal_event(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "kernel.cpp"
+            source.write_text(
+                'extern "C" int top(int x) { return x; }\n',
+                encoding="utf-8",
+            )
+            runtime = resolve_model_runtime("deepseek-v4-flash")
+            request = SourceBootstrapRequest(
+                source_path=source,
+                top_function="top",
+                mode=RunMode.REFACTOR,
+                effective_model_config=runtime.effective_config,
+                target=resolve_target_profile(None),
+                test_source_plan=build_test_source_plan(),
+                budget_contract=DEFAULT_SOURCE_RUN_BUDGET_PROFILE.resolve(),
+                max_candidate_repairs=2,
+                run_id="candidate-generation-failure-test",
+            )
+            layout = SourceRunLayout.create(
+                request.run_id,
+                artifact_base=root / "artifacts",
+                work_base=root / "work",
+            )
+            layout.artifact_root.mkdir(parents=True)
+            trace = TraceRecorder(request.run_id, task_id="source-task")
+            root_record = RootRunRecordStore(
+                layout.artifact_root / "root_run", request.run_id
+            )
+            phase = SourceBootstrapPhase(
+                request=request,
+                layout=layout,
+                generation_adapter=FailedCandidateGenerationAdapter(),
+                formal_phase_builder=lambda *_args: self.fail(
+                    "formal validation must not start"
+                ),
+            )
+            context = RunContext(
+                run_id=request.run_id,
+                task=TaskSpec(
+                    task_id="source-task",
+                    kernel_path=str(source),
+                    kernel_name="top",
+                ),
+                budget=BudgetManager(
+                    request.budget_contract.to_budget_limits()
+                ),
+                trace=trace,
+                root_record=root_record,
+            )
+
+            result = phase(context)
+            event = result.metadata["pre_formal_failure_event"]
+            root_snapshot = root_record.snapshot()
+            persisted = json.loads(
+                (
+                    layout.artifact_root
+                    / "bootstrap"
+                    / "candidate_generation_failure.json"
+                ).read_text(encoding="utf-8")
+            )
+            terminal_events = list(
+                (
+                    layout.artifact_root
+                    / "bootstrap"
+                ).glob("candidate_generation_failure.json")
+            )
+
+        self.assertIs(result.status, PhaseStatus.FAILED)
+        self.assertFalse(result.metadata["formal_validation_started"])
+        self.assertEqual(
+            result.metadata["failed_stage"], "candidate_generation"
+        )
+        self.assertEqual(event, persisted)
+        self.assertEqual(tuple(root_snapshot["events"]), (event["event_id"],))
+        self.assertEqual(root_snapshot["cases"], {})
+        self.assertEqual(root_snapshot["attempts"], {})
+        self.assertEqual(len(terminal_events), 1)
+        self.assertEqual(event["event_type"], "pre_formal_generation_failure")
+        self.assertFalse(event["candidate_artifact_available"])
+        self.assertNotIn("candidate output was unavailable", json.dumps(event))
+
     def test_original_only_sanitizer_failure_repairs_hidden_testbench(self):
         failure = {
             "status": "original_run_failed",
@@ -215,16 +316,50 @@ class TestGenerationExhaustionContractTests(unittest.TestCase):
             ],
             "generated_hidden_testbench": "must-be-cleared",
         }
-        with patch.object(
-            flow_new.tools.general,
-            "save_context",
-        ) as save:
-            success, returned = (
-                flow_new._finish_test_generation_exhaustion(
-                    cv,
-                    exc,
-                    "/tmp/operator-only",
+        with tempfile.TemporaryDirectory() as directory:
+            from agrefactor.evidence import CaseRecorder, CaseStore, CaseStatus
+
+            root = Path(directory)
+            experience_root = root / "experiences"
+            recorder = CaseRecorder(
+                root / "cases",
+                "public-generation",
+                case_scope_id="public-generation",
+                experience_root=experience_root,
+            )
+            recorder.record_public_generation_diagnostic(
+                {
+                    "event_id": "public-generation-diagnostic",
+                    "run_id": "public-generation",
+                    "validation_id": "public-generation",
+                    "stage": "public_testbench_generation",
+                    "split": "public",
+                    "owner": "testbench",
+                    "route_action": "review_unknown",
+                    "evidence_refs": ["evidence:public-generation"],
+                    "evidence_view": "agent_safe",
+                    "hidden_content_persisted": False,
+                }
+            )
+            case_id = CaseStore(root / "cases").open_cases()[0].case_id
+            with patch.object(
+                flow_new.tools.general,
+                "save_context",
+            ) as save:
+                success, returned = (
+                    flow_new._finish_test_generation_exhaustion(
+                        cv,
+                        exc,
+                        str(root / "output"),
+                        recorder,
+                    )
                 )
+
+            case = CaseStore(root / "cases").read_case(case_id)
+            self.assertEqual(case.status, CaseStatus.CLOSED)
+            self.assertEqual(case.outcome.value, "unresolved")
+            self.assertEqual(
+                list((experience_root / "records").glob("*.json")), []
             )
 
         self.assertFalse(success)

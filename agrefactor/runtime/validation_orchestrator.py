@@ -21,6 +21,7 @@ from agrefactor.evaluation.validation_state import (
     ValidationTransition,
 )
 from agrefactor.evidence import FeedbackItem, FeedbackReport
+from agrefactor.evidence.validation_capture import ValidationEvidenceRecorder
 
 from .runner import RunContext
 
@@ -520,6 +521,7 @@ class ValidationOrchestrator:
         context: RunContext,
         *,
         validation_id: str,
+        attempt_id: str | None = None,
     ) -> ValidationExecutionOutcome:
         if not isinstance(context, RunContext):
             raise TypeError(
@@ -545,6 +547,28 @@ class ValidationOrchestrator:
         coordinator = ValidationFeedbackCoordinator(
             context.task
         )
+        evidence_recorder = None
+        if context.root_record is not None:
+            try:
+                evidence_recorder = ValidationEvidenceRecorder(
+                    context.root_record,
+                    task=context.task,
+                    run_id=context.run_id,
+                    validation_id=resolved_id,
+                    attempt_id=attempt_id,
+                )
+                evidence_recorder.start_session(required_states)
+            except Exception as exc:
+                context.trace.record(
+                    "validation.evidence_capture.error",
+                    phase="validation",
+                    status="capture_error",
+                    metadata={
+                        "validation_id": resolved_id,
+                        "error_type": type(exc).__name__,
+                    },
+                )
+                evidence_recorder = None
         current_state = ValidationState.PREFLIGHT
         steps: list[ValidationStepRecord] = []
         terminal_report: FeedbackReport | None = None
@@ -580,9 +604,66 @@ class ValidationOrchestrator:
                 },
             )
 
+            stage_capture = None
+            stage_capture_error = None
+            if evidence_recorder is not None:
+                try:
+                    stage_capture = evidence_recorder.start_stage(
+                        state=current_state,
+                        step_id=step_id,
+                        handler=handler,
+                    )
+                except Exception as exc:
+                    stage_capture_error = type(exc).__name__
+                    context.trace.record(
+                        "validation.evidence_capture.error",
+                        phase=current_state.value,
+                        status="capture_error",
+                        metadata={
+                            "validation_id": resolved_id,
+                            "step_id": step_id,
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+
             try:
                 report = handler(context)
             except Exception as exc:
+                if stage_capture is not None:
+                    try:
+                        evidence_recorder.finish_stage(
+                            stage_capture,
+                            exception_type=type(exc).__name__,
+                        )
+                    except Exception as capture_exc:
+                        context.trace.record(
+                            "validation.evidence_capture.error",
+                            phase=current_state.value,
+                            status="capture_error",
+                            metadata={
+                                "validation_id": resolved_id,
+                                "step_id": step_id,
+                                "error_type": type(capture_exc).__name__,
+                            },
+                        )
+                elif stage_capture_error is not None:
+                    try:
+                        evidence_recorder.record_capture_failure(
+                            state=current_state,
+                            step_id=step_id,
+                            exception_type=stage_capture_error,
+                        )
+                    except Exception as capture_exc:
+                        context.trace.record(
+                            "validation.evidence_capture.error",
+                            phase=current_state.value,
+                            status="capture_error",
+                            metadata={
+                                "validation_id": resolved_id,
+                                "step_id": step_id,
+                                "error_type": type(capture_exc).__name__,
+                            },
+                        )
                 context.trace.record(
                     "validation.stage.error",
                     phase=current_state.value,
@@ -595,13 +676,113 @@ class ValidationOrchestrator:
                         "step_id": step_id,
                     },
                 )
+                self._record_remaining_evidence(
+                    context,
+                    recorder=evidence_recorder,
+                    required_states=required_states,
+                    executed_states={
+                        *(
+                            step.state
+                            for step in steps
+                        ),
+                        current_state,
+                    },
+                    validation_id=resolved_id,
+                    reason="validation_interrupted_by_handler_error",
+                )
                 raise
 
             if not isinstance(report, FeedbackReport):
+                if stage_capture is not None:
+                    try:
+                        evidence_recorder.finish_stage(
+                            stage_capture,
+                            exception_type="invalid_feedback_report",
+                        )
+                    except Exception as capture_exc:
+                        context.trace.record(
+                            "validation.evidence_capture.error",
+                            phase=current_state.value,
+                            status="capture_error",
+                            metadata={
+                                "validation_id": resolved_id,
+                                "step_id": step_id,
+                                "error_type": type(capture_exc).__name__,
+                            },
+                        )
+                elif stage_capture_error is not None:
+                    try:
+                        evidence_recorder.record_capture_failure(
+                            state=current_state,
+                            step_id=step_id,
+                            exception_type=stage_capture_error,
+                        )
+                    except Exception as capture_exc:
+                        context.trace.record(
+                            "validation.evidence_capture.error",
+                            phase=current_state.value,
+                            status="capture_error",
+                            metadata={
+                                "validation_id": resolved_id,
+                                "step_id": step_id,
+                                "error_type": type(capture_exc).__name__,
+                            },
+                        )
+                self._record_remaining_evidence(
+                    context,
+                    recorder=evidence_recorder,
+                    required_states=required_states,
+                    executed_states={
+                        *(
+                            step.state
+                            for step in steps
+                        ),
+                        current_state,
+                    },
+                    validation_id=resolved_id,
+                    reason="validation_interrupted_by_invalid_handler_result",
+                )
                 raise TypeError(
                     f"Handler for {current_state.value} returned "
                     f"{type(report).__name__}, expected FeedbackReport"
                 )
+
+            if stage_capture is not None:
+                try:
+                    evidence_recorder.finish_stage(
+                        stage_capture,
+                        report=report,
+                    )
+                except Exception as exc:
+                    context.trace.record(
+                        "validation.evidence_capture.error",
+                        phase=current_state.value,
+                        status="capture_error",
+                        metadata={
+                            "validation_id": resolved_id,
+                            "step_id": step_id,
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+            elif stage_capture_error is not None:
+                try:
+                    evidence_recorder.record_capture_failure(
+                        state=current_state,
+                        step_id=step_id,
+                        exception_type=stage_capture_error,
+                        report=report,
+                    )
+                except Exception as exc:
+                    context.trace.record(
+                        "validation.evidence_capture.error",
+                        phase=current_state.value,
+                        status="capture_error",
+                        metadata={
+                            "validation_id": resolved_id,
+                            "step_id": step_id,
+                            "error_type": type(exc).__name__,
+                        },
+                    )
 
             coordination, decision = (
                 coordinator.coordinate_with_decision(
@@ -659,6 +840,14 @@ class ValidationOrchestrator:
                     "validation transition guard exceeded"
                 )
 
+        self._record_remaining_evidence(
+            context,
+            recorder=evidence_recorder,
+            required_states=required_states,
+            executed_states={step.state for step in steps},
+            validation_id=resolved_id,
+            reason="validation_terminated_before_stage",
+        )
         result = ValidationOrchestrationResult(
             validation_id=resolved_id,
             task_id=context.task.task_id,
@@ -695,6 +884,69 @@ class ValidationOrchestrator:
                 None if result.accepted else terminal_decision
             ),
         )
+
+    @staticmethod
+    def _record_remaining_evidence(
+        context: RunContext,
+        *,
+        recorder: ValidationEvidenceRecorder | None,
+        required_states: tuple[ValidationState, ...],
+        executed_states: set[ValidationState],
+        validation_id: str,
+        reason: str,
+    ) -> None:
+        if recorder is None:
+            return
+        states = [
+            state
+            for state in required_states
+            if state not in executed_states
+            and state is not ValidationState.HIDDEN_EVALUATION
+        ]
+        has_public = any(
+            suite.split is EvaluationSplit.PUBLIC
+            for suite in context.task.test_suites
+        )
+        if not has_public:
+            states.extend(
+                state
+                for state in (
+                    ValidationState.PUBLIC_EVALUATION,
+                    ValidationState.PUBLIC_COSIM,
+                )
+                if state not in executed_states
+            )
+        for state in dict.fromkeys(states):
+            try:
+                recorder.record_unexecuted(
+                    state=state,
+                    reason=(
+                        "no_public_suite_declared"
+                        if not has_public
+                        and state in {
+                            ValidationState.PUBLIC_EVALUATION,
+                            ValidationState.PUBLIC_COSIM,
+                        }
+                        else reason
+                    ),
+                    not_applicable=(
+                        not has_public
+                        and state in {
+                            ValidationState.PUBLIC_EVALUATION,
+                            ValidationState.PUBLIC_COSIM,
+                        }
+                    ),
+                )
+            except Exception as exc:
+                context.trace.record(
+                    "validation.evidence_capture.error",
+                    phase=state.value,
+                    status="capture_error",
+                    metadata={
+                        "validation_id": validation_id,
+                        "error_type": type(exc).__name__,
+                    },
+                )
 
     @staticmethod
     def _required_states(

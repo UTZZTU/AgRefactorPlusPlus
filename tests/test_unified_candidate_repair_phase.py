@@ -449,8 +449,8 @@ class CandidateRepairPhaseTests(unittest.TestCase):
                     / "case.json"
                 ).read_text(encoding="utf-8")
             )
-            self.assertEqual(case_payload["status"], "closed")
-            self.assertEqual(case_payload["outcome"], "resolved")
+            self.assertEqual(case_payload["status"], "open")
+            self.assertIsNone(case_payload["outcome"])
             self.assertEqual(len(case_payload["attempts"]), 1)
             self.assertEqual(
                 case_payload["attempts"][0]["quota_buckets"],
@@ -465,7 +465,7 @@ class CandidateRepairPhaseTests(unittest.TestCase):
             )
             self.assertEqual(
                 len(list(experience_root.glob("*.json"))),
-                1,
+                0,
             )
             self.assertEqual(
                 len(provider.calls),

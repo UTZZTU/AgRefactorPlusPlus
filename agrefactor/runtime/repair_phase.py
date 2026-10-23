@@ -13,7 +13,11 @@ from typing import Any
 
 from agrefactor.config import DEFAULT_COSIM_TIMEOUT_S, DEFAULT_CSIM_TIMEOUT_S, DEFAULT_CSYNTH_TIMEOUT_S, validate_cosim_timeout_s
 from agrefactor.models import CandidateModelAdapter
-from agrefactor.evidence import CaseRecorder, capture_candidate_recovery
+from agrefactor.evidence import (
+    CaseRecorder,
+    RootRunRecordStore,
+    capture_candidate_recovery,
+)
 
 from .candidate_repair_integration import (
     CandidateRepairOrchestrationRequest,
@@ -186,6 +190,8 @@ class CandidateRepairPhaseArtifactWriter:
     def write(
         self,
         result: CandidateRepairOrchestrationResult,
+        *,
+        root_record: RootRunRecordStore | None = None,
     ) -> CandidateRepairPhaseArtifactWriteResult:
         if not isinstance(
             result,
@@ -314,6 +320,7 @@ class CandidateRepairPhaseArtifactWriter:
                 result=result,
                 experience_root=experience_root,
                 derive_experience_records=experience_root is not None,
+                root_record=root_record,
             )
             if experience_root is None:
                 _atomic_json_write(
@@ -520,6 +527,7 @@ class CandidateRepairPhase:
                 CaseRecorder(
                     phase_root / "cases",
                     validation_id,
+                    root_record=context.root_record,
                 )
                 if self._config.record_diagnostic_cases
                 else None
@@ -541,7 +549,7 @@ class CandidateRepairPhase:
                 record_diagnostic_cases=(
                     self._config.record_diagnostic_cases
                 ),
-            ).write(result)
+            ).write(result, root_record=context.root_record)
         )
         self._last_artifacts = artifacts
 

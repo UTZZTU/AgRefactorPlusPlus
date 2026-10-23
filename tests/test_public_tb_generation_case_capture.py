@@ -127,6 +127,9 @@ class PublicGenerationCaseCaptureTests(unittest.TestCase):
                 list(pool.map(lambda pair: record_trajectory(*pair), ((0, "testbench"), (1, "stub"))))
 
             self.assertTrue(recorder.close_case("resolved", "qualified"))
+            self.assertFalse(
+                recorder.close_case("resolved", "duplicate_close")
+            )
             store = CaseStore(root)
             cases = list(root.glob("*/case.json"))
             self.assertEqual(len(cases), 1)
@@ -467,7 +470,7 @@ class PublicGenerationCaseCaptureTests(unittest.TestCase):
             self.assertEqual(len(case_files), 1)
             case = CaseStore(root).read_case(case_files[0].parent.name)
             self.assertEqual(len(case.attempts), 2)
-            self.assertEqual(case.status, CaseStatus.CLOSED)
+            self.assertEqual(case.status, CaseStatus.OPEN)
 
     @staticmethod
     def event(event_id):

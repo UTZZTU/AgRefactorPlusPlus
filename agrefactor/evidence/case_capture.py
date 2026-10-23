@@ -25,6 +25,8 @@ from .case_record import (
 )
 from .case_store import CaseStore, ExperienceStore, StoredChange
 from .experience_derivation import derive_experiences
+from .root_run_record import RootRunRecordStore
+from .stage4_case_attribution import adjudicate_formal_root_run
 
 
 _MAX_PATCH_BYTES = 16 * 1024
@@ -126,6 +128,7 @@ class CaseRecorder:
         *,
         case_scope_id: str | None = None,
         experience_root: str | Path | None = None,
+        root_record: RootRunRecordStore | None = None,
     ) -> None:
         self._root = Path(root)
         self._validation_id = validation_id
@@ -134,6 +137,7 @@ class CaseRecorder:
             None if experience_root is None else Path(experience_root)
         )
         self._store = CaseStore(self._root)
+        self._root_record = root_record
         self._case: DiagnosticCase | None = None
         self._latest_event_ref: str | None = None
         self._active = False
@@ -142,6 +146,9 @@ class CaseRecorder:
         self._pending_generation_events: list[dict[str, Any]] = []
         self._generation_attempts: dict[str, dict[str, Any]] = {}
         self._generation_diagnostic_refs: dict[str, str] = {}
+        self._pending_dispatches: dict[str, dict[str, Any]] = {}
+        self._attempt_ids_by_number: dict[int, str] = {}
+        self._attempt_ids_by_key: dict[str, str] = {}
 
     def start_case(self, event: Mapping[str, Any]) -> bool:
         with self._lock:
@@ -167,6 +174,9 @@ class CaseRecorder:
             self._validation_id,
             self._case_scope_id or event_id,
         )
+        if self._root_record is not None:
+            self._root_record.register_case(case_id)
+            self._capture_root_event(event, case_id)
         if self._active and self._case is not None and self._case.case_id == case_id:
             return self._record_event(event)
         try:
@@ -252,12 +262,34 @@ class CaseRecorder:
                 pending_id = _event_key(pending_event)
                 if pending_id is not None:
                     self._store.write_event(case_id, pending_id, pending_event)
-            attempts = tuple(
-                replace(attempt, result="dispatch_incomplete")
-                if attempt.result == "dispatched"
-                else attempt
-                for attempt in existing.attempts
-            )
+            recovered_attempts = []
+            for attempt in existing.attempts:
+                if attempt.result not in {"dispatched", "dispatch_prepared"}:
+                    result = attempt.result
+                elif self._root_record is None:
+                    result = (
+                        "dispatch_incomplete"
+                        if attempt.result == "dispatched"
+                        else attempt.result
+                    )
+                else:
+                    try:
+                        dispatch_state = self._root_record.attempt_record(
+                            attempt.attempt_id
+                        )["dispatch_state"]
+                    except KeyError:
+                        dispatch_state = "not_dispatched"
+                    result = {
+                        "prepared": "dispatch_prepared",
+                        "dispatched": "dispatch_incomplete",
+                        "not_dispatched": "not_dispatched",
+                    }[dispatch_state]
+                recovered_attempts.append(
+                    replace(attempt, result=result)
+                    if attempt.result != result
+                    else attempt
+                )
+            attempts = tuple(recovered_attempts)
             event_refs = tuple(
                 dict.fromkeys(
                     (
@@ -322,15 +354,20 @@ class CaseRecorder:
             return False
         if not self._active or self._case is None:
             return None
-        attempt_id = _stable_id(
-            "attempt", self._case.case_id, str(attempt_number)
-        )
-        return self._record_dispatch(
+        attempt_id = self._root_attempt_id("candidate", str(attempt_number))
+        recorded = self._record_dispatch(
             attempt_id=attempt_id,
             quota_bucket="candidate",
             repair_record_ref=f"{self._validation_id}:{attempt_number}",
             authorization_payload=self._route_decision_payload(route_decision),
+            defer_dispatch=self._root_record is not None,
+            action_input_sha256=(
+                _digest(_candidate) if isinstance(_candidate, str) else None
+            ),
         )
+        if recorded:
+            self._attempt_ids_by_number[attempt_number] = attempt_id
+        return recorded
 
     def record_event(self, event: Mapping[str, Any]) -> bool:
         with self._lock:
@@ -347,8 +384,9 @@ class CaseRecorder:
         event_id = _event_key(event)
         if event_id is None:
             return False
+        self._capture_root_event(event, self._case.case_id)
         events = self._store.read_events(self._case.case_id)
-        if event_id not in events:
+        if event_id not in events and self._root_record is None:
             self._store.write_event(self._case.case_id, event_id, event)
         refs = tuple(dict.fromkeys((*self._case.diagnostic_event_refs, event_id)))
         evidence_refs = tuple(
@@ -376,6 +414,36 @@ class CaseRecorder:
         self._store.update_case(self._case)
         self._latest_event_ref = event_id
         return True
+
+    def _capture_root_event(
+        self, event: Mapping[str, Any], case_id: str
+    ) -> None:
+        if self._root_record is None:
+            return
+        self._root_record.record_event(event)
+        relation = self._root_record.record_relations(
+            "event", str(event["event_id"])
+        )
+        if relation.get("state") == "unassigned":
+            self._root_record.set_case_relation(
+                "event",
+                str(event["event_id"]),
+                state="candidate",
+                case_ids=(case_id,),
+                basis="formal_capture_pending_adjudication",
+            )
+
+    def _root_attempt_id(self, quota_bucket: str, key: str) -> str:
+        if self._root_record is None or self._case is None:
+            assert self._case is not None
+            return _stable_id("attempt", self._case.case_id, key)
+        return _stable_id(
+            "attempt",
+            self._root_record.run_id,
+            self._validation_id,
+            quota_bucket,
+            key,
+        )
 
     @staticmethod
     def _merge_event_evidence_checks(
@@ -417,6 +485,7 @@ class CaseRecorder:
         ledger_event: Any | None = None,
         route_decision: Any | None = None,
         qualification: Mapping[str, Any] | None = None,
+        action_input_sha256: str | None = None,
     ) -> bool | None:
         with self._lock:
             return self._record_testbench_dispatch(
@@ -426,6 +495,7 @@ class CaseRecorder:
                 ledger_event=ledger_event,
                 route_decision=route_decision,
                 qualification=qualification,
+                action_input_sha256=action_input_sha256,
             )
 
     def _record_testbench_dispatch(
@@ -437,14 +507,13 @@ class CaseRecorder:
         ledger_event: Any | None,
         route_decision: Any | None,
         qualification: Mapping[str, Any] | None,
+        action_input_sha256: str | None,
     ) -> bool | None:
         if self._blocked:
             return False
         if not self._active or self._case is None:
             return None
-        attempt_id = _stable_id(
-            "attempt", self._case.case_id, attempt_key
-        )
+        attempt_id = self._root_attempt_id("testbench_public", attempt_key)
         if authorization_payload is None and route_decision is not None:
             route_payload = self._route_decision_payload(route_decision)
             assert route_payload is not None
@@ -466,20 +535,31 @@ class CaseRecorder:
                 "evidence_view": "agent_safe",
                 "hidden_content_persisted": False,
             }
-        return self._record_dispatch(
+        recorded = self._record_dispatch(
             attempt_id=attempt_id,
             quota_bucket="testbench_public",
             repair_record_ref=_stable_id("repair", repair_record_ref),
             authorization_payload=authorization_payload,
             ledger_event=ledger_event,
+            defer_dispatch=self._root_record is not None,
+            action_input_sha256=action_input_sha256,
         )
+        if recorded:
+            self._attempt_ids_by_key[attempt_key] = attempt_id
+        return recorded
 
     def testbench_dispatch_recorded(self, attempt_key: str) -> bool:
         if self._case is None:
             return False
-        attempt_id = _stable_id(
-            "attempt", self._case.case_id, attempt_key
-        )
+        attempt_id = self._root_attempt_id("testbench_public", attempt_key)
+        if attempt_id in self._pending_dispatches:
+            return True
+        if self._root_record is not None:
+            try:
+                self._root_record.attempt_record(attempt_id)
+                return True
+            except KeyError:
+                return False
         return any(
             item.attempt_id == attempt_id for item in self._case.attempts
         )
@@ -492,6 +572,8 @@ class CaseRecorder:
         repair_record_ref: str,
         authorization_payload: Mapping[str, Any] | None = None,
         ledger_event: Any | None = None,
+        defer_dispatch: bool = False,
+        action_input_sha256: str | None = None,
     ) -> bool:
         if self._blocked:
             return False
@@ -528,7 +610,7 @@ class CaseRecorder:
         attempt = CaseAttempt(
             attempt_id=attempt_id,
             sequence_index=len(self._case.attempts),
-            result="dispatched",
+            result="dispatch_prepared" if defer_dispatch else "dispatched",
             pre_action_event_refs=(pre_action_ref,),
             post_validation_event_refs=(),
             authorization_ref=decision_ref,
@@ -543,7 +625,7 @@ class CaseRecorder:
             authorization_ref=authorization_ref,
             evidence_refs=evidence_refs,
         )
-        self._case = replace(
+        updated_case = replace(
             self._case,
             attempts=(*self._case.attempts, attempt),
             eligibility_snapshots=(
@@ -551,8 +633,323 @@ class CaseRecorder:
                 snapshot,
             ),
         )
+        if self._root_record is not None:
+            payload = {
+                "attempt_id": attempt_id,
+                "run_id": self._root_record.run_id,
+                "validation_id": self._validation_id,
+                "quota_bucket": quota_bucket,
+                "repair_record_ref": repair_record_ref,
+                "authorization_ref": authorization_ref,
+                "ledger_event_ref": ledger_event_ref,
+                "pre_action_event_refs": [pre_action_ref],
+                "action_input_sha256": action_input_sha256,
+                "evidence_view": "agent_safe",
+                "hidden_content_persisted": False,
+            }
+            self._root_record.prepare_attempt(attempt_id, payload)
+            self._root_record.set_case_relation(
+                "attempt",
+                attempt_id,
+                state="candidate",
+                case_ids=(updated_case.case_id,),
+                basis="single_case_capture_pending_adjudication",
+            )
+            if not defer_dispatch:
+                self._root_record.mark_attempt_dispatched(attempt_id)
+        self._case = updated_case
         self._store.update_case(self._case)
         return True
+
+    def dispatch_started(self, attempt_number: int | str) -> bool:
+        with self._lock:
+            attempt_id = (
+                self._attempt_ids_by_number.get(attempt_number)
+                if isinstance(attempt_number, int)
+                else self._attempt_ids_by_key.get(attempt_number)
+            )
+            if attempt_id is None:
+                return False
+            if self._root_record is not None:
+                try:
+                    started = self._root_record.mark_attempt_dispatched(attempt_id)
+                except (KeyError, ValueError):
+                    return False
+                if started and self._case is not None:
+                    self._case = replace(
+                        self._case,
+                        attempts=tuple(
+                            replace(item, result="dispatched")
+                            if item.attempt_id == attempt_id
+                            else item
+                            for item in self._case.attempts
+                        ),
+                    )
+                    self._store.update_case(self._case)
+                return started
+            if self._case is None:
+                return False
+            if not any(
+                item.attempt_id == attempt_id and item.result == "dispatch_prepared"
+                for item in self._case.attempts
+            ):
+                return any(
+                    item.attempt_id == attempt_id and item.result == "dispatched"
+                    for item in self._case.attempts
+                )
+            self._case = replace(
+                self._case,
+                attempts=tuple(
+                    replace(item, result="dispatched")
+                    if item.attempt_id == attempt_id
+                    else item
+                    for item in self._case.attempts
+                ),
+            )
+            self._store.update_case(self._case)
+            return True
+
+    def candidate_attempt_id(self, attempt_number: int) -> str | None:
+        """Return the stable root Attempt ID for a dispatched candidate repair."""
+        with self._lock:
+            attempt_id = self._attempt_ids_by_number.get(attempt_number)
+            if attempt_id is None:
+                return None
+            if self._root_record is not None:
+                try:
+                    if (
+                        self._root_record.attempt_record(attempt_id)[
+                            "dispatch_state"
+                        ]
+                        != "dispatched"
+                    ):
+                        return None
+                except KeyError:
+                    return None
+            return attempt_id
+
+    def attempt_id_for_key(self, attempt_key: str) -> str | None:
+        """Return the stable root Attempt ID for a keyed public repair."""
+        with self._lock:
+            attempt_id = self._attempt_ids_by_key.get(attempt_key)
+            if attempt_id is None:
+                return None
+            if self._root_record is not None:
+                try:
+                    if (
+                        self._root_record.attempt_record(attempt_id)[
+                            "dispatch_state"
+                        ]
+                        != "dispatched"
+                    ):
+                        return None
+                except KeyError:
+                    return None
+            return attempt_id
+
+    def dispatch_cancelled(self, attempt_number: int | str) -> None:
+        with self._lock:
+            attempt_id = (
+                self._attempt_ids_by_number.get(attempt_number)
+                if isinstance(attempt_number, int)
+                else self._attempt_ids_by_key.get(attempt_number)
+            )
+            if attempt_id is None:
+                return
+            if self._root_record is not None:
+                try:
+                    state = self._root_record.attempt_record(attempt_id)[
+                        "dispatch_state"
+                    ]
+                except KeyError:
+                    return
+                if state != "prepared":
+                    return
+                self._root_record.cancel_prepared_attempt(
+                    attempt_id, "provider_call_not_started"
+                )
+            if self._case is not None:
+                self._case = replace(
+                    self._case,
+                    attempts=tuple(
+                        item
+                        for item in self._case.attempts
+                        if item.attempt_id != attempt_id
+                    ),
+                )
+                self._store.update_case(self._case)
+
+    def record_candidate_attempt_result(
+        self, attempt_number: int, attempt: Any
+    ) -> None:
+        with self._lock:
+            attempt_id = self._attempt_ids_by_number.get(attempt_number)
+            if attempt_id is None or self._root_record is None:
+                return
+            if self._root_record.attempt_record(attempt_id)["dispatch_state"] != "dispatched":
+                return
+            validation = getattr(attempt, "validation_result", None)
+            proposal = getattr(attempt, "proposal", None)
+            before = getattr(attempt, "input_candidate", None)
+            if not isinstance(before, str) or not isinstance(proposal, str):
+                self._root_record.update_attempt(
+                    attempt_id,
+                    {"result": str(getattr(getattr(attempt, "status", None), "value", "unknown"))},
+                )
+                return
+            change = None
+            if before != proposal:
+                patch = _patch(before, proposal, name="candidate.cpp")
+                change = {
+                    "component": "candidate",
+                    "before_sha256": _digest(before),
+                    "after_sha256": _digest(proposal),
+                    "patch": patch,
+                }
+            validation_payload = None
+            validation_event_refs: tuple[str, ...] = ()
+            if validation is not None:
+                completed_stages = tuple(
+                    getattr(validation, "completed_stages", ())
+                )
+                safe_stages = tuple(
+                    item
+                    for item in completed_stages
+                    if "hidden" not in getattr(item, "value", str(item)).casefold()
+                )
+                stage = getattr(
+                    safe_stages[-1] if safe_stages else "unknown",
+                    "value",
+                    safe_stages[-1] if safe_stages else "unknown",
+                )
+                validation_id = str(
+                    getattr(validation, "metadata", {}).get(
+                        "orchestration_validation_id",
+                        f"{self._validation_id}.candidate-repair.{attempt_number}",
+                    )
+                )
+                snapshot = self._root_record.snapshot()
+                existing_event = next(
+                    (
+                        (event_id, record["payload"])
+                        for event_id, record in snapshot["events"].items()
+                        if record["payload"].get("validation_id") == validation_id
+                    ),
+                    None,
+                )
+                if existing_event is None:
+                    validation_event_id = _stable_id(
+                        "validation",
+                        self._root_record.run_id,
+                        validation_id,
+                        attempt_id,
+                        str(stage),
+                    )
+                    validation_event = _validation_event(
+                        event_id=validation_event_id,
+                        stage=str(stage),
+                        accepted=bool(getattr(validation, "passed", False)),
+                        validation_id=validation_id,
+                        validation_contract=_validation_contract(
+                            str(stage), "candidate"
+                        ),
+                    )
+                    validation_event["run_id"] = self._root_record.run_id
+                    self._root_record.record_event(validation_event)
+                    if self._case is not None:
+                        self._capture_root_event(
+                            validation_event, self._case.case_id
+                        )
+                    validation_event_refs = (validation_event_id,)
+                else:
+                    validation_event_refs = (existing_event[0],)
+                validation_payload = {
+                    "passed": bool(getattr(validation, "passed", False)),
+                    "completed_stages": [getattr(item, "value", str(item)) for item in safe_stages],
+                    "validation_id": validation_id,
+                    "event_refs": list(validation_event_refs),
+                }
+            self._root_record.update_attempt(
+                attempt_id,
+                {
+                    "result": str(getattr(getattr(attempt, "status", None), "value", "unknown")),
+                    "change": change,
+                    "validation": validation_payload,
+                    "validation_event_refs": list(validation_event_refs),
+                    "error_type": getattr(attempt, "error_type", None),
+                    "candidate_input_sha256": _digest(before),
+                },
+            )
+
+    def record_testbench_attempt_result(
+        self,
+        attempt_key: str,
+        attempt: Any,
+        *,
+        validation_id: str,
+    ) -> None:
+        with self._lock:
+            attempt_id = self._attempt_ids_by_key.get(attempt_key)
+            if attempt_id is None or self._root_record is None:
+                return
+            if self._root_record.attempt_record(attempt_id)["dispatch_state"] != "dispatched":
+                return
+            action = str(getattr(attempt, "action", "unknown"))
+            result = {
+                "repair_and_preflight": (
+                    "validated"
+                    if getattr(getattr(attempt, "preflight", None), "succeeded", False)
+                    else "validation_failed"
+                ),
+                "repair_provider_error": "provider_error",
+                "repair_rejected_empty": "response_rejected",
+                "repair_rejected_unchanged": "response_rejected",
+            }.get(action, "dispatch_incomplete")
+            details: dict[str, Any] = {"result": result}
+            before_hash = getattr(attempt, "case_before_sha256", None)
+            after_hash = getattr(attempt, "case_after_sha256", None)
+            patch = getattr(attempt, "case_change_patch", None)
+            if isinstance(before_hash, str) and isinstance(after_hash, str):
+                details["change"] = {
+                    "component": "testbench",
+                    "before_sha256": before_hash,
+                    "after_sha256": after_hash,
+                    "patch": patch if isinstance(patch, str) else None,
+                }
+            validation_event_refs: list[str] = []
+            if action == "repair_and_preflight":
+                preflight = attempt.preflight
+                stage = getattr(
+                    getattr(preflight, "stage", None), "value", "preflight"
+                )
+                event_id = _stable_id(
+                    "validation",
+                    self._root_record.run_id,
+                    validation_id,
+                    attempt_id,
+                    str(stage),
+                )
+                event = _validation_event(
+                    event_id=event_id,
+                    stage=str(stage),
+                    accepted=bool(getattr(preflight, "succeeded", False)),
+                    validation_id=validation_id,
+                    validation_contract=_validation_contract(str(stage), "testbench"),
+                )
+                event["run_id"] = self._root_record.run_id
+                event["component"] = "testbench"
+                self._root_record.record_event(event)
+                if self._case is not None:
+                    self._capture_root_event(event, self._case.case_id)
+                validation_event_refs.append(event_id)
+                details["validation"] = {
+                    "passed": bool(getattr(preflight, "succeeded", False)),
+                    "stage": str(stage),
+                    "validation_id": validation_id,
+                    "event_refs": validation_event_refs,
+                }
+                details["validation_event_refs"] = validation_event_refs
+            self._root_record.update_attempt(attempt_id, details)
 
     @staticmethod
     def _route_decision_payload(route_decision: Any | None) -> dict[str, Any] | None:
@@ -933,11 +1330,18 @@ def capture_candidate_recovery(
     result: Any,
     experience_root: str | Path | None = None,
     derive_experience_records: bool = True,
+    root_record: RootRunRecordStore | None = None,
 ) -> dict[str, Any]:
     """Persist a repair-aware candidate chain; ordinary successful runs are no-ops."""
 
     if not isinstance(derive_experience_records, bool):
         raise TypeError("derive_experience_records must be boolean")
+
+    attribution = (
+        adjudicate_formal_root_run(root_record)
+        if root_record is not None
+        else None
+    )
 
     metadata = getattr(result, "metadata", {})
     raw_events = metadata.get("diagnostic_events", ()) if isinstance(metadata, Mapping) else ()
@@ -959,6 +1363,12 @@ def capture_candidate_recovery(
         projected_event.setdefault("visibility", "public")
         events[key] = projected_event
     if not events:
+        if attribution is not None:
+            return {
+                "case_count": len(attribution["case_ids"]),
+                "experience_count": 0,
+                "case_ids": attribution["case_ids"],
+            }
         return {"case_count": 0, "experience_count": 0, "case_ids": []}
 
     repair_result = getattr(result, "repair_result", None)
@@ -974,6 +1384,13 @@ def capture_candidate_recovery(
     validation_id = str(getattr(result, "validation_id", "validation"))
     run_id = str(initial_event.get("run_id", validation_id))
     case_id = _stable_id("case", run_id, validation_id, str(initial_event["event_id"]))
+
+    def stable_attempt_id(quota_bucket: str, key: str) -> str:
+        if root_record is None:
+            return _stable_id("attempt", case_id, key)
+        return _stable_id(
+            "attempt", root_record.run_id, validation_id, quota_bucket, key
+        )
     event_records: dict[str, dict[str, Any]] = {key: value for key, value in events.items()}
     event_refs = [str(initial_event["event_id"])]
     attempts: list[CaseAttempt] = []
@@ -993,11 +1410,15 @@ def capture_candidate_recovery(
         ):
             continue
         pre_action_event_ref = latest_event_ref
-        attempt_id = _stable_id(
-            "attempt",
-            case_id,
-            str(observation.get("attempt_key", len(attempts))),
-        )
+        observation_key = str(observation.get("attempt_key", len(attempts)))
+        attempt_id = stable_attempt_id("testbench_public", observation_key)
+        if root_record is not None:
+            try:
+                root_attempt = root_record.attempt_record(attempt_id)
+            except KeyError:
+                continue
+            if root_attempt["dispatch_state"] != "dispatched":
+                continue
         validation = observation.get("validation")
         post_refs: tuple[str, ...] = ()
         post_id: str | None = None
@@ -1007,6 +1428,21 @@ def capture_candidate_recovery(
                 diagnostic_ref = validation.get("diagnostic_event_ref")
                 if isinstance(diagnostic_ref, str) and diagnostic_ref in events:
                     post_id = diagnostic_ref
+                elif root_record is not None:
+                    validation_id_ref = validation.get("validation_id")
+                    root_events = root_record.snapshot()["events"]
+                    root_match = next(
+                        (
+                            record["payload"]
+                            for record in root_events.values()
+                            if record["payload"].get("validation_id")
+                            == validation_id_ref
+                        ),
+                        None,
+                    )
+                    if root_match is not None:
+                        post_id = str(root_match["event_id"])
+                        event_records[post_id] = root_match
                 else:
                     post_id = _stable_id(
                         "validation",
@@ -1094,7 +1530,15 @@ def capture_candidate_recovery(
         )
         if not model_called:
             continue
-        attempt_id = _stable_id("attempt", case_id, str(getattr(attempt, "attempt", index + 1)))
+        attempt_number = str(getattr(attempt, "attempt", index + 1))
+        attempt_id = stable_attempt_id("candidate", attempt_number)
+        if root_record is not None:
+            try:
+                root_attempt = root_record.attempt_record(attempt_id)
+            except KeyError:
+                continue
+            if root_attempt["dispatch_state"] != "dispatched":
+                continue
         before = getattr(attempt, "input_candidate", None)
         proposal = getattr(attempt, "proposal", None)
         validation = getattr(attempt, "validation_result", None)
@@ -1122,12 +1566,27 @@ def capture_candidate_recovery(
         post_id: str | None = None
         if validation is not None:
             passed = bool(getattr(validation, "passed", False))
+            attempt_number = str(getattr(attempt, "attempt", index + 1))
             orchestration_validation_id = str(
                 getattr(validation, "metadata", {}).get(
-                    "orchestration_validation_id", ""
+                    "orchestration_validation_id",
+                    f"{validation_id}.candidate-repair.{attempt_number}",
                 )
             )
             diagnostic = diagnostic_by_validation.get(orchestration_validation_id)
+            if diagnostic is None and root_record is not None:
+                root_events = root_record.snapshot()["events"]
+                root_match = next(
+                    (
+                        record["payload"]
+                        for record in root_events.values()
+                        if record["payload"].get("validation_id")
+                        == orchestration_validation_id
+                    ),
+                    None,
+                )
+                if root_match is not None:
+                    diagnostic = root_match
             if diagnostic is not None:
                 post_id = str(diagnostic["event_id"])
                 post_event = dict(diagnostic)
@@ -1243,17 +1702,35 @@ def capture_candidate_recovery(
                 )
     accepted = bool(getattr(result, "accepted", False))
     status_value = getattr(getattr(result, "status", None), "value", str(getattr(result, "status", "unresolved")))
+    defer_formal_resolution = root_record is not None
     case = DiagnosticCase(
         case_id=case_id,
         created_at=str(initial_event.get("created_at") or datetime.now(timezone.utc).isoformat()),
-        status=CaseStatus.CLOSED,
-        outcome=CaseOutcome.RESOLVED if accepted else CaseOutcome.UNRESOLVED,
-        closure_reason="validated" if accepted else re.sub(r"[^a-z0-9_.-]+", "_", status_value.casefold()).strip("_.-") or "unresolved",
+        status=(CaseStatus.OPEN if defer_formal_resolution else CaseStatus.CLOSED),
+        outcome=(
+            None
+            if defer_formal_resolution
+            else CaseOutcome.RESOLVED if accepted else CaseOutcome.UNRESOLVED
+        ),
+        closure_reason=(
+            None
+            if defer_formal_resolution
+            else "validated" if accepted else re.sub(r"[^a-z0-9_.-]+", "_", status_value.casefold()).strip("_.-") or "unresolved"
+        ),
         diagnostic_event_refs=tuple(dict.fromkeys(event_refs)),
         attempts=tuple(attempts),
         owner_assessments=tuple(owner_assessments),
         eligibility_snapshots=tuple(eligibility),
     )
+    if defer_formal_resolution:
+        assert root_record is not None
+        return _persist_attributed_case_projections(
+            root_record=root_record,
+            store=store,
+            template=case,
+            changes=changes,
+        )
+
     for change in changes.values():
         store.write_change(case_id, change)
     if existing_case is not None and existing_case.status is CaseStatus.OPEN:
@@ -1405,4 +1882,152 @@ def capture_candidate_recovery(
         "case_count": 1,
         "experience_count": len(derived),
         "case_ids": [case_id],
+    }
+
+
+def _persist_attributed_case_projections(
+    *,
+    root_record: RootRunRecordStore,
+    store: CaseStore,
+    template: DiagnosticCase,
+    changes: Mapping[str, StoredChange],
+) -> dict[str, Any]:
+    snapshot = root_record.snapshot()
+    event_ids_by_case: dict[str, list[str]] = {}
+    attempt_ids_by_case: dict[str, list[str]] = {}
+    for event_id, record in snapshot.get("events", {}).items():
+        relation = record.get("relation", {})
+        case_ids = tuple(relation.get("case_ids", ()))
+        if relation.get("state") == "confirmed" or (
+            relation.get("state") == "candidate" and len(case_ids) == 1
+        ):
+            for case_id in case_ids:
+                event_ids_by_case.setdefault(case_id, []).append(event_id)
+    for attempt_id, record in snapshot.get("attempts", {}).items():
+        if record.get("dispatch_state") != "dispatched":
+            continue
+        relation = record.get("relation", {})
+        case_ids = tuple(relation.get("case_ids", ()))
+        if relation.get("state") == "confirmed" or (
+            relation.get("state") == "candidate" and len(case_ids) == 1
+        ):
+            for case_id in case_ids:
+                attempt_ids_by_case.setdefault(case_id, []).append(attempt_id)
+
+    confirmed_case_ids = sorted(
+        case_id
+        for case_id in set(event_ids_by_case) | set(attempt_ids_by_case)
+        if snapshot.get("cases", {}).get(case_id, {}).get("case_type") == "formal"
+    )
+    template_attempts = {item.attempt_id: item for item in template.attempts}
+    template_owners = {
+        item.diagnostic_event_ref: item for item in template.owner_assessments
+    }
+    template_eligibility = {
+        item.decision_ref: item for item in template.eligibility_snapshots
+    }
+    for case_id in confirmed_case_ids:
+        try:
+            saved = store.read_case(case_id)
+        except FileNotFoundError:
+            saved = None
+        saved_attempts = {} if saved is None else {item.attempt_id: item for item in saved.attempts}
+        selected_attempt_ids = set(attempt_ids_by_case.get(case_id, ()))
+        selected_attempts = {
+            attempt_id: item
+            for attempt_id, item in {**saved_attempts, **template_attempts}.items()
+            if attempt_id in selected_attempt_ids
+        }
+        ordered_attempts = tuple(
+            replace(item, sequence_index=index)
+            for index, item in enumerate(
+                sorted(
+                    selected_attempts.values(),
+                    key=lambda item: (
+                        snapshot["attempts"].get(item.attempt_id, {}).get("sequence")
+                        or 0
+                    ),
+                )
+            )
+        )
+        selected_event_ids = tuple(
+            event_id
+            for event_id in sorted(
+                set(event_ids_by_case.get(case_id, ())),
+                key=lambda item: snapshot["events"].get(item, {}).get("sequence") or 0,
+            )
+        )
+        saved_owners = {} if saved is None else {
+            item.diagnostic_event_ref: item for item in saved.owner_assessments
+        }
+        selected_owners = {
+            event_id: owner
+            for event_id, owner in {**saved_owners, **template_owners}.items()
+            if event_id in selected_event_ids
+        }
+        attempt_authorizations = {
+            item.authorization_ref for item in ordered_attempts
+        }
+        saved_eligibility = {} if saved is None else {
+            item.decision_ref: item for item in saved.eligibility_snapshots
+        }
+        selected_eligibility = {
+            ref: item
+            for ref, item in {**saved_eligibility, **template_eligibility}.items()
+            if ref in attempt_authorizations
+        }
+        first_event = next(
+            (
+                snapshot["events"][event_id]["payload"]
+                for event_id in selected_event_ids
+            ),
+            None,
+        )
+        projection = replace(
+            saved or template,
+            case_id=case_id,
+            created_at=(
+                str(first_event.get("created_at"))
+                if first_event is not None and first_event.get("created_at")
+                else (saved.created_at if saved is not None else template.created_at)
+            ),
+            status=CaseStatus.OPEN,
+            outcome=None,
+            closure_reason=None,
+            diagnostic_event_refs=selected_event_ids,
+            attempts=ordered_attempts,
+            owner_assessments=tuple(selected_owners.values()),
+            eligibility_snapshots=tuple(selected_eligibility.values()),
+        )
+        if saved is None:
+            store.write_case(projection)
+        else:
+            store.update_case(projection)
+        saved_events = {} if saved is None else store.read_events(case_id)
+        for event_id in selected_event_ids:
+            if event_id in saved_events:
+                continue
+            event = snapshot["events"][event_id]["payload"]
+            store.write_event(case_id, event_id, event)
+        existing_changes = {} if saved is None else store.read_changes(case_id)
+        for attempt_id in selected_attempt_ids:
+            change = changes.get(attempt_id)
+            if change is not None and attempt_id not in existing_changes:
+                store.write_change(case_id, change)
+
+    reported_case_ids = confirmed_case_ids
+    if not reported_case_ids:
+        reported_case_ids = sorted(
+            {
+                case_id
+                for record in snapshot.get("events", {}).values()
+                if record.get("relation", {}).get("state") == "candidate"
+                for case_id in record.get("relation", {}).get("case_ids", ())
+                if snapshot.get("cases", {}).get(case_id, {}).get("case_type") == "formal"
+            }
+        )
+    return {
+        "case_count": len(confirmed_case_ids),
+        "experience_count": 0,
+        "case_ids": reported_case_ids,
     }

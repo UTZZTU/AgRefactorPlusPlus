@@ -607,6 +607,9 @@ class BoundedCandidateRepairLoop:
         dispatch_decision_observer: Callable[
             [int, str, FeedbackRouteDecision], bool | None
         ] | None = None,
+        dispatch_started_observer: Callable[[int], bool | None] | None = None,
+        dispatch_cancelled_observer: Callable[[int], None] | None = None,
+        attempt_result_observer: Callable[[CandidateRepairAttempt], None] | None = None,
         recovery_observer: Callable[[int, Any], None] | None = None,
     ) -> None:
         if not isinstance(model_adapter, CandidateModelAdapter):
@@ -621,6 +624,18 @@ class BoundedCandidateRepairLoop:
             dispatch_decision_observer
         ):
             raise TypeError("dispatch_decision_observer must be callable or None")
+        if dispatch_started_observer is not None and not callable(
+            dispatch_started_observer
+        ):
+            raise TypeError("dispatch_started_observer must be callable or None")
+        if dispatch_cancelled_observer is not None and not callable(
+            dispatch_cancelled_observer
+        ):
+            raise TypeError("dispatch_cancelled_observer must be callable or None")
+        if attempt_result_observer is not None and not callable(
+            attempt_result_observer
+        ):
+            raise TypeError("attempt_result_observer must be callable or None")
         if recovery_observer is not None and not callable(recovery_observer):
             raise TypeError("recovery_observer must be callable or None")
         self._model_adapter = model_adapter
@@ -628,6 +643,9 @@ class BoundedCandidateRepairLoop:
         self._budget = budget
         self._dispatch_observer = dispatch_observer
         self._dispatch_decision_observer = dispatch_decision_observer
+        self._dispatch_started_observer = dispatch_started_observer
+        self._dispatch_cancelled_observer = dispatch_cancelled_observer
+        self._attempt_result_observer = attempt_result_observer
         self._recovery_observer = recovery_observer
 
     @property
@@ -643,6 +661,16 @@ class BoundedCandidateRepairLoop:
         last_validated_candidate: str | None = None
         last_proposal: str | None = None
         attempts: list[CandidateRepairAttempt] = []
+
+        def append_attempt(attempt: CandidateRepairAttempt) -> None:
+            attempts.append(attempt)
+            if self._attempt_result_observer is not None:
+                self._attempt_result_observer(attempt)
+
+        def cancel_pending_dispatch(attempt_number: int) -> None:
+            if self._dispatch_cancelled_observer is not None:
+                self._dispatch_cancelled_observer(attempt_number)
+
         feedback = request.feedback
         route = request.route_decision
         failure_state = request.failure_state
@@ -674,7 +702,7 @@ class BoundedCandidateRepairLoop:
             try:
                 self._budget.ensure_available(llm_calls=1)
             except BudgetExceededError as exc:
-                attempts.append(
+                append_attempt(
                     CandidateRepairAttempt(
                         attempt=attempt_number,
                         status=CandidateRepairAttemptStatus.BUDGET_BLOCKED,
@@ -862,7 +890,7 @@ class BoundedCandidateRepairLoop:
                     ]
                     if self._recovery_observer is not None and new_events:
                         self._recovery_observer(attempt_number, new_events[-1])
-                    attempts.append(
+                    append_attempt(
                         CandidateRepairAttempt(
                             attempt=attempt_number,
                             status=CandidateRepairAttemptStatus.BUDGET_BLOCKED,
@@ -903,9 +931,16 @@ class BoundedCandidateRepairLoop:
                     )
                 if reservation is not None:
                     request.recovery_ledger.commit_dispatched_action(reservation)
-                    dispatched = True
                     if self._recovery_observer is not None and recovery_event is not None:
                         self._recovery_observer(attempt_number, recovery_event)
+                if (
+                    self._dispatch_started_observer is not None
+                    and self._dispatch_started_observer(attempt_number) is False
+                ):
+                    raise _CandidateDispatchBlockedError(
+                        "candidate repair dispatch was not newly recorded"
+                    )
+                dispatched = True
 
             try:
                 model_result = self._model_adapter.generate(
@@ -917,7 +952,9 @@ class BoundedCandidateRepairLoop:
             except _CandidateDispatchBlockedError as exc:
                 if reservation is not None and not dispatched:
                     request.recovery_ledger.release_component_action(reservation)
-                attempts.append(
+                if not dispatched:
+                    cancel_pending_dispatch(attempt_number)
+                append_attempt(
                     CandidateRepairAttempt(
                         attempt=attempt_number,
                         status=CandidateRepairAttemptStatus.BUDGET_BLOCKED,
@@ -944,7 +981,9 @@ class BoundedCandidateRepairLoop:
             except BudgetExceededError as exc:
                 if reservation is not None and not dispatched:
                     request.recovery_ledger.release_component_action(reservation)
-                attempts.append(
+                if not dispatched:
+                    cancel_pending_dispatch(attempt_number)
+                append_attempt(
                     CandidateRepairAttempt(
                         attempt=attempt_number,
                         status=CandidateRepairAttemptStatus.BUDGET_BLOCKED,
@@ -971,9 +1010,11 @@ class BoundedCandidateRepairLoop:
             except CandidateResponseError as exc:
                 if reservation is not None and not dispatched:
                     request.recovery_ledger.release_component_action(reservation)
+                if not dispatched:
+                    cancel_pending_dispatch(attempt_number)
                 provider_failures += 1
                 model_response = self._new_response(response_count_before)
-                attempts.append(
+                append_attempt(
                     CandidateRepairAttempt(
                         attempt=attempt_number,
                         status=CandidateRepairAttemptStatus.RESPONSE_REJECTED,
@@ -1018,9 +1059,11 @@ class BoundedCandidateRepairLoop:
             except Exception as exc:
                 if reservation is not None and not dispatched:
                     request.recovery_ledger.release_component_action(reservation)
+                if not dispatched:
+                    cancel_pending_dispatch(attempt_number)
                 provider_failures += 1
                 model_response = self._new_response(response_count_before)
-                attempts.append(
+                append_attempt(
                     CandidateRepairAttempt(
                         attempt=attempt_number,
                         status=CandidateRepairAttemptStatus.PROVIDER_ERROR,
@@ -1096,7 +1139,7 @@ class BoundedCandidateRepairLoop:
                     _declared_validation_order(request.task),
                 )
             except Exception as exc:
-                attempts.append(
+                append_attempt(
                     CandidateRepairAttempt(
                         attempt=attempt_number,
                         status=CandidateRepairAttemptStatus.VALIDATOR_ERROR,
@@ -1123,7 +1166,7 @@ class BoundedCandidateRepairLoop:
 
             if validation_result.passed:
                 last_validated_candidate = current_candidate
-                attempts.append(
+                append_attempt(
                     CandidateRepairAttempt(
                         attempt=attempt_number,
                         status=CandidateRepairAttemptStatus.VALIDATED,
@@ -1148,7 +1191,7 @@ class BoundedCandidateRepairLoop:
                     attempts,
                 )
 
-            attempts.append(
+            append_attempt(
                 CandidateRepairAttempt(
                     attempt=attempt_number,
                     status=CandidateRepairAttemptStatus.VALIDATION_FAILED,

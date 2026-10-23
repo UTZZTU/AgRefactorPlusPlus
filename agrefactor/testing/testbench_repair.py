@@ -334,6 +334,7 @@ class TestbenchRepairLoop:
             DEFAULT_TESTBENCH_REPAIR_ATTEMPTS
         ),
         experience_context_provider: Callable[..., Any] | None = None,
+        attempt_observer: Callable[[TestbenchRepairAttempt], None] | None = None,
     ) -> None:
         validate_repair_attempts(
             max_repair_attempts,
@@ -345,7 +346,10 @@ class TestbenchRepairLoop:
         self._max_repair_attempts = max_repair_attempts
         if experience_context_provider is not None and not callable(experience_context_provider):
             raise TypeError("experience_context_provider must be callable or None")
+        if attempt_observer is not None and not callable(attempt_observer):
+            raise TypeError("attempt_observer must be callable or None")
         self._experience_context_provider = experience_context_provider
+        self._attempt_observer = attempt_observer
 
     def run(
         self,
@@ -389,6 +393,12 @@ class TestbenchRepairLoop:
 
         run_id = f"{task.task_id}.testbench-repair"
         attempts: list[TestbenchRepairAttempt] = []
+
+        def append_attempt(attempt: TestbenchRepairAttempt) -> None:
+            attempts.append(attempt)
+            if attempt.index > 0 and self._attempt_observer is not None:
+                self._attempt_observer(attempt)
+
         repair_attempts_used = 0
 
         initial_before = self._budget_snapshot(budget)
@@ -600,7 +610,7 @@ class TestbenchRepairLoop:
                 observation = self._new_model_observation(
                     audit_count_before
                 )
-                attempts.append(
+                append_attempt(
                     TestbenchRepairAttempt(
                         index=attempt_number,
                         action="repair_provider_error",
@@ -636,7 +646,7 @@ class TestbenchRepairLoop:
                 observation = self._new_model_observation(
                     audit_count_before
                 )
-                attempts.append(
+                append_attempt(
                     TestbenchRepairAttempt(
                         index=attempt_number,
                         action="repair_rejected_empty",
@@ -669,7 +679,7 @@ class TestbenchRepairLoop:
                 observation = self._new_model_observation(
                     audit_count_before
                 )
-                attempts.append(
+                append_attempt(
                     TestbenchRepairAttempt(
                         index=attempt_number,
                         action="repair_rejected_unchanged",
@@ -709,7 +719,7 @@ class TestbenchRepairLoop:
             observation = self._new_model_observation(
                 audit_count_before
             )
-            attempts.append(
+            append_attempt(
                 TestbenchRepairAttempt(
                     index=attempt_number,
                     action="repair_and_preflight",

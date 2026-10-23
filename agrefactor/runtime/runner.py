@@ -14,6 +14,7 @@ from typing import Any
 from uuid import uuid4
 
 from agrefactor.config import RunMode, TaskSpec
+from agrefactor.evidence.root_run_record import RootRunRecordStore
 
 from .budget import (
     BudgetExceededError,
@@ -92,6 +93,7 @@ class RunContext:
     task: TaskSpec
     budget: BudgetManager
     trace: TraceRecorder
+    root_record: RootRunRecordStore | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -444,12 +446,21 @@ class UnifiedRunner:
             task_id=task.task_id,
             output_path=trace_path,
         )
+        root_record = (
+            None
+            if resolved_artifact_root is None
+            else RootRunRecordStore(
+                resolved_artifact_root / "root_run",
+                resolved_run_id,
+            )
+        )
         budget = BudgetManager(self._budget_limits)
         context = RunContext(
             run_id=resolved_run_id,
             task=task,
             budget=budget,
             trace=trace,
+            root_record=root_record,
         )
 
         trace.record(
@@ -591,6 +602,9 @@ class UnifiedRunner:
         )
         if identity_summary is not None:
             metadata["execution_identity"] = identity_summary
+
+        if root_record is not None:
+            root_record.finish(run_status.value)
 
         trace.record(
             "run.finished",
